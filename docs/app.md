@@ -1,8 +1,8 @@
-# DenarioApp
+# PlatoApp
 
-DenarioApp is the GUI for multiagent research assitant system [Denario](https://github.com/AstroPilot-AI/Denario.git), powered by [streamlit](https://streamlit.io).
+PlatoApp is the GUI for multiagent research assitant system [Plato](https://github.com/AstroPilot-AI/Plato.git), powered by [streamlit](https://streamlit.io).
 
-[Test a deployed demo of this app in HugginFace Spaces.](https://huggingface.co/spaces/astropilot-ai/Denario)
+[Test a deployed demo of this app in HugginFace Spaces.](https://huggingface.co/spaces/astropilot-ai/Plato)
 
 <img width="1793" height="694" alt="Screenshot from 2025-09-10 18-30-46" src="https://github.com/user-attachments/assets/2c524601-13ff-492b-addb-173323aaa15b" />
 
@@ -11,26 +11,26 @@ DenarioApp is the GUI for multiagent research assitant system [Denario](https://
 Install the app with
 
 ```bash
-pip install "denario[app]"
+pip install "plato[app]"
 ```
 
-or, if Denario is already installed, do:
+or, if Plato is already installed, do:
 
 ```bash
-pip install denario_app
+pip install plato_app
 ```
 
 Then, launch the app with
 
 ```bash
-denario run
+plato run
 ```
 
 ## Build the GUI from source
 
 First, clone the app with
 
-`git clone https://github.com/AstroPilot-AI/DenarioApp.git`
+`git clone https://github.com/AstroPilot-AI/PlatoApp.git`
 
 Install the GUI from source following one of the following steps:
 
@@ -49,11 +49,11 @@ Install the GUI from source following one of the following steps:
 Run the app with:
 
 ```bash
-denario run
+plato run
 ```
 
 or
 
 ```bash
-streamlit run src/denario_app/app.py
+streamlit run src/plato_app/app.py
 ```

@@ -1,0 +1,18 @@
+name: Dashboard Backend
+on:
+  push:
+    branches: [main]
+    paths: ['dashboard/backend/**']
+  pull_request:
+    paths: ['dashboard/backend/**']
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.13', cache: pip }
+      - run: pip install -e dashboard/backend
+      - run: pip install pytest pytest-asyncio pytest-timeout httpx
+      - run: pytest dashboard/backend/tests -v --tb=short

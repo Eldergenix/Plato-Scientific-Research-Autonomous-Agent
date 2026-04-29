@@ -1,0 +1,60 @@
+name: Dashboard Frontend
+on:
+  push:
+    branches: [main]
+    paths: ['dashboard/frontend/**']
+  pull_request:
+    paths: ['dashboard/frontend/**']
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: dashboard/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: dashboard/frontend/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+
+  playwright:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: dashboard/frontend/package-lock.json
+      - name: Install backend (mock)
+        run: |
+          pip install -e dashboard/backend
+          pip install uvicorn fakeredis
+      - name: Install frontend deps
+        working-directory: dashboard/frontend
+        run: npm ci
+      - name: Install Playwright browsers
+        working-directory: dashboard/frontend
+        run: npx playwright install --with-deps chromium
+      - name: Boot mock backend
+        env:
+          PLATO_USE_FAKEREDIS: 'true'
+        run: |
+          python -m uvicorn plato_dashboard.api.server:app --port 7878 --host 127.0.0.1 &
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            curl -sf http://127.0.0.1:7878/api/v1/health && break
+            sleep 2
+          done
+      - name: Run Playwright tests
+        working-directory: dashboard/frontend
+        run: npx playwright test

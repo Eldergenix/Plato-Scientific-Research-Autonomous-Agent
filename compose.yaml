@@ -1,5 +1,5 @@
 services:
-  denario:
+  plato:
     build:
       context: .
       dockerfile: docker/Dockerfile.dev

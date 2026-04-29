@@ -2,11 +2,11 @@
 
 Functions related to the paper writing.
 
-::: denario.paper_agents.agents_graph
-::: denario.paper_agents.latex
-::: denario.paper_agents.literature
-::: denario.paper_agents.paper_node
-::: denario.paper_agents.parameters
-::: denario.paper_agents.prompts
-::: denario.paper_agents.reader
-::: denario.paper_agents.tools
+::: plato.paper_agents.agents_graph
+::: plato.paper_agents.latex
+::: plato.paper_agents.literature
+::: plato.paper_agents.paper_node
+::: plato.paper_agents.parameters
+::: plato.paper_agents.prompts
+::: plato.paper_agents.reader
+::: plato.paper_agents.tools

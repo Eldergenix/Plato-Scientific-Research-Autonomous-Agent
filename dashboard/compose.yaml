@@ -1,0 +1,52 @@
+# =============================================================================
+# Plato Dashboard — self-hosted lab compose file
+# =============================================================================
+# Single-service deployment for desktop or lab servers.
+#
+# Override any of the variables below by dropping a `.env` file next to this
+# compose file (Docker Compose auto-loads it). For example:
+#
+#   $ cat .env
+#   OPENAI_API_KEY=sk-...
+#   ANTHROPIC_API_KEY=sk-ant-...
+#   PLATO_AUTH=enabled
+#   PLATO_DEMO_MODE=disabled
+#
+# Then:
+#
+#   $ docker compose -f dashboard/compose.yaml up --build
+#
+# The image bakes in LaTeX, Redis (used only when fakeredis is disabled),
+# and the static Next.js build, so this is the only service you need.
+# Project state persists in the named `plato-projects` volume across rebuilds.
+# =============================================================================
+
+services:
+  plato-dashboard:
+    build:
+      context: ..
+      dockerfile: dashboard/Dockerfile
+    image: plato-dashboard:latest
+    container_name: plato-dashboard
+    ports:
+      - "7878:7878"
+    environment:
+      - PLATO_HOST=0.0.0.0
+      - PLATO_PORT=7878
+      - PLATO_DEMO_MODE=${PLATO_DEMO_MODE:-disabled}
+      - PLATO_AUTH=${PLATO_AUTH:-disabled}
+      # fakeredis keeps the container single-process; flip to "false" to
+      # use the bundled redis-server (started by the entrypoint).
+      - PLATO_USE_FAKEREDIS=true
+      # Provider keys — leave blank to enter them via the dashboard UI.
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    volumes:
+      # Persists ~/.plato/projects (runs, logs, generated papers) across
+      # container restarts and rebuilds.
+      - plato-projects:/root/.plato/projects
+    restart: unless-stopped
+
+volumes:
+  plato-projects: {}
