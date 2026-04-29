@@ -5,11 +5,18 @@ from .parameters import GraphState
 
 # idea - methods router
 def citation_router (state: GraphState) -> str:
+    """Route the post-refine_results stage.
+
+    When ``add_citations`` is true we run the citation pipeline
+    (``citations_node`` -> ``citation_validator_node`` -> claim/evidence
+    matrix); otherwise we skip the BibTeX work but still run claim
+    extraction so the reviewer panel can see an evidence matrix.
+    """
 
     if   state['paper']['add_citations'] is True:
         return 'citations_node'
     elif state['paper']['add_citations'] is False:
-        return 'reviewer_panel_fanout'
+        return 'claim_evidence_fanout'
     else:
         raise Exception('Wrong add_citations value')
 
