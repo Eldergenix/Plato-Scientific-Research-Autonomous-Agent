@@ -20,6 +20,8 @@ dependencies = [
   "langchain-openai>=0.3.12",
   "langgraph>=0.3.25",
   "langgraph-checkpoint-sqlite>=2.0.0",
+  "sqlalchemy>=2.0",
+  "httpx>=0.27",
   "google-cloud-aiplatform",
   "google-ai-generativelanguage>=0.6.17",
   "flatbuffers>=24.12.23",
