@@ -1,5 +1,5 @@
 from typing_extensions import TypedDict, Any
-from typing import Annotated
+from typing import Annotated, Optional
 from langchain_core.messages import AnyMessage
 from langgraph.graph.message import add_messages
 
@@ -72,8 +72,14 @@ class TIME(TypedDict):
 # parameters class
 class PARAMS(TypedDict):
     num_keywords: int
-    
-    
+
+
+# Revision-loop bookkeeping (Phase 3 / R6)
+class REVISION_STATE(TypedDict):
+    iteration: int       # current revision iteration (0 = first review, before any redraft)
+    max_iterations: int  # hard cap on revision loops to guarantee termination
+
+
 # Graph state class
 class GraphState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
@@ -87,3 +93,7 @@ class GraphState(TypedDict):
     time: TIME
     writer: str  #determines who is writing the paper. E.g. astrophysicists, biologist
     params: PARAMS #parameters of model
+    # Phase 3 — R6: multi-reviewer panel + revision loop
+    critiques: dict[str, dict]            # e.g. {"methodology": {"severity": 3, "issues": [...]}, ...}
+    critique_digest: Optional[dict]        # CritiqueDigest payload (max_severity, issues, iteration)
+    revision_state: REVISION_STATE         # iteration counter and max_iterations cap
