@@ -1,0 +1,5 @@
+mkdocs
+mkdocstrings[python]
+mkdocs-material>=9.6.12
+mkdocs-jupyter>=0.25.1
+mkdocs-git-committers-plugin-2>=2.5.0

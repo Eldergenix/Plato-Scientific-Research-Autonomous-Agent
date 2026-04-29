@@ -1,0 +1,111 @@
+site_name: Denario
+repo_url: https://github.com/AstroPilot-AI/Denario
+site_url: !ENV READTHEDOCS_CANONICAL_URL
+
+nav:
+  - Home: index.md
+  - Installation: install.md
+  - LLM APIs:
+      - Overview: llm_api_keys/apikeys.md
+      - Cost: llm_api_keys/cost.md
+      - Obtaining API Keys: llm_api_keys/obtaining-api-keys.md
+      - Vertex AI Setup: llm_api_keys/vertex-ai-setup.md
+      - Storing API Keys: llm_api_keys/storing-api-keys.md
+  - Get started: get_started.md
+  - App: app.md
+  - Docker: docker.md
+  - Prompts: prompts.md
+  - Examples:
+      - End-to-end research: examples/denario_oscillator_full_run.ipynb
+      - Enhance input description: examples/enhance_input.ipynb
+      - Generate research ideas: examples/research_idea.ipynb
+      - Literature search: examples/idea_check.ipynb
+      - Write a paper: examples/write_paper.ipynb
+      - End-to-end Gemini+fast mode: examples/EtE_Gemini_fast.ipynb
+  - Video tutorials:
+      - LLM API Credentials: tutorials/tut_llm_api.md
+      - Installation: tutorials/tut_install.md
+      - End to end research: tutorials/tut_end2end.md
+      - Graphical User Interface: tutorials/tut_gui.md
+  - Troubleshooting: troubleshooting.md
+  - Resources: resources.md
+  - API Reference:
+      - Denario: api_ref/api_denario.md
+      - Classes: api_ref/api_classes.md
+      - LLMs: api_ref/api_llms.md
+      - Paper: api_ref/api_paper.md
+      - Journals: api_ref/api_journals.md
+      - Utils: api_ref/api_utils.md
+
+theme:
+  name: material
+  features:
+    - content.code.copy
+    - navigation.footer
+    - navigation.tracking
+  palette:
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+      primary: deep purple
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+      primary: deep purple
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          options:
+            show_source: true
+            docstring_style: google
+            annotations_path: brief
+            show_signature: true
+            separate_signature: true
+            show_root_toc_entry: false
+            show_root_members_full_path: true
+            merge_init_into_class: true
+            show_signature_annotations: true
+            # show_root_heading: true
+            filters:
+              - "!^_"
+  - mkdocs-jupyter:
+      include_source: True
+      execute: False
+      ignore_h1_titles: True
+  - git-committers:
+      repository: AstroPilot-AI/Denario
+      branch: master
+
+extra_css:
+  - css/mkdocstrings.css
+  - css/extra.css
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.snippets:
+      base_path: "./"
+      
+extra:
+  analytics:
+    provider: google
+    property: G-XRRM15GMS9
+
