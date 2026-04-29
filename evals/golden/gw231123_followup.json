@@ -1,0 +1,8 @@
+{
+  "id": "gw231123_followup",
+  "data_description": "Reproduce a follow-up analysis of the gravitational-wave event GW231123. The data describes the LIGO-Virgo-KAGRA detection at coalescence GPS time 1387008376. Generate a paper section discussing the implications for stellar-mass black hole formation channels and pair-instability supernovae.",
+  "expected_idea_keywords": ["gravitational wave", "GW231123", "binary black hole", "pair instability"],
+  "expected_method_signals": ["coalescence", "Bayesian inference", "posterior", "waveform"],
+  "gold_sources": ["10.3847/2041-8213/ad5ce4"],
+  "domain": "astro"
+}
