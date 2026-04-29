@@ -1,0 +1,8 @@
+{
+  "id": "harmonic_oscillator",
+  "data_description": "Write a short paper on harmonic oscillators...",
+  "expected_idea_keywords": ["harmonic", "oscillator", "frequency"],
+  "expected_method_signals": ["differential equation", "period"],
+  "gold_sources": [],
+  "domain": "astro"
+}
