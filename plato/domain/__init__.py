@@ -84,6 +84,18 @@ register_domain(
 )
 
 
+register_domain(
+    DomainProfile(
+        name="biology",
+        retrieval_sources=["pubmed", "openalex", "semantic_scholar"],
+        keyword_extractor="mesh",
+        journal_presets=["NATURE", "CELL", "SCIENCE", "PLOS_BIO", "ELIFE", "NONE"],
+        executor="cmbagent",  # placeholder until biology-specific executor lands
+        novelty_corpus="pubmed",
+    )
+)
+
+
 __all__ = [
     "DomainProfile",
     "register_domain",
