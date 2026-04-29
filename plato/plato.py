@@ -555,6 +555,7 @@ class Plato:
         )
         config["callbacks"] = callbacks_for(recorder.manifest.run_id, recorder.manifest.workflow)
 
+        # Phase 2 wiring: domain drives multi-source retrieval (arxiv+openalex+ads+semantic_scholar for astro)
         # Initialize the state
         input_state = {
             "task": "literature",
@@ -568,6 +569,7 @@ class Plato:
             "keys": self.keys,
             "literature": {"max_iterations": max_iterations},
             "idea": {"total_iterations": 4},
+            "domain": self.domain.name,
         }
 
         # Run the graph
