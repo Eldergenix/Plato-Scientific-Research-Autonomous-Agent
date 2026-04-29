@@ -1,6 +1,6 @@
 # Installation
 
-This tutorial guides the user through the full installation process of Denario.
+This tutorial guides the user through the full installation process of Plato.
 
 <div class="video-wrapper">
 <iframe src="https://www.youtube.com/embed/TsIdUSEEKhA" frameborder="0"

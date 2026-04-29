@@ -1,25 +1,25 @@
 # Docker
 
-You can run Denario in a [Docker](https://www.docker.com/) image, which includes all the required dependencies for Denario including LaTeX.
+You can run Plato in a [Docker](https://www.docker.com/) image, which includes all the required dependencies for Plato including LaTeX.
 
 ## Pull a Docker image
 
-You can get a Docker image from the [Docker Hub](https://hub.docker.com/r/pablovd/denario). Pull the image with:
+You can get a Docker image from the [Docker Hub](https://hub.docker.com/r/pablovd/plato). Pull the image with:
 
 ```bash
-docker pull pablovd/denario:latest
+docker pull pablovd/plato:latest
 ```
 
 Once built, you can run the GUI with
 
 ```bash
-docker run -p 8501:8501 --rm pablovd/denario:latest
+docker run -p 8501:8501 --rm pablovd/plato:latest
 ```
 
 where we indicate the port `8501`. We can also run a container in interactive mode, so you can access through the terminal to the container, with
 
 ```bash
-docker run --rm -it pablovd/denario:latest bash
+docker run --rm -it pablovd/plato:latest bash
 ```
 
 Share volumes with `-v $(pwd)/project:/app/project` for inputing data and accessing to it. You can also share the API keys with a `.env` file in the same folder with `-v $(pwd).env/app/.env`. A container example with these both volumes would be like this:
@@ -29,18 +29,18 @@ docker run --rm \
   -p 8501:8501 \
   -v $(pwd)/project:/app/project \
   -v $(pwd).env/app/.env \
-  denario_src
+  plato_src
 ```
 
 ## Build a Docker image from source
 
-If you build Denario from source and want to build a local image, we can do it running this line from the root of Denario:
+If you build Plato from source and want to build a local image, we can do it running this line from the root of Plato:
 
 ```bash
-docker build -f docker/Dockerfile.dev -t denario_src .
+docker build -f docker/Dockerfile.dev -t plato_src .
 ```
 
-And then run a container with the commands above, indicating the name of the image `denario_src` and sharing as a volume the current path to allow that the changes in the code are reflected automatically:
+And then run a container with the commands above, indicating the name of the image `plato_src` and sharing as a volume the current path to allow that the changes in the code are reflected automatically:
 
 - GUI
 
@@ -48,7 +48,7 @@ And then run a container with the commands above, indicating the name of the ima
 docker run --rm \
   -p 8501:8501 \
   -v "$(pwd)":/app \
-  denario_src
+  plato_src
 ```
 
 - Interactive (terminal)
@@ -56,12 +56,12 @@ docker run --rm \
 ```bash
 docker run -it --rm \
   -v "$(pwd)":/app \
-  denario_src bash
+  plato_src bash
 ```
 
 ## Run with Docker compose
 
-A simpler way to run the local image is with [Docker Compose](https://docs.docker.com/compose/), which already sets the volumes to be shared in the yaml settings file. Ensure that you have [installed Docker Compose](https://docs.docker.com/compose/install) and run the following commands for using Denario:
+A simpler way to run the local image is with [Docker Compose](https://docs.docker.com/compose/), which already sets the volumes to be shared in the yaml settings file. Ensure that you have [installed Docker Compose](https://docs.docker.com/compose/install) and run the following commands for using Plato:
 
 - GUI
 
@@ -72,11 +72,11 @@ docker compose up
 or
 
 ```bash
-docker compose run --rm denario
+docker compose run --rm plato
 ```
 
 - Interactive (terminal)
 
 ```bash
-docker compose run --rm denario bash
+docker compose run --rm plato bash
 ```

@@ -1,12 +1,12 @@
 # Classes
 
-Main data classes employed in Denario.
+Main data classes employed in Plato.
 
-::: denario.research
-::: denario.idea
-::: denario.method
-::: denario.experiment
-::: denario.llm.LLM
+::: plato.research
+::: plato.idea
+::: plato.method
+::: plato.experiment
+::: plato.llm.LLM
     options:
         show_root_heading: true
         show_root_members_full_path: false

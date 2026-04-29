@@ -1,11 +1,11 @@
 # Get started
 
-Initialize a `Denario` instance and describe the data and tools to be employed.
+Initialize a `Plato` instance and describe the data and tools to be employed.
 
 ```python
-from denario import Denario
+from plato import Plato
 
-den = Denario(project_dir="project_dir")
+den = Plato(project_dir="project_dir")
 
 prompt = """
 Analyze the experimental data stored in data.csv using sklearn and pandas.
@@ -49,7 +49,7 @@ den.get_results()
 Finally, generate a latex article with the results. You can specify the journal style, in this example we choose the [APS (Physical Review Journals)](https://journals.aps.org/) style.
 
 ```python
-from denario import Journal
+from plato import Journal
 
 den.get_paper(journal=Journal.APS)
 ```

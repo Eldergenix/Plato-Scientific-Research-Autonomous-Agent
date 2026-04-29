@@ -1,0 +1,558 @@
+@import "tailwindcss";
+
+/* =============================================================================
+   Plato Dashboard — Linear.app design tokens (Tailwind v4)
+   -----------------------------------------------------------------------------
+   Token layering:
+   1. NEW Linear spec tokens (from Figma export, primary source of truth):
+        --bg-*           page/card/pill/row backgrounds
+        --border-*       card / pill / button outlines
+        --text-*         primary/secondary/.../row meta text
+        --status-*       dashed status icons + colored dot pill tags
+        --accent-row-*   collapse-icon tints in group headers
+        --gradient-*     in-progress / backlog group header gradients
+        --shadow-*       card / glass / glass-active / icon-button
+        --r-*            radius (card 12, pill 9999, row 8)
+        --w-*, --h-*     sizing tokens (sidebar width, row/button/tab heights)
+
+   2. LEGACY aliases (--color-bg-*, --color-text-*, --color-brand-*,
+      --color-status-*, --color-border-*, --color-ghost-*, --color-icon-bg)
+      preserved so existing components keep compiling. Where the new spec
+      disagrees, the legacy alias is updated to the new value.
+
+   3. Typography, weights, and animation keyframes (pulse-dot, shimmer)
+      are unchanged.
+
+   All tokens live inside @theme {} so Tailwind v4 generates utilities
+   like bg-(--color-bg-marketing), border-(--color-border-card), etc.
+   ============================================================================= */
+
+@theme {
+  /* ---------------------------------------------------------------------------
+     1. NEW Linear spec tokens
+     --------------------------------------------------------------------------- */
+
+  /* Backgrounds */
+  --color-bg-page: #070707;
+  --color-bg-card: #0f1010;
+  --color-bg-pill-inactive: #141415;
+  --color-bg-pill-active: #202021;
+  --color-bg-row-active: #191a1a;
+  --color-bg-tag-pill: #0f1010;
+  --color-bg-button-glass: #1d1d1e;
+
+  /* Borders */
+  --color-border-card: #1d1d1f;
+  --color-border-pill: #262628;
+  --color-border-button-glass: rgba(255, 255, 255, 0.136);
+
+  /* Text */
+  --color-text-primary-strong: #ffffff;
+  --color-text-secondary-spec: #e3e4e7;
+  --color-text-tertiary-spec: #919193;
+  --color-text-quaternary-spec: #515153;
+  --color-text-quinary: #555557;
+  --color-text-row-title: #ffffff;
+  --color-text-row-meta: #949496;
+  --color-text-progress-meta: #8c9b93;
+  --color-text-backlog-meta: #9e968b;
+  --color-text-workspace: #e3e3e6;
+
+  /* Status accents */
+  --color-status-pink: #ff0080;
+  --color-status-teal: #00738e;
+  --color-status-green-spec: #27a644;
+  --color-status-amber-spec: #f0bf00;
+  --color-status-red-spec: #eb5757;
+  --color-status-purple: #bb87fc;
+  --color-status-blue: #4ea7fc;
+  --color-status-orange: #ff7236;
+  --color-accent-row-progress: #24302a;
+  --color-accent-row-backlog: #322c23;
+
+  /* Gradients */
+  --gradient-progress: linear-gradient(90deg, #161b19 0%, #171718 100%);
+  --gradient-backlog: linear-gradient(90deg, #1c1a18 0%, #171718 100%);
+
+  /* Shadows */
+  --shadow-card: 0 4px 4px -1px rgba(0, 0, 0, 0.04), 0 1px 1px rgba(0, 0, 0, 0.08);
+  --shadow-glass: 0 0 0 0.5px rgba(255, 255, 255, 0.136), 0 4px 4px -1px rgba(0, 0, 0, 0.04), 0 1px 1px rgba(0, 0, 0, 0.08);
+  --shadow-glass-active: 0 0 0 0.5px rgba(255, 255, 255, 0.158);
+  --shadow-icon-button: 0 0 0 1px #202122, 0 4px 4px -1px rgba(0, 0, 0, 0.04), 0 1px 1px rgba(0, 0, 0, 0.08);
+
+  /* Radii */
+  --radius-card-spec: 12px;
+  --radius-pill: 9999px;
+  --radius-row: 8px;
+
+  /* Sizing */
+  --w-sidebar: 244px;
+  --h-row: 36px;
+  --h-button: 28px;
+  --h-tab: 27px;
+  --h-toolbar: 43.5px;
+  --h-bottom-bar: 32px;
+
+  /* ---------------------------------------------------------------------------
+     2. LEGACY aliases — kept so existing components compile.
+        Where the new spec changed a value, the alias is updated to match.
+        Migration map (old token → new value, new spec equivalent):
+          --color-bg-marketing      #08090a → #070707            (--color-bg-page)
+          --color-bg-panel          #0f1011 → #0f1010            (--color-bg-card)
+          --color-bg-surface        #191a1b → #191a1a            (--color-bg-row-active)
+          --color-text-tertiary     #8a8f98 → #919193            (--color-text-tertiary-spec)
+          --color-border-solid      #23252a → #1d1d1f            (--color-border-card)
+          --color-text-primary      #f7f8f8 (kept; close to #fff)
+          --color-border-standard   rgba(255,255,255,0.08) (kept)
+     --------------------------------------------------------------------------- */
+  --color-bg-marketing: #070707;
+  --color-bg-panel: #0f1010;
+  --color-bg-surface: #191a1a;
+  --color-bg-surface-2: #28282c;
+  --color-bg-elevated: #1f2023;
+
+  --color-text-primary: #f7f8f8;
+  --color-text-secondary: #d0d6e0;
+  --color-text-tertiary: #919193;
+  --color-text-quaternary: #62666d;
+
+  --color-brand-indigo: #5e6ad2;
+  --color-brand-interactive: #7170ff;
+  --color-brand-hover: #828fff;
+  --color-brand-lavender: #7a7fad;
+
+  /* Legacy status palette — kept; aligned with spec values where they overlap */
+  --color-status-green: #27a644;
+  --color-status-emerald: #10b981;
+  --color-status-amber: #f5a524;
+  --color-status-red: #eb5757;
+
+  --color-border-subtle: rgba(255, 255, 255, 0.05);
+  --color-border-standard: rgba(255, 255, 255, 0.08);
+  --color-border-solid: #1d1d1f;
+  --color-border-strong: #34343a;
+  --color-border-stronger: #3e3e44;
+
+  --color-ghost-bg: rgba(255, 255, 255, 0.02);
+  --color-ghost-bg-hover: rgba(255, 255, 255, 0.05);
+  --color-icon-bg: rgba(255, 255, 255, 0.03);
+
+  /* ---------------------------------------------------------------------------
+     3. Typography (unchanged) — Inter Variable, weights 450–590
+        12px label, 13px body / row title, 14px workspace name.
+     --------------------------------------------------------------------------- */
+  --font-sans: "Inter", "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Menlo", "Berkeley Mono", monospace;
+
+  --text-display-xl: 72px;
+  --text-display-lg: 64px;
+  --text-display: 48px;
+  --text-h1: 32px;
+  --text-h2: 24px;
+  --text-h3: 20px;
+  --text-body: 16px;
+  --text-caption: 13px;
+  --text-row-title: 13px;
+  --text-workspace: 14px;
+  --text-label: 12px;
+  --text-mono-body: 14px;
+
+  --tracking-display-xl: -1.584px;
+  --tracking-display-lg: -1.408px;
+  --tracking-display: -1.056px;
+  --tracking-h1: -0.704px;
+  --tracking-workspace: -0.1px;
+
+  --font-weight-light: 300;
+  --font-weight-regular: 400;
+  --font-weight-450: 450;
+  --font-weight-500: 500;
+  --font-weight-medium: 510;
+  --font-weight-550: 550;
+  --font-weight-semibold: 590;
+
+  /* Legacy radius scale (kept) */
+  --radius-micro: 2px;
+  --radius-standard: 4px;
+  --radius-comfort: 6px;
+  --radius-card: 8px;
+  --radius-panel: 12px;
+  --radius-large: 22px;
+
+  /* Legacy shadow scale (kept) */
+  --shadow-subtle: 0 1.2px 0 rgba(0, 0, 0, 0.03);
+  --shadow-elevated: 0 2px 4px rgba(0, 0, 0, 0.4);
+  --shadow-dialog: 0 0 0 1px rgba(0, 0, 0, 0.2), 0 4px 8px rgba(0, 0, 0, 0.3), 0 8px 16px rgba(0, 0, 0, 0.3);
+  --shadow-inset: inset 0 0 12px rgba(0, 0, 0, 0.2);
+  --shadow-focus: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+:root {
+  color-scheme: dark;
+  --background: var(--color-bg-marketing);
+  --foreground: var(--color-text-primary);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border-standard);
+  }
+
+  html, body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-feature-settings: "cv01", "ss03";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    font-size: var(--text-body);
+    line-height: 1.5;
+    font-weight: var(--font-weight-regular);
+  }
+
+  ::selection {
+    background: var(--color-brand-indigo);
+    color: var(--color-text-primary);
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-border-strong);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-border-stronger);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand-interactive);
+    outline-offset: 2px;
+    border-radius: var(--radius-comfort);
+  }
+}
+
+@layer utilities {
+  /* ---- Typography helpers (legacy, unchanged) ---- */
+  .font-display {
+    font-weight: var(--font-weight-medium);
+    letter-spacing: var(--tracking-display);
+  }
+  .font-h1 {
+    font-size: var(--text-h1);
+    letter-spacing: var(--tracking-h1);
+    font-weight: var(--font-weight-regular);
+  }
+  .font-caption {
+    font-size: var(--text-caption);
+    color: var(--color-text-tertiary);
+  }
+  .font-label {
+    font-size: var(--text-label);
+    font-weight: var(--font-weight-semibold);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-tertiary);
+  }
+  .font-mono-body {
+    font-family: var(--font-mono);
+    font-size: var(--text-mono-body);
+  }
+  .font-workspace {
+    font-size: var(--text-workspace);
+    letter-spacing: var(--tracking-workspace);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text-workspace);
+  }
+
+  /* ---- Legacy surfaces (kept) ---- */
+  .surface-panel {
+    background: var(--color-bg-panel);
+    border: 1px solid var(--color-border-standard);
+  }
+  .surface-card {
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-standard);
+    border-radius: var(--radius-card);
+  }
+  .surface-ghost {
+    background: var(--color-ghost-bg);
+    border: 1px solid var(--color-border-solid);
+    border-radius: var(--radius-comfort);
+    transition: background 120ms ease-out, border-color 120ms ease-out;
+  }
+  .surface-ghost:hover {
+    background: var(--color-ghost-bg-hover);
+    border-color: var(--color-border-strong);
+  }
+
+  /* ---- New Linear surfaces ---- */
+  .surface-linear-card {
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border-card);
+    border-radius: var(--radius-card-spec);
+    box-shadow: var(--shadow-card);
+  }
+
+  .glass-button {
+    background: var(--color-bg-button-glass);
+    box-shadow: var(--shadow-glass);
+    border-radius: var(--radius-pill);
+    height: var(--h-button);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-tertiary-spec);
+    transition: background 120ms ease-out;
+  }
+  .glass-button:hover {
+    background: #232325;
+  }
+
+  .icon-button {
+    background: var(--color-bg-button-glass);
+    box-shadow: var(--shadow-icon-button);
+    border-radius: var(--radius-pill);
+    height: var(--h-button);
+    width: var(--h-button);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-tertiary-spec);
+  }
+
+  /* ---- Tab pills (header sub-nav) ---- */
+  .tab-pill {
+    display: inline-flex;
+    align-items: center;
+    height: var(--h-tab);
+    padding: 6.25px 10px;
+    border-radius: var(--radius-pill);
+    font-size: 12px;
+    line-height: 15px;
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text-row-meta);
+    background: transparent;
+    transition: background 120ms ease-out, color 120ms ease-out;
+    cursor: pointer;
+  }
+  .tab-pill:hover {
+    color: var(--color-text-primary-strong);
+  }
+  .tab-pill[data-state="active"] {
+    background: var(--color-bg-pill-active);
+    color: var(--color-text-primary-strong);
+    box-shadow: var(--shadow-glass-active);
+  }
+
+  /* ---- List rows ---- */
+  .row-list-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: var(--h-row);
+    padding: 0 26px 0 16px;
+    border-radius: var(--radius-row);
+    color: var(--color-text-row-title);
+    font-size: var(--text-row-title);
+    transition: background 100ms ease-out;
+  }
+  .row-list-item:hover {
+    background: rgba(255, 255, 255, 0.02);
+  }
+  .row-list-item[data-active="true"] {
+    background: var(--color-bg-row-active);
+  }
+  .row-list-item .row-meta {
+    color: var(--color-text-row-meta);
+    font-size: var(--text-label);
+  }
+
+  /* ---- Group section headers (In Progress / Backlog) ---- */
+  .group-progress,
+  .group-backlog {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: var(--h-row);
+    padding: 0 16px;
+    border-radius: var(--radius-row);
+    font-size: var(--text-label);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text-secondary-spec);
+  }
+  .group-progress {
+    background: var(--gradient-progress);
+  }
+  .group-progress .group-meta {
+    color: var(--color-text-progress-meta);
+  }
+  .group-progress .group-collapse {
+    color: var(--color-accent-row-progress);
+  }
+  .group-backlog {
+    background: var(--gradient-backlog);
+  }
+  .group-backlog .group-meta {
+    color: var(--color-text-backlog-meta);
+  }
+  .group-backlog .group-collapse {
+    color: var(--color-accent-row-backlog);
+  }
+
+  /* ---- Status icons -------------------------------------------------------
+     CSS native dashed borders render unevenly across browsers, so we ship
+     these as inline SVG data-URIs. The SVG draws a 1.5px dashed circle
+     (stroke-dasharray) plus an inner partial fill (an arc segment for
+     ~33% completion). For more detailed states, swap these utilities for
+     the React component at `src/components/status-icon.tsx`.
+     ----------------------------------------------------------------------- */
+  .status-icon-progress {
+    width: 14px;
+    height: 14px;
+    flex: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'><circle cx='7' cy='7' r='5.5' fill='none' stroke='%2327a644' stroke-width='1.5' stroke-dasharray='2.4 2.4'/><path d='M7 2.5 A4.5 4.5 0 0 1 11.05 5.5 L7 7 Z' fill='%2327a644'/></svg>");
+    background-repeat: no-repeat;
+    background-position: center;
+  }
+  .status-icon-backlog {
+    width: 14px;
+    height: 14px;
+    flex: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'><circle cx='7' cy='7' r='5.5' fill='none' stroke='%23f0bf00' stroke-width='1.5' stroke-dasharray='2.4 2.4'/></svg>");
+    background-repeat: no-repeat;
+    background-position: center;
+  }
+
+  /* ---- Tag pill (colored dot + text) ---- */
+  .tag-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    padding: 0 7.5px;
+    background: var(--color-bg-tag-pill);
+    border: 1px solid var(--color-border-pill);
+    border-radius: var(--radius-pill);
+    font-size: 12px;
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text-row-meta);
+  }
+  .tag-pill::before {
+    content: "";
+    width: 9px;
+    height: 9px;
+    border-radius: 9999px;
+    background: currentColor;
+    flex: none;
+  }
+  .tag-pill[data-color="red"]    { color: var(--color-status-red-spec); }
+  .tag-pill[data-color="purple"] { color: var(--color-status-purple); }
+  .tag-pill[data-color="blue"]   { color: var(--color-status-blue); }
+  .tag-pill[data-color="orange"] { color: var(--color-status-orange); }
+  .tag-pill[data-color="green"]  { color: var(--color-status-green-spec); }
+  .tag-pill[data-color="amber"]  { color: var(--color-status-amber-spec); }
+  .tag-pill[data-color="pink"]   { color: var(--color-status-pink); }
+  .tag-pill[data-color="teal"]   { color: var(--color-status-teal); }
+  .tag-pill > span {
+    color: var(--color-text-row-meta);
+  }
+
+  /* ---- Hairlines & legacy pill ---- */
+  .hairline-b { border-bottom: 1px solid var(--color-border-standard); }
+  .hairline-t { border-top: 1px solid var(--color-border-standard); }
+  .hairline-r { border-right: 1px solid var(--color-border-standard); }
+  .hairline-l { border-left: 1px solid var(--color-border-standard); }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: var(--radius-comfort);
+    font-size: var(--text-label);
+    font-weight: var(--font-weight-medium);
+    line-height: 1;
+  }
+
+  .glow-indigo {
+    box-shadow: 0 0 0 1px var(--color-brand-indigo), 0 0 24px -4px rgba(94, 106, 210, 0.4);
+  }
+}
+
+/* =============================================================================
+   Animations (unchanged)
+   ============================================================================= */
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.85); }
+}
+.animate-pulse-dot {
+  animation: pulse-dot 1.6s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent, var(--color-ghost-bg-hover), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+
+/* =============================================================================
+   Light-mode token overrides
+   -----------------------------------------------------------------------------
+   ThemeProvider sets `<html class="light">` to activate. These are minimum-
+   viable values (legibility over visual perfection) — only the most-used
+   tokens are overridden so existing components flip palette without further
+   work. Colors here mirror the Linear-light aesthetic: near-white surfaces,
+   soft gray borders, near-black text.
+   ============================================================================= */
+:root.light {
+  color-scheme: light;
+
+  --color-bg-page: #f8fafb;
+  --color-bg-card: #ffffff;
+  --color-bg-pill-inactive: #f0f1f3;
+  --color-bg-pill-active: #e2e4e9;
+  --color-bg-row-active: #eef0f3;
+  --color-bg-button-glass: #ffffff;
+  --color-bg-marketing: #f8fafb;
+  --color-bg-panel: #ffffff;
+  --color-bg-surface: #f5f6f8;
+  --color-bg-surface-2: #ffffff;
+
+  --color-border-card: #e2e5ea;
+  --color-border-standard: rgba(0, 0, 0, 0.08);
+  --color-border-solid: #e2e5ea;
+  --color-border-strong: #c8cdd5;
+  --color-border-pill: #e2e5ea;
+
+  --color-text-primary: #0a0a0b;
+  --color-text-secondary: #2c3038;
+  --color-text-tertiary: #5d6470;
+  --color-text-tertiary-spec: #5d6470;
+  --color-text-quaternary: #8a92a0;
+  --color-text-row-title: #0a0a0b;
+  --color-text-row-meta: #5d6470;
+  --color-text-workspace: #0a0a0b;
+
+  --color-ghost-bg: rgba(0, 0, 0, 0.02);
+  --color-ghost-bg-hover: rgba(0, 0, 0, 0.05);
+  --color-icon-bg: rgba(0, 0, 0, 0.03);
+
+  --gradient-progress: linear-gradient(90deg, #effaf3 0%, #f5f6f8 100%);
+  --gradient-backlog: linear-gradient(90deg, #fef9ec 0%, #f5f6f8 100%);
+}

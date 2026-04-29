@@ -1,0 +1,48 @@
+# =============================================================================
+# Build-context exclusions for dashboard/Dockerfile and dashboard/spaces/Dockerfile.
+# Build context is the repo root, so paths here are root-relative.
+# Keep this list tight — every excluded MB shaves cold-build time.
+# =============================================================================
+
+# Python
+**/.venv
+**/venv
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/dist
+**/build
+**/*.egg-info
+
+# Node / Next.js — rebuilt inside the frontend-builder stage
+**/node_modules
+**/.next
+**/out
+
+# Logs and OS junk
+**/*.log
+**/.DS_Store
+**/Thumbs.db
+
+# Editors
+**/.idea
+**/.vscode
+
+# Local secrets and runtime state
+**/.env
+**/.env.*
+!**/.env.example
+
+# Git metadata (not needed inside the image)
+.git
+.gitignore
+.github
+
+# Docs and CI artifacts unrelated to the runtime
+docs/_build
+site
+.coverage
+htmlcov

@@ -1,4 +1,4 @@
-# This script runs the full workflow of Denario.
+# This script runs the full workflow of Plato.
 # and allows specifying the LLM models to use.
 # It makes use of gravitational waves data from a binary black hole merger
 # This data has been preprocessed by Jay Wadekar
@@ -10,7 +10,7 @@
 import os
 import urllib.request
 
-from denario import Denario, Journal
+from plato import Plato, Journal
 
 # Function to download GW data, already preprocessed
 def download_data(workdir):
@@ -20,7 +20,7 @@ def download_data(workdir):
         outfile = f"{workdir}/data/{file}"
         if not os.path.isfile(outfile):
             print("Downloading data to",outfile)
-            url = f"https://users.flatironinstitute.org/~fvillaescusa/Denario/Astrophysics/GW/data/{file}"
+            url = f"https://users.flatironinstitute.org/~fvillaescusa/Plato/Astrophysics/GW/data/{file}"
             urllib.request.urlretrieve(url, outfile)
 
 # This is one of the example projects in the examples folder.
@@ -29,7 +29,7 @@ def download_data(workdir):
 # The data description is in the input.md file.
 # All the outputs are saved in the same folder.
 project_dir = "GW231123"
-astro_pilot = Denario(project_dir=project_dir)
+astro_pilot = Plato(project_dir=project_dir)
 
 # Download the data if already does not exist
 download_data(project_dir)

@@ -1,5 +1,5 @@
 [project]
-name = "denario"
+name = "plato"
 version = "1.0.1"
 description = "Modular Multi-Agent System for Scientific Research Assistance"
 authors = [
@@ -8,7 +8,7 @@ authors = [
   { name = "Boris Bolliet"},
 ]
 maintainers = [
-  { name = "Denario", email = "denario.astropilot.ai@gmail.com" },
+  { name = "Plato", email = "plato.astropilot.ai@gmail.com" },
 ]
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
@@ -33,15 +33,15 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://astropilot-ai.github.io/DenarioPaperPage/"
-Documentation = "https://denario.readthedocs.io/en/latest/"
-Repository = "https://github.com/AstroPilot-AI/Denario"
+Homepage = "https://astropilot-ai.github.io/PlatoPaperPage/"
+Documentation = "https://plato.readthedocs.io/en/latest/"
+Repository = "https://github.com/AstroPilot-AI/Plato"
 
 [project.scripts]
-denario = "denario.cli:main"
+plato = "plato.cli:main"
 
 [project.optional-dependencies]
-app = ["denario_app>=1.0.0"]
+app = ["plato_app>=1.0.0"]
 docs = [
   "mkdocs",
   "mkdocstrings[python]",

@@ -212,8 +212,8 @@ project*
 *cmbagent_output
 quicktests/
 
-DenarioApp/
-DenarioPaperPage/
-DenarioExamplePapers/
-HFDenario/
+PlatoApp/
+PlatoPaperPage/
+PlatoExamplePapers/
+HFPlato/
 .mkdocs.yml.swp
