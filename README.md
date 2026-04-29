@@ -5,7 +5,7 @@
 <img src="https://img.shields.io/badge/YouTube-Subscribe-red?style=flat-square&logo=youtube" alt="Subscribe on YouTube" width="140"/>
 </a>
 
-Plato is a multiagent system designed to be a scientific research assistant. Plato implements AI agents with [AG2](https://ag2.ai/) and [LangGraph](https://www.langchain.com/langgraph), using [cmbagent](https://github.com/CMBAgents/cmbagent) as the research analysis backend.
+Plato is a multi-agent AI system that takes experimental data and produces peer-reviewable scientific papers end-to-end — generating the research idea, designing the methodology, running the analysis (via [cmbagent](https://github.com/CMBAgents/cmbagent)), and writing the LaTeX manuscript through a reviewer-panel revision loop.
 
 ## Resources
 

@@ -217,3 +217,22 @@ PlatoPaperPage/
 PlatoExamplePapers/
 HFPlato/
 .mkdocs.yml.swp
+
+# Claude Code local state — sessions, worktrees, settings
+.claude/
+.claude/**
+
+# Plan files written outside the repo (defensive)
+plans/
+
+# Common secret/credential patterns (defensive — also covered by .env above)
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+service-account*.json
+secret.*
+secrets.*
+gcp-key*.json
+google-credentials*.json
