@@ -1,7 +1,7 @@
 [project]
 name = "plato"
 version = "1.0.1"
-description = "Modular Multi-Agent System for Scientific Research Assistance"
+description = "Multi-agent AI scientist that turns experimental data into publication-ready research papers."
 authors = [
   { name = "Pablo Villanueva-Domingo" },
   { name = "Francisco Villaescusa-Navarro"},
@@ -13,7 +13,7 @@ maintainers = [
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 license = { text = "GPLv3" }
-keywords = ["machine learning","agent","biology","chemistry","cosmology","material sciences","llm"]
+keywords = ["machine learning","agent","biology","chemistry","cosmology","material sciences","llm","autonomous-research","scientific-paper-generation","langgraph","ai-scientist","multi-agent"]
 dependencies = [
   "langchain-google-genai",
   "langchain-anthropic>=0.3.10",
