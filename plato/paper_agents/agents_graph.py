@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from langgraph.graph import START, StateGraph, END
 
 from .parameters import GraphState
@@ -12,6 +14,9 @@ from .reviewer_panel import (
 )
 from .critique_aggregator import critique_aggregator
 from .redraft_node import redraft_node
+from .citation_validator_node import citation_validator_node
+from .evidence_matrix_node import evidence_matrix_node
+from ..langgraph_agents.claim_extractor import claim_extractor
 from ..state import make_checkpointer
 
 
@@ -29,6 +34,31 @@ def _reviewer_panel_fanout(state: GraphState):
         # Always start a fresh critique slate per pass.
         "critiques": {},
     }
+
+
+def _claim_evidence_fanout(state: GraphState):
+    """Bootstrap node before claim extraction + evidence linking.
+
+    Initialises ``claims``/``evidence_links`` to empty lists when missing so
+    downstream nodes can append idempotently. Also seeds ``files['f_stream']``
+    if it isn't already set — the langgraph claim extractor delegates to
+    ``LLM_call_stream`` which expects that file path to exist on the state.
+    """
+    update: dict = {}
+    if not state.get("claims"):
+        update["claims"] = []
+    if not state.get("evidence_links"):
+        update["evidence_links"] = []
+
+    files = dict(state.get("files") or {})
+    if not files.get("f_stream"):
+        folder = files.get("Folder") or files.get("Paper_folder")
+        if folder:
+            stream_path = Path(folder) / "claim_extraction.log"
+            stream_path.parent.mkdir(parents=True, exist_ok=True)
+            files["f_stream"] = str(stream_path)
+            update["files"] = files
+    return update
 
 
 def build_graph(mermaid_diagram=False, checkpointer=None):
@@ -58,6 +88,12 @@ def build_graph(mermaid_diagram=False, checkpointer=None):
     builder.add_node("keywords_node",         keywords_node)
     builder.add_node("citations_node",        citations_node)
 
+    # Phase 2 — R3 + R5: citation validation + claim/evidence matrix.
+    builder.add_node("citation_validator_node", citation_validator_node)
+    builder.add_node("claim_evidence_fanout", _claim_evidence_fanout)
+    builder.add_node("claim_extractor",       claim_extractor)
+    builder.add_node("evidence_matrix_node",  evidence_matrix_node)
+
     # Phase 3 — R6: multi-reviewer panel + revision loop
     builder.add_node("reviewer_panel_fanout", _reviewer_panel_fanout)
     builder.add_node("methodology_reviewer",  methodology_reviewer)
@@ -77,17 +113,24 @@ def build_graph(mermaid_diagram=False, checkpointer=None):
     builder.add_edge("results_node",                "conclusions_node")
     builder.add_edge("conclusions_node",            "plots_node")
     builder.add_edge("plots_node",                  "refine_results")
-    # Citations stage: either run citations_node, or skip straight to review.
+    # Citations stage: either run citations_node, or skip straight to claim
+    # extraction. The validation/evidence-matrix path is exercised on either
+    # branch so reviewer pass-through always sees a fresh report.
     builder.add_conditional_edges(
         "refine_results",
         citation_router,
         {
             "citations_node": "citations_node",
-            "reviewer_panel_fanout": "reviewer_panel_fanout",
+            "claim_evidence_fanout": "claim_evidence_fanout",
         },
     )
-    # After citations, hand off to the reviewer panel fan-out.
-    builder.add_edge("citations_node",              "reviewer_panel_fanout")
+    # After citations, validate references, then extract claims, then link
+    # them to the retrieved sources before the reviewer panel runs.
+    builder.add_edge("citations_node",              "citation_validator_node")
+    builder.add_edge("citation_validator_node",     "claim_evidence_fanout")
+    builder.add_edge("claim_evidence_fanout",       "claim_extractor")
+    builder.add_edge("claim_extractor",             "evidence_matrix_node")
+    builder.add_edge("evidence_matrix_node",        "reviewer_panel_fanout")
 
     # Parallel fan-out: four reviewers run in parallel from the fan-out hub.
     builder.add_edge("reviewer_panel_fanout",       "methodology_reviewer")
