@@ -1,5 +1,4 @@
 from langgraph.graph import START, StateGraph, END
-from langgraph.checkpoint.memory import MemorySaver
 
 from .parameters import GraphState
 from .reader import preprocess_node
@@ -8,14 +7,19 @@ from .methods import methods_fast
 from .literature import novelty_decider, semantic_scholar, literature_summary
 from .referee import referee
 from .routers import router, task_router, literature_router
+from ..state import make_checkpointer
 
 
-def build_lg_graph(mermaid_diagram=False):
+def build_lg_graph(mermaid_diagram=False, checkpointer=None):
     """
     This function builds the graph
 
     Args:
        mermaid_diagram: whether to create a diagram with the graph
+       checkpointer:    LangGraph checkpointer. If None, a SQLite-backed
+                        checkpointer (durable across restarts) is created via
+                        ``plato.state.make_checkpointer``. Pass an explicit
+                        ``MemorySaver()`` for tests that should not persist.
     """
 
     # Define the graph
@@ -43,8 +47,9 @@ def build_lg_graph(mermaid_diagram=False):
     builder.add_edge("referee",                      END)
     
 
-    memory = MemorySaver()
-    graph  = builder.compile(checkpointer=memory)
+    if checkpointer is None:
+        checkpointer = make_checkpointer()
+    graph = builder.compile(checkpointer=checkpointer)
 
     # # generate an scheme with the graph
     if mermaid_diagram:

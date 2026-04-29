@@ -3,8 +3,9 @@ import asyncio
 import time
 import os
 import shutil
+import warnings
 from pathlib import Path
-from PIL import Image 
+from PIL import Image
 import cmbagent
 
 from .config import DEFAUL_PROJECT_NAME, INPUT_FILES, PLOTS_FOLDER, DESCRIPTION_FILE, IDEA_FILE, METHOD_FILE, RESULTS_FILE, LITERATURE_FILE
@@ -18,6 +19,9 @@ from .experiment import Experiment
 from .paper_agents.agents_graph import build_graph
 from .utils import llm_parser, input_check, check_file_paths, in_notebook
 from .langgraph_agents.agents_graph import build_lg_graph
+from .domain import DomainProfile, get_domain
+from .state import ManifestRecorder
+from .observability import callbacks_for
 from cmbagent import preprocess_task
 
 class Plato:
@@ -37,10 +41,11 @@ class Plato:
 
     def __init__(self,
                  research: Research | None = None,
-                 project_dir: str | None = None, 
+                 project_dir: str | None = None,
                  clear_project_dir: bool = False,
+                 domain: str | DomainProfile = "astro",
                  ):
-        
+
         if project_dir is None:
             project_dir = os.path.join( os.getcwd(), DEFAUL_PROJECT_NAME )
         if not os.path.exists(project_dir):
@@ -50,6 +55,9 @@ class Plato:
             research = Research()  # Initialize with default values
         self.research = research
         self.clear_project_dir = clear_project_dir
+        self.domain: DomainProfile = (
+            domain if isinstance(domain, DomainProfile) else get_domain(domain)
+        )
 
         if os.path.exists(project_dir) and clear_project_dir:
             shutil.rmtree(project_dir)
@@ -84,6 +92,17 @@ class Plato:
         """Reset Research object"""
 
         self.research = Research()
+
+    def _start_manifest(self, workflow: str, **fields) -> ManifestRecorder:
+        """Open a new RunManifest under ``project_dir/runs/<run_id>/``."""
+        recorder = ManifestRecorder.start(
+            project_dir=self.project_dir,
+            workflow=workflow,
+            domain=self.domain.name,
+        )
+        if fields:
+            recorder.update(**fields)
+        return recorder
 
     #---
     # Setters
@@ -322,7 +341,7 @@ class Plato:
                     formatter_model: LLM | str = models["o3-mini"],
                 ) -> None:
         """Generate an idea making use of the data and tools described in `data_description.md` with the cmbagent backend.
-        
+
         Args:
             idea_maker_model: the LLM to be used for the idea maker agent.
             idea_hater_model: the LLM to be used for the idea hater agent.
@@ -331,6 +350,13 @@ class Plato:
             orchestration_model: the LLM to be used for the orchestration of the agents.
             formatter_model: the LLM to be used for formatting the responses of the agents.
         """
+        warnings.warn(
+            "Plato.get_idea(mode='cmbagent')/get_idea_cmagent is deprecated. "
+            "Use Plato.get_idea(mode='fast') (LangGraph). The cmbagent path is "
+            "retained only for Plato.get_results() until a sandboxed Executor lands.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
         # Get LLM instances
         idea_maker_model = llm_parser(idea_maker_model)
@@ -382,6 +408,12 @@ class Plato:
         # Get LLM instance
         llm = llm_parser(llm)
 
+        recorder = self._start_manifest(
+            "get_idea_fast",
+            models={"idea_maker": llm.name, "idea_hater": llm.name},
+        )
+        config["callbacks"] = callbacks_for(recorder.manifest.run_id, recorder.manifest.workflow)
+
         # Build graph
         graph = build_lg_graph(mermaid_diagram=False)
 
@@ -400,10 +432,15 @@ class Plato:
             "keys": self.keys,
             "idea": {"total_iterations": iterations},
         }
-        
-        # Run the graph
-        graph.invoke(input_state, config) # type: ignore
-        
+
+        try:
+            # Run the graph
+            graph.invoke(input_state, config) # type: ignore
+            recorder.finish("success")
+        except Exception as e:
+            recorder.finish("error", error=str(e))
+            raise
+
         # End timer and report duration in minutes and seconds
         end_time = time.time()
         elapsed_time = end_time - start_time
@@ -512,12 +549,18 @@ class Plato:
         f_data_description = os.path.join(self.project_dir, INPUT_FILES, DESCRIPTION_FILE)
         f_idea             = os.path.join(self.project_dir, INPUT_FILES, IDEA_FILE)
 
+        recorder = self._start_manifest(
+            "check_idea_semantic_scholar",
+            models={"novelty": llm.name, "literature_summary": llm.name},
+        )
+        config["callbacks"] = callbacks_for(recorder.manifest.run_id, recorder.manifest.workflow)
+
         # Initialize the state
         input_state = {
             "task": "literature",
             "files":{"Folder": self.project_dir, #name of project folder
                      "data_description": f_data_description,
-                     "idea": f_idea}, 
+                     "idea": f_idea},
             "llm": {"model": llm.name,                #name of the LLM model to use
                     "temperature": llm.temperature,
                     "max_output_tokens": llm.max_output_tokens,
@@ -526,19 +569,21 @@ class Plato:
             "literature": {"max_iterations": max_iterations},
             "idea": {"total_iterations": 4},
         }
-        
+
         # Run the graph
         try:
             graph.invoke(input_state, config) # type: ignore
-            
+            recorder.finish("success")
+
             # End timer and report duration in minutes and seconds
             end_time = time.time()
             elapsed_time = end_time - start_time
             minutes = int(elapsed_time // 60)
             seconds = int(elapsed_time % 60)
             print(f"Literature checked in {minutes} min {seconds} sec.")
-            
+
         except Exception as e:
+            recorder.finish("error", error=str(e))
             print('Plato failed to check literature')
             print(f'Error: {e}')
             return "Error occurred during literature check"
@@ -596,7 +641,7 @@ class Plato:
                             ) -> None:
         """
         Generate the methods to be employed making use of the data and tools described in `data_description.md` and the idea in `idea.md`.
-        
+
         Args:
             method_generator_model: (researcher) the LLM model to be used for the researcher agent.
             planner_model: the LLM model to be used for the planner agent.
@@ -604,6 +649,13 @@ class Plato:
             orchestration_model: the LLM to be used for the orchestration of the agents.
             formatter_model: the LLM to be used for formatting the responses of the agents.
         """
+        warnings.warn(
+            "Plato.get_method(mode='cmbagent')/get_method_cmbagent is deprecated. "
+            "Use Plato.get_method(mode='fast') (LangGraph). The cmbagent path is "
+            "retained only for Plato.get_results() until a sandboxed Executor lands.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
         if self.research.data_description == "":
             with open(os.path.join(self.project_dir, INPUT_FILES, DESCRIPTION_FILE), 'r') as f:
@@ -661,12 +713,18 @@ class Plato:
         f_data_description = os.path.join(self.project_dir, INPUT_FILES, DESCRIPTION_FILE)
         f_idea = os.path.join(self.project_dir, INPUT_FILES, IDEA_FILE)
         
+        recorder = self._start_manifest(
+            "get_method_fast",
+            models={"methods": llm.name},
+        )
+        config["callbacks"] = callbacks_for(recorder.manifest.run_id, recorder.manifest.workflow)
+
         # Initialize the state
         input_state = {
             "task": "methods_generation",
             "files":{"Folder": self.project_dir,              #name of project folder
                      "data_description": f_data_description,
-                     "idea": f_idea}, 
+                     "idea": f_idea},
             "llm": {"model": llm.name,                #name of the LLM model to use
                     "temperature": llm.temperature,
                     "max_output_tokens": llm.max_output_tokens,
@@ -674,16 +732,21 @@ class Plato:
             "keys": self.keys,
             "idea": {"total_iterations": 4},
         }
-        
-        # Run the graph
-        graph.invoke(input_state, config) # type: ignore
-        
+
+        try:
+            # Run the graph
+            graph.invoke(input_state, config) # type: ignore
+            recorder.finish("success")
+        except Exception as e:
+            recorder.finish("error", error=str(e))
+            raise
+
         # End timer and report duration in minutes and seconds
         end_time = time.time()
         elapsed_time = end_time - start_time
         minutes = int(elapsed_time // 60)
         seconds = int(elapsed_time % 60)
-        print(f"Methods generated in {minutes} min {seconds} sec.")  
+        print(f"Methods generated in {minutes} min {seconds} sec.")
 
     def get_results(self,
                     involved_agents: List[str] = ['engineer', 'researcher'],
@@ -832,6 +895,15 @@ class Plato:
         # Build graph
         graph = build_graph(mermaid_diagram=False)
 
+        recorder = self._start_manifest(
+            "get_paper",
+            models={"writer": llm.name},
+            extra={"journal": str(journal), "writer_style": writer,
+                   "add_citations": add_citations,
+                   "cmbagent_keywords": cmbagent_keywords},
+        )
+        config["callbacks"] = callbacks_for(recorder.manifest.run_id, recorder.manifest.workflow)
+
         # Initialize the state
         input_state = {
             "files":{"Folder": self.project_dir}, #name of project folder
@@ -844,15 +916,20 @@ class Plato:
             "writer": writer,
         }
 
-        # Run the graph
-        asyncio.run(graph.ainvoke(input_state, config)) # type: ignore
-        
+        try:
+            # Run the graph
+            asyncio.run(graph.ainvoke(input_state, config)) # type: ignore
+            recorder.finish("success")
+        except Exception as e:
+            recorder.finish("error", error=str(e))
+            raise
+
         # End timer and report duration in minutes and seconds
         end_time = time.time()
         elapsed_time = end_time - start_time
         minutes = int(elapsed_time // 60)
         seconds = int(elapsed_time % 60)
-        print(f"Paper written in {minutes} min {seconds} sec.")    
+        print(f"Paper written in {minutes} min {seconds} sec.")
 
     def referee(self,
                 llm: LLM | str = models["gemini-2.5-flash"],
@@ -878,11 +955,14 @@ class Plato:
         # get name of data description file and referee
         f_data_description = os.path.join(self.project_dir, INPUT_FILES, DESCRIPTION_FILE)
 
+        recorder = self._start_manifest("referee", models={"referee": llm.name})
+        config["callbacks"] = callbacks_for(recorder.manifest.run_id, recorder.manifest.workflow)
+
         # Initialize the state
         input_state = {
             "task": "referee",
             "files":{"Folder": self.project_dir,  #name of project folder
-                     "data_description": f_data_description}, 
+                     "data_description": f_data_description},
             "llm": {"model": llm.name,                #name of the LLM model to use
                     "temperature": llm.temperature,
                     "max_output_tokens": llm.max_output_tokens,
@@ -890,19 +970,21 @@ class Plato:
             "keys": self.keys,
             "referee": {"paper_version": 2},
         }
-        
+
         # Run the graph
         try:
             graph.invoke(input_state, config) # type: ignore
-            
+            recorder.finish("success")
+
             # End timer and report duration in minutes and seconds
             end_time = time.time()
             elapsed_time = end_time - start_time
             minutes = int(elapsed_time // 60)
             seconds = int(elapsed_time % 60)
             print(f"Paper reviewed in {minutes} min {seconds} sec.")
-            
+
         except FileNotFoundError as e:
+            recorder.finish("error", error=str(e))
             print('Plato failed to provide a review for the paper. Ensure that a paper in the `paper` folder ex')
             print(f'Error: {e}')
         
