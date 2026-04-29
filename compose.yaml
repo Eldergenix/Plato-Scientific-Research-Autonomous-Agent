@@ -1,0 +1,9 @@
+services:
+  denario:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+    ports:
+      - 8501:8501
+    volumes:
+      - .:/app
