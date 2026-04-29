@@ -33,7 +33,7 @@ RUN apt-get update && \
 WORKDIR /app
 
 # Install
-RUN pip install --no-cache-dir "denario[app]"
+RUN pip install --no-cache-dir "plato[app]"
 
 # This informs Docker that the container will listen on port 5000 at runtime.
 EXPOSE 8501
@@ -41,4 +41,4 @@ EXPOSE 8501
 # Touch a .env so it can be shared as a volume (being a single file instead of a folder requires this)
 RUN touch .env
 
-CMD ["denario", "run"]
+CMD ["plato", "run"]

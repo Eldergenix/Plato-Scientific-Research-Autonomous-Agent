@@ -1,6 +1,6 @@
 # LLM API Credentials
 
-This tutorial shows how to setup the API keys required to run the LLMs which are employed in Denario.
+This tutorial shows how to setup the API keys required to run the LLMs which are employed in Plato.
 
 <div class="video-wrapper">
 <iframe src="https://www.youtube.com/embed/5AGvSNyj7Lg" frameborder="0"

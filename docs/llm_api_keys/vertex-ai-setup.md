@@ -1,6 +1,6 @@
 # Vertex AI Setup
 
-Denario agents built with LangGraph can be run using a Gemini API key (see above). However, agents built using [AG2](https://ag2.ai/) require a different setup to access Gemini models via the [Vertex AI](https://cloud.google.com/vertex-ai?hl=en) API.
+Plato agents built with LangGraph can be run using a Gemini API key (see above). However, agents built using [AG2](https://ag2.ai/) require a different setup to access Gemini models via the [Vertex AI](https://cloud.google.com/vertex-ai?hl=en) API.
 
 If you plan to run the analysis module with Gemini models accessed through Vertex AI, for example:
 
@@ -12,7 +12,7 @@ den.get_results(engineer_model='gemini-2.5-pro',
 the following steps are required:
 
 1. **Create a Google service account key file** (JSON format; see instructions below).
-2. **Download** the file to the machine where Denario will run.
+2. **Download** the file to the machine where Plato will run.
 3. **Rename** the file to `gemini.json`.
 4. **Set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable** to the path of this file:
 
@@ -20,7 +20,7 @@ the following steps are required:
 export GOOGLE_APPLICATION_CREDENTIALS=/path/to/gemini.json
 ```
 
-This environment variable must be set whenever Denario requires Vertex AI access.
+This environment variable must be set whenever Plato requires Vertex AI access.
 
 ## Enabling Vertex AI
 
@@ -29,7 +29,7 @@ This environment variable must be set whenever Denario requires Vertex AI access
 
 ## Create a Google Cloud Project
 
-- Click "Select a project" (top left) and choose an existing project or click "New project" (top right) to create a new one (e.g., "denario").
+- Click "Select a project" (top left) and choose an existing project or click "New project" (top right) to create a new one (e.g., "plato").
 - Once created, select the project.
 
 ## Enable Vertex AI API
@@ -42,11 +42,11 @@ This environment variable must be set whenever Denario requires Vertex AI access
 
 - In the navigation menu, go to "IAM & Admin" > "Service Accounts".
 - Click "Create Service Account".
-- Name the account (e.g., "denario"). The description is optional.
+- Name the account (e.g., "plato"). The description is optional.
 - Click "Create and Continue".
 - In "Select a Role", enter "Vertex AI User" and select it. Click "Continue".
 - Skip "Principals with access". Click "Done".
-- In the list view, find your account (e.g., `denario@denario-1234.iam.gserviceaccount.com`).
+- In the list view, find your account (e.g., `plato@plato-1234.iam.gserviceaccount.com`).
 - Click the three dots under "Actions" and select "Manage Keys".
 - Click "Add key" > "Create new key" > select "JSON".
 - Download the JSON file and rename it to `gemini.json`.

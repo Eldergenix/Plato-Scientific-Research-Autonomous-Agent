@@ -1,60 +1,60 @@
-# Denario
+# Plato
 
-[![Version](https://img.shields.io/pypi/v/denario.svg)](https://pypi.python.org/pypi/denario) [![Python Version](https://img.shields.io/badge/python-%3E%3D3.12-blue.svg)](https://www.python.org/downloads/) [![PyPI - Downloads](https://img.shields.io/pypi/dm/denario)](https://pypi.python.org/pypi/denario) [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/AstroPilot-AI/Denario)
-<a href="https://www.youtube.com/@denario-ai" target="_blank">
+[![Version](https://img.shields.io/pypi/v/plato.svg)](https://pypi.python.org/pypi/plato) [![Python Version](https://img.shields.io/badge/python-%3E%3D3.12-blue.svg)](https://www.python.org/downloads/) [![PyPI - Downloads](https://img.shields.io/pypi/dm/plato)](https://pypi.python.org/pypi/plato) [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/AstroPilot-AI/Plato)
+<a href="https://www.youtube.com/@plato-ai" target="_blank">
 <img src="https://img.shields.io/badge/YouTube-Subscribe-red?style=flat-square&logo=youtube" alt="Subscribe on YouTube" width="140"/>
 </a>
 
-Denario is a multiagent system designed to be a scientific research assistant. Denario implements AI agents with [AG2](https://ag2.ai/) and [LangGraph](https://www.langchain.com/langgraph), using [cmbagent](https://github.com/CMBAgents/cmbagent) as the research analysis backend.
+Plato is a multiagent system designed to be a scientific research assistant. Plato implements AI agents with [AG2](https://ag2.ai/) and [LangGraph](https://www.langchain.com/langgraph), using [cmbagent](https://github.com/CMBAgents/cmbagent) as the research analysis backend.
 
 ## Resources
 
-- [🌐 Project page](https://astropilot-ai.github.io/DenarioPaperPage/)
+- [🌐 Project page](https://astropilot-ai.github.io/PlatoPaperPage/)
 
 - [📄 Paper](https://arxiv.org/abs/2510.26887)
 
-- [📖 Documentation](https://denario.readthedocs.io/en/latest/)
+- [📖 Documentation](https://plato.readthedocs.io/en/latest/)
 
-- [🖥️ Denario GUI repository](https://github.com/AstroPilot-AI/DenarioApp)
+- [🖥️ Plato GUI repository](https://github.com/AstroPilot-AI/PlatoApp)
 
-- [🤗 Demo web app for Denario GUI](https://huggingface.co/spaces/astropilot-ai/Denario)
+- [🤗 Demo web app for Plato GUI](https://huggingface.co/spaces/astropilot-ai/Plato)
 
-- [📝 End-to-end research papers generated with Denario](https://github.com/AstroPilot-AI/DenarioExamplePapers)
+- [📝 End-to-end research papers generated with Plato](https://github.com/AstroPilot-AI/PlatoExamplePapers)
 
-- [🎥 YouTube channel](https://www.youtube.com/@denario-ai)
+- [🎥 YouTube channel](https://www.youtube.com/@plato-ai)
 
 
 ## Installation
 
-To install denario create a virtual environment and pip install it. We recommend using Python 3.12:
+To install plato create a virtual environment and pip install it. We recommend using Python 3.12:
 
 ```bash
-python -m venv Denario_env
-source Denario_env/bin/activate
-pip install "denario[app]"
+python -m venv Plato_env
+source Plato_env/bin/activate
+pip install "plato[app]"
 ```
 
 Or alternatively install it with [uv](https://docs.astral.sh/uv/), initializing a project and installing it:
 
 ```bash
 uv init
-uv add denario[app]
+uv add plato[app]
 ```
 
 Then, run the gui with:
 
 ```
-denario run
+plato run
 ```
 
 ## Get started
 
-Initialize a `Denario` instance and describe the data and tools to be employed.
+Initialize a `Plato` instance and describe the data and tools to be employed.
 
 ```python
-from denario import Denario
+from plato import Plato
 
-den = Denario(project_dir="project_dir")
+den = Plato(project_dir="project_dir")
 
 prompt = """
 Analyze the experimental data stored in data.csv using sklearn and pandas.
@@ -85,7 +85,7 @@ den.get_results()
 Finally, generate a latex article with the results. You can specify the journal style, in this example we choose the [APS (Physical Review Journals)](https://journals.aps.org/) style.
 
 ```python
-from denario import Journal
+from plato import Journal
 
 den.get_paper(journal=Journal.APS)
 ```
@@ -96,36 +96,47 @@ You can also manually provide any info as a string or markdown file in an interm
 den.set_method(path_to_the_method_file.md)
 ```
 
-## DenarioApp
+## Plato Dashboard (new, recommended)
 
-You can run Denario using a GUI through the [DenarioApp](https://github.com/AstroPilot-AI/DenarioApp).
+A Linear-themed real-time web dashboard with full pipeline visualization, cost tracking, and live agent log streaming. See [dashboard/README.md](dashboard/README.md) for setup.
 
-The app is already installed with `pip install "denario[app]"`, otherwise install it with `pip install denario_app` or `uv sync --extra app`.
+```bash
+pip install "plato[dashboard]"
+plato dashboard
+```
+
+The dashboard supersedes the legacy `plato run` Streamlit app for new workflows.
+
+## PlatoApp
+
+You can run Plato using a GUI through the [PlatoApp](https://github.com/AstroPilot-AI/PlatoApp).
+
+The app is already installed with `pip install "plato[app]"`, otherwise install it with `pip install plato_app` or `uv sync --extra app`.
 
 Then, launch the GUI with
 
 ```bash
-denario run
+plato run
 ```
 
-Test a [deployed demo of the app in HugginFace Spaces](https://huggingface.co/spaces/astropilot-ai/Denario).
+Test a [deployed demo of the app in HugginFace Spaces](https://huggingface.co/spaces/astropilot-ai/Plato).
 
 ## Build from source
 
 ### pip
 
-You will need python 3.12 or higher installed. Clone Denario:
+You will need python 3.12 or higher installed. Clone Plato:
 
 ```bash
-git clone https://github.com/AstroPilot-AI/Denario.git
-cd Denario
+git clone https://github.com/AstroPilot-AI/Plato.git
+cd Plato
 ```
 
 Create and activate a virtual environment
 
 ```bash
-python3 -m venv Denario_env
-source Denario_env/bin/activate
+python3 -m venv Plato_env
+source Plato_env/bin/activate
 ```
 
 And install the project
@@ -150,22 +161,22 @@ source .venv/bin/activate
 
 ## Docker
 
-You can run Denario in a [Docker](https://www.docker.com/) image, which includes all the required dependencies for Denario including LaTeX. Pull the image with:
+You can run Plato in a [Docker](https://www.docker.com/) image, which includes all the required dependencies for Plato including LaTeX. Pull the image with:
 
 ```bash
-docker pull pablovd/denario:latest
+docker pull pablovd/plato:latest
 ```
 
 Once built, you can run the GUI with
 
 ```bash
-docker run -p 8501:8501 --rm pablovd/denario:latest
+docker run -p 8501:8501 --rm pablovd/plato:latest
 ```
 
 or in interactive mode with
 
 ```bash
-docker run --rm -it pablovd/denario:latest bash
+docker run --rm -it pablovd/plato:latest bash
 ```
 
 Share volumes with `-v $(pwd)/project:/app/project` for inputing data and accessing to it. You can also share the API keys with a `.env` file in the same folder with `-v $(pwd).env/app/.env`.
@@ -173,10 +184,10 @@ Share volumes with `-v $(pwd)/project:/app/project` for inputing data and access
 You can also build an image locally with
 
 ```bash
-docker build -f docker/Dockerfile.dev -t denario_src .
+docker build -f docker/Dockerfile.dev -t plato_src .
 ```
 
-Read more information on how to use the Docker images in the [documentation](https://denario.readthedocs.io/en/latest/docker/).
+Read more information on how to use the Docker images in the [documentation](https://plato.readthedocs.io/en/latest/docker/).
 
 ## Contributing
 
@@ -188,11 +199,11 @@ If you use this library please link this repository and cite [arXiv:2506.xxxxx](
 
 ## Citation
 
-If you make use of Denario, please cite the following references:
+If you make use of Plato, please cite the following references:
 
 ```bibtex
-@article{villaescusanavarro2025denarioprojectdeepknowledge,
-         title={The Denario project: Deep knowledge AI agents for scientific discovery}, 
+@article{villaescusanavarro2025platoprojectdeepknowledge,
+         title={The Plato project: Deep knowledge AI agents for scientific discovery}, 
          author={Francisco Villaescusa-Navarro and Boris Bolliet and Pablo Villanueva-Domingo and Adrian E. Bayer and Aidan Acquah and Chetana Amancharla and Almog Barzilay-Siegal and Pablo Bermejo and Camille Bilodeau and Pablo Cárdenas Ramírez and Miles Cranmer and Urbano L. França and ChangHoon Hahn and Yan-Fei Jiang and Raul Jimenez and Jun-Young Lee and Antonio Lerario and Osman Mamun and Thomas Meier and Anupam A. Ojha and Pavlos Protopapas and Shimanto Roy and David N. Spergel and Pedro Tarancón-Álvarez and Ujjwal Tiwari and Matteo Viel and Digvijay Wadekar and Chi Wang and Bonny Y. Wang and Licong Xu and Yossi Yovel and Shuwen Yue and Wen-Han Zhou and Qiyao Zhu and Jiajun Zou and Íñigo Zubeldia},
          year={2025},
          eprint={2510.26887},
@@ -201,12 +212,12 @@ If you make use of Denario, please cite the following references:
          url={https://arxiv.org/abs/2510.26887},
 }
 
-@software{Denario_2025,
+@software{Plato_2025,
           author = {Pablo Villanueva-Domingo, Francisco Villaescusa-Navarro, Boris Bolliet},
-          title = {Denario: Modular Multi-Agent System for Scientific Research Assistance},
+          title = {Plato: Modular Multi-Agent System for Scientific Research Assistance},
           year = {2025},
-          url = {https://github.com/AstroPilot-AI/Denario},
-          note = {Available at https://github.com/AstroPilot-AI/Denario},
+          url = {https://github.com/AstroPilot-AI/Plato},
+          note = {Available at https://github.com/AstroPilot-AI/Plato},
           version = {latest}
           }
 
@@ -224,8 +235,8 @@ If you make use of Denario, please cite the following references:
 
 [GNU GENERAL PUBLIC LICENSE (GPLv3)](https://www.gnu.org/licenses/gpl-3.0.html)
 
-Denario - Copyright (C) 2026 Pablo Villanueva-Domingo, Francisco Villaescusa-Navarro, Boris Bolliet
+Plato - Copyright (C) 2026 Pablo Villanueva-Domingo, Francisco Villaescusa-Navarro, Boris Bolliet
 
 ## Contact and enquiries
 
-E-mail: [denario.astropilot.ai@gmail.com](mailto:denario.astropilot.ai@gmail.com)
+E-mail: [plato.astropilot.ai@gmail.com](mailto:plato.astropilot.ai@gmail.com)
