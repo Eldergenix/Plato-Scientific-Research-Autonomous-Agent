@@ -40,7 +40,13 @@ const nextConfig: NextConfig = {
 export default nextConfig;
 EOF
 
-RUN npm run build
+# <<< Use webpack-based `next build` directly. The package.json script is
+# `next build --turbopack`, but Next.js 15 Turbopack does not yet resolve
+# tsconfig.json `paths` aliases (e.g. "@/*") under `output: "export"` mode,
+# which causes module-not-found errors on every `@/components/...` import.
+# `npx next build` invokes the binary without --turbopack, falling back to
+# webpack which resolves paths correctly.
+RUN npx next build
 
 
 # -----------------------------------------------------------------------------
