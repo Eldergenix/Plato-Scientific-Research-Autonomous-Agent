@@ -27,6 +27,40 @@ def main():
         help="Don't auto-open the dashboard in a browser",
     )
 
+    # `plato loop` — autonomous overnight research loop (Phase 4 / R10)
+    loop = subparsers.add_parser(
+        "loop",
+        help="Run the autonomous overnight research loop on a project directory",
+    )
+    loop.add_argument(
+        "--project-dir",
+        required=True,
+        help="Path to the Plato project directory",
+    )
+    loop.add_argument(
+        "--hours",
+        type=float,
+        default=8.0,
+        help="Wall-clock time budget in hours (default: 8.0)",
+    )
+    loop.add_argument(
+        "--max-iters",
+        type=int,
+        default=None,
+        help="Maximum loop iterations (default: unbounded)",
+    )
+    loop.add_argument(
+        "--max-cost-usd",
+        type=float,
+        default=50.0,
+        help="Cumulative manifest cost cap in USD (default: 50.0)",
+    )
+    loop.add_argument(
+        "--branch-prefix",
+        default="plato-runs",
+        help="Tracking-branch prefix for git checkpoints (default: plato-runs)",
+    )
+
     args = parser.parse_args()
 
     if args.command == "run":
@@ -38,6 +72,8 @@ def main():
             sys.exit(1)
     elif args.command == "dashboard":
         _run_dashboard(args)
+    elif args.command == "loop":
+        _run_loop(args)
     else:
         parser.print_help()
 
@@ -76,3 +112,44 @@ def _run_dashboard(args) -> None:
         print(f"→ {url}")
 
     run_api()
+
+
+def _run_loop(args) -> None:
+    """Boot the autonomous research loop (Phase 4 / R10).
+
+    Uses lazy imports so ``plato --help`` works even when the heavy Plato
+    dependency graph isn't fully importable in the current environment.
+    """
+    import asyncio
+    import logging
+
+    from plato.loop import ResearchLoop
+    from plato.loop.research_loop import latest_manifest_score
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+
+    def _plato_factory():
+        # Lazy import: failing here is non-fatal — caller may pass a custom
+        # factory in programmatic use.
+        from plato import Plato  # noqa: WPS433 — intentional inline import
+
+        return Plato(project_dir=args.project_dir)
+
+    def _score_fn(_plato):
+        return latest_manifest_score(args.project_dir)
+
+    loop = ResearchLoop(
+        project_dir=args.project_dir,
+        max_iters=args.max_iters,
+        time_budget_hours=args.hours,
+        max_cost_usd=args.max_cost_usd,
+        branch_prefix=args.branch_prefix,
+    )
+    summary = asyncio.run(loop.run(_plato_factory, _score_fn))
+    print(
+        "loop complete: "
+        f"iterations={summary['iterations']} "
+        f"kept={summary['kept']} discarded={summary['discarded']} "
+        f"best={summary['best_composite']:.4f} "
+        f"tsv={summary['tsv_path']}"
+    )
