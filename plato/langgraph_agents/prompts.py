@@ -183,13 +183,13 @@ def reviewer_fast_prompt(state):
     ]
 
     prompt = [
-        {"type":"text", "text": """You are a scientific referee. Below, you can find a scientific paper written in latex. Your task is to read and understand the paper. Next write a detailed report about the good/interesting aspects of the paper but also bad things, failures...etc. For the bad things, please provide comments on what would be needed to do in order to improve it. Note that you may be reviewing an AI-generated paper, so the author may not be human, and keywords may be missing. No need to mention those. 
+        {"type":"text", "text": """You are a scientific referee. Below, you can find a scientific paper written in latex. Your task is to read and understand the paper. Next write a detailed report about the good/interesting aspects of the paper but also bad things, failures...etc. For the bad things, please provide comments on what would be needed to do in order to improve it. Note that you may be reviewing an AI-generated paper, so the author may not be human, and keywords may be missing. No need to mention those.
 
-- Find all flaws in the paper 
+- Find all flaws in the paper
 - Find things that may not be done correctly
 - Identify places where further revisions would make the paper better
-- Check carefully that there is enough evidence in the paper to support the conclusions 
-- If the results are not good, reason whether this is a surprising thing or just it used the wrong strategy and failed. If the latter, the paper should be consider bad. 
+- Check carefully that there is enough evidence in the paper to support the conclusions
+- If the results are not good, reason whether this is a surprising thing or just it used the wrong strategy and failed. If the latter, the paper should be consider bad.
 
 Try to judge whether the paper will be worth a publication or not. Give a score from 0 (a very bad paper) to 9 (an amazing paper). For bad papers, give a low score.
 
@@ -198,7 +198,41 @@ Try to judge whether the paper will be worth a publication or not. Give a score 
 <REVIEW>
 \\end{{REVIEW}}
 
-In <REVIEW>, put your report. 
+In <REVIEW>, put your report.
     """}] + image_parts
 
     return [HumanMessage(content=prompt)]
+
+
+def claim_extraction_prompt(state, source_text: str):
+    """
+    Prompt for extracting atomic factual claims from a source abstract.
+
+    Returns a ``[HumanMessage(...)]`` list compatible with the LLM_call_stream
+    convention used elsewhere in this module. The model is asked to return a
+    JSON list of claims, each with ``text`` (paraphrased atomic claim) and
+    ``span_text`` (a verbatim substring of the source abstract that supports
+    the claim). The downstream node uses ``span_text`` to compute character
+    offsets for ``Claim.quote_span``.
+    """
+
+    return [HumanMessage(content=f"""Extract atomic factual claims from the following abstract. Return JSON: [{{"text": "...", "span_text": "..."}}]. The span_text must be a verbatim substring of the abstract.
+
+Guidelines:
+- Each claim should be a single, atomic, declarative factual statement.
+- ``text`` may paraphrase but should be faithful to the original meaning.
+- ``span_text`` MUST be an exact substring of the abstract below — copy it verbatim, including punctuation and casing. Do not paraphrase the span.
+- If the abstract contains no extractable factual claims, return an empty JSON array: [].
+- Return ONLY the JSON array, wrapped in a ```json fenced block. No prose outside the block.
+
+Abstract:
+{source_text}
+
+Respond in exactly this format:
+
+```json
+[
+  {{"text": "<atomic claim>", "span_text": "<verbatim substring of the abstract>"}}
+]
+```
+""")]
