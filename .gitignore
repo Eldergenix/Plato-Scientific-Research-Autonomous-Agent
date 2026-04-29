@@ -201,13 +201,19 @@ project_data/
 notebooks/bblocal
 input_files/plots/*
 input_files/*
-Project*
+# Anchored to repo root: only ignore root-level "Project1", "Project2" dirs
+# (research output). Without the leading slash, the pattern would also match
+# files like dashboard/backend/.../project_store.py and examples/Project1/.
+/Project*
 
 .venv/
 
 uv.lock
 
-project*
+# Anchored to repo root: only ignore root-level project*/projects directories.
+# Without the leading slash, this matched any file/dir starting with "project"
+# anywhere in the tree (e.g. project_store.py, src/app/projects/).
+/project*
 
 *cmbagent_output
 quicktests/
@@ -238,11 +244,12 @@ gcp-key*.json
 google-credentials*.json
 
 # -----------------------------------------------------------------------------
-# Re-include dashboard frontend source.
-# The Python boilerplate above (`lib/`, `build/`, `dist/`, `project*`,
-# `Project*`) is unanchored and silently swallows TypeScript source files
-# under dashboard/frontend/src/ (e.g. src/lib/api.ts, src/app/projects/).
-# This negation re-includes the entire frontend source tree so future
-# files can't be quietly dropped from the build context.
+# Re-include source trees that the Python boilerplate above might silently
+# swallow (`lib/`, `build/`, `dist/`, plus historically unanchored project*).
+# Belt-and-suspenders alongside the anchored `/project*` and `/Project*`
+# above — keeps source files visible to git no matter what new ignore
+# rule someone adds in the future.
 # -----------------------------------------------------------------------------
 !dashboard/frontend/src/**
+!dashboard/backend/src/**
+!plato/**
