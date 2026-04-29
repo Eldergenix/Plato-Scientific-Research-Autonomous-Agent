@@ -1,0 +1,15 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "dashboard/spaces/Dockerfile"
+  },
+  "deploy": {
+    "startCommand": "/usr/bin/tini -- /usr/local/bin/start.sh",
+    "healthcheckPath": "/api/v1/health",
+    "healthcheckTimeout": 300,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 3,
+    "numReplicas": 1
+  }
+}

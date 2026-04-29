@@ -16,10 +16,12 @@ Two first-class deployment shapes share one codebase:
 | Shape | Mode | Auth | Use |
 |---|---|---|---|
 | Local desktop (default) | `PLATO_DEMO_MODE=disabled` | none | scientists running on their laptop |
-| Public demo | `PLATO_DEMO_MODE=enabled` | session cookie | HuggingFace Spaces / Vercel showcase |
+| Public demo | `PLATO_DEMO_MODE=enabled` | session cookie | HuggingFace Spaces / Railway / Vercel showcase |
 | Self-hosted lab (stretch) | `PLATO_AUTH=enabled` | bearer cookie | small team via Docker Compose |
 
 In demo mode, code-executing stages (`results`, `cmbagent`, paper generation with citations) are locked, the session enforces a hard $-budget cap, and projects are auto-cleaned after 30 min idle. See `backend/src/plato_dashboard/api/capabilities.py`.
+
+**One-click hosted demo:** see [`RAILWAY.md`](RAILWAY.md) for deploying the public-demo image to Railway. The repo's [`railway.json`](../railway.json) already points Railway at `dashboard/spaces/Dockerfile`; the only thing you need to add is a provider API key.
 
 ## Screenshots
 
