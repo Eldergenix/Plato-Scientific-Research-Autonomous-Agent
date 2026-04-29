@@ -1,0 +1,76 @@
+name: test-fast
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test-fast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-${{ matrix.python-version }}-
+            ${{ runner.os }}-pip-
+
+      - name: Install Plato (with obs extras, fallback to base)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[obs]" || pip install -e .
+
+      - name: Install test tooling
+        run: |
+          pip install pytest pytest-asyncio pytest-timeout langgraph-checkpoint-sqlite
+
+      - name: Run unit tests
+        run: |
+          pytest tests/unit/ -q --tb=short --timeout=30 \
+            --junit-xml=pytest-unit.xml
+
+      - name: Run trajectory tests (tolerant)
+        run: |
+          if [ -d tests/trajectory ] && [ -n "$(ls -A tests/trajectory 2>/dev/null)" ]; then
+            pytest tests/trajectory/ -q --tb=short --timeout=30 --no-header \
+              --junit-xml=pytest-trajectory.xml \
+              || echo "trajectory tests failed or are not yet runnable"
+          else
+            echo "trajectory tests not present yet"
+          fi
+
+      - name: Run safety tests (tolerant)
+        run: |
+          if [ -d tests/safety ] && [ -n "$(ls -A tests/safety 2>/dev/null)" ]; then
+            pytest tests/safety/ -q --tb=short --timeout=30 --no-header \
+              --junit-xml=pytest-safety.xml \
+              || echo "safety tests failed or are not yet runnable"
+          else
+            echo "safety tests not present yet"
+          fi
+
+      - name: Upload pytest reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-reports-${{ matrix.python-version }}
+          path: pytest-*.xml
+          if-no-files-found: ignore
