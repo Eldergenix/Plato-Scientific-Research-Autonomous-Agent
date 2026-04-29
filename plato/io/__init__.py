@@ -12,6 +12,6 @@ intended sandbox.
 """
 from __future__ import annotations
 
-from .scoped_writer import FileScope, ScopedWriter, ScopeError
+from .scoped_writer import FileScope, ScopedWriter, ScopeError, writer_for_node
 
-__all__ = ["FileScope", "ScopedWriter", "ScopeError"]
+__all__ = ["FileScope", "ScopedWriter", "ScopeError", "writer_for_node"]

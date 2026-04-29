@@ -14,7 +14,35 @@ from .prompts import abstract_prompt, abstract_reflection, caption_prompt, clean
 from .tools import json_parser3, LaTeX_checker, clean_section, extract_latex_block, LLM_call, temp_file, check_images_in_text
 from .literature import process_tex_file_with_references
 from .latex import compile_latex, save_paper, save_bib, process_bib_file, compile_tex_document, fix_latex, fix_percent
+from .journal import LatexPresets
+from .latex_presets import journal_dict
+from .scopes import ABSTRACT_SCOPE, METHODS_SCOPE, CONCLUSIONS_SCOPE
 from ..config import INPUT_FILES
+from ..io import ScopedWriter
+
+
+def _wrap_latex_section(state: GraphState, text: str) -> str:
+    """Build the same LaTeX-wrapped document that ``temp_file(..., 'write')``
+    would write for a section.
+
+    Used so that scoped writes via :class:`ScopedWriter` keep producing the
+    exact bytes the legacy compile/fix pipeline expects to read back.
+    """
+    journaldict: LatexPresets = journal_dict[state['paper']['journal']]
+    return rf"""\documentclass[{journaldict.layout}]{{{journaldict.article}}}
+
+\usepackage{{amsmath}}
+\usepackage{{multirow}}
+\usepackage{{natbib}}
+\usepackage{{graphicx}}
+{journaldict.usepackage}
+
+\begin{{document}}
+
+{text}
+
+\end{{document}}
+                """
 
 
 def keywords_node(state: GraphState, config: RunnableConfig):
@@ -138,9 +166,10 @@ def abstract_node(state: GraphState, config: RunnableConfig):
             state['paper']['Abstract'] = extract_latex_block(state, result, "Abstract")
             state['paper']['Abstract'] = fix_percent(state['paper']['Abstract']) #fix % by \%
 
-        # save temporary file
-        temp_file(state, f_temp2, 'write', state['paper']['Title'])
-        temp_file(state, f_temp1, 'write', state['paper']['Abstract'])
+        # save temporary file via ScopedWriter (R11 adoption)
+        writer = ScopedWriter(state['files']['Paper_folder'], ABSTRACT_SCOPE)
+        writer.write("temp/Title.tex",    _wrap_latex_section(state, state['paper']['Title']))
+        writer.write("temp/Abstract.tex", _wrap_latex_section(state, state['paper']['Abstract']))
 
         # compile title and abstract. If there are errors, try to fix them
         compile_tex_document(state, f_temp2, state['files']['Temp'])           #title
@@ -165,7 +194,7 @@ def abstract_node(state: GraphState, config: RunnableConfig):
 
 
 def section_node(state: GraphState, config: RunnableConfig, section_name: str,
-                 prompt_fn, reflection_fn=None):
+                 prompt_fn, reflection_fn=None, scope=None):
     """
     This function generates a section of the paper
     Args:
@@ -174,6 +203,9 @@ def section_node(state: GraphState, config: RunnableConfig, section_name: str,
       section_name: the name of the section to write
       prompt_fn: the prompt function for the section
       reflection_fn: whether to use self-reflections to improve the text
+      scope: optional :class:`plato.io.FileScope` to enforce writes through
+             :class:`ScopedWriter` (Phase 4 R11 adoption). When ``None``, the
+             legacy :func:`temp_file` path is used unchanged.
     """
 
     # temporary file with the selected keywords
@@ -191,13 +223,13 @@ def section_node(state: GraphState, config: RunnableConfig, section_name: str,
         for attempt in range(3):
 
             print(f'{attempt} ', end="",flush=True)
-            
+
             # --- Step 1: Prompt and parse section ---
             PROMPT = prompt_fn(state)
             state, result = LLM_call(PROMPT, state)
             section_text = extract_latex_block(state, result, section_name)
             state['paper'][section_name] = section_text
-            
+
             # --- Step 2: Optional self-reflection ---
             if reflection_fn:
                 for _ in range(2):
@@ -211,7 +243,14 @@ def section_node(state: GraphState, config: RunnableConfig, section_name: str,
             state['paper'][section_name] = clean_section(section_text, section_name)
 
             # --- Step 5: save file to file ---
-            temp_file(state, f_temp, 'write', state['paper'][section_name])
+            if scope is not None:
+                writer = ScopedWriter(state['files']['Paper_folder'], scope)
+                writer.write(
+                    f"temp/{section_name}.tex",
+                    _wrap_latex_section(state, state['paper'][section_name]),
+                )
+            else:
+                temp_file(state, f_temp, 'write', state['paper'][section_name])
 
             # --- Step 6: Compile and try to fix LaTeX errors ---
             if compile_tex_document(state, f_temp, state['files']['Temp']): #returns True if compiled properly
@@ -244,7 +283,8 @@ def introduction_node(state: GraphState, config: RunnableConfig):
 def methods_node(state: GraphState, config: RunnableConfig):
     return section_node(state, config, section_name="Methods",
                         prompt_fn=methods_prompt,
-                        reflection_fn=None)
+                        reflection_fn=None,
+                        scope=METHODS_SCOPE)
 
 def results_node(state: GraphState, config: RunnableConfig):
     return section_node(state, config, section_name="Results",
@@ -254,7 +294,8 @@ def results_node(state: GraphState, config: RunnableConfig):
 def conclusions_node(state: GraphState, config: RunnableConfig):
     return section_node(state, config, section_name="Conclusions",
                         prompt_fn=conclusions_prompt,
-                        reflection_fn=None)
+                        reflection_fn=None,
+                        scope=CONCLUSIONS_SCOPE)
 
 #######################################################################################
 def image_to_base64(image_path):
