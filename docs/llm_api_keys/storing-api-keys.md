@@ -17,11 +17,11 @@ export FUTURE_HOUSE_API_KEY=your_fh_key
 
 ## Set in the Terminal
 
-Copy and paste the above lines directly into your terminal session, where Denario will be running.
+Copy and paste the above lines directly into your terminal session, where Plato will be running.
 
 ## Create a `.env` File
 
-In the directory where Denario will be run, create a `.env` file containing:
+In the directory where Plato will be run, create a `.env` file containing:
 
 ```bash
 GOOGLE_API_KEY=your_gemini_api_key

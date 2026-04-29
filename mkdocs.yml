@@ -1,5 +1,5 @@
-site_name: Denario
-repo_url: https://github.com/AstroPilot-AI/Denario
+site_name: Plato
+repo_url: https://github.com/AstroPilot-AI/Plato
 site_url: !ENV READTHEDOCS_CANONICAL_URL
 
 nav:
@@ -16,7 +16,7 @@ nav:
   - Docker: docker.md
   - Prompts: prompts.md
   - Examples:
-      - End-to-end research: examples/denario_oscillator_full_run.ipynb
+      - End-to-end research: examples/plato_oscillator_full_run.ipynb
       - Enhance input description: examples/enhance_input.ipynb
       - Generate research ideas: examples/research_idea.ipynb
       - Literature search: examples/idea_check.ipynb
@@ -30,7 +30,7 @@ nav:
   - Troubleshooting: troubleshooting.md
   - Resources: resources.md
   - API Reference:
-      - Denario: api_ref/api_denario.md
+      - Plato: api_ref/api_plato.md
       - Classes: api_ref/api_classes.md
       - LLMs: api_ref/api_llms.md
       - Paper: api_ref/api_paper.md
@@ -83,7 +83,7 @@ plugins:
       execute: False
       ignore_h1_titles: True
   - git-committers:
-      repository: AstroPilot-AI/Denario
+      repository: AstroPilot-AI/Plato
       branch: master
 
 extra_css:

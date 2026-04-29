@@ -1,6 +1,6 @@
-Large Language Models (LLMs) supported in Denario.
+Large Language Models (LLMs) supported in Plato.
 
-::: denario.llm
+::: plato.llm
     options:
         filters:
               - "!LLM"

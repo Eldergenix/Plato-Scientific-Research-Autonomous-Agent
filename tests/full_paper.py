@@ -1,6 +1,6 @@
-from denario import Denario, Journal
+from plato import Plato, Journal
 
-den = Denario()
+den = Plato()
 
 data_description = r"""
 Write a short paper on harmonic oscillators. Generate several plots. Generate some data, which should not take more than 3 minutes to generate. 
