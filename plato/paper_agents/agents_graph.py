@@ -1,15 +1,22 @@
 from langgraph.graph import START, StateGraph, END
-from langgraph.checkpoint.memory import MemorySaver
 
 from .parameters import GraphState
 from .paper_node import abstract_node, citations_node, conclusions_node, introduction_node, keywords_node, methods_node, plots_node, refine_results, results_node
 from .reader import preprocess_node
 from .routers import citation_router
+from ..state import make_checkpointer
 
 
-def build_graph(mermaid_diagram=False):
+def build_graph(mermaid_diagram=False, checkpointer=None):
     """
-    This function builds the graph
+    Build the paper-writing graph.
+
+    Args:
+        mermaid_diagram: whether to render the graph as a mermaid PNG.
+        checkpointer:    LangGraph checkpointer. If None, a SQLite-backed
+                         checkpointer is created via
+                         ``plato.state.make_checkpointer``. Pass an explicit
+                         ``MemorySaver()`` for tests.
     """
 
     # Define the graph
@@ -40,8 +47,9 @@ def build_graph(mermaid_diagram=False):
     builder.add_conditional_edges("refine_results", citation_router)
     builder.add_edge("citations_node",              END)
 
-    memory = MemorySaver()
-    graph  = builder.compile(checkpointer=memory)
+    if checkpointer is None:
+        checkpointer = make_checkpointer()
+    graph = builder.compile(checkpointer=checkpointer)
 
     # # generate an scheme with the graph
     if mermaid_diagram:
