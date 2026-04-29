@@ -19,6 +19,7 @@ dependencies = [
   "langchain-anthropic>=0.3.10",
   "langchain-openai>=0.3.12",
   "langgraph>=0.3.25",
+  "langgraph-checkpoint-sqlite>=2.0.0",
   "google-cloud-aiplatform",
   "google-ai-generativelanguage>=0.6.17",
   "flatbuffers>=24.12.23",
@@ -42,6 +43,7 @@ plato = "plato.cli:main"
 
 [project.optional-dependencies]
 app = ["plato_app>=1.0.0"]
+obs = ["langfuse>=2.0"]
 docs = [
   "mkdocs",
   "mkdocstrings[python]",
