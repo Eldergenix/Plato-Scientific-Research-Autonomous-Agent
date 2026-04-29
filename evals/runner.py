@@ -1,15 +1,21 @@
 """
 Phase 3 — R7: Eval harness runner.
 
-``EvalRunner`` is the entry point that ties ``GoldenTask`` → Plato run →
-``Metrics`` → JSON sidecar. Phase 1 of the harness is intentionally a
-skeleton: ``run`` accepts a ``plato_factory`` callable, executes a stub
-workflow per task, and emits per-task and aggregate JSON. The full
-pipeline integration (real ``Plato.get_paper`` calls, judge wiring) is
-Phase 3+ and lives downstream of this PR.
+``EvalRunner`` ties ``GoldenTask`` → Plato run → ``Metrics`` → JSON sidecar.
 
-The runner can be invoked directly via ``python -m evals.runner`` for
-the nightly CI workflow.
+Per task we drive the Plato pipeline (``set_data_description`` →
+``get_idea`` → ``get_method``) inside an isolated ``project_dir``,
+catching any exception so a single failing task can't take down the
+panel. Heavy stages (``get_results``, ``get_paper``) are skipped — they
+require cmbagent / LaTeX and aren't wired into the harness yet.
+
+Metrics are aggregated from the per-run manifests Plato drops at
+``project_dir/runs/<run_id>/manifest.json``, plus any
+``validation_report.json`` / ``evidence_matrix.jsonl`` artifacts the
+Stream A pipeline writes alongside.
+
+The runner can be invoked via ``python -m evals.runner`` or
+``python -m evals`` for the nightly CI workflow.
 """
 from __future__ import annotations
 
@@ -18,7 +24,7 @@ import json
 import os
 import statistics
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -29,8 +35,8 @@ from evals.tasks import GoldenTask, discover_tasks
 # ``Plato`` is intentionally untyped here so the eval harness can be
 # imported without pulling in the full Plato dependency graph (langchain,
 # google-generativeai, etc.). The factory just needs to be a callable
-# returning *something* the workflow can use.
-PlatoFactory = Callable[[GoldenTask], Any]
+# returning an instance with ``set_data_description``/``get_idea``/``get_method``.
+PlatoFactory = Callable[[GoldenTask, Path], Any]
 
 
 class EvalRunner:
@@ -42,10 +48,14 @@ class EvalRunner:
         *,
         output_dir: str | Path = "evals/results",
         max_cost_usd: float = 20.0,
+        idea_mode: str = "fast",
+        method_mode: str = "fast",
     ) -> None:
         self.tasks = list(tasks)
         self.output_dir = Path(output_dir)
         self.max_cost_usd = float(max_cost_usd)
+        self.idea_mode = idea_mode
+        self.method_mode = method_mode
 
     async def run(
         self,
@@ -55,10 +65,15 @@ class EvalRunner:
 
         For each task we:
 
-        1. Call ``plato_factory(task)`` to build a (stub) Plato instance.
-        2. Execute the workflow — for now a noop returning mock metrics.
-        3. Write ``<output_dir>/<task_id>/metrics.json``.
-        4. Bail out early if the running cost exceeds ``max_cost_usd``.
+        1. Carve out ``<output_dir>/<task_id>/project`` for Plato's outputs.
+        2. Build a Plato instance via ``plato_factory(task, project_dir)``.
+        3. Drive ``set_data_description`` → ``get_idea`` → ``get_method``.
+        4. Aggregate metrics from manifests + validation/evidence artifacts.
+        5. Write ``metrics.json`` and stop early if running cost exceeds
+           ``max_cost_usd``.
+
+        Per-task failures are caught and recorded as ``Metrics`` with
+        ``tool_call_error_rate=1.0`` so the panel keeps moving.
 
         Finally we emit ``<output_dir>/summary.json`` with mean / p50 /
         p95 of every numeric metric across the tasks that ran.
@@ -72,9 +87,11 @@ class EvalRunner:
                 break
 
             start = time.perf_counter()
-            plato_instance = plato_factory(task)
-            metrics = await _run_task(task, plato_instance)
-            metrics.latency_seconds = time.perf_counter() - start
+            metrics = await asyncio.to_thread(self._run_task, task, plato_factory)
+            wall = time.perf_counter() - start
+            # Prefer manifest-derived latency when present; fall back to wall clock.
+            if metrics.latency_seconds == 0.0:
+                metrics.latency_seconds = wall
             running_cost += metrics.cost_usd
 
             task_dir = self.output_dir / task.id
@@ -90,31 +107,75 @@ class EvalRunner:
         )
         return results
 
+    def _run_task(self, task: GoldenTask, plato_factory: PlatoFactory) -> Metrics:
+        """Drive the real Plato pipeline for a single golden task.
 
-async def _run_task(task: GoldenTask, plato_instance: Any) -> Metrics:
-    """Stub workflow used by Phase 1 of the eval harness.
+        Tests inject a mock factory that writes synthetic manifests; in
+        production this calls into ``plato.plato.Plato``. Any exception
+        from the Plato run is caught and surfaced as an error Metrics
+        record so the panel keeps moving.
+        """
+        project_dir = self.output_dir / task.id / "project"
+        project_dir.mkdir(parents=True, exist_ok=True)
 
-    Real wiring (calling ``plato_instance.get_paper`` and computing
-    metrics from the resulting Sources/Claims/EvidenceLinks/manifest)
-    lands in Phase 3+. Until then we return zeroed metrics so the rest
-    of the harness — task discovery, JSON layout, summary aggregation,
-    CI integration — can ship and be tested independently.
+        try:
+            plato = plato_factory(task, project_dir)
+        except Exception:  # pragma: no cover - factory failures are rare
+            return _error_metrics()
 
-    The ``plato_instance`` argument is accepted so the contract matches
-    the eventual real implementation; it may be ``None`` in tests.
-    """
-    # Touch the args so linters know we use them; it also makes the
-    # behaviour obvious if a future change forgets to.
-    _ = task
-    _ = plato_instance
+        try:
+            plato.set_data_description(task.data_description)
+            plato.get_idea(mode=self.idea_mode)
+            plato.get_method(mode=self.method_mode)
+            # get_results / get_paper are intentionally skipped: they
+            # require cmbagent + LaTeX and produce too much variance for
+            # the harness today. Stream B/C wires them in once they're
+            # stable.
+        except Exception:
+            # Aggregate whatever manifests/artifacts the run did write
+            # before crashing, then mark the run as a tool error.
+            metrics = self._aggregate_metrics(project_dir)
+            metrics.tool_call_error_rate = 1.0
+            if metrics.unsupported_claim_rate == 0.0:
+                # Vacuously zero: no claims means no support. A crashing
+                # run shouldn't look perfect — flag it.
+                metrics.unsupported_claim_rate = 1.0
+            return metrics
 
-    # Allow the event loop to switch — keeps the function genuinely
-    # async even though there is no I/O yet.
-    await asyncio.sleep(0)
+        return self._aggregate_metrics(project_dir)
 
+    def _aggregate_metrics(self, project_dir: Path) -> Metrics:
+        """Compute Metrics from manifests + Stream A artifacts under project_dir."""
+        runs_dir = project_dir / "runs"
+        manifests = _read_manifests(runs_dir)
+
+        tokens_in = sum(int(m.get("tokens_in", 0) or 0) for m in manifests)
+        tokens_out = sum(int(m.get("tokens_out", 0) or 0) for m in manifests)
+        cost_usd = float(sum(float(m.get("cost_usd", 0) or 0) for m in manifests))
+        latency_seconds = _sum_latency(manifests)
+
+        validation_rate = _validation_rate_from_artifacts(project_dir)
+        unsupported_rate = _unsupported_rate_from_artifacts(project_dir)
+
+        return Metrics(
+            citation_validation_rate=validation_rate,
+            unsupported_claim_rate=unsupported_rate,
+            novelty_consistency=None,
+            referee_severity_max=None,
+            paper_coherence=None,
+            cost_usd=cost_usd,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            latency_seconds=latency_seconds,
+            tool_call_error_rate=None,
+        )
+
+
+def _error_metrics() -> Metrics:
+    """Metrics record for a task that couldn't even start."""
     return Metrics(
         citation_validation_rate=0.0,
-        unsupported_claim_rate=0.0,
+        unsupported_claim_rate=1.0,
         novelty_consistency=None,
         referee_severity_max=None,
         paper_coherence=None,
@@ -122,8 +183,104 @@ async def _run_task(task: GoldenTask, plato_instance: Any) -> Metrics:
         tokens_in=0,
         tokens_out=0,
         latency_seconds=0.0,
-        tool_call_error_rate=None,
+        tool_call_error_rate=1.0,
     )
+
+
+def _read_manifests(runs_dir: Path) -> list[dict[str, Any]]:
+    """Load every ``manifest.json`` under ``runs_dir``. Skips malformed files."""
+    if not runs_dir.exists() or not runs_dir.is_dir():
+        return []
+    out: list[dict[str, Any]] = []
+    for manifest_path in sorted(runs_dir.glob("*/manifest.json")):
+        try:
+            out.append(json.loads(manifest_path.read_text()))
+        except (OSError, json.JSONDecodeError):
+            continue
+    return out
+
+
+def _sum_latency(manifests: list[dict[str, Any]]) -> float:
+    """Sum (ended_at - started_at) per finished manifest, in seconds."""
+    from datetime import datetime
+
+    total = 0.0
+    for m in manifests:
+        start_str = m.get("started_at")
+        end_str = m.get("ended_at")
+        if not start_str or not end_str:
+            continue
+        try:
+            start = datetime.fromisoformat(start_str)
+            end = datetime.fromisoformat(end_str)
+        except (TypeError, ValueError):
+            continue
+        delta = (end - start).total_seconds()
+        if delta > 0:
+            total += delta
+    return total
+
+
+def _validation_rate_from_artifacts(project_dir: Path) -> float:
+    """Read every ``validation_report.json`` and compute the validation rate.
+
+    Stream A writes these as a list of ``ValidationResult``-shaped dicts
+    or as a single ``{"results": [...]}`` envelope. Empty inputs → 0.0.
+    """
+    rows: list[dict[str, Any]] = []
+    for path in sorted(project_dir.rglob("validation_report.json")):
+        try:
+            payload = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(payload, list):
+            rows.extend(p for p in payload if isinstance(p, dict))
+        elif isinstance(payload, dict):
+            inner = payload.get("results") or payload.get("validations") or []
+            if isinstance(inner, list):
+                rows.extend(p for p in inner if isinstance(p, dict))
+    if not rows:
+        return 0.0
+    valid = sum(
+        1
+        for r in rows
+        if (r.get("doi_resolved") or r.get("arxiv_resolved"))
+        and not r.get("retracted")
+    )
+    return valid / len(rows)
+
+
+def _unsupported_rate_from_artifacts(project_dir: Path) -> float:
+    """Read ``evidence_matrix.jsonl`` and compute unsupported claim rate.
+
+    The matrix is one JSON object per line; each row is either a Claim
+    or an EvidenceLink, identified by the keys present. Empty input → 0.0.
+    """
+    claims: list[str] = []
+    supported: set[str] = set()
+    for path in sorted(project_dir.rglob("evidence_matrix.jsonl")):
+        try:
+            text = path.read_text()
+        except OSError:
+            continue
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(row, dict):
+                continue
+            if "text" in row and "id" in row:  # Claim-shaped
+                claims.append(str(row["id"]))
+            elif row.get("support") == "supports" and "claim_id" in row:
+                supported.add(str(row["claim_id"]))
+    if not claims:
+        return 0.0
+    unsupported = sum(1 for cid in claims if cid not in supported)
+    return unsupported / len(claims)
 
 
 def _summarize(results: dict[str, Metrics]) -> dict[str, Any]:
@@ -181,17 +338,19 @@ def _percentile(values: list[float], pct: float) -> float:
     return sorted_vals[lo] * (1 - frac) + sorted_vals[hi] * frac
 
 
-def _default_plato_factory(_: GoldenTask) -> Any:
-    """No-op factory used by ``python -m evals.runner`` in CI.
+def _default_plato_factory(task: GoldenTask, project_dir: Path) -> Any:
+    """Build a real ``Plato`` instance for the nightly CI workflow.
 
-    The CI workflow passes ``PLATO_EVAL_MAX_USD`` to cap cost; with the
-    Phase 1 stub workflow this is moot but keeps the contract honest.
+    Imports ``Plato`` lazily so ``python -m evals.runner --help`` still
+    works in environments without the heavy LLM stack installed.
     """
-    return None
+    from plato.plato import Plato  # local import keeps eval imports light
+
+    return Plato(project_dir=str(project_dir), clear_project_dir=True)
 
 
 def main() -> None:
-    """CLI entry point for ``python -m evals.runner`` (used by nightly CI)."""
+    """CLI entry point for ``python -m evals[.runner]`` (used by nightly CI)."""
     tasks = discover_tasks("evals/golden")
     max_usd = float(os.environ.get("PLATO_EVAL_MAX_USD", "20"))
     runner = EvalRunner(tasks, max_cost_usd=max_usd)
