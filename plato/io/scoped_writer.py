@@ -201,4 +201,24 @@ class ScopedWriter:
             cur = parent
 
 
-__all__ = ["FileScope", "ScopedWriter", "ScopeError"]
+def writer_for_node(
+    project_dir: PathLike,
+    node_name: str,
+    scope: FileScope | None = None,
+) -> ScopedWriter:
+    """Build a :class:`ScopedWriter` for ``node_name`` rooted at ``project_dir``.
+
+    Thin convenience used by paper-graph nodes that already declare a
+    :class:`FileScope` in :mod:`plato.paper_agents.scopes`. ``scope`` is
+    required — a node without an explicit scope has nothing to enforce, so
+    we refuse to fabricate a default that would silently allow everything.
+    """
+    if scope is None:
+        raise ValueError(
+            f"writer_for_node({node_name!r}): a FileScope is required; "
+            "pass an explicit scope from plato.paper_agents.scopes."
+        )
+    return ScopedWriter(project_dir=project_dir, scope=scope)
+
+
+__all__ = ["FileScope", "ScopedWriter", "ScopeError", "writer_for_node"]
