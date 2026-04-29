@@ -1,0 +1,8 @@
+{
+  "id": "cmb_lensing_residuals",
+  "data_description": "Analyze residual systematics in CMB lensing reconstruction with simulated Planck and ACT-like maps. Quantify the impact of mean-field correction noise on the lensing power spectrum estimator.",
+  "expected_idea_keywords": ["CMB", "lensing", "reconstruction", "mean-field", "residual"],
+  "expected_method_signals": ["quadratic estimator", "N0 bias", "power spectrum", "Monte Carlo"],
+  "gold_sources": [],
+  "domain": "astro"
+}
