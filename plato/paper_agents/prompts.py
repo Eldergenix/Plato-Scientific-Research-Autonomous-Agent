@@ -643,3 +643,188 @@ AAS keywords list:
 
 In <Keywords>, place the selected keywords separated by a comma
 """)], keywords
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 — R6: multi-reviewer panel + redraft prompts
+# ---------------------------------------------------------------------------
+
+def _paper_snapshot_for_review(state) -> str:
+    """Render the current paper sections as a single text block for reviewers."""
+    paper = state.get('paper', {}) or {}
+    sections = [
+        ("Title", paper.get('Title', '')),
+        ("Abstract", paper.get('Abstract', '')),
+        ("Introduction", paper.get('Introduction', '')),
+        ("Methods", paper.get('Methods', '')),
+        ("Results", paper.get('Results', '')),
+        ("Conclusions", paper.get('Conclusions', '')),
+    ]
+    parts = []
+    for name, text in sections:
+        if text:
+            parts.append(f"## {name}\n{text}")
+    return "\n\n".join(parts) if parts else "(no paper text yet)"
+
+
+def _review_response_format() -> str:
+    """Shared response-format spec for all reviewer prompts."""
+    return r"""**Respond with a single JSON object inside a fenced ```json block** in this exact shape:
+
+```json
+{
+  "severity": 0,
+  "issues": [
+    {"section": "methods", "issue": "short description", "fix": "concrete suggestion"}
+  ]
+}
+```
+
+Where:
+- `severity` is an integer 0..5 (0 = no problems, 5 = critical, blocks publication).
+- `issues` is a (possibly empty) list. Each entry must have `section`, `issue`, and `fix`.
+- Do not write anything outside the fenced JSON block.
+"""
+
+
+def methodology_review_prompt(state):
+    """Prompt the methodology reviewer."""
+    return [
+        SystemMessage(content=(
+            "You are a senior methodology reviewer for a peer-reviewed scientific journal. "
+            "Your sole focus is the soundness of the methods: experimental design, "
+            "controls, dataset choices, evaluation metrics, and reproducibility."
+        )),
+        HumanMessage(content=fr"""Review the paper draft below for **methodology** issues only.
+
+Focus on:
+- Experimental design and controls
+- Dataset suitability and possible biases
+- Evaluation metrics and baselines
+- Reproducibility (hyperparameters, seeds, code/data availability)
+- Whether claimed methods actually support the claimed results
+
+Paper draft:
+{_paper_snapshot_for_review(state)}
+
+{_review_response_format()}
+""")
+    ]
+
+
+def statistics_review_prompt(state):
+    """Prompt the statistics reviewer."""
+    return [
+        SystemMessage(content=(
+            "You are a senior statistics reviewer for a peer-reviewed scientific journal. "
+            "Your sole focus is statistical rigor: sample sizes, error bars, "
+            "significance testing, multiple-comparisons, and uncertainty quantification."
+        )),
+        HumanMessage(content=fr"""Review the paper draft below for **statistical** issues only.
+
+Focus on:
+- Sample sizes and power
+- Error bars / confidence intervals / uncertainty quantification
+- Significance testing and multiple-comparison corrections
+- Distributional assumptions
+- Over-claiming from noisy estimates
+
+Paper draft:
+{_paper_snapshot_for_review(state)}
+
+{_review_response_format()}
+""")
+    ]
+
+
+def novelty_review_prompt(state):
+    """Prompt the novelty / related-work reviewer."""
+    return [
+        SystemMessage(content=(
+            "You are a senior reviewer assessing **novelty and coverage of related work** "
+            "for a peer-reviewed scientific journal."
+        )),
+        HumanMessage(content=fr"""Review the paper draft below for **novelty and related-work** issues only.
+
+Focus on:
+- Whether the contribution is genuinely novel vs. existing literature
+- Missing or misrepresented prior work
+- Overclaimed novelty
+- Whether the framing positions the work clearly relative to the state of the art
+
+Paper draft:
+{_paper_snapshot_for_review(state)}
+
+{_review_response_format()}
+""")
+    ]
+
+
+def writing_review_prompt(state):
+    """Prompt the writing / clarity reviewer."""
+    return [
+        SystemMessage(content=(
+            "You are a senior reviewer focused on **writing quality, clarity, and structure** "
+            "for a peer-reviewed scientific journal."
+        )),
+        HumanMessage(content=fr"""Review the paper draft below for **writing** issues only.
+
+Focus on:
+- Clarity and flow of prose
+- Section structure and logical progression
+- Consistency of terminology and notation
+- Readability of figures/tables references
+- Grammatical issues that impede comprehension (do NOT nitpick minor typos)
+
+Paper draft:
+{_paper_snapshot_for_review(state)}
+
+{_review_response_format()}
+""")
+    ]
+
+
+def redraft_prompt(state):
+    """Prompt for the redraft node: rewrite paper sections to address the critique digest."""
+    digest = state.get('critique_digest') or {}
+    issues = digest.get('issues', []) if isinstance(digest, dict) else []
+    issues_block = "\n".join(
+        f"- [{i.get('section', '?')}] {i.get('issue', '')}  --> fix: {i.get('fix', '')}"
+        for i in issues
+    ) or "(no specific issues recorded)"
+
+    return [
+        SystemMessage(content=(
+            f"You are a {state.get('writer', 'scientist')} revising a paper draft "
+            "to address reviewer critiques. Preserve the scientific content; only change "
+            "what is needed to resolve the issues."
+        )),
+        HumanMessage(content=fr"""You are given the current paper sections and a digest of reviewer critiques.
+Produce an updated version of the paper that addresses each issue.
+
+Reviewer critique digest (max severity = {digest.get('max_severity', 'N/A')}):
+{issues_block}
+
+Current paper draft:
+{_paper_snapshot_for_review(state)}
+
+**Respond with a single JSON object inside a fenced ```json block** with the updated sections:
+
+```json
+{{
+  "Abstract": "...",
+  "Introduction": "...",
+  "Methods": "...",
+  "Results": "...",
+  "Conclusions": "..."
+}}
+```
+
+Guidelines:
+- Keep all existing figures, tables, and citations intact unless directly contradicted by an issue.
+- Only modify sections where reviewer issues apply; for untouched sections, return the original text verbatim.
+- Write in LaTeX-compatible plain text (the same style as the input).
+- Do not write anything outside the fenced JSON block.
+""")
+    ]
+
