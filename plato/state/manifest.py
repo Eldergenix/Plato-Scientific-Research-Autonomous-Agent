@@ -59,8 +59,23 @@ def _git_sha(repo_dir: str | os.PathLike[str]) -> str:
         return ""
 
 
+_VOLATILE_TOPLEVEL = frozenset({"runs", "plots", "paper", "temp"})
+"""Top-level dirs whose contents change every run; excluded from project SHA.
+
+Names are matched case-insensitively (macOS APFS is case-insensitive by
+default while Linux ext4 is case-sensitive — without lowercasing,
+``Plots`` and ``plots`` would be treated as different on Linux and
+identical on macOS, producing platform-dependent project SHAs).
+"""
+
+
 def _project_sha(project_dir: str | os.PathLike[str]) -> str:
-    """Stable SHA-256 over input file contents (sorted), excluding runs/ and plots/."""
+    """Stable SHA-256 over input file contents (sorted), excluding volatile dirs.
+
+    Excludes: ``runs/``, ``plots/`` (any case), ``paper/``, ``temp/`` so the
+    SHA is stable across runs and across platforms with different
+    filesystem case sensitivity.
+    """
     project_path = Path(project_dir)
     if not project_path.exists():
         return ""
@@ -68,9 +83,8 @@ def _project_sha(project_dir: str | os.PathLike[str]) -> str:
     for p in sorted(project_path.rglob("*")):
         if not p.is_file():
             continue
-        # Skip volatile directories.
         rel_parts = p.relative_to(project_path).parts
-        if rel_parts and rel_parts[0] in {"runs", "Plots", "plots", "paper", "Temp"}:
+        if rel_parts and rel_parts[0].lower() in _VOLATILE_TOPLEVEL:
             continue
         rel = "/".join(rel_parts)
         h.update(rel.encode())

@@ -33,28 +33,162 @@ from ..state.models import Source, ValidationResult
 from ..tools.citation_validator import CitationValidator
 
 
-_BIB_ENTRY_RE = re.compile(r"@\w+\s*\{([^,]+),(.*?)\n\}", re.DOTALL)
-_BIB_FIELD_RE = re.compile(r"(\w+)\s*=\s*\{(.+?)\}\s*,?", re.DOTALL)
+_BIB_ENTRY_HEAD_RE = re.compile(r"@(\w+)\s*\{")
+_BIB_FIELD_NAME_RE = re.compile(r"(\w+)\s*=\s*")
+
+
+def _scan_balanced(text: str, start: int, opener: str = "{", closer: str = "}") -> int:
+    """Return the index of the closer that balances ``text[start]`` (the opener).
+
+    Returns ``-1`` if no balanced closer exists. Handles backslash-escapes
+    so ``\\{`` / ``\\}`` are treated as literal characters, not bracket
+    structure (e.g. ``{title = {Sub \\{brace\\} value}}`` parses correctly).
+    """
+    if start >= len(text) or text[start] != opener:
+        return -1
+    depth = 0
+    i = start
+    while i < len(text):
+        c = text[i]
+        if c == "\\" and i + 1 < len(text):
+            i += 2  # skip the escape and the next character verbatim
+            continue
+        if c == opener:
+            depth += 1
+        elif c == closer:
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    return -1
+
+
+def _strip_bib_quotes(value: str) -> str:
+    """Strip surrounding ``{...}`` or ``"..."`` BibTeX delimiters."""
+    v = value.strip()
+    if len(v) >= 2 and v[0] == v[-1] and v[0] in ('"',):
+        return v[1:-1].strip()
+    if v.startswith("{") and v.endswith("}"):
+        # Already-balanced brace pair — strip exactly one layer.
+        return v[1:-1].strip()
+    return v
+
+
+def _parse_bibtex_fields(body: str) -> dict[str, str]:
+    """Pull ``key = {value}`` pairs out of an entry body.
+
+    Handles brace-quoted values, double-quoted values, nested braces, and
+    backslash-escaped delimiters. Unknown bare-word values (e.g. integer
+    years like ``year = 2024``) are captured verbatim up to the next comma.
+    """
+    fields: dict[str, str] = {}
+    i = 0
+    n = len(body)
+    while i < n:
+        # Skip whitespace + leading commas.
+        while i < n and body[i] in " \t\r\n,":
+            i += 1
+        if i >= n:
+            break
+        m = _BIB_FIELD_NAME_RE.match(body, i)
+        if not m:
+            # Unparseable garbage — skip to the next comma at depth 0.
+            depth = 0
+            while i < n and not (body[i] == "," and depth == 0):
+                if body[i] == "{":
+                    depth += 1
+                elif body[i] == "}" and depth > 0:
+                    depth -= 1
+                i += 1
+            continue
+        name = m.group(1).strip().lower()
+        i = m.end()
+        if i >= n:
+            break
+        if body[i] == "{":
+            close = _scan_balanced(body, i, "{", "}")
+            if close == -1:
+                break  # unbalanced; bail out
+            value = body[i + 1 : close]
+            i = close + 1
+        elif body[i] == '"':
+            # Find the matching quote, skipping backslash escapes.
+            j = i + 1
+            while j < n and body[j] != '"':
+                if body[j] == "\\" and j + 1 < n:
+                    j += 2
+                    continue
+                j += 1
+            if j >= n:
+                break
+            value = body[i + 1 : j]
+            i = j + 1
+        else:
+            # Bare word: read until next comma at depth 0 or EOL.
+            depth = 0
+            j = i
+            while j < n and not (body[j] == "," and depth == 0):
+                if body[j] == "{":
+                    depth += 1
+                elif body[j] == "}" and depth > 0:
+                    depth -= 1
+                j += 1
+            value = body[i:j].strip()
+            i = j
+        fields[name] = _strip_bib_quotes(value)
+    return fields
 
 
 def _parse_bibtex_entries(blob: str) -> list[dict[str, str]]:
     """Parse a BibTeX blob into a list of ``{key, doi, arxiv, title, url}`` dicts.
 
-    The parser is forgiving: it pulls out fields it recognises and ignores
-    the rest. This is enough to feed citation validation, not to round-trip
-    a .bib file.
+    Brace-counting parser (handles nested braces and escapes); not a
+    full BibTeX implementation, but robust enough for citation validation.
+    Entry types like ``@string`` and ``@comment`` are skipped.
     """
     out: list[dict[str, str]] = []
     if not blob or not isinstance(blob, str):
         return out
-    for match in _BIB_ENTRY_RE.finditer(blob):
-        key = match.group(1).strip()
-        body = match.group(2)
-        fields: dict[str, str] = {"key": key}
-        for fmatch in _BIB_FIELD_RE.finditer(body):
-            fname = fmatch.group(1).strip().lower()
-            fval = fmatch.group(2).strip()
-            fields[fname] = fval
+
+    pos = 0
+    while pos < len(blob):
+        m = _BIB_ENTRY_HEAD_RE.search(blob, pos)
+        if not m:
+            break
+        entry_type = m.group(1).lower()
+        # Find the opening brace and its matching closer.
+        brace_open = blob.find("{", m.end() - 1)
+        if brace_open == -1:
+            break
+        brace_close = _scan_balanced(blob, brace_open, "{", "}")
+        if brace_close == -1:
+            break
+        inner = blob[brace_open + 1 : brace_close]
+        pos = brace_close + 1
+
+        # Skip non-bibliographic entries.
+        if entry_type in {"string", "preamble", "comment"}:
+            continue
+
+        # First token before the first top-level comma is the entry key.
+        depth = 0
+        comma_idx = -1
+        for j, ch in enumerate(inner):
+            if ch == "{":
+                depth += 1
+            elif ch == "}" and depth > 0:
+                depth -= 1
+            elif ch == "," and depth == 0:
+                comma_idx = j
+                break
+        if comma_idx == -1:
+            # No fields, just a key — record what we have.
+            out.append({"key": inner.strip()})
+            continue
+        key = inner[:comma_idx].strip()
+        body = inner[comma_idx + 1 :]
+        fields = _parse_bibtex_fields(body)
+        fields["key"] = key
         # arXiv entries on Crossref-style BibTeX often use "eprint" for the id.
         if "eprint" in fields and "arxiv" not in fields:
             fields["arxiv"] = fields["eprint"]
