@@ -23,6 +23,7 @@ from typing import Any
 import httpx
 
 from .. import register_adapter
+from ..middleware import RetrievalClient
 from ...state.models import Source
 from ..doi import normalize_doi
 
@@ -97,7 +98,7 @@ class SemanticScholarAdapter:
         if api_key:
             headers["x-api-key"] = api_key
 
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with RetrievalClient(timeout=15) as client:
             try:
                 response = await client.get(_BASE_URL, params=params, headers=headers)
             except httpx.HTTPError:
