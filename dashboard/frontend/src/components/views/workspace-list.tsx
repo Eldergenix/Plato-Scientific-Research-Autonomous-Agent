@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { ChevronRight, Plus, Signal } from "lucide-react";
+import { ChevronRight, PlayCircle, Plus, Signal } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { cn, formatRelativeTime, formatTokens } from "@/lib/utils";
 import { MODELS_BY_ID } from "@/lib/models";
 import type {
@@ -405,6 +406,43 @@ export function WorkspaceList({
     const next = groups[key][0];
     if (next) onRunStage(next.id);
   };
+
+  // When every group is empty (e.g. a freshly-created project, or a
+  // tab filter that excluded everything), show a single empty-state
+  // instead of an invisible canvas.
+  const totalStages = GROUP_DEFS.reduce(
+    (n, def) => n + groups[def.key].length,
+    0,
+  );
+
+  if (totalStages === 0) {
+    return (
+      <div
+        className="flex flex-col items-center justify-center gap-2 px-6 py-16 text-center"
+        data-testid="workspace-empty-state"
+      >
+        <div className="text-[14px] font-medium text-(--color-text-primary)">
+          No stages match this view
+        </div>
+        <div className="max-w-md text-[12.5px] text-(--color-text-tertiary-spec)">
+          A new project starts with all stages empty. Run the pipeline to
+          generate an idea, methods, results, and a draft paper — or open a
+          stage from the sidebar to start one individually.
+        </div>
+        <div className="mt-3">
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => onRunStage("idea")}
+            data-testid="workspace-empty-run-pipeline"
+          >
+            <PlayCircle size={12} strokeWidth={1.75} />
+            Run pipeline
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-3 px-4 py-3">

@@ -36,8 +36,11 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // suppressHydrationWarning on <html> is required because the inline
+  // themeBootstrap script writes documentElement.className before React
+  // reconciles. Without it, React logs a hydration mismatch.
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
       </head>

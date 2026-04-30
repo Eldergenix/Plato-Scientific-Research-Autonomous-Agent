@@ -198,6 +198,9 @@ export function LicenseTable({
           />
           <input
             type="search"
+            id="license-table-search"
+            name="license-filter"
+            aria-label="Filter licenses by name"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Filter by name…"
