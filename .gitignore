@@ -253,3 +253,17 @@ google-credentials*.json
 !dashboard/frontend/src/**
 !dashboard/backend/src/**
 !plato/**
+
+# Re-exclusions that the broad `!plato/**` / `!dashboard/**/src/**` rules
+# above would otherwise re-include. Keep these LAST so they take effect.
+**/__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Eval / example runtime artifacts. These directories are populated by
+# running Plato against the eval harness or examples — not checked-in
+# fixtures.
+examples/Project*/
+evals/results/
+runs/
