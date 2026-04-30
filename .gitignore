@@ -263,11 +263,11 @@ google-credentials*.json
 
 # Eval / example runtime artifacts. These directories are populated by
 # running Plato against the eval harness or examples — not checked-in
-# fixtures.
+# fixtures. ``runs/`` was unanchored historically; anchor it to project
+# subtrees that actually receive runtime artefacts so the dashboard
+# frontend route at ``dashboard/frontend/src/app/runs/`` survives.
 examples/Project*/
 evals/results/
-runs/
-# Re-include the dashboard's Next.js dynamic /runs route — the broad
-# `runs/` rule above is meant for on-disk run artefacts only.
-!dashboard/frontend/src/app/runs/
-!dashboard/frontend/src/app/runs/**
+/runs/
+plato/runs/
+examples/**/runs/
