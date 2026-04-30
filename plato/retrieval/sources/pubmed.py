@@ -23,6 +23,7 @@ from urllib.parse import quote_plus
 import httpx
 
 from .. import register_adapter
+from ..middleware import RetrievalClient
 from ...state.models import Source
 from ..doi import normalize_doi
 
@@ -216,7 +217,7 @@ class PubMedAdapter:
             f"{key_suffix}"
         )
 
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
+        async with RetrievalClient(timeout=self._timeout) as client:
             esearch_response = await client.get(esearch_url)
             esearch_response.raise_for_status()
             esearch_payload = esearch_response.json()

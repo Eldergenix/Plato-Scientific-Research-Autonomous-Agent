@@ -26,9 +26,10 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from urllib.parse import quote_plus
 
-import httpx
+import httpx  # noqa: F401  # kept so test patches at ``arxiv.httpx.AsyncClient`` resolve.
 
 from .. import register_adapter
+from ..middleware import RetrievalClient
 from ...state.models import Source
 
 logger = logging.getLogger(__name__)
@@ -181,7 +182,7 @@ class ArxivAdapter:
             f"&start={params['start']}"
             f"&max_results={params['max_results']}"
         )
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
+        async with RetrievalClient(timeout=self._timeout) as client:
             response = await client.get(url)
             response.raise_for_status()
             return _parse_feed(response.text)

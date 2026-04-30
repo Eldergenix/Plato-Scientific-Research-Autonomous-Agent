@@ -21,9 +21,10 @@ from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlencode
 
-import httpx
+import httpx  # noqa: F401  # kept so ``patch("httpx.AsyncClient.get", ...)`` still resolves.
 
 from .. import register_adapter
+from ..middleware import RetrievalClient
 from ...state.models import Source
 
 
@@ -140,7 +141,7 @@ class ADSAdapter:
         url = f"{_ADS_SEARCH_URL}?{urlencode(params)}"
         headers = {"Authorization": f"Bearer {token}"}
 
-        async with httpx.AsyncClient() as client:
+        async with RetrievalClient() as client:
             response = await client.get(url, headers=headers)
             response.raise_for_status()
             payload = response.json()
