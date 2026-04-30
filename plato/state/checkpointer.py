@@ -45,15 +45,33 @@ def make_checkpointer(
     *,
     path: str | os.PathLike[str] | None = None,
     dsn: str | None = None,
-    **_kw: Any,
+    **kwargs: Any,
 ):
     """
     Return a LangGraph checkpointer for the requested backend.
 
     Falls back to ``MemorySaver`` with a warning if the requested backend's
     extra package is not installed.
+
+    Unknown keyword arguments emit a ``RuntimeWarning`` rather than being
+    silently swallowed — typos in caller code should not produce a
+    correct-looking checkpointer with a misconfigured backend.
     """
+    if kwargs:
+        warnings.warn(
+            f"make_checkpointer received unexpected keyword arguments: "
+            f"{sorted(kwargs)}. They will be ignored. Known kwargs: "
+            f"path (sqlite), dsn (postgres).",
+            RuntimeWarning,
+            stacklevel=2,
+        )
     if backend == "memory":
+        if path is not None or dsn is not None:
+            warnings.warn(
+                "make_checkpointer('memory') ignores 'path' and 'dsn'.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
         return MemorySaver()
 
     if backend == "sqlite":

@@ -16,7 +16,7 @@ the existing ``ADAPTER_REGISTRY`` test pattern).
 from __future__ import annotations
 
 import inspect
-from typing import Any, Awaitable, Callable, Literal
+from typing import Awaitable, Callable, Literal, Union
 
 from pydantic import BaseModel, ConfigDict
 
@@ -29,6 +29,15 @@ Permission = Literal[
     "llm",
 ]
 """Effects a Tool can declare. Callers gate execution with ``allowed_permissions``."""
+
+
+# A tool callable accepts a Pydantic ``BaseModel`` payload and returns
+# either a ``BaseModel`` (sync tool) or a coroutine that awaits to a
+# ``BaseModel`` (async tool). Async detection happens via
+# :func:`is_async`. The Union is necessary because Python typing can't
+# express "either sync or async" any more precisely.
+ToolFn = Callable[[BaseModel], Union[BaseModel, Awaitable[BaseModel]]]
+"""Type of the underlying callable a :class:`Tool` wraps."""
 
 
 class ToolMetadata(BaseModel):
@@ -49,7 +58,7 @@ class Tool(BaseModel):
     metadata: ToolMetadata
     input_schema: type[BaseModel]
     output_schema: type[BaseModel]
-    fn: Callable[..., Awaitable[Any] | Any]
+    fn: ToolFn
 
 
 _REGISTRY: dict[str, Tool] = {}
@@ -132,17 +141,29 @@ def call(
     return tool.fn(payload)
 
 
-def _is_async_tool(tool: Tool) -> bool:
-    """Return True iff ``tool.fn`` is a coroutine function (helper for callers)."""
-    return inspect.iscoroutinefunction(tool.fn)
+def is_async(name: str) -> bool:
+    """Return True iff the registered tool ``name`` is an async coroutine.
+
+    Callers that need to know whether to ``await`` the result of
+    :func:`call` should consult this first. Cheaper than ``inspect`` at
+    every call site and resilient to wrapping (we look through
+    ``functools.partial`` etc.).
+    """
+    fn = get(name).fn
+    while hasattr(fn, "func") and not inspect.iscoroutinefunction(fn):
+        # functools.partial / wrapt-style proxies: drill in.
+        fn = fn.func  # type: ignore[attr-defined]
+    return inspect.iscoroutinefunction(fn)
 
 
 __all__ = [
     "Permission",
+    "ToolFn",
     "ToolMetadata",
     "Tool",
     "register",
     "get",
     "list_tools",
     "call",
+    "is_async",
 ]

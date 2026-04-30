@@ -45,115 +45,40 @@ jobs:
         run: |
           ruff format --check plato/ evals/ tests/
 
-      - name: Mypy (loose)
+      - name: Mypy (strict — new typed modules)
+        # Modules that were typed from day one and are expected to stay
+        # clean. Adding a module here is a one-way ratchet: don't soften
+        # this list to make a build green, fix the types instead.
+        run: |
+          mypy --ignore-missing-imports --no-strict-optional --check-untyped-defs \
+            plato/state \
+            plato/retrieval \
+            plato/tools \
+            plato/io \
+            plato/safety \
+            plato/novelty \
+            plato/loop \
+            plato/domain \
+            plato/observability.py
+
+      - name: Mypy (loose — legacy modules)
+        # Pre-Phase-1 code is not yet fully typed. Reported but does not
+        # fail the build. As legacy modules get typed, *move* them to the
+        # strict job above (don't keep them in both lists).
         continue-on-error: true
         run: |
-          mypy plato/ --ignore-missing-imports --no-strict-optional --check-untyped-defs
+          mypy --ignore-missing-imports --no-strict-optional --check-untyped-defs \
+            plato/langgraph_agents \
+            plato/paper_agents \
+            plato/plato.py \
+            plato/idea.py \
+            plato/method.py \
+            plato/experiment.py \
+            plato/research.py \
+            plato/key_manager.py \
+            plato/llm.py \
+            plato/utils.py
 
       - name: Import-graph cycle check
         run: |
-          python - <<'PY'
-          import ast
-          import os
-          import sys
-          from collections import defaultdict
-
-          ROOT = "plato"
-          PKG = "plato"
-
-          def module_name(path: str) -> str:
-              rel = os.path.relpath(path, ".")
-              rel = rel[:-3] if rel.endswith(".py") else rel
-              parts = rel.split(os.sep)
-              if parts[-1] == "__init__":
-                  parts = parts[:-1]
-              return ".".join(parts)
-
-          def collect_imports(path: str, current_mod: str) -> set:
-              with open(path, "r", encoding="utf-8") as fh:
-                  try:
-                      tree = ast.parse(fh.read(), filename=path)
-                  except SyntaxError as exc:
-                      print(f"SyntaxError parsing {path}: {exc}", file=sys.stderr)
-                      return set()
-              found = set()
-              for node in ast.walk(tree):
-                  if isinstance(node, ast.Import):
-                      for alias in node.names:
-                          if alias.name.startswith(PKG):
-                              found.add(alias.name)
-                  elif isinstance(node, ast.ImportFrom):
-                      if node.level and node.level > 0:
-                          base_parts = current_mod.split(".")
-                          if node.level > len(base_parts):
-                              continue
-                          base = ".".join(base_parts[: len(base_parts) - node.level])
-                          target = f"{base}.{node.module}" if node.module else base
-                          if target.startswith(PKG):
-                              found.add(target)
-                      elif node.module and node.module.startswith(PKG):
-                          found.add(node.module)
-              return found
-
-          graph = defaultdict(set)
-          modules = set()
-          for dirpath, _dirs, files in os.walk(ROOT):
-              for fname in files:
-                  if not fname.endswith(".py"):
-                      continue
-                  full = os.path.join(dirpath, fname)
-                  mod = module_name(full)
-                  if not mod:
-                      continue
-                  modules.add(mod)
-                  for imp in collect_imports(full, mod):
-                      graph[mod].add(imp)
-
-          index_counter = [0]
-          stack = []
-          on_stack = set()
-          indices = {}
-          lowlink = {}
-          sccs = []
-
-          def strongconnect(v):
-              indices[v] = index_counter[0]
-              lowlink[v] = index_counter[0]
-              index_counter[0] += 1
-              stack.append(v)
-              on_stack.add(v)
-              for w in graph.get(v, ()):
-                  if w not in indices:
-                      if w in graph or w in modules:
-                          strongconnect(w)
-                          lowlink[v] = min(lowlink[v], lowlink[w])
-                  elif w in on_stack:
-                      lowlink[v] = min(lowlink[v], indices[w])
-              if lowlink[v] == indices[v]:
-                  comp = []
-                  while True:
-                      w = stack.pop()
-                      on_stack.discard(w)
-                      comp.append(w)
-                      if w == v:
-                          break
-                  sccs.append(comp)
-
-          sys.setrecursionlimit(10000)
-          for node in set(graph.keys()) | modules:
-              if node not in indices:
-                  strongconnect(node)
-
-          cycles = [c for c in sccs if len(c) > 1]
-          self_loops = [m for m in graph if m in graph[m]]
-
-          if cycles or self_loops:
-              print("Import cycles detected in plato/:", file=sys.stderr)
-              for c in cycles:
-                  print("  cycle: " + " -> ".join(sorted(c)), file=sys.stderr)
-              for m in self_loops:
-                  print(f"  self-import: {m}", file=sys.stderr)
-              sys.exit(1)
-
-          print(f"No import cycles detected across {len(modules)} modules in plato/.")
-          PY
+          python .github/scripts/check_import_cycles.py --root plato

@@ -1,16 +1,18 @@
 """Phase 4 — R11 adoption: per-node :class:`FileScope` declarations.
 
-Each paper-graph node should write only to a small, documented set of
-files. These scopes pin down what ``abstract_node``, ``methods_node`` and
-``conclusions_node`` are allowed to touch when they go through a
+Each paper-graph node writes to a small, documented set of files. These
+scopes encode what ``abstract_node``, ``methods_node`` and
+``conclusions_node`` may actually touch when going through a
 :class:`plato.io.ScopedWriter`.
 
-Backward-compatibility note: the legacy nodes also write LaTeX-wrapped
-section files into the ``temp/`` directory (e.g. ``temp/Abstract.tex``)
-that drive the existing compile/fix pipeline. We widen the scopes to
-include those paths rather than refactoring the pipeline in this commit.
-Lines marked ``# scope-widening`` are explicit allowances for legacy
-write locations.
+The scopes describe **the actual filesystem layout** that the existing
+compile/fix pipeline (``compile_tex_document`` → ``fix_latex``) reads
+from. ``temp/<Section>.tex`` is the canonical artifact for each section.
+The corresponding ``paper/<section>.{tex,json,md}`` slots are reserved
+for the upcoming structured-section refactor (Phase 5+) and stay in
+scope so that incremental migration does not require widening the list.
+Until that refactor lands, only the ``temp/`` paths see writes; the
+``paper/`` paths are inert.
 """
 from __future__ import annotations
 
@@ -19,31 +21,33 @@ from plato.io import FileScope
 
 ABSTRACT_SCOPE = FileScope(
     write=[
+        # Active paths (legacy compile/fix pipeline reads these).
+        "temp/Abstract.tex",
+        "temp/Title.tex",
+        # Reserved for the Phase-5 structured-section refactor.
         "paper/abstract.tex",
         "paper/abstract.json",
         "paper/abstract.md",
-        "temp/Abstract.tex",  # scope-widening: legacy temp_file() output
-        "temp/Title.tex",     # scope-widening: legacy temp_file() output
     ],
     read=["**/*"],
 )
 
 METHODS_SCOPE = FileScope(
     write=[
+        "temp/Methods.tex",
         "paper/methods.tex",
         "paper/methods.json",
         "paper/methods.md",
-        "temp/Methods.tex",  # scope-widening: legacy temp_file() output
     ],
     read=["**/*"],
 )
 
 CONCLUSIONS_SCOPE = FileScope(
     write=[
+        "temp/Conclusions.tex",
         "paper/conclusions.tex",
         "paper/conclusions.json",
         "paper/conclusions.md",
-        "temp/Conclusions.tex",  # scope-widening: legacy temp_file() output
     ],
     read=["**/*"],
 )

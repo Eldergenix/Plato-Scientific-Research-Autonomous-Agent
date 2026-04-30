@@ -72,13 +72,14 @@ async def _fake_retrieve(query, limit, *, profile=None, adapter_names=None):  # 
     return [_malicious_source()]
 
 
-def test_malicious_abstract_is_wrapped_and_signals_logged(caplog):
+@pytest.mark.asyncio
+async def test_malicious_abstract_is_wrapped_and_signals_logged(caplog):
     with tempfile.TemporaryDirectory() as tmpdir:
         state = _stub_state(tmpdir)
 
         with patch.object(literature_mod, "retrieve", _fake_retrieve):
             with caplog.at_level(logging.WARNING, logger=literature_mod.logger.name):
-                out = literature_mod.semantic_scholar(state, config={})
+                out = await literature_mod.semantic_scholar(state, config={})
 
         # The output retains the malicious source for downstream auditing.
         sources = out["literature"]["sources"]

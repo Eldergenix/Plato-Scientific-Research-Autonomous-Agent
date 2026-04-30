@@ -1,10 +1,11 @@
 """
 PubMed retrieval adapter.
 
-Hits NCBI's E-utilities API (``esearch.fcgi`` + ``esummary.fcgi``) and maps
-the JSON response into :class:`plato.state.models.Source` records. The
-abstract step (``efetch.fcgi``) is intentionally skipped on this first cut
-— esummary metadata is enough for the citation pipeline.
+Hits NCBI's E-utilities API (``esearch.fcgi`` → ``esummary.fcgi`` →
+``efetch.fcgi``) and maps the response into :class:`plato.state.models.Source`
+records. ``esummary`` provides metadata; ``efetch`` provides abstracts
+(without it the downstream ``claim_extractor`` has nothing to work with
+for biology-domain runs).
 
 Auto-registers itself in the adapter registry on import.
 
@@ -14,6 +15,7 @@ limit from 3 req/s to 10 req/s. The endpoint works without a key.
 from __future__ import annotations
 
 import os
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import quote_plus
@@ -30,6 +32,7 @@ __all__ = ["PubMedAdapter"]
 _EUTILS_BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 _ESEARCH_URL = f"{_EUTILS_BASE_URL}/esearch.fcgi"
 _ESUMMARY_URL = f"{_EUTILS_BASE_URL}/esummary.fcgi"
+_EFETCH_URL = f"{_EUTILS_BASE_URL}/efetch.fcgi"
 
 
 def _read_api_key() -> str | None:
@@ -107,8 +110,17 @@ def _extract_venue(article: dict[str, Any]) -> str | None:
     return None
 
 
-def _map_article_to_source(pmid: str, article: dict[str, Any]) -> Source | None:
-    """Map one esummary article entry to a :class:`Source`. Returns None if unusable."""
+def _map_article_to_source(
+    pmid: str,
+    article: dict[str, Any],
+    abstract: str | None = None,
+) -> Source | None:
+    """Map one esummary article entry to a :class:`Source`. Returns None if unusable.
+
+    ``abstract`` is fetched separately via ``efetch`` and threaded in so we
+    don't pay the second round-trip when we already know the article is
+    unusable (e.g. missing title).
+    """
     title = article.get("title")
     if not isinstance(title, str) or not title.strip():
         return None
@@ -120,10 +132,46 @@ def _map_article_to_source(pmid: str, article: dict[str, Any]) -> Source | None:
         authors=_extract_authors(article),
         year=_coerce_year(article.get("pubdate")),
         venue=_extract_venue(article),
+        abstract=abstract,
         url=f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",
         retrieved_via="pubmed",
         fetched_at=datetime.now(timezone.utc),
     )
+
+
+def _extract_abstracts_from_efetch(xml_text: str) -> dict[str, str]:
+    """Parse a PubMed efetch XML response into ``{pmid: abstract_text}``.
+
+    The PubMed XML schema nests abstracts under
+    ``PubmedArticle/MedlineCitation/Article/Abstract/AbstractText`` (the
+    AbstractText node may repeat with different ``Label`` attributes for
+    structured abstracts; we concatenate them).
+
+    Tolerant of malformed XML — returns ``{}`` on parse error.
+    """
+    if not isinstance(xml_text, str) or not xml_text.strip():
+        return {}
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        return {}
+
+    out: dict[str, str] = {}
+    for article in root.iter("PubmedArticle"):
+        pmid_el = article.find(".//MedlineCitation/PMID")
+        if pmid_el is None or not (pmid_el.text or "").strip():
+            continue
+        pmid = pmid_el.text.strip()
+        parts: list[str] = []
+        for at in article.iter("AbstractText"):
+            label = (at.attrib.get("Label") or "").strip()
+            text = "".join(at.itertext()).strip()
+            if not text:
+                continue
+            parts.append(f"{label}: {text}" if label else text)
+        if parts:
+            out[pmid] = "\n".join(parts)
+    return out
 
 
 class PubMedAdapter:
@@ -136,14 +184,25 @@ class PubMedAdapter:
         *,
         esearch_url: str = _ESEARCH_URL,
         esummary_url: str = _ESUMMARY_URL,
+        efetch_url: str = _EFETCH_URL,
         timeout: float = 10.0,
+        fetch_abstracts: bool = True,
     ) -> None:
         self._esearch_url = esearch_url
         self._esummary_url = esummary_url
+        self._efetch_url = efetch_url
         self._timeout = timeout
+        self._fetch_abstracts = fetch_abstracts
 
     async def search(self, query: str, limit: int) -> list[Source]:
-        """Search PubMed for ``query`` and return up to ``limit`` Sources."""
+        """Search PubMed for ``query`` and return up to ``limit`` Sources.
+
+        Hits ``esearch`` for PMIDs, ``esummary`` for metadata, and
+        ``efetch`` for abstracts when ``fetch_abstracts=True``. The efetch
+        leg is best-effort — if it fails (rate limit, transient error)
+        the adapter still returns the metadata-only Sources rather than
+        propagating the failure.
+        """
         retmax = max(1, int(limit))
         api_key = _read_api_key()
         key_suffix = f"&api_key={quote_plus(api_key)}" if api_key else ""
@@ -177,7 +236,25 @@ class PubMedAdapter:
             esummary_response.raise_for_status()
             esummary_payload = esummary_response.json()
 
-        return _map_esummary_payload(esummary_payload, pmids)
+            abstracts: dict[str, str] = {}
+            if self._fetch_abstracts:
+                efetch_url = (
+                    f"{self._efetch_url}"
+                    f"?db=pubmed"
+                    f"&id={','.join(pmids)}"
+                    f"&retmode=xml"
+                    f"&rettype=abstract"
+                    f"{key_suffix}"
+                )
+                try:
+                    efetch_response = await client.get(efetch_url)
+                    efetch_response.raise_for_status()
+                    abstracts = _extract_abstracts_from_efetch(efetch_response.text)
+                except httpx.HTTPError:
+                    # Best-effort: missing abstracts shouldn't fail the run.
+                    abstracts = {}
+
+        return _map_esummary_payload(esummary_payload, pmids, abstracts)
 
 
 def _extract_pmids(payload: dict[str, Any]) -> list[str]:
@@ -191,7 +268,11 @@ def _extract_pmids(payload: dict[str, Any]) -> list[str]:
     return [pmid for pmid in raw if isinstance(pmid, str) and pmid.strip()]
 
 
-def _map_esummary_payload(payload: dict[str, Any], pmids: list[str]) -> list[Source]:
+def _map_esummary_payload(
+    payload: dict[str, Any],
+    pmids: list[str],
+    abstracts: dict[str, str] | None = None,
+) -> list[Source]:
     """Iterate ``payload.result[<pmid>]`` in the original PMID order."""
     if not isinstance(payload, dict):
         return []
@@ -199,16 +280,22 @@ def _map_esummary_payload(payload: dict[str, Any], pmids: list[str]) -> list[Sou
     if not isinstance(result, dict):
         return []
 
+    abstracts = abstracts or {}
     sources: list[Source] = []
     for pmid in pmids:
         article = result.get(pmid)
         if not isinstance(article, dict):
             continue
-        mapped = _map_article_to_source(pmid, article)
+        mapped = _map_article_to_source(pmid, article, abstract=abstracts.get(pmid))
         if mapped is not None:
             sources.append(mapped)
     return sources
 
 
-# Auto-register on import so importing the module is enough to wire it in.
+# Auto-register on import. ``overwrite=True`` is intentional: importing
+# this module IS the registration mechanism, and a re-import (e.g.
+# from a test fixture that clears + restores the registry) should
+# repopulate the slot rather than raising. Third-party adapters that
+# want to fail-loud on name collision should call ``register_adapter``
+# directly with ``overwrite=False``.
 register_adapter(PubMedAdapter(), overwrite=True)
