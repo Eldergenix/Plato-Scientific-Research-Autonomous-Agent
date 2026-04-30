@@ -7,7 +7,49 @@ def main():
     subparsers = parser.add_subparsers(dest="command")
 
     # `plato run` — legacy Streamlit GUI
-    subparsers.add_parser("run", help="Run the legacy Plato Streamlit app (PlatoApp)")
+    run_parser = subparsers.add_parser(
+        "run",
+        help="Run the legacy Plato Streamlit app (PlatoApp)",
+    )
+    run_parser.add_argument(
+        "--validate-citations",
+        action="store_true",
+        help=(
+            "After the pipeline finishes, walk the project directory and "
+            "validate every citation. Writes validation_report.json next to "
+            "the latest run."
+        ),
+    )
+    run_parser.add_argument(
+        "--project-dir",
+        default=None,
+        help=(
+            "Project directory to validate when --validate-citations is set. "
+            "Required if PlatoApp can't be imported but validation is requested."
+        ),
+    )
+
+    # `plato validate` — standalone citation validation
+    validate_parser = subparsers.add_parser(
+        "validate",
+        help="Validate every citation in a Plato project against Crossref/arXiv/URL liveness",
+    )
+    validate_parser.add_argument(
+        "project_dir",
+        help="Path to a Plato project directory.",
+    )
+    validate_parser.add_argument(
+        "--output",
+        "-o",
+        default=None,
+        help="Override the validation report output path.",
+    )
+    validate_parser.add_argument(
+        "--threshold",
+        type=float,
+        default=1.0,
+        help="Minimum validation_rate to count as passing (default: 1.0).",
+    )
 
     # `plato dashboard` — new Linear-themed web dashboard
     dash = subparsers.add_parser(
@@ -64,18 +106,47 @@ def main():
     args = parser.parse_args()
 
     if args.command == "run":
-        try:
-            from plato_app.cli import run
-            run()
-        except ImportError:
-            print("❌ PlatoApp not installed. Install with: pip install plato-app")
-            sys.exit(1)
+        _run_app(args)
+    elif args.command == "validate":
+        from plato import cli_validate
+
+        argv = [args.project_dir]
+        if args.output is not None:
+            argv.extend(["--output", args.output])
+        if args.threshold != 1.0:
+            argv.extend(["--threshold", str(args.threshold)])
+        sys.exit(cli_validate.main(argv))
     elif args.command == "dashboard":
         _run_dashboard(args)
     elif args.command == "loop":
         _run_loop(args)
     else:
         parser.print_help()
+
+
+def _run_app(args) -> None:
+    """Run the legacy PlatoApp Streamlit pipeline, then optionally validate."""
+    try:
+        from plato_app.cli import run
+    except ImportError:
+        print("❌ PlatoApp not installed. Install with: pip install plato-app")
+        sys.exit(1)
+
+    run()
+
+    if getattr(args, "validate_citations", False):
+        if not args.project_dir:
+            print(
+                "❌ --validate-citations requires --project-dir <path> so the "
+                "validator knows where the runs/ and paper/refs.bib live.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        from plato import cli_validate
+
+        rc = cli_validate.main([args.project_dir])
+        if rc != 0:
+            sys.exit(rc)
 
 
 def _run_dashboard(args) -> None:
