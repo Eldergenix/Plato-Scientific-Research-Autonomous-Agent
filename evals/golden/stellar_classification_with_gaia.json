@@ -1,0 +1,8 @@
+{
+  "id": "stellar_classification_with_gaia",
+  "data_description": "Build a supervised classifier that separates main-sequence stars, giants, and white dwarfs in the Gaia DR3 catalogue using BP-RP color, parallax-derived absolute G magnitude, and astrometric quality flags. Discuss training/validation splits, class imbalance, and how Gaia's parallax zero-point bias affects the absolute-magnitude axis of the HR diagram.",
+  "expected_idea_keywords": ["Gaia", "BP-RP", "parallax", "classification", "machine learning", "HR diagram"],
+  "expected_method_signals": ["random forest", "cross-validation", "absolute magnitude", "parallax zero-point", "class imbalance"],
+  "gold_sources": ["10.1051/0004-6361/202243940", "10.1051/0004-6361/202142146"],
+  "domain": "astro"
+}
