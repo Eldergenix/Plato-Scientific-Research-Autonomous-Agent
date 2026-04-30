@@ -22,7 +22,7 @@ export function LoginForm({ redirectTo = "/" }: LoginFormProps) {
   const trimmed = value.trim();
   const canSubmit = trimmed.length > 0 && !submitting;
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!canSubmit) return;
     setSubmitting(true);

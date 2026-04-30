@@ -142,8 +142,11 @@ test.describe("run detail", () => {
     await expect(rows).toHaveCount(2);
     await expect(matrix.getByText(/Dark energy density is constant/)).toBeVisible();
     await expect(matrix.getByText(/Hubble tension/)).toBeVisible();
-    await expect(matrix.getByText("supports")).toBeVisible();
-    await expect(matrix.getByText("neutral")).toBeVisible();
+    // Use exact: true so we don't strict-mode-collide with the column header
+    // "Support" / "Strength" which Playwright's substring matcher would also
+    // hit. The pill render is the value we actually care about.
+    await expect(matrix.getByText("supports", { exact: true })).toBeVisible();
+    await expect(matrix.getByText("neutral", { exact: true })).toBeVisible();
     // Source with URL renders as a link.
     await expect(matrix.getByRole("link", { name: /Planck 2018 results/ })).toBeVisible();
   });
