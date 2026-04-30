@@ -1,0 +1,163 @@
+name: security
+
+# Four parallel security scanners. Each fails the workflow on its own
+# severity bar — keep them independent so a single noisy scan does not
+# block the rest of the signal.
+#
+# - bandit: static analysis of Plato's own Python (HIGH severity = block).
+# - safety: known-CVE check against the resolved dep tree.
+# - pip-audit: PyPA's own CVE check, redundant with safety on purpose.
+# - gitleaks: secret-leak scan over the git history.
+#
+# Note on injection safety: this workflow does not consume any
+# attacker-controlled fields (issue/PR titles, commit messages, body
+# text). The only template substitution is ${{ secrets.GITHUB_TOKEN }},
+# which is GitHub-issued and safe to interpolate.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    # Nightly at 06:17 UTC. Catches CVEs disclosed after the last PR/push.
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bandit:
+    name: bandit (static analysis)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install bandit
+        run: |
+          python -m pip install --upgrade pip
+          pip install "bandit[toml]"
+
+      # Low+ severity report (informational). Excludes tests/ which by
+      # design exercise the unsafe paths we want bandit to flag in plato/.
+      - name: Bandit report (low+)
+        run: |
+          bandit -r plato/ evals/ -ll --exclude tests/
+
+      # Hard gate: any HIGH-severity finding fails the build. Anything
+      # below HIGH is reported above but does not break CI.
+      - name: Bandit hard gate (HIGH severity = fail)
+        run: |
+          bandit -r plato/ evals/ --severity-level high --exclude tests/
+
+  safety:
+    name: safety (CVE scan)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-security-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-security-
+
+      - name: Install Plato (with obs extras, fallback to base)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[obs]" || pip install -e .
+
+      - name: Install safety
+        run: |
+          pip install safety
+
+      # JSON report for the audit log. Always emits; never fails the job.
+      - name: Safety report (JSON)
+        run: |
+          safety check --json --output safety-report.json || true
+
+      # Hard gate: critical CVEs fail. Lower severities are reported in
+      # the JSON artifact above but do not break the build.
+      - name: Safety hard gate (critical CVE = fail)
+        run: |
+          safety check --severity critical
+
+      - name: Upload safety report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: safety-report
+          path: safety-report.json
+          if-no-files-found: ignore
+
+  pip-audit:
+    name: pip-audit (PyPA CVE scan)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-pipaudit-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-pipaudit-
+
+      - name: Install Plato (with obs extras, fallback to base)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[obs]" || pip install -e .
+
+      - name: Install pip-audit
+        run: |
+          pip install pip-audit
+
+      # --strict treats warnings (resolution failures) as errors. Combined
+      # with the default behavior of failing on any vulnerability, this
+      # acts as our critical-CVE hard gate.
+      - name: pip-audit hard gate
+        run: |
+          pip-audit --strict
+
+  gitleaks:
+    name: gitleaks (secret scan)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Full history so gitleaks can scan every commit, not just the
+          # tip of the PR.
+          fetch-depth: 0
+
+      # Hard gate: any leak fails the workflow. The action exits non-zero
+      # when findings are detected.
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
