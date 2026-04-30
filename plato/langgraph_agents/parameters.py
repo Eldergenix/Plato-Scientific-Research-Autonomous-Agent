@@ -77,3 +77,11 @@ class GraphState(TypedDict):
     task: str
     literature: LITERATURE
     referee: REFEREE
+    # Phase 5 / Workflow gaps:
+    #   #1  research-question clarifier  -> clarifying_questions / needs_clarification
+    #   #11 counter-evidence search      -> counter_evidence_sources
+    #   #12 research-gap detection       -> gaps
+    clarifying_questions: list[str]
+    needs_clarification: bool
+    counter_evidence_sources: list[Any]
+    gaps: list[dict[str, Any]]

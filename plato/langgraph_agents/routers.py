@@ -1,3 +1,5 @@
+from langgraph.graph import END
+
 from .parameters import GraphState
 
 
@@ -5,7 +7,7 @@ from .parameters import GraphState
 def task_router (state: GraphState) -> str:
 
     if state['task']=='idea_generation':
-        return 'maker'
+        return 'research_question_clarifier'
     elif state['task']=='methods_generation':
         return 'methods'
     elif state['task']=='literature':
@@ -14,6 +16,15 @@ def task_router (state: GraphState) -> str:
         return 'referee'
     else:
         raise Exception('Wrong task choosen!')
+
+
+# Workflow gap #1: clarifier router. If the clarifier produced questions
+# the user must answer, suspend the run by routing to END so the caller
+# can collect answers; otherwise proceed to the maker/hater debate.
+def clarifier_router(state: GraphState) -> str:
+    if state.get('needs_clarification'):
+        return END
+    return 'maker'
     
 # Idea maker - hater router
 def router(state: GraphState) -> str:
