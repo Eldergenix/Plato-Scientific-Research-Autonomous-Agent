@@ -105,7 +105,14 @@ def test_me_returns_null_when_neither_header_nor_cookie(auth_client: TestClient)
 def test_me_auth_required_reflects_setting(
     monkeypatch: pytest.MonkeyPatch, tmp_project_root  # noqa: ARG001
 ) -> None:
+    # Two env-var conventions exist in the codebase: ``auth.auth_required()``
+    # reads ``PLATO_DASHBOARD_AUTH_REQUIRED=1`` and is the canonical helper
+    # that auth_endpoints prefers when ``plato_dashboard.auth`` is importable;
+    # ``Settings.is_auth_required`` reads ``PLATO_AUTH=enabled`` and is the
+    # fallback. Set both so the test is correct regardless of which path
+    # wins on a given worktree state.
     monkeypatch.setenv("PLATO_AUTH", "enabled")
+    monkeypatch.setenv("PLATO_DASHBOARD_AUTH_REQUIRED", "1")
 
     app = FastAPI()
     app.include_router(auth_router)
