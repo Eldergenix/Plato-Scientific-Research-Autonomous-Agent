@@ -267,3 +267,7 @@ google-credentials*.json
 examples/Project*/
 evals/results/
 runs/
+# Re-include the dashboard's Next.js dynamic /runs route — the broad
+# `runs/` rule above is meant for on-disk run artefacts only.
+!dashboard/frontend/src/app/runs/
+!dashboard/frontend/src/app/runs/**
