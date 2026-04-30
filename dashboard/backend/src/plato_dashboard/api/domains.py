@@ -37,7 +37,7 @@ def _serialize(name: str) -> dict[str, Any]:
     }
 
 
-@router.get("/api/v1/domains")
+@router.get("/domains")
 def get_domains() -> dict[str, Any]:
     """Return every registered domain profile + the global default."""
     return {

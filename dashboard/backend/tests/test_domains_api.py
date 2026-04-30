@@ -15,7 +15,7 @@ from plato_dashboard.api.domains import router as domains_router
 
 def _client() -> TestClient:
     app = FastAPI()
-    app.include_router(domains_router)
+    app.include_router(domains_router, prefix="/api/v1")
     return TestClient(app)
 
 

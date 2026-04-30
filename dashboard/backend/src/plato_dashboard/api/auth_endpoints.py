@@ -77,7 +77,7 @@ def _auth_required() -> bool:
     return get_settings().is_auth_required
 
 
-@router.post("/api/v1/auth/login")
+@router.post("/auth/login")
 def login(response: Response, body: dict[str, Any] = Body(...)) -> dict[str, Any]:
     """Set the ``plato_user`` cookie and echo the chosen user id back."""
     raw = body.get("user_id")
@@ -100,14 +100,14 @@ def login(response: Response, body: dict[str, Any] = Body(...)) -> dict[str, Any
     return {"user_id": user_id, "ok": True}
 
 
-@router.post("/api/v1/auth/logout")
+@router.post("/auth/logout")
 def logout(response: Response) -> dict[str, Any]:
     """Clear the ``plato_user`` cookie."""
     response.delete_cookie(key=_COOKIE_NAME, path="/")
     return {"ok": True}
 
 
-@router.get("/api/v1/auth/me")
+@router.get("/auth/me")
 def me(request: Request) -> dict[str, Any]:
     """Resolve the current user id (header or cookie) and the auth flag."""
     return {
