@@ -22,7 +22,7 @@ from plato_dashboard.api.clarifications import router as clarifications_router
 @pytest.fixture
 def client(tmp_project_root: Path) -> TestClient:
     app = FastAPI()
-    app.include_router(clarifications_router)
+    app.include_router(clarifications_router, prefix="/api/v1")
     return TestClient(app)
 
 
