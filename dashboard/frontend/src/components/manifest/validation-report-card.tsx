@@ -28,11 +28,29 @@ export interface ValidationFailure {
   source_type?: string | null;
 }
 
+/**
+ * Canonical schema produced by the backend's ``/api/v1/runs/{id}/validation_report``
+ * endpoint. ``status`` is derived internally from ``validation_rate`` so callers
+ * don't need to pre-compute it.
+ */
 export interface ValidationReport {
-  status: ValidationStatus;
-  total: number;
-  passed: number;
+  validation_rate: number; // 0..1
+  total_references: number;
+  verified_references: number;
   failures: ValidationFailure[];
+}
+
+function deriveStatus(rate: number): ValidationStatus {
+  if (!Number.isFinite(rate)) return "fail";
+  if (rate >= 0.95) return "ok";
+  if (rate >= 0.7) return "warn";
+  return "fail";
+}
+
+function formatPct(rate: number): string {
+  if (!Number.isFinite(rate)) return "—";
+  const clamped = Math.max(0, Math.min(1, rate));
+  return `${(clamped * 100).toFixed(1)}%`;
 }
 
 export interface ValidationReportCardProps {
@@ -212,11 +230,12 @@ export function ValidationReportCard({
   }, [filtered]);
 
   const hasFailures = report.failures.length > 0;
+  const status = deriveStatus(report.validation_rate);
 
   return (
     <section
       data-testid="validation-report-card"
-      data-status={report.status}
+      data-status={status}
       className={cn("surface-linear-card overflow-hidden", className)}
     >
       <header
@@ -224,12 +243,18 @@ export function ValidationReportCard({
         data-testid="validation-report-header"
       >
         <div className="flex items-center gap-2">
-          {statusIcon(report.status)}
+          {statusIcon(status)}
           <span className="text-[13px] font-medium text-(--color-text-primary)">
             Validation report
           </span>
+          <span
+            className="text-[11.5px] font-mono tabular-nums text-(--color-text-primary-strong)"
+            data-testid="validation-rate"
+          >
+            {formatPct(report.validation_rate)}
+          </span>
           <span className="text-[11.5px] text-(--color-text-tertiary-spec)">
-            {report.passed} / {report.total} passed
+            {report.verified_references} / {report.total_references} references verified
           </span>
         </div>
         {hasFailures ? (
@@ -246,8 +271,10 @@ export function ValidationReportCard({
             ) : (
               <ChevronRight size={11} strokeWidth={1.75} />
             )}
-            {report.failures.length} failure
-            {report.failures.length === 1 ? "" : "s"}
+            Failures
+            <span className="ml-0.5 text-(--color-text-tertiary-spec)">
+              ({report.failures.length})
+            </span>
           </Button>
         ) : null}
       </header>

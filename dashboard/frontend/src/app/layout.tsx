@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import { AuthProvider } from "@/components/auth/auth-context";
 import { ErrorBoundary } from "@/components/shell/error-boundary";
 import { ThemeProvider } from "@/components/shell/theme-provider";
 import "./globals.css";
@@ -42,7 +43,9 @@ export default function RootLayout({
       </head>
       <body className={`${inter.variable} ${jetbrainsMono.variable} antialiased`}>
         <ThemeProvider>
-          <ErrorBoundary>{children}</ErrorBoundary>
+          <AuthProvider>
+            <ErrorBoundary>{children}</ErrorBoundary>
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>
