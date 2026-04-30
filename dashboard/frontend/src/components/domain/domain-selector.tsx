@@ -36,10 +36,14 @@ export function DomainSelector({
     [domains, value],
   );
 
+  // Radix Select renders a hidden native <select> for form integration.
+  // Passing `undefined` for `value` initially and a string later flips that
+  // hidden select from uncontrolled to controlled, which React warns about.
+  // Keep it controlled the entire time by substituting an empty string.
   return (
     <Select.Root
-      value={value ?? undefined}
-      onValueChange={(v) => onChange(v)}
+      value={value ?? ""}
+      onValueChange={(v) => v && onChange(v)}
       disabled={disabled || domains.length === 0}
     >
       <Select.Trigger

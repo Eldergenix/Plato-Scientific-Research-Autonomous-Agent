@@ -1,9 +1,14 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import {
+  ChevronRight,
+  Globe2,
   Monitor,
   Moon,
+  ScrollText,
+  Server,
   Sun,
   Trash2,
   CheckCircle2,
@@ -30,6 +35,39 @@ const APPROVALS_AUTO_SKIP_KEY = "plato:approvals:auto-skip";
 const PLATO_KEY_PREFIX = "plato:";
 
 type ThemeChoice = "dark" | "light" | "system";
+
+const SETTINGS_SECTIONS: Array<{
+  href: string;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+  testId: string;
+}> = [
+  {
+    href: "/settings/domains",
+    label: "Domains",
+    description:
+      "Pick the DomainProfile that drives retrieval, drafting, and execution.",
+    icon: Globe2,
+    testId: "settings-link-domains",
+  },
+  {
+    href: "/settings/executors",
+    label: "Executors",
+    description:
+      "Choose how Plato runs scientific code — cmbagent, local Jupyter, Modal, or E2B.",
+    icon: Server,
+    testId: "settings-link-executors",
+  },
+  {
+    href: "/settings/licenses",
+    label: "Licenses & SBOM",
+    description:
+      "Audit third-party license compatibility and download a CycloneDX SBOM.",
+    icon: ScrollText,
+    testId: "settings-link-licenses",
+  },
+];
 
 const THEME_OPTIONS: Array<{
   value: ThemeChoice;
@@ -118,6 +156,55 @@ export default function SettingsPage() {
             Local preferences for the Plato dashboard. Stored in your browser only.
           </p>
         </header>
+
+        {/* Configuration sections — server-backed, not browser-local. */}
+        <section
+          className="surface-linear-card p-5"
+          data-testid="settings-section-links"
+        >
+          <SectionTitle
+            title="Configuration"
+            subtitle="Server-side settings that affect every project in this workspace."
+          />
+          <ul className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+            {SETTINGS_SECTIONS.map((section) => {
+              const Icon = section.icon;
+              return (
+                <li key={section.href}>
+                  <Link
+                    href={section.href}
+                    data-testid={section.testId}
+                    className={cn(
+                      "group flex h-full flex-col gap-1.5 rounded-[10px] border p-3 text-left transition-colors",
+                      "border-(--color-border-card) bg-(--color-bg-card) hover:border-(--color-brand-indigo) hover:bg-(--color-ghost-bg-hover)",
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <Icon
+                        size={16}
+                        strokeWidth={1.75}
+                        className="text-(--color-text-tertiary) group-hover:text-(--color-brand-hover)"
+                      />
+                      <ChevronRight
+                        size={14}
+                        strokeWidth={1.75}
+                        className="text-(--color-text-quaternary-spec) group-hover:text-(--color-brand-hover)"
+                      />
+                    </div>
+                    <div>
+                      <div className="text-[13px] font-[510] text-(--color-text-primary)">
+                        {section.label}
+                      </div>
+                      <div className="mt-0.5 text-[12px] text-(--color-text-tertiary)">
+                        {section.description}
+                      </div>
+                    </div>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
 
         {/* Appearance */}
         <section className="surface-linear-card p-5">

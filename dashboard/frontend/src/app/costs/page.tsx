@@ -300,6 +300,9 @@ export default function CostsPage() {
             <form className="flex flex-wrap items-center gap-2 text-[13px]" onSubmit={onAddCap}>
               <span className="text-(--color-text-tertiary-spec)">Cap each project at</span>
               <select
+                id="cap-project-select"
+                name="cap-project"
+                aria-label="Project to cap"
                 value={capProjectId}
                 onChange={(e) => setCapProjectId(e.target.value)}
                 className="rounded-[6px] border border-[#262628] bg-[#141415] px-2 py-1.5 text-[12px] text-(--color-text-primary) focus:border-(--color-brand-indigo) focus:outline-none"
@@ -310,6 +313,9 @@ export default function CostsPage() {
                 ))}
               </select>
               <input
+                id="cap-value-input"
+                name="cap-value"
+                aria-label="Cap value in USD"
                 type="number"
                 min="0"
                 step="0.01"
