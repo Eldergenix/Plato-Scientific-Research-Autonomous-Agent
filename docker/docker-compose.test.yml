@@ -1,0 +1,24 @@
+# Test-only Postgres for the langgraph-checkpoint-postgres integration suite.
+#
+# Local use:
+#   docker compose -f docker/docker-compose.test.yml up -d postgres
+#   export PLATO_POSTGRES_DSN=postgresql://postgres:plato@localhost:5432/postgres
+#   pytest tests/integration/test_postgres_checkpointer.py -v
+#   docker compose -f docker/docker-compose.test.yml down -v
+#
+# CI uses the equivalent `services.postgres` block in
+# `.github/workflows/integration-postgres.yml` instead of this file; both
+# point at postgres:16 with the same credentials so behaviour matches.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: plato
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
