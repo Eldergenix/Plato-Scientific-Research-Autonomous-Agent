@@ -7,6 +7,7 @@ import {
   type ReviewsPayload,
 } from "@/components/review/critique-panel";
 import { RevisionCounter } from "@/components/review/revision-counter";
+import { RunDetailNav } from "@/components/manifest/run-detail-nav";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:7878/api/v1";
@@ -95,6 +96,8 @@ export default function RunReviewsPage({
             {runId}
           </p>
         </header>
+
+        <RunDetailNav runId={runId} />
 
         <ReviewsSection state={reviews} />
       </div>

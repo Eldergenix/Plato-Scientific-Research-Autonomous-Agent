@@ -7,6 +7,7 @@ import {
   ClarifyingQuestionsModal,
   type ClarificationsPayload,
 } from "@/components/clarifier/clarifying-questions-modal";
+import { RunDetailNav } from "@/components/manifest/run-detail-nav";
 import { cn } from "@/lib/utils";
 
 /* -----------------------------------------------------------------------------
@@ -147,6 +148,7 @@ export default function ClarifyPage() {
       )}
     >
       {headerCard}
+      <RunDetailNav runId={runId} />
       {content}
     </main>
   );
