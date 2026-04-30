@@ -22,6 +22,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from . import ADAPTER_REGISTRY, SourceAdapter, get_adapter
+from .citation_graph import ExpansionDirection, expand_citations
 from .dedup import dedup_sources
 from ..state.models import Source
 
@@ -30,7 +31,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["retrieve"]
+__all__ = ["retrieve", "retrieve_with_expansion"]
 
 
 def _resolve_adapter_names(
@@ -110,3 +111,36 @@ async def retrieve(
         flat.extend(result)
 
     return dedup_sources(flat)[:limit]
+
+
+async def retrieve_with_expansion(
+    query: str,
+    *,
+    limit: int = 20,
+    profile: "DomainProfile | None" = None,
+    adapter_names: list[str] | None = None,
+    expand: bool = False,
+    expansion_direction: ExpansionDirection = "referenced_works",
+    expansion_limit_per_seed: int = 25,
+) -> list[Source]:
+    """Run :func:`retrieve` and optionally fold in a 1-hop citation-graph expansion.
+
+    With ``expand=False`` (the default) this is a thin wrapper around
+    :func:`retrieve`. With ``expand=True``, each seed Source carrying an
+    ``openalex_id`` is walked one hop in the requested direction
+    (``referenced_works`` or ``cited_by``) via
+    :func:`plato.retrieval.citation_graph.expand_citations`, and the
+    deduped union of seeds plus expansion is returned.
+    """
+    seeds = await retrieve(
+        query, limit, profile=profile, adapter_names=adapter_names
+    )
+    if not expand or not seeds:
+        return seeds
+
+    expanded = await expand_citations(
+        seeds,
+        direction=expansion_direction,
+        limit_per_seed=expansion_limit_per_seed,
+    )
+    return dedup_sources(seeds + expanded)
