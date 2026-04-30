@@ -1,0 +1,8 @@
+{
+  "id": "protein_structure_alphafold",
+  "data_description": "Validate AlphaFold2 predictions against experimental cryo-EM structures for a small protein family. For each target, align the predicted model to the deposited density map, compute backbone RMSD and per-residue local distance difference test scores, and analyze how the AlphaFold pLDDT confidence correlates with the per-residue agreement against the cryo-EM reconstruction.",
+  "expected_idea_keywords": ["AlphaFold", "cryo-EM", "RMSD", "confidence", "pLDDT", "protein structure"],
+  "expected_method_signals": ["structural alignment", "lDDT", "B-factor", "density map", "backbone"],
+  "gold_sources": ["10.1038/s41586-021-03819-2", "10.1038/s41592-021-01098-3"],
+  "domain": "biology"
+}
