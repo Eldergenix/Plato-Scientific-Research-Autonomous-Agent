@@ -7,11 +7,12 @@ from pathlib import Path
 from typing import AsyncIterator
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from ..auth import auth_required, extract_user_id
 from ..domain.models import (
     Capabilities,
     KeysPayload,
@@ -39,12 +40,107 @@ from .capabilities import (
 )
 
 
-def _get_store(settings: Settings = Depends(get_settings)) -> ProjectStore:
-    return ProjectStore(settings.project_root)
+def _resolve_project_root(settings: Settings, user_id: str | None) -> Path:
+    """Per-user namespace under ``~/.plato/users/<user_id>/`` when authed.
+
+    Falls back to ``settings.project_root`` (the legacy single-user path)
+    when ``user_id`` is None so single-user installs keep their existing
+    on-disk layout untouched.
+    """
+    if user_id is None:
+        return settings.project_root
+    base = settings.project_root.parent  # ~/.plato/
+    return base / "users" / user_id
+
+
+def _get_user_id(request: Request) -> str | None:
+    """Resolve the requester's user id (None in legacy single-user mode)."""
+    return extract_user_id(request)
+
+
+def _get_store(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+) -> ProjectStore:
+    user_id = _get_user_id(request)
+    if auth_required() and user_id is None:
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "code": "auth_required",
+                "message": "Missing required header 'X-Plato-User'.",
+            },
+        )
+    root = _resolve_project_root(settings, user_id)
+    return ProjectStore(root)
 
 
 def _get_keys(settings: Settings = Depends(get_settings)) -> KeyStore:
     return KeyStore(settings.keys_path)
+
+
+def _load_run_manifest_user(project_dir: Path, run_id: str) -> str | None:
+    """Read ``user_id`` from a run's manifest.json. Returns None on miss."""
+    manifest_path = project_dir / "runs" / run_id / "manifest.json"
+    if not manifest_path.exists():
+        return None
+    try:
+        with manifest_path.open() as f:
+            payload = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+    user = payload.get("user_id")
+    return user if isinstance(user, str) else None
+
+
+def _enforce_run_tenant(
+    project_dir: Path, run_id: str, requester_user_id: str | None
+) -> None:
+    """Refuse cross-tenant run access when the requester has an authed id.
+
+    Behaviour matrix:
+
+    - Legacy single-user mode (``requester_user_id`` is None and
+      ``auth_required()`` is False): no-op. Existing un-namespaced
+      installs keep working.
+    - Required-mode (``auth_required()`` is True): the manifest under
+      the requester's ``project_dir`` must exist and its ``user_id``
+      must match. Anything else is a tenant boundary violation and we
+      raise 403 — the in-memory run registry is shared across tenants,
+      so we cannot let a user fetch a run whose manifest doesn't live
+      under their own namespace.
+    - Not-required-mode but header present: best-effort match. If no
+      manifest is on disk yet (very early in a run's life) we fall
+      through; if it exists and disagrees, 404 to avoid leaking the
+      run's existence to an unauthenticated probe.
+    """
+    from ..auth import auth_required as _auth_required
+
+    if requester_user_id is None and not _auth_required():
+        return
+
+    manifest_user = _load_run_manifest_user(project_dir, run_id)
+    required = _auth_required()
+
+    if manifest_user is None:
+        if required:
+            # No manifest under the requester's project_dir means either
+            # the run doesn't belong to them, or it was started before
+            # multi-tenant mode landed. Either way, fail closed.
+            raise HTTPException(
+                status_code=403,
+                detail={"code": "run_forbidden"},
+            )
+        return
+
+    if manifest_user != requester_user_id:
+        status_code = 403 if required else 404
+        raise HTTPException(
+            status_code=status_code,
+            detail={
+                "code": "run_forbidden" if status_code == 403 else "run_not_found"
+            },
+        )
 
 
 @asynccontextmanager
@@ -140,21 +236,39 @@ def create_app() -> FastAPI:
         return await start_run(pid, stage, request.model_dump(), bus)
 
     @app.get("/api/v1/projects/{pid}/runs/{run_id}", response_model=Run)
-    def get_run_status(pid: str, run_id: str) -> Run:  # noqa: ARG001
+    def get_run_status(
+        pid: str,
+        run_id: str,
+        request: Request,
+        store: ProjectStore = Depends(_get_store),
+    ) -> Run:
+        _enforce_run_tenant(store.project_dir(pid), run_id, _get_user_id(request))
         run = get_run(run_id)
         if run is None:
             raise HTTPException(404, detail={"code": "run_not_found"})
         return run
 
     @app.post("/api/v1/projects/{pid}/runs/{run_id}/cancel")
-    async def cancel(pid: str, run_id: str) -> dict:  # noqa: ARG001
+    async def cancel(
+        pid: str,
+        run_id: str,
+        request: Request,
+        store: ProjectStore = Depends(_get_store),
+    ) -> dict:
+        _enforce_run_tenant(store.project_dir(pid), run_id, _get_user_id(request))
         ok = await cancel_run(run_id)
         return {"cancelled": ok}
 
     @app.get("/api/v1/projects/{pid}/runs/{run_id}/events")
     async def run_events(
-        pid: str, run_id: str, bus: EventBus = Depends(get_bus)  # noqa: ARG001
+        pid: str,
+        run_id: str,
+        request: Request,
+        bus: EventBus = Depends(get_bus),
+        store: ProjectStore = Depends(_get_store),
     ) -> StreamingResponse:
+        _enforce_run_tenant(store.project_dir(pid), run_id, _get_user_id(request))
+
         async def generator() -> AsyncIterator[bytes]:
             yield b": connected\n\n"
             async for evt in bus.subscribe(f"run:{run_id}"):

@@ -22,6 +22,7 @@ from .langgraph_agents.agents_graph import build_lg_graph
 from .domain import DomainProfile, get_domain
 from .state import ManifestRecorder
 from .observability import callbacks_for
+from .executor import get_executor
 from cmbagent import preprocess_task
 
 class Plato:
@@ -44,6 +45,7 @@ class Plato:
                  project_dir: str | None = None,
                  clear_project_dir: bool = False,
                  domain: str | DomainProfile = "astro",
+                 user_id: str | None = None,
                  ):
 
         if project_dir is None:
@@ -55,6 +57,7 @@ class Plato:
             research = Research()  # Initialize with default values
         self.research = research
         self.clear_project_dir = clear_project_dir
+        self.user_id = user_id
         self.domain: DomainProfile = (
             domain if isinstance(domain, DomainProfile) else get_domain(domain)
         )
@@ -99,6 +102,7 @@ class Plato:
             project_dir=self.project_dir,
             workflow=workflow,
             domain=self.domain.name,
+            user_id=self.user_id,
         )
         if fields:
             recorder.update(**fields)
@@ -759,9 +763,10 @@ class Plato:
                     planner_model: LLM | str = models["gpt-4o"],
                     plan_reviewer_model: LLM | str = models["o3-mini"],
                     max_n_attempts: int = 10,
-                    max_n_steps: int = 6,   
+                    max_n_steps: int = 6,
                     orchestration_model: LLM | str = models["gpt-4.1"],
                     formatter_model: LLM | str = models["o3-mini"],
+                    executor: str | None = None,
                     ) -> None:
         """
         Compute the results making use of the methods, idea and data description.
@@ -778,6 +783,8 @@ class Plato:
             formatter_model: the LLM model to be used for the formatting of the responses of the agents.
             max_n_attempts: the maximum number of attempts to execute code within one step if the code execution fails.
             max_n_steps: the maximum number of steps in the workflow.
+            executor: name of the registered :class:`~plato.executor.Executor` to dispatch to.
+                Defaults to the current ``DomainProfile.executor`` (``"cmbagent"`` for astro).
         """
 
         # Get LLM instances
@@ -800,27 +807,32 @@ class Plato:
             with open(os.path.join(self.project_dir, INPUT_FILES, METHOD_FILE), 'r') as f:
                 self.research.methodology = f.read()
 
-        experiment = Experiment(research_idea=self.research.idea,
-                                methodology=self.research.methodology,
-                                involved_agents=involved_agents,
-                                engineer_model=engineer_model.name,
-                                researcher_model=researcher_model.name,
-                                planner_model=planner_model.name,
-                                plan_reviewer_model=plan_reviewer_model.name,
-                                work_dir = self.project_dir,
-                                keys=self.keys,
-                                restart_at_step = restart_at_step,
-                                hardware_constraints = hardware_constraints,
-                                max_n_attempts=max_n_attempts,
-                                max_n_steps=max_n_steps,
-                                orchestration_model = orchestration_model.name,
-                                formatter_model = formatter_model.name)
-        
-        experiment.run_experiment(self.research.data_description)
-        self.research.results = experiment.results
-        self.research.plot_paths = experiment.plot_paths
+        executor_name = executor if executor is not None else self.domain.executor
+        executor_obj = get_executor(executor_name)
 
-        # move plots to the plots folder in input_files/plots 
+        result = asyncio.run(executor_obj.run(
+            research_idea=self.research.idea,
+            methodology=self.research.methodology,
+            data_description=self.research.data_description,
+            project_dir=self.project_dir,
+            keys=self.keys,
+            involved_agents=involved_agents,
+            engineer_model=engineer_model.name,
+            researcher_model=researcher_model.name,
+            planner_model=planner_model.name,
+            plan_reviewer_model=plan_reviewer_model.name,
+            restart_at_step=restart_at_step,
+            hardware_constraints=hardware_constraints,
+            max_n_attempts=max_n_attempts,
+            max_n_steps=max_n_steps,
+            orchestration_model=orchestration_model.name,
+            formatter_model=formatter_model.name,
+        ))
+
+        self.research.results = result.results
+        self.research.plot_paths = list(result.plot_paths)
+
+        # move plots to the plots folder in input_files/plots
         ## Clearing the folder
         if os.path.exists(self.plots_folder):
             for file in os.listdir(self.plots_folder):
