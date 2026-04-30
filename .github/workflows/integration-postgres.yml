@@ -1,0 +1,60 @@
+name: integration-postgres
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 04:30 UTC nightly, before the eval-nightly job at 06:00 UTC.
+    - cron: "30 4 * * *"
+
+jobs:
+  postgres-checkpointer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: plato
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      PLATO_POSTGRES_DSN: postgresql://postgres:plato@localhost:5432/postgres
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Plato
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Install postgres checkpointer extra
+        # Kept out of pyproject.toml on purpose: this dependency is only
+        # needed by multi-tenant deployments and this nightly job. See
+        # docs/adr/0002-postgres-checkpointer.md.
+        run: |
+          pip install pytest langgraph-checkpoint-postgres psycopg[binary]
+
+      - name: Run postgres checkpointer integration tests
+        run: |
+          pytest tests/integration/test_postgres_checkpointer.py -v --tb=short \
+            --junit-xml=pytest-postgres.xml
+
+      - name: Upload pytest report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-postgres
+          path: pytest-postgres.xml
+          if-no-files-found: ignore
