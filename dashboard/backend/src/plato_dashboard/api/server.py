@@ -40,6 +40,21 @@ from .capabilities import (
 )
 from .manifests import router as manifests_router
 
+# Frontend pass routers — see streams F1, F2, F4, F6, F7, F8, F9, F10, F11+F12.
+# (F5's citation_graph_view router is auto-mounted by api/__init__.py.)
+from .auth_endpoints import router as auth_router
+from .clarifications import router as clarifications_router
+from .critiques import router as critiques_router
+from .domains import router as domains_router
+from .executor_preferences import router as executor_preferences_router
+from .executors import router as executors_router
+from .license_audit_view import router as license_audit_router
+from .loop_control import router as loop_router
+from .novelty import router as novelty_router
+from .research_signals import router as research_signals_router
+from .retrieval_summary import router as retrieval_summary_router
+from .user_preferences import router as user_preferences_router
+
 
 def _resolve_project_root(settings: Settings, user_id: str | None) -> Path:
     """Per-user namespace under ``~/.plato/users/<user_id>/`` when authed.
@@ -166,6 +181,22 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(manifests_router, prefix="/api/v1", tags=["manifests"])
+
+    # Frontend-pass routers. ``loop_router`` already declares its own
+    # ``/api/v1/loop`` prefix so we mount it at root; the others are
+    # prefix-less and get ``/api/v1`` here.
+    app.include_router(auth_router, prefix="/api/v1", tags=["auth"])
+    app.include_router(clarifications_router, prefix="/api/v1", tags=["clarifications"])
+    app.include_router(critiques_router, prefix="/api/v1", tags=["critiques"])
+    app.include_router(domains_router, prefix="/api/v1", tags=["domains"])
+    app.include_router(executors_router, prefix="/api/v1", tags=["executors"])
+    app.include_router(executor_preferences_router, prefix="/api/v1", tags=["preferences"])
+    app.include_router(license_audit_router, prefix="/api/v1", tags=["licenses"])
+    app.include_router(loop_router)  # already prefixed with /api/v1/loop
+    app.include_router(novelty_router, prefix="/api/v1", tags=["novelty"])
+    app.include_router(research_signals_router, prefix="/api/v1", tags=["research_signals"])
+    app.include_router(retrieval_summary_router, prefix="/api/v1", tags=["retrieval"])
+    app.include_router(user_preferences_router, prefix="/api/v1", tags=["preferences"])
 
     @app.get("/api/v1/health")
     def health() -> dict:

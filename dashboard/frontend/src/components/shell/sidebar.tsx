@@ -27,6 +27,7 @@ import {
   Moon,
   Sun,
   Monitor,
+  Repeat,
   Settings as SettingsIcon,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -59,6 +60,7 @@ const WORKSPACE_LINKS: NavLink[] = [
   { href: "/models", label: "Models", icon: Folder },
   { href: "/costs", label: "Costs", icon: Eye },
   { href: "/activity", label: "Activity", icon: Activity },
+  { href: "/loop", label: "Autonomous loop", icon: Repeat },
   { href: "/keys", label: "Keys", icon: KeyRound },
 ];
 
