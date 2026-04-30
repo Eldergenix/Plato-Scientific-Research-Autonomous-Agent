@@ -1,0 +1,8 @@
+{
+  "id": "dark_matter_substructure",
+  "data_description": "Detect dark-matter subhalo substructure in mock strong-lensing observations of galaxy-galaxy systems. Inject CDM-like and warm-dark-matter subhalo populations into smooth macro-models, fit the lensing residuals, and report the posterior on subhalo mass and projected position. Compare the inferred subhalo mass function against the macro-only null.",
+  "expected_idea_keywords": ["subhalo", "dark matter", "strong lensing", "substructure", "warm dark matter"],
+  "expected_method_signals": ["lensing residuals", "posterior", "simulation", "Bayes factor", "mass function"],
+  "gold_sources": ["10.1093/mnras/stu943", "10.3847/1538-4357/ab2e08"],
+  "domain": "astro"
+}
