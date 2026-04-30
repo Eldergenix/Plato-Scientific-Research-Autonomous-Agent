@@ -38,6 +38,7 @@ from .capabilities import (
     require_stage_allowed,
     require_under_budget,
 )
+from .manifests import router as manifests_router
 
 
 def _resolve_project_root(settings: Settings, user_id: str | None) -> Path:
@@ -163,6 +164,8 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    app.include_router(manifests_router, prefix="/api/v1", tags=["manifests"])
 
     @app.get("/api/v1/health")
     def health() -> dict:
