@@ -70,9 +70,14 @@ def test_idea_graph_idea_loop_edge(idea_graph):
 
 
 def test_idea_graph_terminal_edges(idea_graph):
-    """Sanity: methods/literature_summary/referee all terminate the graph."""
+    """Sanity: methods/gap_detector/referee all terminate the graph.
+
+    ``literature_summary`` no longer terminates directly — Phase 5 chains
+    it into ``counter_evidence_search -> gap_detector -> __end__`` so
+    ``gap_detector`` is the new literature-track terminal.
+    """
     edges = _builder_edges(idea_graph)
-    for terminal in ("methods", "literature_summary", "referee"):
+    for terminal in ("methods", "gap_detector", "referee"):
         assert (terminal, "__end__") in edges, (
             f"expected {terminal} -> __end__, got {sorted(edges)}"
         )
@@ -83,3 +88,17 @@ def test_idea_graph_semantic_scholar_to_novelty(idea_graph):
     assert ("semantic_scholar", "novelty") in edges, (
         f"missing edge semantic_scholar -> novelty, got {sorted(edges)}"
     )
+
+
+def test_idea_graph_phase5_literature_chain(idea_graph):
+    """literature_summary -> counter_evidence_search -> gap_detector -> END."""
+    edges = _builder_edges(idea_graph)
+    chain = [
+        ("literature_summary", "counter_evidence_search"),
+        ("counter_evidence_search", "gap_detector"),
+        ("gap_detector", "__end__"),
+    ]
+    for edge in chain:
+        assert edge in edges, (
+            f"missing Phase 5 literature-track edge {edge}, got {sorted(edges)}"
+        )

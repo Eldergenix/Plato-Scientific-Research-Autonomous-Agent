@@ -208,6 +208,92 @@ In <REVIEW>, put your report.
     return [HumanMessage(content=prompt)]
 
 
+def clarifier_prompt(state):
+    """
+    Prompt for the research-question clarifier (Workflow gap #1).
+
+    Asks the model to generate ~3 targeted clarifying questions to disambiguate
+    the user's research scope before idea generation begins. Returns a JSON
+    array of strings.
+    """
+
+    return [HumanMessage(content=f"""You are a research methodologist helping to scope a scientific project before any idea generation begins. Read the data description below and produce up to 3 short, targeted clarifying questions a user must answer to disambiguate the scope (e.g. dataset choice, target outcome, evaluation, time range, methodology constraints).
+
+Guidelines:
+- Each question must be self-contained and answerable in one sentence.
+- Skip generic questions a senior researcher would never ask.
+- If the description is already unambiguous, return an empty array.
+- Return ONLY a JSON array of strings inside a ```json fenced block. No prose outside the block.
+
+Data description:
+{state['data_description']}
+
+Respond in exactly this format:
+
+```json
+["<question 1>", "<question 2>", "<question 3>"]
+```
+""")]
+
+
+def counter_evidence_query_prompt(state, seed_query: str, variant: str):
+    """
+    Optional LLM-enrichment prompt for counter-evidence search.
+
+    The counter-evidence node currently builds its query variants
+    deterministically (appending phrases like "fail to replicate") and does
+    not call an LLM, but ships this prompt for future enrichment so that
+    callers can swap in an LLM-generated paraphrase without touching the
+    node signature.
+    """
+
+    return [HumanMessage(content=f"""You are helping search for counter-evidence to a research idea. Rewrite the seed query so that it preferentially surfaces studies that contradict or fail to replicate the idea. Use the provided variant phrase as a steering hint (e.g. "fail to replicate", "null result", "limitations", "do not support", "contradicts").
+
+Seed query:
+{seed_query}
+
+Variant phrase:
+{variant}
+
+Idea:
+{state['idea']['idea']}
+
+Respond with ONLY the rewritten query as a single line of plain text.
+""")]
+
+
+def gap_summary_prompt(state, gaps: list[dict]):
+    """
+    Optional LLM-enrichment prompt for the research-gap detector.
+
+    The gap detector itself is pure analysis — it returns structured findings
+    without calling an LLM. This prompt is provided for future use where a
+    caller wants a human-readable summary of the detected gaps.
+    """
+
+    rendered = "\n".join(
+        f"- ({g.get('kind')}) {g.get('description')} [severity={g.get('severity')}]"
+        for g in gaps
+    ) or "(no gaps detected)"
+
+    return [HumanMessage(content=f"""You are helping a researcher prioritise the literature review. Below is a structured list of research gaps detected from the retrieved corpus (contradiction clusters, coverage holes, methodology homogeneity). Write a 1-paragraph summary that ranks them by severity and recommends which to address first.
+
+Gaps:
+{rendered}
+
+Idea:
+{state['idea']['idea']}
+
+Respond in exactly this format:
+
+\\begin{{GAP_SUMMARY}}
+<SUMMARY>
+\\end{{GAP_SUMMARY}}
+
+In <SUMMARY>, put your prioritised summary.
+""")]
+
+
 def claim_extraction_prompt(state, source_text: str):
     """
     Prompt for extracting atomic factual claims from a source abstract.
