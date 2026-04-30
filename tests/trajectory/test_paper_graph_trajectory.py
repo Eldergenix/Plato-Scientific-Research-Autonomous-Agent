@@ -4,6 +4,19 @@ These tests intentionally only assert on the *stable* node set that exists
 on main today. Streams adding new nodes (e.g. citation_validator_node,
 evidence_matrix_node) are expected to keep the existing nodes intact, so
 ``set(stable) <= set(g.get_graph().nodes)`` should remain a safe invariant.
+
+Edge assertions deliberately use ``compiled.builder.edges`` rather than
+``compiled.get_graph().edges`` for two reasons:
+
+1. The compiled-graph view drops conditional edges (``add_conditional_edges``)
+   and any subgraph reachable only through them — that makes the
+   ``redraft_node → reviewer_panel_fanout`` revision-loop edge invisible
+   to the public API, so we cannot assert on it without going lower.
+2. ``builder.edges`` is the canonical raw set of direct edges added via
+   ``builder.add_edge``; it is stable across LangGraph 0.3.x and we
+   sanity-check its existence with ``_builder_edges()`` so a future
+   LangGraph release that removes it produces a clear test error rather
+   than a confusing ``AttributeError`` mid-assertion.
 """
 from __future__ import annotations
 
@@ -46,6 +59,23 @@ def paper_graph():
     return build_graph(checkpointer=MemorySaver())
 
 
+def _builder_edges(graph) -> set[tuple[str, str]]:
+    """Return the raw set of direct edges declared on the compiled graph.
+
+    LangGraph's compiled graph stores its source ``StateGraph`` builder
+    as ``.builder``. We touch that attribute via this helper so a single
+    AttributeError surfaces a clear "LangGraph internal API changed"
+    failure instead of seven scattered AttributeErrors across asserts.
+    """
+    builder = getattr(graph, "builder", None)
+    if builder is None:
+        pytest.fail(
+            "compiled paper graph has no `.builder` — LangGraph internal "
+            "API changed. Update tests/trajectory to use the new edge view."
+        )
+    return set(builder.edges)
+
+
 def test_paper_graph_compiles(paper_graph):
     nodes = paper_graph.get_graph().nodes
     # 17 stable + __start__ + __end__ at minimum
@@ -61,7 +91,7 @@ def test_paper_graph_static_node_set(paper_graph):
 def test_paper_graph_keywords_before_abstract(paper_graph):
     # The compiled graph view drops unreachable subgraphs; the builder's
     # raw edge set is the source of truth for declared structure.
-    edges = paper_graph.builder.edges
+    edges = _builder_edges(paper_graph)
     assert ("keywords_node", "abstract_node") in edges, (
         f"expected direct edge keywords_node -> abstract_node, got {sorted(edges)}"
     )
@@ -72,7 +102,7 @@ def test_paper_graph_reviewer_panel_present(paper_graph):
     missing = REVIEWER_NODES - nodes
     assert not missing, f"reviewer nodes missing: {sorted(missing)}"
 
-    edges = paper_graph.builder.edges
+    edges = _builder_edges(paper_graph)
     for reviewer in REVIEWER_NODES:
         assert (reviewer, "critique_aggregator") in edges, (
             f"reviewer {reviewer!r} does not feed critique_aggregator"
@@ -83,7 +113,7 @@ def test_paper_graph_reviewer_panel_present(paper_graph):
 
 
 def test_paper_graph_revision_loop_edge(paper_graph):
-    edges = paper_graph.builder.edges
+    edges = _builder_edges(paper_graph)
     assert ("redraft_node", "reviewer_panel_fanout") in edges, (
         f"missing revision loop-back edge redraft_node -> reviewer_panel_fanout, "
         f"got {sorted(edges)}"
@@ -92,7 +122,7 @@ def test_paper_graph_revision_loop_edge(paper_graph):
 
 def test_paper_graph_pipeline_chain(paper_graph):
     """Sanity: drafting nodes form the expected linear chain."""
-    edges = paper_graph.builder.edges
+    edges = _builder_edges(paper_graph)
     chain = [
         ("preprocess_node", "keywords_node"),
         ("keywords_node", "abstract_node"),

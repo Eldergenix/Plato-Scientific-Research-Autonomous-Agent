@@ -28,7 +28,7 @@ import json
 import re
 import time
 import uuid
-from typing import Any
+from typing import Any, Optional
 
 from langchain_core.runnables import RunnableConfig
 
@@ -123,7 +123,11 @@ def _iter_inputs(state: GraphState) -> list[Source | str]:
 # Node
 # ---------------------------------------------------------------------------
 
-async def claim_extractor(state: GraphState, config: RunnableConfig | None = None):
+async def claim_extractor(state: GraphState, config: Optional[RunnableConfig] = None):
+    # Note: ``Optional[RunnableConfig]`` (not ``RunnableConfig | None``)
+    # because LangGraph's annotation introspection only whitelists the
+    # ``Optional[...]`` and bare-``RunnableConfig`` forms; the PEP-604
+    # union form trips a UserWarning on every ``add_node`` call.
     """LangGraph node: extract claims from each source/abstract in ``state``.
 
     Returns a partial state update with the appended ``claims`` list. The

@@ -134,12 +134,14 @@ class EvalRunner:
         except Exception:
             # Aggregate whatever manifests/artifacts the run did write
             # before crashing, then mark the run as a tool error.
+            # ``tool_call_error_rate=1.0`` is the sole failure signal;
+            # we deliberately do *not* mutate ``unsupported_claim_rate``
+            # here — that field's "0.0" is a legitimate value for a run
+            # that simply hasn't drafted any claims yet (success or
+            # failure), and conflating "I crashed" with "I have nothing
+            # to support" double-counts the failure.
             metrics = self._aggregate_metrics(project_dir)
             metrics.tool_call_error_rate = 1.0
-            if metrics.unsupported_claim_rate == 0.0:
-                # Vacuously zero: no claims means no support. A crashing
-                # run shouldn't look perfect — flag it.
-                metrics.unsupported_claim_rate = 1.0
             return metrics
 
         return self._aggregate_metrics(project_dir)

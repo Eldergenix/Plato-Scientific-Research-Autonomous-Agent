@@ -1,8 +1,7 @@
-import asyncio
 import logging
 import time
+from typing import Optional
 
-import requests
 from langchain_core.runnables import RunnableConfig
 from tqdm import tqdm
 
@@ -12,8 +11,9 @@ from ..paper_agents.tools import extract_latex_block, LLM_call_stream, json_pars
 from ..domain import DomainProfile, get_domain
 from ..retrieval.orchestrator import retrieve
 # Importing the source modules has the side effect of registering each
-# adapter (arxiv, openalex, crossref, ads) in ADAPTER_REGISTRY.
-from ..retrieval.sources import arxiv, openalex, crossref, ads  # noqa: F401
+# adapter (arxiv, openalex, crossref, ads, pubmed, semantic_scholar) in
+# ADAPTER_REGISTRY.
+from ..retrieval.sources import arxiv, openalex, crossref, ads, pubmed, semantic_scholar as _ss_adapter  # noqa: F401
 from ..safety import detect_injection_signals, wrap_external
 
 logger = logging.getLogger(__name__)
@@ -96,7 +96,13 @@ def _resolve_profile(state: GraphState) -> DomainProfile:
 # This node fans the query out to every retrieval adapter in the active
 # domain profile (arxiv, openalex, ads, ... — see plato.domain) instead of
 # the legacy single-source Semantic Scholar call. Phase 2 (R4) wiring.
-def semantic_scholar(state: GraphState, config: RunnableConfig):
+#
+# Async by design: ``retrieve`` is async (it awaits adapter HTTP calls in
+# parallel via asyncio.gather). Wrapping with ``asyncio.run()`` from inside
+# a sync wrapper would crash on any caller that already has a running loop
+# (notebooks, ``graph.ainvoke()``, dashboard worker threads with a loop).
+# LangGraph natively supports async nodes, so we just use ``await``.
+async def semantic_scholar(state: GraphState, config: Optional[RunnableConfig] = None):
     """
     Search the configured retrieval adapters for the current literature query
     and return wrapped, sanitized paper info to the rest of the literature
@@ -107,9 +113,8 @@ def semantic_scholar(state: GraphState, config: RunnableConfig):
     query = state['literature']['query']
 
     # Pull from every adapter listed by the active DomainProfile, dedup,
-    # and cap at 20. asyncio.run is safe here because the literature graph
-    # is invoked synchronously from Plato.check_idea_semantic_scholar.
-    sources = asyncio.run(retrieve(query, limit=20, profile=profile))
+    # and cap at 20.
+    sources = await retrieve(query, limit=20, profile=profile)
 
     total_papers = len(sources)
     papers_str: list[str] = []
@@ -176,51 +181,6 @@ def semantic_scholar(state: GraphState, config: RunnableConfig):
                            'papers': papers_str,
                            "num_papers": total_papers_found,
                            "sources": list(sources)}}
-
-
-# DEPRECATED: prefer plato.retrieval.orchestrator.retrieve. Retained for
-# backward compatibility with any callers outside the LangGraph nodes.
-def SSAPI(query, keys, limit=10) -> list:
-    """
-    Search for papers similar to the given query using Semantic Scholar API.
-
-    Args:
-        query (str): The search query (e.g., keywords or paper title).
-        keys (dict): a python dictionary containing the session keys, including the semantic scholar one
-        limit (int): Number of papers to retrieve (default is 10).
-
-    Returns:
-        list: A list of dictionaries containing paper details.
-    """
-
-    # Base URL for Semantic Scholar API
-    BASE_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
-
-    params = {"query": query,
-              "limit": limit,
-              "fields": "title,authors,year,abstract,url,paperId,externalIds,openAccessPdf"}
-
-    # For each query, call Semantic Scholar a maximum of 200 times.
-    # When no Semantic Scholar key is present, the system may return an error
-    for _ in tqdm(range(200), desc="Calling Semantic Scholar", unit="try"):
-
-        # Conditionally include headers if API_KEY is available
-        if keys.SEMANTIC_SCHOLAR:
-            response = requests.get(BASE_URL,
-                                    headers={"x-api-key": keys.SEMANTIC_SCHOLAR},
-                                    params=params)
-        else:
-            response = requests.get(BASE_URL, params=params)
-
-        if response.status_code==200:
-            return response.json()
-        else:
-            time.sleep(0.5) #wait for 1/2 second before retrying
-
-    else:
-        print(f"Error: {response.status_code}, {response.text}")
-        return []
-
 
 
 def literature_summary(state: GraphState, config: RunnableConfig):
