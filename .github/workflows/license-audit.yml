@@ -1,0 +1,77 @@
+name: license-audit
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    # Nightly at 04:00 UTC, comfortably before the eval-nightly job.
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+jobs:
+  license-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-license-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-license-
+            ${{ runner.os }}-pip-
+
+      - name: Install Plato (with obs extras, fallback to base)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[obs]" || pip install -e .
+
+      - name: Install audit tooling
+        run: |
+          pip install cyclonedx-bom
+
+      - name: Run license audit (JSON)
+        run: |
+          python scripts/license_audit.py --format=json > license-audit.json
+
+      - name: Run license audit (Markdown)
+        run: |
+          python scripts/license_audit.py --format=md > license-audit.md
+
+      - name: Run license audit (CSV)
+        run: |
+          python scripts/license_audit.py --format=csv > license-audit.csv
+
+      - name: Upload license-audit artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: license-audit
+          path: |
+            license-audit.json
+            license-audit.md
+            license-audit.csv
+          if-no-files-found: error
+
+      - name: Generate CycloneDX SBOM
+        run: |
+          python scripts/generate_sbom.py --output sbom.json
+
+      - name: Upload SBOM artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.json
+          if-no-files-found: error
