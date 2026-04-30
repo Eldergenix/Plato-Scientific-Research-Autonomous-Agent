@@ -104,7 +104,10 @@ def _two_step_responses() -> list[httpx.Response]:
 @pytest.mark.asyncio
 async def test_search_maps_payload_to_source(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("NCBI_API_KEY", raising=False)
-    adapter = PubMedAdapter()
+    # Default ``fetch_abstracts=False`` for tests that don't assert on
+    # abstracts — keeps mocks focused on esearch + esummary. The
+    # efetch path has its own dedicated test below.
+    adapter = PubMedAdapter(fetch_abstracts=False)
 
     captured_urls: list[str] = []
 
@@ -161,7 +164,10 @@ async def test_search_doi_falls_back_to_articleids(
 ) -> None:
     """If elocationid lacks a DOI, the adapter must scan articleids."""
     monkeypatch.delenv("NCBI_API_KEY", raising=False)
-    adapter = PubMedAdapter()
+    # Default ``fetch_abstracts=False`` for tests that don't assert on
+    # abstracts — keeps mocks focused on esearch + esummary. The
+    # efetch path has its own dedicated test below.
+    adapter = PubMedAdapter(fetch_abstracts=False)
 
     esearch = {"esearchresult": {"idlist": ["111"]}}
     esummary = {
@@ -204,7 +210,10 @@ async def test_search_empty_idlist_skips_esummary(
 ) -> None:
     """When esearch returns no PMIDs, no esummary request should be issued."""
     monkeypatch.delenv("NCBI_API_KEY", raising=False)
-    adapter = PubMedAdapter()
+    # Default ``fetch_abstracts=False`` for tests that don't assert on
+    # abstracts — keeps mocks focused on esearch + esummary. The
+    # efetch path has its own dedicated test below.
+    adapter = PubMedAdapter(fetch_abstracts=False)
 
     call_count = 0
 
@@ -227,7 +236,10 @@ async def test_search_skips_articles_missing_title(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("NCBI_API_KEY", raising=False)
-    adapter = PubMedAdapter()
+    # Default ``fetch_abstracts=False`` for tests that don't assert on
+    # abstracts — keeps mocks focused on esearch + esummary. The
+    # efetch path has its own dedicated test below.
+    adapter = PubMedAdapter(fetch_abstracts=False)
 
     esearch = {"esearchresult": {"idlist": ["1", "2"]}}
     esummary = {
@@ -254,7 +266,10 @@ async def test_search_skips_articles_missing_title(
 async def test_search_uses_api_key_when_set(monkeypatch: pytest.MonkeyPatch) -> None:
     """An NCBI_API_KEY should be appended to outbound URLs."""
     monkeypatch.setenv("NCBI_API_KEY", "secret-key")
-    adapter = PubMedAdapter()
+    # Default ``fetch_abstracts=False`` for tests that don't assert on
+    # abstracts — keeps mocks focused on esearch + esummary. The
+    # efetch path has its own dedicated test below.
+    adapter = PubMedAdapter(fetch_abstracts=False)
 
     captured_urls: list[str] = []
 
@@ -336,7 +351,10 @@ def test_extract_doi_from_articleids_table(
 @pytest.mark.asyncio
 async def test_search_raises_on_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("NCBI_API_KEY", raising=False)
-    adapter = PubMedAdapter()
+    # Default ``fetch_abstracts=False`` for tests that don't assert on
+    # abstracts — keeps mocks focused on esearch + esummary. The
+    # efetch path has its own dedicated test below.
+    adapter = PubMedAdapter(fetch_abstracts=False)
 
     error_response = httpx.Response(
         500,
@@ -349,3 +367,103 @@ async def test_search_raises_on_http_error(monkeypatch: pytest.MonkeyPatch) -> N
     ):
         with pytest.raises(httpx.HTTPStatusError):
             await adapter.search("q", limit=5)
+
+
+# ---------------------------------------------------------------------------
+# efetch leg — fetches abstracts so claim_extractor has text to chew on
+# ---------------------------------------------------------------------------
+
+
+_EFETCH_XML = """<?xml version="1.0"?>
+<PubmedArticleSet>
+  <PubmedArticle>
+    <MedlineCitation>
+      <PMID>12345</PMID>
+      <Article>
+        <Abstract>
+          <AbstractText>We report a CRISPR-Cas9 edit in human embryos.</AbstractText>
+        </Abstract>
+      </Article>
+    </MedlineCitation>
+  </PubmedArticle>
+  <PubmedArticle>
+    <MedlineCitation>
+      <PMID>67890</PMID>
+      <Article>
+        <Abstract>
+          <AbstractText Label="BACKGROUND">Single-cell methods scale.</AbstractText>
+          <AbstractText Label="RESULTS">Throughput is 10x faster.</AbstractText>
+        </Abstract>
+      </Article>
+    </MedlineCitation>
+  </PubmedArticle>
+</PubmedArticleSet>"""
+
+
+@pytest.mark.asyncio
+async def test_search_populates_abstracts_via_efetch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``fetch_abstracts=True`` issues an efetch and threads abstracts onto Sources."""
+    monkeypatch.delenv("NCBI_API_KEY", raising=False)
+    adapter = PubMedAdapter(fetch_abstracts=True)
+
+    captured_urls: list[str] = []
+
+    async def fake_get(self: httpx.AsyncClient, url: str) -> httpx.Response:
+        captured_urls.append(url)
+        if "esearch.fcgi" in url:
+            return _build_mock_response(url, _ESEARCH_PAYLOAD)
+        if "esummary.fcgi" in url:
+            return _build_mock_response(url, _ESUMMARY_PAYLOAD)
+        if "efetch.fcgi" in url:
+            return httpx.Response(
+                200, text=_EFETCH_XML, request=httpx.Request("GET", url)
+            )
+        raise AssertionError(f"unexpected url: {url}")
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+
+    sources = await adapter.search("CRISPR", limit=2)
+
+    # All three legs were called in order.
+    assert len(captured_urls) == 3
+    assert "esearch.fcgi" in captured_urls[0]
+    assert "esummary.fcgi" in captured_urls[1]
+    assert "efetch.fcgi" in captured_urls[2]
+    assert "rettype=abstract" in captured_urls[2]
+    assert "id=12345,67890" in captured_urls[2]
+
+    assert len(sources) == 2
+    assert sources[0].abstract == "We report a CRISPR-Cas9 edit in human embryos."
+    # Structured-abstract Labels come through joined with the section name.
+    assert sources[1].abstract is not None
+    assert "BACKGROUND: Single-cell methods scale." in sources[1].abstract
+    assert "RESULTS: Throughput is 10x faster." in sources[1].abstract
+
+
+@pytest.mark.asyncio
+async def test_efetch_failure_is_best_effort(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A 5xx on efetch must NOT fail the whole search — abstracts go to None."""
+    monkeypatch.delenv("NCBI_API_KEY", raising=False)
+    adapter = PubMedAdapter(fetch_abstracts=True)
+
+    async def fake_get(self: httpx.AsyncClient, url: str) -> httpx.Response:
+        if "esearch.fcgi" in url:
+            return _build_mock_response(url, _ESEARCH_PAYLOAD)
+        if "esummary.fcgi" in url:
+            return _build_mock_response(url, _ESUMMARY_PAYLOAD)
+        if "efetch.fcgi" in url:
+            # Simulate transient NCBI outage.
+            return httpx.Response(503, request=httpx.Request("GET", url))
+        raise AssertionError(f"unexpected url: {url}")
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+
+    sources = await adapter.search("CRISPR", limit=2)
+
+    # Metadata is still returned; abstracts are None because efetch failed.
+    assert len(sources) == 2
+    assert all(s.abstract is None for s in sources)
+    # esummary metadata survives — title etc.
+    assert sources[0].title == "CRISPR genome editing in human embryos"

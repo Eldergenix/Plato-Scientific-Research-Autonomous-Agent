@@ -310,8 +310,11 @@ def test_eval_runner_records_failure_when_plato_raises(tmp_path: Path):
     # No manifests were written before the crash → zero tokens/cost.
     assert metrics.tokens_in == 0
     assert metrics.tokens_out == 0
-    # And vacuously-zero unsupported rate gets bumped to 1.0 on failure.
-    assert metrics.unsupported_claim_rate == 1.0
+    # ``unsupported_claim_rate`` is left at the actual ratio (0.0 when no
+    # claims were drafted) — ``tool_call_error_rate=1.0`` is the canonical
+    # failure signal. Conflating the two would double-count the failure
+    # and corrupt an otherwise-valid metric.
+    assert metrics.unsupported_claim_rate == 0.0
 
 
 def test_aggregate_metrics_reads_validation_and_evidence_artifacts(tmp_path: Path):

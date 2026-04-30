@@ -53,7 +53,8 @@ def _stub_state(tmpdir: str) -> dict:
     }
 
 
-def test_semantic_scholar_uses_orchestrator_and_wraps_abstracts():
+@pytest.mark.asyncio
+async def test_semantic_scholar_uses_orchestrator_and_wraps_abstracts():
     sources = [
         _make_source(
             "2401.0001",
@@ -76,7 +77,7 @@ def test_semantic_scholar_uses_orchestrator_and_wraps_abstracts():
         state = _stub_state(tmpdir)
 
         with patch.object(literature_mod, "retrieve", fake_retrieve):
-            out = literature_mod.semantic_scholar(state, config={})
+            out = await literature_mod.semantic_scholar(state, config={})
 
         lit = out["literature"]
         assert lit["num_papers"] == 2
@@ -108,21 +109,23 @@ def test_semantic_scholar_uses_orchestrator_and_wraps_abstracts():
         assert '<external kind="abstract">' in papers_contents
 
 
-def test_semantic_scholar_handles_empty_search():
+@pytest.mark.asyncio
+async def test_semantic_scholar_handles_empty_search():
     async def empty_search(query, limit, *, profile=None, adapter_names=None):  # noqa: ARG001
         return []
 
     with tempfile.TemporaryDirectory() as tmpdir:
         state = _stub_state(tmpdir)
         with patch.object(literature_mod, "retrieve", empty_search):
-            out = literature_mod.semantic_scholar(state, config={})
+            out = await literature_mod.semantic_scholar(state, config={})
         lit = out["literature"]
         assert lit["num_papers"] == 0
         assert lit["sources"] == []
         assert lit["papers"] == ["No papers found with the query.\n"]
 
 
-def test_semantic_scholar_skips_sources_without_abstract():
+@pytest.mark.asyncio
+async def test_semantic_scholar_skips_sources_without_abstract():
     sources = [
         _make_source("2401.X", "Has abstract", "non-empty abstract"),
         Source(
@@ -141,7 +144,7 @@ def test_semantic_scholar_skips_sources_without_abstract():
     with tempfile.TemporaryDirectory() as tmpdir:
         state = _stub_state(tmpdir)
         with patch.object(literature_mod, "retrieve", fake_search):
-            out = literature_mod.semantic_scholar(state, config={})
+            out = await literature_mod.semantic_scholar(state, config={})
         lit = out["literature"]
         # Only the source with an abstract is counted.
         assert lit["num_papers"] == 1
