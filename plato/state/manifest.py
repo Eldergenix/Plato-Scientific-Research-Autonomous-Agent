@@ -36,6 +36,7 @@ class RunManifest(BaseModel):
     domain: str = "astro"
     git_sha: str = ""
     project_sha: str = ""
+    user_id: str | None = None
     models: dict[str, str] = Field(default_factory=dict)
     prompt_hashes: dict[str, str] = Field(default_factory=dict)
     seeds: dict[str, int] = Field(default_factory=dict)
@@ -130,6 +131,7 @@ class ManifestRecorder:
         domain: str = "astro",
         run_id: str | None = None,
         repo_dir: str | os.PathLike[str] | None = None,
+        user_id: str | None = None,
     ) -> "ManifestRecorder":
         manifest = RunManifest(
             run_id=run_id or uuid.uuid4().hex[:12],
@@ -138,6 +140,7 @@ class ManifestRecorder:
             domain=domain,
             git_sha=_git_sha(repo_dir or os.getcwd()),
             project_sha=_project_sha(project_dir),
+            user_id=user_id,
         )
         return cls(project_dir=project_dir, manifest=manifest)
 
