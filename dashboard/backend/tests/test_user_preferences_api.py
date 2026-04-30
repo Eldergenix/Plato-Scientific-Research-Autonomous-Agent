@@ -14,7 +14,7 @@ from plato_dashboard.api.user_preferences import router as prefs_router
 
 def _client() -> TestClient:
     app = FastAPI()
-    app.include_router(prefs_router)
+    app.include_router(prefs_router, prefix="/api/v1")
     return TestClient(app)
 
 

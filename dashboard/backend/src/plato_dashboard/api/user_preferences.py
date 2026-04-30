@@ -93,7 +93,7 @@ def _save(path: Path, data: dict[str, Any]) -> None:
     path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
 
 
-@router.get("/api/v1/user/preferences", response_model=PreferencesResponse)
+@router.get("/user/preferences", response_model=PreferencesResponse)
 def get_preferences(
     settings: Settings = Depends(get_settings),
     x_plato_user: str | None = Header(default=None, alias="X-Plato-User"),
@@ -106,7 +106,7 @@ def get_preferences(
     )
 
 
-@router.put("/api/v1/user/preferences", response_model=PreferencesResponse)
+@router.put("/user/preferences", response_model=PreferencesResponse)
 def put_preferences(
     body: PreferencesUpdate,
     settings: Settings = Depends(get_settings),
