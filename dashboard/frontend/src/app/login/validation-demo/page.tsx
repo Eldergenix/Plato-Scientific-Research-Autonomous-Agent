@@ -17,9 +17,10 @@ import {
 } from "@/components/manifest/validation-report-card";
 
 const MOCK_REPORT: ValidationReport = {
-  status: "fail",
-  total: 12,
-  passed: 7,
+  // 7 of 12 verified → 0.583 → derived status "fail" (< 0.7).
+  validation_rate: 7 / 12,
+  total_references: 12,
+  verified_references: 7,
   failures: [
     {
       source_id: "arxiv:2403.00001",

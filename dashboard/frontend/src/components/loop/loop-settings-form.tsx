@@ -55,7 +55,7 @@ export function LoopSettingsForm({ onStarted }: LoopSettingsFormProps) {
 
   const canSubmit = state.projectDir.trim().length > 0 && !submitting;
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!canSubmit) return;
     setSubmitting(true);
