@@ -11,9 +11,10 @@ from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import quote_plus
 
-import httpx
+import httpx  # noqa: F401  # kept so ``patch("httpx.AsyncClient.get", ...)`` still resolves.
 
 from .. import register_adapter
+from ..middleware import RetrievalClient
 from ...state.models import Source
 from ..doi import normalize_doi
 
@@ -132,7 +133,7 @@ class CrossrefAdapter:
         url = f"{self._base_url}?query={quote_plus(query)}&rows={rows}"
         headers = {"User-Agent": self._user_agent}
 
-        async with httpx.AsyncClient(timeout=self._timeout, headers=headers) as client:
+        async with RetrievalClient(timeout=self._timeout, headers=headers) as client:
             response = await client.get(url)
             response.raise_for_status()
             payload = response.json()
