@@ -130,7 +130,7 @@ def _load_clarifications(run_dir: Path) -> tuple[list[str], bool]:
 # --------------------------------------------------------------------------- #
 # Routes
 # --------------------------------------------------------------------------- #
-@router.get("/api/v1/runs/{run_id}/clarifications")
+@router.get("/runs/{run_id}/clarifications")
 def get_clarifications(
     run_id: str,
     request: Request,
@@ -151,7 +151,7 @@ def get_clarifications(
     }
 
 
-@router.post("/api/v1/runs/{run_id}/clarifications")
+@router.post("/runs/{run_id}/clarifications")
 def post_clarifications(
     run_id: str,
     body: dict[str, Any],

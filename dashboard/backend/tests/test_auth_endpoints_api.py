@@ -21,7 +21,7 @@ from plato_dashboard.api.auth_endpoints import router as auth_router
 @pytest.fixture
 def auth_client(tmp_project_root) -> Iterator[TestClient]:  # noqa: ARG001 — fixture redirects settings paths
     app = FastAPI()
-    app.include_router(auth_router)
+    app.include_router(auth_router, prefix="/api/v1")
     with TestClient(app) as c:
         yield c
 
@@ -115,7 +115,7 @@ def test_me_auth_required_reflects_setting(
     monkeypatch.setenv("PLATO_DASHBOARD_AUTH_REQUIRED", "1")
 
     app = FastAPI()
-    app.include_router(auth_router)
+    app.include_router(auth_router, prefix="/api/v1")
     with TestClient(app) as c:
         body = c.get("/api/v1/auth/me").json()
         assert body["auth_required"] is True
