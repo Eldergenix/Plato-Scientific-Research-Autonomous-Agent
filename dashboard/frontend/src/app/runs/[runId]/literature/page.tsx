@@ -9,6 +9,7 @@ import {
   SourceBreakdown,
   type RetrievalSummaryPayload,
 } from "@/components/retrieval/source-breakdown";
+import { RunDetailNav } from "@/components/manifest/run-detail-nav";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:7878/api/v1";
@@ -105,6 +106,8 @@ export default function LiteraturePage({
             {runId}
           </p>
         </header>
+
+        <RunDetailNav runId={runId} />
 
         <NoveltySection state={novelty} />
         <RetrievalSection state={retrieval} />
