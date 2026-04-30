@@ -277,8 +277,18 @@ def create_app() -> FastAPI:
         return await _probe_provider(provider, key)
 
     # ------------------------------------------------------------ static (frontend) — only when built
-    static_dir = Path(__file__).resolve().parents[3] / "frontend" / "out"
-    if static_dir.exists():
+    # server.py lives at dashboard/backend/src/plato_dashboard/api/server.py;
+    # the Next.js static export lands at dashboard/frontend/out/. So we walk
+    # up to the dashboard/ root and into frontend/out from there. parents[4]
+    # is the monorepo layout; parents[3] was the original (incorrect) guess
+    # — keep both as candidates so a future package layout change doesn't
+    # silently re-break the root route.
+    here = Path(__file__).resolve()
+    static_dir = next(
+        (p for p in (here.parents[4] / "frontend" / "out", here.parents[3] / "frontend" / "out") if p.exists()),
+        None,
+    )
+    if static_dir is not None:
         app.mount("/", StaticFiles(directory=static_dir, html=True), name="frontend")
 
     return app
