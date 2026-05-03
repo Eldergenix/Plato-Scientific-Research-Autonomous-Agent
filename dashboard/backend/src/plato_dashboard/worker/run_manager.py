@@ -41,6 +41,24 @@ _active_runs: dict[str, Run] = {}
 _run_tasks: dict[str, asyncio.Task[None]] = {}
 _subprocesses: dict[str, mp.Process] = {}
 
+# Iter-25 defense-in-depth: per-run project_dir override.
+#
+# The legacy resolution is ``get_settings().project_root / project_id``,
+# which lands in the un-namespaced single-user tree. After iter-24's
+# ``X-Plato-User`` multi-tenancy work the API server resolves
+# project_dir via ``store.project_dir(pid)`` (which honors the per-user
+# ``<root>/users/<uid>/<pid>`` namespace), but ``start_run`` ignored
+# that and re-derived from settings.project_root. The iter-24 entry-point
+# guard blocks the obvious tenant bypass, but the worker still wrote
+# events / status into the wrong tree.
+#
+# This map lets ``start_run`` accept the API-resolved project_dir and
+# stash it for downstream callbacks (``_supervise``, ``_write_status``,
+# ``cancel_run``). Lookups fall back to the legacy resolution when no
+# entry exists — preserving every pre-iter-25 caller (e.g. CLI loop,
+# tests) and recovery after a worker restart.
+_run_dirs: dict[str, Path] = {}
+
 _SPAWN_CTX = mp.get_context("spawn")
 _TAIL_INTERVAL_S = 0.25
 _SIGTERM_GRACE_S = 5.0
@@ -70,19 +88,58 @@ def count_active_runs() -> int:
 # --------------------------------------------------------------------------- #
 # Filesystem helpers
 # --------------------------------------------------------------------------- #
-def _run_dir(project_id: str, run_id: str) -> Path:
-    root = get_settings().project_root
-    p = root / project_id / "runs" / run_id
+def _resolve_project_dir(project_id: str) -> Path:
+    """Resolve the project directory for ``project_id``.
+
+    Iter-25: consults ``_run_dirs`` first (set by the API server when
+    it knows the per-user namespaced path), falling back to the legacy
+    ``settings.project_root / project_id`` for callers that don't
+    register an override (CLI loop, tests, recovery-after-restart).
+
+    The lookup is keyed by run_id where possible — but several helpers
+    only have ``project_id`` in scope, so we also iterate the registry
+    looking for any entry whose path ends in ``/<project_id>``. That's
+    O(active_runs) which is small enough for the current single-process
+    deployment; Phase-2 Redis migration will get a proper index.
+    """
+    for run_id, project_dir in _run_dirs.items():
+        run = _active_runs.get(run_id)
+        if run is not None and run.project_id == project_id:
+            return project_dir
+        # Fallback: match on path basename for runs where the in-memory
+        # Run has been GC'd but the override is still live.
+        if project_dir.name == project_id:
+            return project_dir
+    return get_settings().project_root / project_id
+
+
+def _run_dir(
+    project_id: str, run_id: str, project_dir: Optional[Path] = None
+) -> Path:
+    """Return ``<project_dir>/runs/<run_id>``.
+
+    ``project_dir`` overrides the registry lookup; pass it explicitly
+    when the caller already has the per-user-resolved path on hand
+    (avoids the registry scan).
+    """
+    base = project_dir if project_dir is not None else _run_dirs.get(run_id)
+    if base is None:
+        base = _resolve_project_dir(project_id)
+    p = base / "runs" / run_id
     p.mkdir(parents=True, exist_ok=True)
     return p
 
 
-def _events_path(project_id: str, run_id: str) -> Path:
-    return _run_dir(project_id, run_id) / "events.jsonl"
+def _events_path(
+    project_id: str, run_id: str, project_dir: Optional[Path] = None
+) -> Path:
+    return _run_dir(project_id, run_id, project_dir) / "events.jsonl"
 
 
-def _status_path(project_id: str, run_id: str) -> Path:
-    return _run_dir(project_id, run_id) / "status.json"
+def _status_path(
+    project_id: str, run_id: str, project_dir: Optional[Path] = None
+) -> Path:
+    return _run_dir(project_id, run_id, project_dir) / "status.json"
 
 
 def _write_status(run: Run) -> None:
@@ -421,7 +478,12 @@ async def _tail_events(run: Run, bus: EventBus, events_file: Path) -> None:
                             # on-disk LLM_calls.txt for this stage.
                             try:
                                 from .token_tracker import reconcile_run
-                                project_dir = get_settings().project_root / run.project_id
+                                # Iter-25: prefer the per-user override
+                                # if the API server registered one; fall
+                                # back to legacy resolution otherwise.
+                                project_dir = _run_dirs.get(
+                                    run.id
+                                ) or (get_settings().project_root / run.project_id)
                                 reconcile_run(run.id, project_dir, run.stage)
                             except Exception:  # noqa: BLE001
                                 pass
@@ -536,8 +598,18 @@ async def start_run(
     stage: StageId,
     config: dict,
     bus: EventBus,
+    project_dir: Optional[Path] = None,
 ) -> Run:
-    """Spawn a Plato subprocess for the given stage and start streaming events."""
+    """Spawn a Plato subprocess for the given stage and start streaming events.
+
+    Iter-25: ``project_dir`` is the new (optional) parameter. When the
+    API server has resolved the per-user-namespaced path via
+    ``store.project_dir(pid)``, it MUST pass that here so the worker
+    writes events / status / artifacts into the right tree. When None
+    (e.g. CLI callers, tests), fall back to the legacy
+    ``settings.project_root / project_id`` resolution to preserve every
+    pre-iter-25 entry point.
+    """
     run = Run(
         project_id=project_id,
         stage=stage,
@@ -547,8 +619,16 @@ async def start_run(
         started_at=utcnow(),
     )
 
-    project_dir = get_settings().project_root / project_id
-    events_file = _events_path(project_id, run.id)
+    resolved_project_dir = (
+        project_dir
+        if project_dir is not None
+        else get_settings().project_root / project_id
+    )
+    # Stash the resolved path before any helper call so downstream
+    # ``_run_dir`` / ``_events_path`` / ``_status_path`` consultations
+    # see the override (they look up by run_id).
+    _run_dirs[run.id] = resolved_project_dir
+    events_file = _events_path(project_id, run.id, resolved_project_dir)
     # Truncate any stale pipe from an earlier identically-named run.
     events_file.write_text("")
 
@@ -562,7 +642,7 @@ async def start_run(
             run.id,
             stage,
             config,
-            str(project_dir),
+            str(resolved_project_dir),
             str(events_file),
             env_keys,
         ),
@@ -605,4 +685,9 @@ async def cancel_run(run_id: str) -> bool:
         run.status = "cancelled"
         run.finished_at = utcnow()
         _write_status(run)
+    # Iter-25: drop the project_dir override now that the run has
+    # ended. The Run + subprocess + task entries in their respective
+    # registries are already cleaned by the supervise task on exit;
+    # the override map needs the same lifecycle.
+    _run_dirs.pop(run_id, None)
     return True

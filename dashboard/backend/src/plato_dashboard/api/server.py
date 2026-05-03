@@ -411,7 +411,20 @@ def create_app() -> FastAPI:
                     "message": "Wait for an active run to finish, or cancel one.",
                 },
             )
-        return await start_run(pid, stage, run_request.model_dump(), bus)
+        # Iter-25 defense-in-depth: pass the per-user-namespaced
+        # project_dir so ``run_manager.start_run`` writes events /
+        # status / artifacts under ``<root>/users/<uid>/<pid>/`` rather
+        # than the legacy un-namespaced ``<root>/<pid>/``. The iter-24
+        # entry-point guard already blocks cross-tenant launches; this
+        # closes the worker-side gap so a missed guard at a future
+        # call site can't silently leak into the wrong tree.
+        return await start_run(
+            pid,
+            stage,
+            run_request.model_dump(),
+            bus,
+            project_dir=store.project_dir(pid),
+        )
 
     @app.get("/api/v1/projects/{pid}/runs/{run_id}", response_model=Run)
     def get_run_status(
