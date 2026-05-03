@@ -46,6 +46,10 @@ plato = "plato.cli:main"
 [project.optional-dependencies]
 app = ["plato_app>=1.0.0"]
 obs = ["langfuse>=2.0"]
+postgres = [
+  "langgraph-checkpoint-postgres>=2.0.0",
+  "psycopg[binary]>=3.1",
+]
 docs = [
   "mkdocs",
   "mkdocstrings[python]",
