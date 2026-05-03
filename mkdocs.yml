@@ -36,6 +36,13 @@ nav:
       - Paper: api_ref/api_paper.md
       - Journals: api_ref/api_journals.md
       - Utils: api_ref/api_utils.md
+  - Architecture Decisions:
+      - Index: adr/index.md
+      - "0001 LangGraph as default backend": adr/0001-langgraph-as-default-backend.md
+      - "0002 Postgres checkpointer": adr/0002-postgres-checkpointer.md
+      - "0003 Domain profile pluggability": adr/0003-domain-profile-pluggability.md
+      - "0004 X-Plato-User multi-tenancy": adr/0004-x-plato-user-multi-tenancy.md
+      - "0005 Sandboxed Executor protocol": adr/0005-sandboxed-executor-protocol.md
 
 theme:
   name: material

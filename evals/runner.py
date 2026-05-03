@@ -226,14 +226,14 @@ class EvalRunner:
             metrics.keyword_recall = hits / len(task.expected_idea_keywords)
 
         # 3. Compute gold-source recall against task.gold_sources.
+        # GoldSource.from_any normalises legacy bare strings into the
+        # structured form so this loop sees one shape always.
         if task.gold_sources:
             hits = 0
             sources_text = paper_text.lower()
             for gold in task.gold_sources:
-                # Match on either DOI substring or arxiv id substring —
-                # whichever the gold ref provides.
-                doi = (gold.get("doi") or "").lower().strip()
-                arxiv = (gold.get("arxiv_id") or "").lower().strip()
+                doi = (gold.doi or "").lower().strip()
+                arxiv = (gold.arxiv_id or "").lower().strip()
                 if (doi and doi in sources_text) or (arxiv and arxiv in sources_text):
                     hits += 1
             metrics.gold_source_recall = hits / len(task.gold_sources)

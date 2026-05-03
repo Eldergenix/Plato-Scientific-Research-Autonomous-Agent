@@ -1,8 +1,36 @@
 {
   "id": "harmonic_oscillator",
-  "data_description": "Write a short paper on harmonic oscillators...",
-  "expected_idea_keywords": ["harmonic", "oscillator", "frequency"],
-  "expected_method_signals": ["differential equation", "period"],
-  "gold_sources": [],
-  "domain": "astro"
+  "domain": "astro",
+  "data_description": "Dataset description: a CSV table named `pendulum.csv` with columns (time_seconds, angle_radians) recording the small-amplitude oscillations of a 1.0-meter compound pendulum sampled at 200 Hz over 60 seconds. The pendulum was released from rest at an initial angle of 0.10 rad inside a temperature-controlled vacuum chamber so air drag is negligible. The pivot has a measured friction torque coefficient of 1.5e-4 N·m·s/rad. Tools available: numpy, scipy.optimize, scipy.signal, matplotlib. Goal: (i) extract the natural frequency f0 and quality factor Q of the pendulum from the time series, (ii) compare the measured period against the small-angle theoretical prediction T = 2π√(I/(mgL)) using the manufacturer's reported moment of inertia I = 0.083 kg·m² and pendulum length L = 0.50 m, and (iii) produce a residual plot to validate the simple-harmonic-oscillator (SHO) model and quantify any anharmonic deviation as a function of amplitude.",
+  "expected_idea_keywords": [
+    "harmonic oscillator",
+    "natural frequency",
+    "damping",
+    "quality factor",
+    "small-angle approximation",
+    "residual",
+    "moment of inertia"
+  ],
+  "expected_method_signals": [
+    "fast Fourier transform",
+    "least-squares fit",
+    "exponential decay envelope",
+    "scipy.optimize.curve_fit",
+    "residual plot",
+    "amplitude-dependent period"
+  ],
+  "gold_sources": [
+    {
+      "doi": "10.1119/1.10903",
+      "note": "Nelson & Olsson 1986 — \"The pendulum: rich physics from a simple system\""
+    },
+    {
+      "doi": "10.1119/1.4994813",
+      "note": "Lima 2018 — pendulum period beyond small-angle approximation"
+    },
+    {
+      "arxiv_id": "1212.0667",
+      "note": "Sometimes-cited preprint on quality-factor extraction from damped oscillators"
+    }
+  ]
 }
