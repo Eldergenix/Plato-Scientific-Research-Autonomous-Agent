@@ -1,11 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { AuthProvider, useAuth } from "@/components/auth/auth-context";
+import { useAuth } from "@/components/auth/auth-context";
 import { LoginForm } from "@/components/auth/login-form";
 import { UserMenu } from "@/components/auth/user-menu";
 
-function LoginPageBody() {
+// AuthProvider is mounted once at the root in src/app/layout.tsx. A
+// previous version of this file double-wrapped, which caused two
+// independent /api/v1/auth/me fetches per render.
+export default function LoginPage() {
   const { user_id } = useAuth();
   return (
     <main className="flex min-h-screen items-center justify-center bg-(--color-bg-page) p-6">
@@ -23,9 +26,6 @@ function LoginPageBody() {
               sets the X-Plato-User header for all requests.
             </p>
           </div>
-          {/* Show the user menu when already signed in — useful for sign-out
-              while we wait for the topbar wiring to land in the integration
-              commit. */}
           {user_id ? <UserMenu /> : null}
         </header>
 
@@ -34,17 +34,5 @@ function LoginPageBody() {
         </div>
       </div>
     </main>
-  );
-}
-
-export default function LoginPage() {
-  return (
-    // The layout's AuthProvider lands in the integration commit; wrap
-    // here too so this page works standalone today. Nesting providers
-    // is a no-op once the outer one is in place — useAuth() will pick
-    // up whichever is closest.
-    <AuthProvider>
-      <LoginPageBody />
-    </AuthProvider>
   );
 }
