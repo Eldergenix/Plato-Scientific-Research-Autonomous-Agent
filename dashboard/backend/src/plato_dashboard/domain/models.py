@@ -74,6 +74,35 @@ class CostCapState(BaseModel):
     stop_on_exceed: bool = False
 
 
+# Iter-27: per-stage approval state. The frontend's PersistedState
+# carried four values; ``"skipped"`` is treated identically to
+# ``"approved"`` for gate-evaluation purposes (the user explicitly
+# bypassed the checkpoint).
+ApprovalState = Literal["pending", "approved", "rejected", "skipped"]
+
+
+class ApprovalsState(BaseModel):
+    """Per-project approval checkpoints with optional global auto-skip.
+
+    Iter-27: replaces the localStorage-only ``plato:approvals:{pid}:{stage}``
+    keys + the global ``plato:approvals:auto-skip`` flag that
+    approval-checkpoints.tsx used to persist client-side. Lives on
+    ``meta.json`` and is consulted server-side by ``run_stage`` so a
+    stale or malicious client can't launch a downstream stage without
+    going through the upstream approval gate.
+
+    - ``per_stage``: maps a stage id ("idea" / "literature" / "method")
+      to its current approval state. Only the three gating stages need
+      tracking; downstream stages (results / paper / referee) inherit
+      their gate decision from the most-recent unapproved upstream.
+    - ``auto_skip``: when ``True``, ``run_stage`` skips ALL approval
+      gates regardless of per-stage state. Power-user / CI escape hatch.
+    """
+
+    per_stage: dict[str, ApprovalState] = Field(default_factory=dict)
+    auto_skip: bool = False
+
+
 class Project(BaseModel):
     id: str = Field(default_factory=lambda: new_id("prj"))
     name: str = "Untitled project"
@@ -94,6 +123,11 @@ class Project(BaseModel):
     # Iter-26: per-project cost cap moved server-side. ``None`` means
     # no cap configured for this project (the legacy / default state).
     cost_caps: Optional[CostCapState] = None
+    # Iter-27: per-stage approval checkpoints moved server-side.
+    # ``None`` means "no checkpoints recorded" → ``run_stage`` uses the
+    # blocker-chain default (idea → literature → method) and refuses
+    # downstream launches when an upstream gate hasn't been approved.
+    approvals: Optional[ApprovalsState] = None
 
     @classmethod
     def empty(cls, name: str = "Untitled project", user_id: str | None = None) -> "Project":

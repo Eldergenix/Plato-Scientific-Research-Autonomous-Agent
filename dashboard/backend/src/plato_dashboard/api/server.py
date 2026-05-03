@@ -61,6 +61,7 @@ from .retrieval_summary import router as retrieval_summary_router
 from .user_preferences import router as user_preferences_router
 from .idea_history import router as idea_history_router
 from .cost_caps import router as cost_caps_router
+from .approvals import router as approvals_router, compute_blocking_approval
 
 
 def _resolve_project_root(settings: Settings, user_id: str | None) -> Path:
@@ -310,6 +311,7 @@ def create_app() -> FastAPI:
     app.include_router(user_preferences_router, prefix="/api/v1", tags=["preferences"])
     app.include_router(idea_history_router, prefix="/api/v1", tags=["idea_history"])
     app.include_router(cost_caps_router, prefix="/api/v1", tags=["cost_caps"])
+    app.include_router(approvals_router, prefix="/api/v1", tags=["approvals"])
 
     @app.get("/api/v1/health")
     def health() -> dict:
@@ -433,6 +435,30 @@ def create_app() -> FastAPI:
                     ),
                     "spent_cents": proj.total_cost_cents,
                     "budget_cents": cap.budget_cents,
+                },
+            )
+        # Iter-27: server-side approval gate. The frontend's blocker
+        # chain (idea → literature → method) used to live entirely in
+        # localStorage; a stale or malicious client could launch a
+        # downstream stage without going through the upstream
+        # checkpoint by editing localStorage. Now the backend reads
+        # ``project.approvals`` (persisted by the /approvals endpoint)
+        # and refuses any launch that would skip an unapproved gate.
+        # ``approvals.auto_skip=True`` is the explicit escape hatch.
+        blocking_gate = compute_blocking_approval(proj, stage)
+        if blocking_gate is not None:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "approval_required",
+                    "message": (
+                        f"Cannot launch '{stage}' stage — upstream "
+                        f"'{blocking_gate}' stage hasn't been approved. "
+                        "Approve it via PUT /approvals (set per_stage."
+                        f"{blocking_gate}=approved) or set auto_skip=true."
+                    ),
+                    "blocking_gate": blocking_gate,
+                    "target_stage": stage,
                 },
             )
         require_stage_allowed(stage, caps)
