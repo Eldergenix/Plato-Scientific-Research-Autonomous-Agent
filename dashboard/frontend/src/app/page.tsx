@@ -61,7 +61,7 @@ export default function Home() {
     "active",
   );
 
-  const { project, log, plots, isLive, capabilities, startRun, cancelRun, refresh } = useProject();
+  const { project, log, plots, nodeEvents, isLive, capabilities, startRun, cancelRun, refresh } = useProject();
   const cost = useCostMeter();
   const [createOpen, setCreateOpen] = React.useState(false);
   const [cancelConfirmOpen, setCancelConfirmOpen] = React.useState(false);
@@ -223,9 +223,11 @@ export default function Home() {
                   stage={openStage}
                   project={project}
                   plots={plots}
+                  nodeEvents={nodeEvents}
                   onBack={() => setOpenStage(null)}
                   onRun={() => guardedStartRun(openStage)}
                   onRefresh={refresh}
+                  onCancelRun={requestCancel}
                 />
               ) : (
                 <div className="h-full overflow-y-auto">
@@ -334,16 +336,20 @@ function StageDetail({
   stage,
   project,
   plots,
+  nodeEvents,
   onBack,
   onRun,
   onRefresh,
+  onCancelRun,
 }: {
   stage: StageId;
   project: ReturnType<typeof useProject>["project"];
   plots: ReturnType<typeof useProject>["plots"];
+  nodeEvents: ReturnType<typeof useProject>["nodeEvents"];
   onBack: () => void;
   onRun: () => void | Promise<void>;
   onRefresh: () => Promise<void>;
+  onCancelRun: () => void | Promise<void>;
 }) {
   return (
     <div className="h-full flex flex-col">
@@ -378,8 +384,10 @@ function StageDetail({
           stage={stage}
           project={project}
           plots={plots}
+          nodeEvents={nodeEvents}
           onRun={onRun}
           onRefresh={onRefresh}
+          onCancelRun={onCancelRun}
         />
       </div>
     </div>
@@ -390,14 +398,18 @@ function StagePane({
   stage,
   project,
   plots,
+  nodeEvents,
   onRun,
   onRefresh,
+  onCancelRun,
 }: {
   stage: StageId;
   project: ReturnType<typeof useProject>["project"];
   plots: ReturnType<typeof useProject>["plots"];
+  nodeEvents: ReturnType<typeof useProject>["nodeEvents"];
   onRun: () => void | Promise<void>;
   onRefresh: () => Promise<void>;
+  onCancelRun: () => void | Promise<void>;
 }) {
   switch (stage) {
     case "data":
@@ -423,7 +435,12 @@ function StagePane({
       );
     case "results":
       return project.activeRun?.stage === "results" || (plots && plots.length > 0) ? (
-        <ResultsStage project={project} plots={plots} />
+        <ResultsStage
+          project={project}
+          plots={plots}
+          nodeEvents={nodeEvents}
+          onCancelRun={onCancelRun}
+        />
       ) : (
         <EmptyStage
           icon={FlaskConical}
