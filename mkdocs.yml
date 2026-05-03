@@ -15,6 +15,11 @@ nav:
   - App: app.md
   - Docker: docker.md
   - Prompts: prompts.md
+  - Features:
+      - Multi-source retrieval: features/multi-source-retrieval.md
+      - Citation validation: features/citation-validation.md
+      - Autonomous loop: features/autonomous-loop.md
+      - Observability: features/observability.md
   - Examples:
       - End-to-end research: examples/plato_oscillator_full_run.ipynb
       - Enhance input description: examples/enhance_input.ipynb
