@@ -45,6 +45,14 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
       </head>
       <body className={`${inter.variable} ${jetbrainsMono.variable} antialiased`}>
+        {/* WCAG 2.4.1 bypass-block: keyboard users can skip the
+            sidebar with one Tab. Hidden until focused. */}
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[9999] focus:rounded-[6px] focus:bg-(--color-bg-card) focus:px-3 focus:py-1.5 focus:text-[13px] focus:text-(--color-text-primary)"
+        >
+          Skip to main content
+        </a>
         <ThemeProvider>
           <AuthProvider>
             <ErrorBoundary>{children}</ErrorBoundary>

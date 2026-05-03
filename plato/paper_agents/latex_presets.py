@@ -67,6 +67,50 @@ latex_pasj = LatexPresets(article="pasj01",
                          )
 """PASJ Latex preset"""
 
+# Biology presets — none ship .cls/.bst with Plato today, so all fall back
+# to the standard ``article`` class. See LaTeX/README.md for manual-install
+# instructions for the native journal classes.
+
+latex_nature = LatexPresets(
+    article="article",
+    usepackage="\\usepackage{lineno}\n\\linenumbers",
+    abstract=lambda x: f"\\maketitle\n\\begin{{abstract}}\n{x}\n\\end{{abstract}}\n",
+    bibliographystyle=r"\bibliographystyle{naturemag}",
+)
+"""Nature LaTeX preset (article fallback; install naturemag.cls for native formatting)"""
+
+latex_cell = LatexPresets(
+    article="article",
+    usepackage="\\usepackage{lineno}\n\\linenumbers\n\\usepackage{setspace}\n\\doublespacing",
+    abstract=lambda x: f"\\maketitle\n\\begin{{abstract}}\n{x}\n\\end{{abstract}}\n",
+    bibliographystyle=r"\bibliographystyle{unsrt}",
+)
+"""Cell LaTeX preset (article fallback; Cell Press has no public CTAN class)"""
+
+latex_science = LatexPresets(
+    article="article",
+    usepackage="\\usepackage{lineno}\n\\linenumbers",
+    abstract=lambda x: f"\\maketitle\n\\begin{{abstract}}\n{x}\n\\end{{abstract}}\n",
+    bibliographystyle=r"\bibliographystyle{Science}",
+)
+"""Science (AAAS) LaTeX preset (article fallback; no public CTAN class)"""
+
+latex_plos_bio = LatexPresets(
+    article="article",
+    usepackage="\\usepackage{lineno}\n\\linenumbers",
+    abstract=lambda x: f"\\maketitle\n\\begin{{abstract}}\n{x}\n\\end{{abstract}}\n",
+    bibliographystyle=r"\bibliographystyle{plos2015}",
+)
+"""PLOS Biology LaTeX preset (article fallback; install plos2015.cls for native formatting)"""
+
+latex_elife = LatexPresets(
+    article="article",
+    usepackage="\\usepackage{lineno}\n\\linenumbers",
+    abstract=lambda x: f"\\maketitle\n\\begin{{abstract}}\n{x}\n\\end{{abstract}}\n",
+    bibliographystyle=r"\bibliographystyle{unsrt}",
+)
+"""eLife LaTeX preset (article fallback; install elife.cls via ``tlmgr install elife``)"""
+
 #---
 
 journal_dict = {
@@ -77,5 +121,10 @@ journal_dict = {
     Journal.JHEP: latex_jhep,
     Journal.NeurIPS: latex_neurips,
     Journal.PASJ: latex_pasj,
+    Journal.NATURE: latex_nature,
+    Journal.CELL: latex_cell,
+    Journal.SCIENCE: latex_science,
+    Journal.PLOS_BIO: latex_plos_bio,
+    Journal.ELIFE: latex_elife,
 }
 """Dictionary to relate the journal with their presets."""

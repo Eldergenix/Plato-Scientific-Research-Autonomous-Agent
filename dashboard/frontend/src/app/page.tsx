@@ -139,6 +139,7 @@ export default function Home() {
 
         <div className="flex-1 min-h-0 flex flex-col p-1.5 pl-0">
           <main
+            id="main-content"
             className="flex-1 min-h-0 flex flex-col bg-(--color-bg-card) overflow-hidden"
             style={{
               border: "1px solid var(--color-border-card)",
