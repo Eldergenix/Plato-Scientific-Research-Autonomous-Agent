@@ -1,70 +1,29 @@
-"use client";
-
-import * as React from "react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
-import {
-  LicenseStats,
-  type LicenseSummary,
-} from "@/components/license/license-stats";
-import {
-  LicenseTable,
-  type LicenseDistribution,
-} from "@/components/license/license-table";
-import { SbomSummary } from "@/components/license/sbom-summary";
+import { LicensesClient } from "./licenses-client";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:7878/api/v1";
+// Page-level metadata so /settings/licenses gets its own browser-tab
+// title and shareable preview, instead of inheriting the generic
+// "Settings — Plato" from the parent layout. This is the whole reason
+// for the RSC chrome split: a "use client" page.tsx can't export
+// `metadata` (Next.js rejects it at build time).
+export const metadata: Metadata = {
+  title: "Licenses & SBOM — Plato",
+  description:
+    "GPLv3 compatibility audit for every installed Python distribution, plus the CycloneDX SBOM the CI pipeline ships.",
+};
 
-interface LicenseAuditPayload {
-  summary: LicenseSummary;
-  by_license: { license: string; count: number; gpl3_compatible: boolean }[];
-  distributions: LicenseDistribution[];
-}
-
-async function fetchAudit(): Promise<LicenseAuditPayload> {
-  const r = await fetch(`${API_BASE}/license_audit`, {
-    headers: { Accept: "application/json" },
-  });
-  if (!r.ok) {
-    let msg = `License audit unavailable (HTTP ${r.status})`;
-    try {
-      const body = await r.json();
-      const detail = (body as { detail?: { error?: string } })?.detail;
-      if (detail?.error) msg = detail.error;
-    } catch {
-      /* fall through to status-code message */
-    }
-    throw new Error(msg);
-  }
-  return (await r.json()) as LicenseAuditPayload;
-}
-
+/**
+ * RSC chrome for /settings/licenses.
+ *
+ * Renders the static header / breadcrumb on the server and delegates
+ * every interactive piece (audit fetch, error state, SBOM download)
+ * to {@link LicensesClient} — the client island. Splitting the chrome
+ * shaves the JS bundle for the page wrapper and unlocks page-level
+ * `metadata` (which a "use client" file cannot export).
+ */
 export default function LicensesSettingsPage() {
-  const [audit, setAudit] = React.useState<LicenseAuditPayload | null>(null);
-  const [error, setError] = React.useState<string | null>(null);
-  const [loading, setLoading] = React.useState(true);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    fetchAudit()
-      .then((data) => {
-        if (cancelled) return;
-        setAudit(data);
-        setError(null);
-      })
-      .catch((e: Error) => {
-        if (cancelled) return;
-        setError(e.message);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   return (
     <div className="min-h-screen bg-(--color-bg-page) px-3 py-6 sm:px-6 sm:py-8">
       <div className="mx-auto max-w-5xl space-y-6">
@@ -94,28 +53,7 @@ export default function LicensesSettingsPage() {
           </p>
         </header>
 
-        {loading ? (
-          <p
-            className="surface-linear-card p-5 text-[13px] text-(--color-text-row-meta)"
-            data-testid="licenses-loading"
-          >
-            Loading license audit…
-          </p>
-        ) : error ? (
-          <p
-            className="surface-linear-card p-5 text-[13px] text-(--color-status-red-spec)"
-            data-testid="licenses-error"
-          >
-            {error}
-          </p>
-        ) : audit ? (
-          <>
-            <LicenseStats summary={audit.summary} />
-            <LicenseTable distributions={audit.distributions} />
-          </>
-        ) : null}
-
-        <SbomSummary />
+        <LicensesClient />
       </div>
     </div>
   );

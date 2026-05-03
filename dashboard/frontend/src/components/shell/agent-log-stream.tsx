@@ -2,8 +2,22 @@
 
 import * as React from "react";
 import { ChevronDown, ChevronUp, Pause, Play, X } from "lucide-react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "@/lib/utils";
 import type { LogLine } from "@/lib/types";
+
+// Threshold below which we render every row directly. Long-running
+// loops can dump 5k+ lines into the buffer; without virtualization,
+// React reconciliation choked and dropped frames during fast tail
+// updates. We deliberately skip the virtualizer for short logs because
+// (a) the e2e snapshots rely on ``filtered.map`` rendering every row
+// into the DOM, and (b) measureElement / overscan add per-row overhead
+// that doesn't pay off until row counts get large.
+const VIRTUALIZE_AT = 200;
+// Pixel estimate per row — used to size the virtual scroll viewport.
+// Real rows can word-wrap and grow taller; the virtualizer measures
+// each rendered row and reconciles, so this is just the seed.
+const ROW_HEIGHT_ESTIMATE = 22;
 
 const SOURCE_FILTERS = ["all", "idea", "method", "literature", "results", "paper"] as const;
 type SourceFilter = (typeof SOURCE_FILTERS)[number];
@@ -38,14 +52,32 @@ export function AgentLogStream({
     [filter, lines],
   );
 
+  const collapsed = height === 0;
+  const shouldVirtualize = filtered.length >= VIRTUALIZE_AT && !collapsed;
+
+  // Virtualizer must be created unconditionally (hooks rule) but only
+  // consulted when we're actually rendering long logs. We set count=0
+  // for the short-log branch so the virtualizer is effectively inert.
+  const virtualizer = useVirtualizer({
+    count: shouldVirtualize ? filtered.length : 0,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => ROW_HEIGHT_ESTIMATE,
+    // Render a small overscan window above + below the visible viewport
+    // so fast scrolling doesn't briefly show blank rows.
+    overscan: 12,
+  });
+
   React.useEffect(() => {
     if (paused || height === 0) return;
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, [filtered.length, paused, height]);
-
-  const collapsed = height === 0;
+    if (shouldVirtualize) {
+      // Virtualized branch: scrollToIndex respects measured row heights.
+      virtualizer.scrollToIndex(filtered.length - 1, { align: "end" });
+    } else {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [filtered.length, paused, height, shouldVirtualize, virtualizer]);
   const heightClass =
     height === 0 ? "h-9" : height === 30 ? "h-[200px]" : "h-[420px]";
 
@@ -129,16 +161,51 @@ export function AgentLogStream({
         <div
           ref={scrollRef}
           className="flex-1 overflow-y-auto font-mono text-[12px] leading-[1.55] px-3 py-2"
+          data-testid="agent-log-scroll"
+          data-virtualized={shouldVirtualize ? "true" : "false"}
         >
           {filtered.length === 0 ? (
             <p className="text-(--color-text-quaternary) text-[12px]">
               No log lines yet. Start a run to see agent reasoning here.
             </p>
+          ) : shouldVirtualize ? (
+            // Virtualized branch: only the rows in the visible window
+            // (plus overscan) are mounted. The outer div is sized to
+            // the full virtual height so the scrollbar still reflects
+            // the entire log; inner rows are absolutely positioned.
+            <div
+              style={{
+                height: `${virtualizer.getTotalSize()}px`,
+                width: "100%",
+                position: "relative",
+              }}
+            >
+              {virtualizer.getVirtualItems().map((virtualRow) => {
+                const line = filtered[virtualRow.index];
+                return (
+                  <div
+                    key={`${line.ts}-${line.source}-${virtualRow.index}`}
+                    data-index={virtualRow.index}
+                    ref={virtualizer.measureElement}
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: "100%",
+                      transform: `translateY(${virtualRow.start}px)`,
+                    }}
+                  >
+                    <LogRow line={line} />
+                  </div>
+                );
+              })}
+            </div>
           ) : (
-            // Composite key (ts + source + index) keeps React's diff
-            // stable when filters change. A pure index key forces a
-            // full unmount/remount of every row when the filter shifts
-            // and rows shuffle indices.
+            // Direct-render branch for short logs. Composite key
+            // (ts + source + index) keeps React's diff stable when
+            // filters change — a pure index key would force a full
+            // unmount/remount of every row when the filter shifts and
+            // rows shuffle indices.
             filtered.map((line, i) => (
               <LogRow key={`${line.ts}-${line.source}-${i}`} line={line} />
             ))
