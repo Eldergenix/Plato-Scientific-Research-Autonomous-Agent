@@ -36,6 +36,7 @@ class RunManifest(BaseModel):
     domain: str = "astro"
     git_sha: str = ""
     project_sha: str = ""
+    project_id: str | None = None
     user_id: str | None = None
     models: dict[str, str] = Field(default_factory=dict)
     prompt_hashes: dict[str, str] = Field(default_factory=dict)
@@ -44,6 +45,11 @@ class RunManifest(BaseModel):
     cost_usd: float = 0.0
     tokens_in: int = 0
     tokens_out: int = 0
+    # Per-node telemetry: {node_name: {ti, to, calls, cost_usd}}. Populated
+    # by LLM_call / LLM_call_stream when the workflow seeds state["recorder"].
+    # Whole-run totals (tokens_in/out, cost_usd) remain authoritative; this
+    # field is the breakdown the dashboard uses to attribute cost to nodes.
+    tokens_per_node: dict[str, dict[str, float]] = Field(default_factory=dict)
     error: str | None = None
     extra: dict[str, Any] = Field(default_factory=dict)
 
@@ -132,6 +138,7 @@ class ManifestRecorder:
         run_id: str | None = None,
         repo_dir: str | os.PathLike[str] | None = None,
         user_id: str | None = None,
+        project_id: str | None = None,
     ) -> "ManifestRecorder":
         manifest = RunManifest(
             run_id=run_id or uuid.uuid4().hex[:12],
@@ -141,6 +148,7 @@ class ManifestRecorder:
             git_sha=_git_sha(repo_dir or os.getcwd()),
             project_sha=_project_sha(project_dir),
             user_id=user_id,
+            project_id=project_id,
         )
         return cls(project_dir=project_dir, manifest=manifest)
 
@@ -168,12 +176,85 @@ class ManifestRecorder:
         self.manifest.cost_usd += cost_usd
         self.flush()
 
+    def add_node_tokens(
+        self,
+        node_name: str,
+        *,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        cost_usd: float = 0.0,
+        calls: int = 1,
+    ) -> None:
+        """Accumulate per-node telemetry without touching the run totals.
+
+        Workflow-level totals are owned by ``add_tokens`` (driven by the
+        LangChain callback). This method records the same numbers bucketed
+        by ``node_name`` so the dashboard can show a per-node cost split.
+        """
+        bucket = self.manifest.tokens_per_node.setdefault(
+            node_name, {"ti": 0.0, "to": 0.0, "calls": 0.0, "cost_usd": 0.0}
+        )
+        bucket["ti"] += input_tokens
+        bucket["to"] += output_tokens
+        bucket["calls"] += calls
+        bucket["cost_usd"] += cost_usd
+        self.flush()
+
     def finish(self, status: str = "success", error: str | None = None) -> None:
         self.manifest.status = status
         self.manifest.ended_at = datetime.now(timezone.utc)
         if error:
             self.manifest.error = error
         self.flush()
+        self._emit_telemetry()
+
+    def _emit_telemetry(self) -> None:
+        """Best-effort append to the local telemetry sink. Never raises.
+
+        Imported lazily so the manifest module stays cheap to import in
+        contexts that disable telemetry entirely (tests, CI). The
+        summary mirrors the ``TelemetryCollector`` schema so the
+        manifest-finish path and the file-replay path produce the same
+        on-disk shape.
+        """
+        try:
+            from plato.state.telemetry import append_run_summary
+
+            started = self.manifest.started_at
+            ended = self.manifest.ended_at
+            duration = (
+                (ended - started).total_seconds()
+                if started is not None and ended is not None
+                else None
+            )
+            timestamp_dt = ended or started
+            # Pick a stable representative model; ``models`` is a dict
+            # of node -> model id, and the dashboard surfaces a single
+            # string. Sorting keeps the choice deterministic.
+            models = self.manifest.models or {}
+            model = next(iter(sorted(models.values())), "") if models else ""
+
+            summary = {
+                "timestamp": timestamp_dt.isoformat() if timestamp_dt else None,
+                "run_id": self.manifest.run_id,
+                "workflow": self.manifest.workflow,
+                "duration_seconds": duration,
+                "tokens_in": self.manifest.tokens_in,
+                "tokens_out": self.manifest.tokens_out,
+                "cost_usd": self.manifest.cost_usd,
+                "status": self.manifest.status,
+                "project_id": self.manifest.project_id,
+                "user_id": self.manifest.user_id,
+                "model": model or None,
+                "started_at": started.isoformat() if started else None,
+                "finished_at": ended.isoformat() if ended else None,
+                "error": self.manifest.error,
+            }
+            # Strip Nones so older readers don't see unexpected nulls.
+            summary = {k: v for k, v in summary.items() if v is not None}
+            append_run_summary(summary)
+        except Exception:  # noqa: BLE001 — telemetry must never crash a run
+            pass
 
     def flush(self) -> None:
         """Atomic write via temp-file rename so partial writes never leave junk."""

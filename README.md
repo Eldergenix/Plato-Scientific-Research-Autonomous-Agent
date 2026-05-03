@@ -40,6 +40,43 @@ Phase 5 hardening landed alongside the dashboard's 13-stream feature push:
 See `docs/adr/` for the design decisions behind these changes and
 `dashboard/CHANGELOG.md` for the full list.
 
+## What's new since 0.2
+
+Subsequent iterations layered run-context plumbing, dashboard polish, and
+skill-integration scaffolding on top of the Phase 5 baseline:
+
+- **Iter 13** — `X-Plato-Run-Id` header threading + `/evals` drill-down
+  view, plus scoped node telemetry.
+- **Iter 14** — `RunDetailNav` active-run tracking and 4 new MkDocs
+  feature pages.
+- **Iter 15** — R9 `prompt_hashes` reproducibility hook and 5 additional
+  MkDocs feature pages.
+- **Iter 16** — `KeywordExtractor` and `JournalPreset` registries shipped;
+  R9 `node_name` backfill across 23 telemetry sites.
+- **Iter 17** — log virtualization, mobile sidebar drawer, and RSC-based
+  settings split.
+- **Skill integration** — 9 research skills, `THESIS_ZH` journal preset,
+  `ml` domain profile, and a PRISMA SLR node.
+
+## Recent improvements
+
+Post-iter-17 hardening waves (3, 5, 7):
+
+- Security fixes — auth/scoping audit across dashboard endpoints; the
+  `X-Plato-User` header is now checked on every protected route.
+- R11 paper-agents reviewer panel — `plato/paper_agents/` consolidates the
+  methodology / statistics / novelty / writing critics behind one aggregator.
+- Run list page (`dashboard/frontend/src/app/page.tsx`) surfaces all runs
+  with active-run highlighting and direct links into stages.
+- Vitest + ESLint — frontend ships with strict unit tests and lint gates.
+- `LocalJupyterExecutor` (`plato/executor/local_jupyter.py`) — local Jupyter
+  kernel backend via `jupyter_client`, falling back to subprocess.
+- Run-config presets — per-user named bundles of run knobs, persisted at
+  `<project>/users/<uid>/run_presets.json`, surfaced in dashboard Settings.
+- Telemetry collector (`plato/state/telemetry.py`) — opt-in local-only JSONL
+  sink at `~/.plato/telemetry.jsonl`, three-way gated.
+- ADR 0007 — running register of intentionally deferred work.
+
 ## Resources
 
 - [🌐 Project page](https://astropilot-ai.github.io/PlatoPaperPage/)

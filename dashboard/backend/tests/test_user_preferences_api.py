@@ -24,7 +24,11 @@ def _client() -> TestClient:
 def test_get_returns_null_defaults_when_no_file(tmp_project_root: Path) -> None:
     resp = _client().get("/api/v1/user/preferences")
     assert resp.status_code == 200
-    assert resp.json() == {"default_domain": None, "default_executor": None}
+    assert resp.json() == {
+        "default_domain": None,
+        "default_executor": None,
+        "default_models": {},
+    }
 
 
 def test_get_reads_persisted_preferences(tmp_project_root: Path) -> None:
@@ -39,7 +43,11 @@ def test_get_reads_persisted_preferences(tmp_project_root: Path) -> None:
         headers={"X-Plato-User": "alice"},
     )
     assert resp.status_code == 200
-    assert resp.json() == {"default_domain": "biology", "default_executor": None}
+    assert resp.json() == {
+        "default_domain": "biology",
+        "default_executor": None,
+        "default_models": {},
+    }
 
 
 # ---------------------------------------------------------------- PUT
@@ -55,7 +63,11 @@ def test_put_persists_default_domain_and_get_reflects(
         json={"default_domain": "biology"},
     )
     assert put.status_code == 200
-    assert put.json() == {"default_domain": "biology", "default_executor": None}
+    assert put.json() == {
+        "default_domain": "biology",
+        "default_executor": None,
+        "default_models": {},
+    }
 
     # Round-trip: GET reads the same value back.
     got = client.get("/api/v1/user/preferences").json()
@@ -64,6 +76,44 @@ def test_put_persists_default_domain_and_get_reflects(
     # And it actually hit disk under the anon profile.
     saved = (tmp_project_root / "users" / "__anon__" / "preferences.json").read_text()
     assert json.loads(saved)["default_domain"] == "biology"
+
+
+def test_put_persists_default_models_partial(tmp_project_root: Path) -> None:
+    client = _client()
+
+    # First write: only idea
+    put1 = client.put(
+        "/api/v1/user/preferences",
+        json={"default_models": {"idea": "gpt-4.1"}},
+    )
+    assert put1.status_code == 200
+    assert put1.json()["default_models"] == {"idea": "gpt-4.1"}
+
+    # Second write: only paper — must merge, not replace.
+    put2 = client.put(
+        "/api/v1/user/preferences",
+        json={"default_models": {"paper": "claude-4.1-opus"}},
+    )
+    assert put2.status_code == 200
+    assert put2.json()["default_models"] == {
+        "idea": "gpt-4.1",
+        "paper": "claude-4.1-opus",
+    }
+
+
+def test_put_rejects_unknown_stage(tmp_project_root: Path) -> None:
+    resp = _client().put(
+        "/api/v1/user/preferences",
+        json={"default_models": {"not-a-stage": "gpt-4.1"}},
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["code"] == "unknown_stage"
+
+
+def test_put_rejects_empty_payload(tmp_project_root: Path) -> None:
+    resp = _client().put("/api/v1/user/preferences", json={})
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["code"] == "empty_update"
 
 
 def test_put_rejects_unknown_domain(tmp_project_root: Path) -> None:

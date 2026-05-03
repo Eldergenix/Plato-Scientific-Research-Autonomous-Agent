@@ -1,0 +1,8 @@
+node_modules
+.next
+out
+*.config.js
+*.config.mjs
+next-env.d.ts
+playwright-report
+test-results

@@ -1,4 +1,4 @@
-"""Per-user dashboard preferences (selected domain, executor) backed by JSON files.
+"""Per-user dashboard preferences (selected domain, executor, per-stage models).
 
 Persisted at ``<settings.project_root>/users/<user_id>/preferences.json``
 so they survive restarts and travel with the project root the rest of the
@@ -8,6 +8,11 @@ dashboard uses. When ``PLATO_AUTH=enabled`` (required mode), an
 
 The ``default_executor`` field is the contract surface for Stream 7 — it's
 read/persisted here but written as ``None`` until that stream lands.
+
+The ``default_models`` field is a stage-id -> model-id map populated by
+the LLM-providers settings page. Empty dict by default; PUT accepts a
+partial map and merges into the existing record so the UI can save one
+stage at a time without clobbering the rest.
 """
 
 from __future__ import annotations
@@ -30,15 +35,26 @@ _ANON_USER = "__anon__"
 # Conservative slug — matches the alphabet ProjectStore already uses for IDs
 # so a malicious header can't traverse outside the per-user directory.
 _USER_ID_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
+# Stage ids that the dashboard exposes a model picker for. Mirrors
+# RECOMMENDED_BY_STAGE on the frontend; kept in sync manually since the
+# canonical list lives in plato/llm.py and we don't want to import it
+# into the API layer just for a validation set.
+_VALID_STAGE_IDS = frozenset(
+    {"idea", "literature", "method", "results", "paper", "referee"}
+)
 
 
 class PreferencesResponse(BaseModel):
     default_domain: str | None = None
     default_executor: str | None = None
+    default_models: dict[str, str] = Field(default_factory=dict)
 
 
 class PreferencesUpdate(BaseModel):
-    default_domain: str = Field(min_length=1)
+    default_domain: str | None = Field(default=None, min_length=1)
+    # Partial map: only the stages present are updated; keys not in
+    # _VALID_STAGE_IDS are rejected at validation time.
+    default_models: dict[str, str] | None = None
 
 
 def _resolve_user_id(
@@ -93,6 +109,21 @@ def _save(path: Path, data: dict[str, Any]) -> None:
     path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
 
 
+def _coerce_default_models(raw: Any) -> dict[str, str]:
+    """Defensive read for the on-disk ``default_models`` field.
+
+    Older preference files predate this field and won't carry it; a
+    malformed value (non-dict, non-string members) shouldn't crash GET.
+    """
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, str] = {}
+    for k, v in raw.items():
+        if isinstance(k, str) and isinstance(v, str) and k in _VALID_STAGE_IDS:
+            out[k] = v
+    return out
+
+
 @router.get("/user/preferences", response_model=PreferencesResponse)
 def get_preferences(
     settings: Settings = Depends(get_settings),
@@ -103,6 +134,7 @@ def get_preferences(
     return PreferencesResponse(
         default_domain=data.get("default_domain"),
         default_executor=data.get("default_executor"),
+        default_models=_coerce_default_models(data.get("default_models")),
     )
 
 
@@ -114,28 +146,60 @@ def put_preferences(
 ) -> PreferencesResponse:
     user_id = _resolve_user_id(settings, x_plato_user)
 
-    registered = list_domains()
-    if body.default_domain not in registered:
+    if body.default_domain is None and body.default_models is None:
+        # No-op PUTs would silently succeed — better to fail loudly so
+        # callers don't think they wrote something they didn't.
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
-                "code": "unknown_domain",
-                "message": (
-                    f"Unknown domain {body.default_domain!r}. "
-                    f"Registered: {registered}"
-                ),
+                "code": "empty_update",
+                "message": "Provide default_domain or default_models.",
             },
         )
 
+    if body.default_domain is not None:
+        registered = list_domains()
+        if body.default_domain not in registered:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "unknown_domain",
+                    "message": (
+                        f"Unknown domain {body.default_domain!r}. "
+                        f"Registered: {registered}"
+                    ),
+                },
+            )
+
+    if body.default_models is not None:
+        bad = [k for k in body.default_models if k not in _VALID_STAGE_IDS]
+        if bad:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "unknown_stage",
+                    "message": (
+                        f"Unknown stage ids: {bad!r}. "
+                        f"Expected subset of {sorted(_VALID_STAGE_IDS)}."
+                    ),
+                },
+            )
+
     path = _prefs_path(settings, user_id)
     data = _load(path)
-    data["default_domain"] = body.default_domain
+    if body.default_domain is not None:
+        data["default_domain"] = body.default_domain
     # Stream 7 owns this field — preserve any value already on disk, otherwise
     # surface ``None`` rather than fabricating an executor here.
     data.setdefault("default_executor", None)
+    if body.default_models is not None:
+        existing = _coerce_default_models(data.get("default_models"))
+        existing.update(body.default_models)
+        data["default_models"] = existing
     _save(path, data)
 
     return PreferencesResponse(
-        default_domain=data["default_domain"],
+        default_domain=data.get("default_domain"),
         default_executor=data.get("default_executor"),
+        default_models=_coerce_default_models(data.get("default_models")),
     )

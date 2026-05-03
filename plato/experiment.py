@@ -7,9 +7,28 @@ from .prompts.experiment import experiment_planner_prompt, experiment_engineer_p
 from .utils import create_work_dir, get_task_result
 
 class Experiment:
-    """
-    This class is used to perform the experiment.
-    TODO: improve docstring
+    """Plan, execute, and format an experiment via cmbagent's planning loop.
+
+    Wires up planner / engineer / researcher / plan-reviewer prompts from
+    a research idea and methodology, creates a per-experiment work dir,
+    and exposes :meth:`run_experiment` to drive ``cmbagent``'s
+    planning-and-control loop end-to-end. After a successful run the
+    extracted markdown report is exposed as ``self.results`` and any
+    rendered figures as ``self.plot_paths``.
+
+    Args:
+        research_idea: One-paragraph statement of the research question.
+        methodology: Methodology / approach the agents should follow.
+        keys: API key bundle passed through to cmbagent.
+        work_dir: Parent directory; an ``experiment/`` subdir is created.
+        involved_agents: Subset of {"engineer", "researcher"} to enable.
+        engineer_model / researcher_model / planner_model /
+        plan_reviewer_model / orchestration_model / formatter_model:
+            Per-role LLM identifiers handed to cmbagent.
+        restart_at_step: Resume cmbagent at this step (-1 = fresh run).
+        hardware_constraints: Free-form hardware budget passed to agents.
+        max_n_attempts: Max retries cmbagent may take per step.
+        max_n_steps: Max plan steps cmbagent may emit.
     """
 
     def __init__(self,
@@ -65,9 +84,23 @@ class Experiment:
         )
 
     def run_experiment(self, data_description: str, **kwargs):
-        """
-        Run the experiment.
-        TODO: improve docstring
+        """Drive the cmbagent planning-and-control loop and capture results.
+
+        Echoes the configured model / step / restart settings, invokes
+        ``cmbagent.planning_and_control_context_carryover`` with the
+        prompts assembled in ``__init__``, and parses the
+        ``researcher_response_formatter`` task output. The first markdown
+        code block is stripped of its leading HTML comment and stored on
+        ``self.results``; figures listed in ``final_context['displayed_images']``
+        are stored on ``self.plot_paths``.
+
+        Args:
+            data_description: Human-readable description of the dataset
+                handed to cmbagent as the run topic.
+            **kwargs: Reserved for forward-compatibility; not currently used.
+
+        Returns:
+            None. Side effects populate ``self.results`` / ``self.plot_paths``.
         """
 
         print(f"Engineer model: {self.engineer_model}")

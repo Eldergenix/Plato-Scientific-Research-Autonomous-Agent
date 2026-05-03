@@ -16,7 +16,7 @@ the existing ``ADAPTER_REGISTRY`` test pattern).
 from __future__ import annotations
 
 import inspect
-from typing import Awaitable, Callable, Literal, Union
+from typing import Any, Awaitable, Callable, Literal, Union
 
 from pydantic import BaseModel, ConfigDict
 
@@ -152,7 +152,7 @@ def is_async(name: str) -> bool:
     fn = get(name).fn
     while hasattr(fn, "func") and not inspect.iscoroutinefunction(fn):
         # functools.partial / wrapt-style proxies: drill in.
-        fn = fn.func  # type: ignore[attr-defined]
+        fn = fn.func
     return inspect.iscoroutinefunction(fn)
 
 

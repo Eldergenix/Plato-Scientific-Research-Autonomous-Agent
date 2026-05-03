@@ -107,11 +107,11 @@ def _resolve_profile(state: GraphState) -> DomainProfile:
     (``state['domain_profile']``). Anything else falls through to the astro
     default so this node never crashes a run mid-graph.
     """
-    profile = state.get("domain_profile")  # type: ignore[arg-type]
+    profile = state.get("domain_profile")
     if isinstance(profile, DomainProfile):
         return profile
 
-    name = state.get("domain")  # type: ignore[arg-type]
+    name = state.get("domain")
     if isinstance(name, str) and name:
         try:
             return get_domain(name)

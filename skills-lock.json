@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "skills": {
+    "academic-research-writer": {
+      "source": "endigo/claude-skills",
+      "sourceType": "github",
+      "skillPath": "academic-research-writer/SKILL.md",
+      "computedHash": "229d37b33edb8d684aa75827ce84e4eb9ef0fd1961c3d5404cd77b77e81ba2f5"
+    },
+    "academic-researcher": {
+      "source": "shubhamsaboo/awesome-llm-apps",
+      "sourceType": "github",
+      "skillPath": "awesome_agent_skills/academic-researcher/SKILL.md",
+      "computedHash": "16dd0121beefcbb1dba0652f0a37fd5511380c8be7ae69270222913483b00bbc"
+    },
+    "autoresearch-genealogy": {
+      "source": "aradotso/trending-skills",
+      "sourceType": "github",
+      "skillPath": "skills/autoresearch-genealogy/SKILL.md",
+      "computedHash": "dcb230d8f4637e3e51c6f8e73fa6fa96f3899d8078410144ba6e52a3fa0a25b2"
+    },
+    "autoresearchclaw-autonomous-research": {
+      "source": "aradotso/trending-skills",
+      "sourceType": "github",
+      "skillPath": "skills/autoresearchclaw-autonomous-research/SKILL.md",
+      "computedHash": "36255bdd2437b3799bc362ec16ead83b26f05a83568e9e19a890369e236edab7"
+    },
+    "deep-research": {
+      "source": "199-biotechnologies/claude-deep-research-skill",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "685efecf2091dccf219506641671acc3c0c31ecb83f54b8473b9d399ba0337b8"
+    },
+    "latex-paper-en": {
+      "source": "bahayonghang/academic-writing-skills",
+      "sourceType": "github",
+      "skillPath": "academic-writing-skills/latex-paper-en/SKILL.md",
+      "computedHash": "5b1fcc9e749646225a73b613738376e6e6c07d41e128cdf2fc0b86cca8a04e07"
+    },
+    "latex-thesis-zh": {
+      "source": "bahayonghang/academic-writing-skills",
+      "sourceType": "github",
+      "skillPath": "academic-writing-skills/latex-thesis-zh/SKILL.md",
+      "computedHash": "6ab9305aa4e171659a40cb593b17399072359e2d2a7f10e7fb382cc5a9360fdf"
+    },
+    "ml-paper-writing": {
+      "source": "zechenzhangagi/ai-research-skills",
+      "sourceType": "github",
+      "skillPath": "20-ml-paper-writing/ml-paper-writing/SKILL.md",
+      "computedHash": "3d5dd06f6a0369a6576fd1098a20dc0204d92286c161da9a4e26ef360e8d6072"
+    },
+    "systematic-literature-review": {
+      "source": "huangwb8/chineseresearchlatex",
+      "sourceType": "github",
+      "skillPath": "skills/systematic-literature-review/SKILL.md",
+      "computedHash": "13288ecb3ebdaa4e7fce15b9016d777290039c1511dfe6fff073ed6db25e8576"
+    }
+  }
+}

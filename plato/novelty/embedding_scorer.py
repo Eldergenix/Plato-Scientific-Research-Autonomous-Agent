@@ -53,7 +53,7 @@ class OpenAIEmbeddingBackend:
         if self._client is not None:
             return self._client
         try:
-            import openai  # type: ignore[import-not-found]
+            import openai
         except ImportError as exc:
             raise ImportError(
                 "OpenAIEmbeddingBackend requires the 'openai' package. "

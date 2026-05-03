@@ -110,6 +110,45 @@ REFINE_SCOPE = FileScope(
     read=["**/*"],
 )
 
+# Async citations node: writes per-section ``*_w_citations*.tex`` + ``.bib``
+# partials under ``temp/`` and the paper_v3/paper_v4 artifacts plus the
+# bibliography sidecars produced by ``save_bib`` / ``process_bib_file``.
+CITATIONS_SCOPE = FileScope(
+    write=[
+        "temp/*_w_citations.tex",
+        "temp/*_w_citations2.tex",
+        "temp/*.bib",
+        "paper_v*.tex",
+        "paper_v*.pdf",
+        "paper_v*.aux",
+        "paper_v*.log",
+        "paper_v*.out",
+        "paper_v*.bbl",
+        "paper_v*.blg",
+        "bibliography.bib",
+        "bibliography_temp.bib",
+    ],
+    read=["**/*"],
+)
+
+# R3 citation validator: writes a per-run sidecar JSON next to the rest of
+# the run artifacts under ``runs/<run_id>/`` (relative to ``Folder``).
+CITATION_VALIDATOR_SCOPE = FileScope(
+    write=[
+        "runs/*/validation_report.json",
+    ],
+    read=["**/*"],
+)
+
+# R5 evidence matrix: writes the per-run JSONL matrix alongside the
+# validator's report.
+EVIDENCE_MATRIX_SCOPE = FileScope(
+    write=[
+        "runs/*/evidence_matrix.jsonl",
+    ],
+    read=["**/*"],
+)
+
 
 __all__ = [
     "ABSTRACT_SCOPE",
@@ -120,4 +159,7 @@ __all__ = [
     "KEYWORDS_SCOPE",
     "PLOTS_SCOPE",
     "REFINE_SCOPE",
+    "CITATIONS_SCOPE",
+    "CITATION_VALIDATOR_SCOPE",
+    "EVIDENCE_MATRIX_SCOPE",
 ]

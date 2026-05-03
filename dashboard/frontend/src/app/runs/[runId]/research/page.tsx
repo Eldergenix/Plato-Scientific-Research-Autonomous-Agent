@@ -11,6 +11,7 @@ import {
   type GapsPayload,
 } from "@/components/research/gaps-panel";
 import { RunDetailNav } from "@/components/manifest/run-detail-nav";
+import { getActiveRunId, getActiveUserId, setActiveRunId } from "@/lib/api";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:7878/api/v1";
@@ -22,11 +23,21 @@ type Loadable<T> =
   | { kind: "error"; message: string };
 
 async function fetchOptional<T>(path: string): Promise<Loadable<T>> {
+  // Mirror fetchJson's correlation headers so the dashboard backend
+  // can join SSR-style fetches into the same X-Plato-Run-Id /
+  // X-Plato-User trace as the rest of the run-detail subtree.
+  const headers: Record<string, string> = { Accept: "application/json" };
+  const runId = getActiveRunId();
+  if (runId) headers["X-Plato-Run-Id"] = runId;
+  const userId = getActiveUserId();
+  if (userId) headers["X-Plato-User"] = userId;
+
   let resp: Response;
   try {
     resp = await fetch(`${API_BASE}${path}`, {
-      headers: { Accept: "application/json" },
+      headers,
       cache: "no-store",
+      credentials: "include",
     });
   } catch (err) {
     return {
@@ -63,6 +74,14 @@ export default function RunResearchPage({
   const [counter, setCounter] =
     React.useState<Loadable<CounterEvidencePayload>>({ kind: "loading" });
   const [gaps, setGaps] = React.useState<Loadable<GapsPayload>>({ kind: "loading" });
+
+  // Bind run id to the api.ts module-level store so the local
+  // fetchOptional (which reads getActiveRunId) carries
+  // X-Plato-Run-Id. Cleared on unmount.
+  React.useEffect(() => {
+    setActiveRunId(runId);
+    return () => setActiveRunId(null);
+  }, [runId]);
 
   React.useEffect(() => {
     let cancelled = false;

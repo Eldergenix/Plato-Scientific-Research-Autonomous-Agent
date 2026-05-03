@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import {
   Wallet,
   TrendingUp,
@@ -14,7 +15,6 @@ import {
 import { api } from "@/lib/api";
 import type { Project } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Pill } from "@/components/ui/pill";
 import { formatCost, formatTokens, cn } from "@/lib/utils";
 
 type SortKey = "name" | "createdAt" | "stagesRun" | "tokens" | "cost";
@@ -220,11 +220,16 @@ export default function CostsPage() {
         )}
 
         {tab !== "project" ? (
-          <section className="surface-linear-card flex items-center justify-between gap-3 p-6">
-            <div className="text-[13px] text-(--color-text-tertiary-spec)">
-              Coming soon — {tab === "model" ? "per-model" : "per-day"} aggregation ships in Phase 4.
-            </div>
-            <Pill tone="amber">TODO</Pill>
+          <section className="surface-linear-card flex flex-col items-center justify-center gap-2 px-6 py-12 text-center">
+            <Wallet className="size-8" style={{ color: "#62666d" }} />
+            <p className="max-w-md text-[13px] text-(--color-text-tertiary-spec)">
+              Per-{tab === "model" ? "model" : "day"} cost aggregation is not yet
+              available. Use the per-run cost in{" "}
+              <code className="font-mono text-[12px] text-(--color-text-secondary-spec)">
+                /runs/&lt;id&gt;
+              </code>{" "}
+              for current data.
+            </p>
           </section>
         ) : isEmpty ? (
           <EmptyState />
@@ -455,11 +460,11 @@ function EmptyState() {
       <p className="max-w-md text-[13px] text-(--color-text-tertiary-spec)">
         No projects yet — costs will appear here when you create your first run.
       </p>
-      <a href="/">
+      <Link href="/">
         <Button variant="primary" size="md">
           <Plus className="size-3.5" /> Create project
         </Button>
-      </a>
+      </Link>
     </section>
   );
 }

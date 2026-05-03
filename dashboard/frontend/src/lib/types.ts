@@ -67,6 +67,22 @@ export interface ActiveRun {
   ipuUsed?: number;
 }
 
+export type RunStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+
+export interface Run {
+  id: string;
+  projectId: string;
+  projectName?: string;
+  stage: StageId;
+  mode: Mode;
+  status: RunStatus;
+  startedAt?: string;
+  finishedAt?: string;
+  error?: string;
+  tokenInput: number;
+  tokenOutput: number;
+}
+
 export type LogLevel = "info" | "tool" | "error" | "warn";
 
 export interface LogLine {

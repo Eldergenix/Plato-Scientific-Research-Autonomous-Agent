@@ -3,6 +3,7 @@
 import * as React from "react";
 import { ArrowDown, ArrowUp, ArrowUpDown, ExternalLink, Search } from "lucide-react";
 import { Pill } from "@/components/ui/pill";
+import { TableSkeleton } from "@/components/shell/route-loading";
 import { cn } from "@/lib/utils";
 
 export interface LicenseDistribution {
@@ -131,21 +132,15 @@ function SortIcon({
 
 export function LicenseTable({
   distributions,
+  loading = false,
 }: {
   distributions: LicenseDistribution[];
+  /** Render a column-matched skeleton instead of empty/data rows. */
+  loading?: boolean;
 }) {
   const [query, setQuery] = React.useState("");
   const [sortKey, setSortKey] = React.useState<SortKey>("name");
   const [sortDir, setSortDir] = React.useState<SortDirection>("asc");
-
-  const onHeaderClick = (key: SortKey) => {
-    if (key === sortKey) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(key);
-      setSortDir("asc");
-    }
-  };
 
   const filteredAndSorted = React.useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -155,6 +150,44 @@ export function LicenseTable({
     const sorted = [...filtered].sort((a, b) => compareDists(a, b, sortKey));
     return sortDir === "asc" ? sorted : sorted.reverse();
   }, [distributions, query, sortKey, sortDir]);
+
+  if (loading) {
+    return (
+      <section
+        className="surface-linear-card overflow-hidden"
+        data-testid="license-table-loading"
+        style={{ border: "1px solid var(--color-border-card)" }}
+      >
+        <header
+          className="flex items-center justify-between gap-3 px-4 py-3"
+          style={{ borderBottom: "1px solid var(--color-border-standard)" }}
+        >
+          <div className="flex items-center gap-3">
+            <h2
+              className="text-(--color-text-primary-strong) text-[15px]"
+              style={{ fontWeight: 510 }}
+            >
+              Distributions
+            </h2>
+          </div>
+        </header>
+        <TableSkeleton
+          rows={6}
+          columnWidths={COLUMN_DEFS.map((c) => c.width)}
+          caption="Loading license distributions"
+        />
+      </section>
+    );
+  }
+
+  const onHeaderClick = (key: SortKey) => {
+    if (key === sortKey) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  };
 
   if (distributions.length === 0) {
     return (
@@ -229,18 +262,18 @@ export function LicenseTable({
                     key={col.key}
                     style={{ width: col.width }}
                     className="font-label px-4 py-2"
+                    aria-sort={
+                      active
+                        ? sortDir === "asc"
+                          ? "ascending"
+                          : "descending"
+                        : "none"
+                    }
                   >
                     <button
                       type="button"
                       onClick={() => onHeaderClick(col.key)}
                       data-testid={`license-table-sort-${col.key}`}
-                      aria-sort={
-                        active
-                          ? sortDir === "asc"
-                            ? "ascending"
-                            : "descending"
-                          : "none"
-                      }
                       className={cn(
                         "inline-flex items-center gap-1.5 transition-colors",
                         active

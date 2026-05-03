@@ -1,5 +1,7 @@
 import type {
   Project,
+  Run,
+  RunStatus,
   StageId,
 } from "./types";
 
@@ -44,6 +46,25 @@ export type RunEvent =
   | RunEventPlotCreated
   | RunEventUnknown;
 
+// One file under a run dir, advertised by the artifacts listing.
+// Mirrors ``Artifact`` in dashboard/backend/.../api/server.py — keep
+// the union of ``kind`` values in lockstep with the backend Literal so
+// we never drop a new bucket on the floor.
+export type RunArtifactKind =
+  | "paper_pdf"
+  | "manifest"
+  | "report"
+  | "data"
+  | "log"
+  | "other";
+
+export interface RunArtifact {
+  path: string;
+  size: number;
+  mtime: string; // ISO-8601 UTC
+  kind: RunArtifactKind;
+}
+
 // Module-level run-id store. Components that know they're inside an
 // active run (workspace shell, run-detail subroutes, loop monitor)
 // set this so every subsequent fetchJson call carries the matching
@@ -60,6 +81,32 @@ export function getActiveRunId(): string | null {
   return _activeRunId;
 }
 
+// Module-level user-id store for ADR 0004 multi-tenancy. The auth
+// context calls setActiveUserId on login/logout/refresh and on cold
+// load we rehydrate from localStorage so the very first fetchJson
+// after a page refresh already carries X-Plato-User. The cookie set
+// by /auth/login remains the server's source of truth — this header
+// drives backend log correlation and tenant routing.
+const USER_ID_STORAGE_KEY = "plato:user_id";
+let _activeUserId: string | null = null;
+
+if (typeof window !== "undefined") {
+  try {
+    const persisted = window.localStorage.getItem(USER_ID_STORAGE_KEY);
+    if (persisted && persisted.length > 0) _activeUserId = persisted;
+  } catch {
+    /* private mode / quota — login flow will repopulate */
+  }
+}
+
+export function setActiveUserId(id: string | null): void {
+  _activeUserId = id;
+}
+
+export function getActiveUserId(): string | null {
+  return _activeUserId;
+}
+
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   let r: Response;
   const headers: Record<string, string> = {
@@ -69,10 +116,14 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   if (_activeRunId && !("X-Plato-Run-Id" in headers)) {
     headers["X-Plato-Run-Id"] = _activeRunId;
   }
+  if (_activeUserId && !("X-Plato-User" in headers)) {
+    headers["X-Plato-User"] = _activeUserId;
+  }
   try {
     r = await fetch(`${API_BASE}${path}`, {
       ...init,
       headers,
+      credentials: init?.credentials ?? "include",
     });
   } catch (e) {
     throw new ApiError(0, {
@@ -132,6 +183,34 @@ type RawActiveRun = {
   attempt?: number | null;
   total_attempts?: number | null;
 };
+
+type RawRun = {
+  id: string;
+  project_id: string;
+  stage: StageId;
+  mode: Run["mode"];
+  status: RunStatus;
+  started_at?: string | null;
+  finished_at?: string | null;
+  error?: string | null;
+  token_input: number;
+  token_output: number;
+};
+
+function adaptRun(r: RawRun): Run {
+  return {
+    id: r.id,
+    projectId: r.project_id,
+    stage: r.stage,
+    mode: r.mode,
+    status: r.status,
+    startedAt: r.started_at ?? undefined,
+    finishedAt: r.finished_at ?? undefined,
+    error: r.error ?? undefined,
+    tokenInput: r.token_input ?? 0,
+    tokenOutput: r.token_output ?? 0,
+  };
+}
 
 function adaptProject(p: RawProject): Project {
   const stages = Object.fromEntries(
@@ -235,7 +314,52 @@ export const api = {
     return fetchJson(`/projects/${pid}/runs/${runId}/cancel`, { method: "POST" });
   },
 
-  /** Subscribe to SSE for a run. Returns an unsubscribe fn. */
+  // Retry semantically maps to "start a new run for this stage" — the
+  // backend has no dedicated endpoint, but POST /stages/{stage}/run is
+  // idempotent w.r.t. capability checks and produces a fresh run id we
+  // navigate to. Kept separate from startRun() so call-sites read clearly.
+  async retryRun(
+    pid: string,
+    stage: StageId,
+    body: { mode?: "fast" | "cmbagent"; models?: Record<string, string> } = {},
+  ): Promise<{ id: string; project_id: string; stage: StageId; status: string }> {
+    return fetchJson(`/projects/${pid}/stages/${stage}/run`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+
+  async getRun(pid: string, runId: string): Promise<Run> {
+    const raw = await fetchJson<RawRun>(`/projects/${pid}/runs/${runId}`);
+    return adaptRun(raw);
+  },
+
+  async listRuns(pid: string): Promise<Run[]> {
+    const raw = await fetchJson<RawRun[]>(`/projects/${pid}/runs`);
+    return raw.map(adaptRun);
+  },
+
+  async listRunArtifacts(pid: string, runId: string): Promise<RunArtifact[]> {
+    const raw = await fetchJson<{ items: RunArtifact[] }>(
+      `/projects/${pid}/runs/${runId}/artifacts`,
+    );
+    return raw.items;
+  },
+
+  /**
+   * Subscribe to SSE for a run with automatic reconnect.
+   *
+   * Native EventSource only retries within a single browser-managed
+   * window — once the server hard-closes (process restart, network
+   * blip past that budget), the stream stays dead. We wrap creation
+   * in a small supervisor that retries up to 5 times with exponential
+   * backoff (1s -> 2s -> 4s -> 8s -> 16s, capped), resets the attempt
+   * counter on a successful onopen, and stops scheduling once the
+   * caller invokes the returned close().
+   *
+   * Signature stays a `() => void` unsubscribe so existing callers
+   * (loop monitor, run-detail page) need no change.
+   */
   subscribeRunEvents(
     pid: string,
     runId: string,
@@ -243,20 +367,100 @@ export const api = {
     onError?: (e: unknown) => void,
   ): () => void {
     const url = `${API_BASE}/projects/${pid}/runs/${runId}/events`;
-    const es = new EventSource(url);
-    es.onmessage = (e) => {
-      try {
-        // The backend bus emits Record<string, unknown> shapes; we
-        // narrow at the boundary so consumers can discriminate on
-        // ``kind`` instead of doing String(evt.kind) inline.
-        const raw = JSON.parse(e.data) as Record<string, unknown>;
-        onEvent(raw as RunEvent);
-      } catch (err) {
-        onError?.(err);
+    const MAX_ATTEMPTS = 5;
+    let attempts = 0;
+    let stopped = false;
+    let current: EventSource | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const connect = (): void => {
+      if (stopped) return;
+      const es = new EventSource(url);
+      current = es;
+      es.onopen = () => {
+        attempts = 0;
+      };
+      es.onmessage = (e) => {
+        try {
+          // The backend bus emits Record<string, unknown> shapes; we
+          // narrow at the boundary so consumers can discriminate on
+          // ``kind`` instead of doing String(evt.kind) inline.
+          const raw = JSON.parse(e.data) as Record<string, unknown>;
+          onEvent(raw as RunEvent);
+        } catch (err) {
+          onError?.(err);
+        }
+      };
+      es.onerror = (e) => {
+        onError?.(e);
+        if (stopped) return;
+        es.close();
+        current = null;
+        if (attempts >= MAX_ATTEMPTS) return;
+        const delay = Math.min(1000 * 2 ** attempts, 16000);
+        attempts += 1;
+        retryTimer = setTimeout(connect, delay);
+      };
+    };
+
+    connect();
+
+    return () => {
+      stopped = true;
+      if (retryTimer !== null) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+      if (current) {
+        current.close();
+        current = null;
       }
     };
-    es.onerror = (e) => onError?.(e);
-    return () => es.close();
+  },
+
+  // ------------------------------------------------------------ telemetry
+  async getTelemetryPreferences(): Promise<TelemetryPreferences> {
+    return fetchJson<TelemetryPreferences>("/telemetry/preferences");
+  },
+
+  async setTelemetryPreferences(enabled: boolean): Promise<TelemetryPreferences> {
+    return fetchJson<TelemetryPreferences>("/telemetry/preferences", {
+      method: "PUT",
+      body: JSON.stringify({ telemetry_enabled: enabled }),
+    });
+  },
+
+  // ------------------------------------------------------------ run presets
+  async listRunPresets(): Promise<RunPreset[]> {
+    return fetchJson<RunPreset[]>("/run-presets");
+  },
+
+  async getRunPreset(id: string): Promise<RunPreset> {
+    return fetchJson<RunPreset>(`/run-presets/${id}`);
+  },
+
+  async createRunPreset(
+    name: string,
+    config: RunPresetConfig,
+  ): Promise<RunPreset> {
+    return fetchJson<RunPreset>("/run-presets", {
+      method: "POST",
+      body: JSON.stringify({ name, config }),
+    });
+  },
+
+  async updateRunPreset(
+    id: string,
+    payload: { name?: string; config?: RunPresetConfig },
+  ): Promise<RunPreset> {
+    return fetchJson<RunPreset>(`/run-presets/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async deleteRunPreset(id: string): Promise<void> {
+    await fetchJson<void>(`/run-presets/${id}`, { method: "DELETE" });
   },
 
   // ------------------------------------------------------------ keys
@@ -296,6 +500,95 @@ export const api = {
     }
   },
 };
+
+// Download a binary artefact via the per-project files endpoint.
+//
+// The fetchJson helper above always parses the response as JSON, which
+// corrupts PDFs and any other binary. We need a separate path that
+// reads the body as a Blob and triggers a save dialog. Auth headers
+// are forwarded so the backend's tenant guard still passes.
+export async function downloadArtifact(
+  projectId: string,
+  relpath: string,
+  suggestedFilename?: string,
+): Promise<void> {
+  const headers: Record<string, string> = {};
+  if (_activeRunId) headers["X-Plato-Run-Id"] = _activeRunId;
+  if (_activeUserId) headers["X-Plato-User"] = _activeUserId;
+
+  const url = `${API_BASE}/projects/${projectId}/files/${relpath}`;
+  const r = await fetch(url, { headers, credentials: "include" });
+  if (!r.ok) {
+    let detail: unknown;
+    try {
+      detail = await r.json();
+    } catch {
+      detail = await r.text();
+    }
+    throw new ApiError(r.status, detail);
+  }
+  const blob = await r.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = suggestedFilename ?? relpath.split("/").pop() ?? "artifact";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  } finally {
+    // Defer revoke so Safari has time to start the download stream.
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  }
+}
+
+// ---------------------------------------------------------------- telemetry types
+export interface TelemetryEntry {
+  timestamp?: string;
+  run_id?: string;
+  workflow?: string;
+  duration_seconds?: number | null;
+  tokens_in?: number;
+  tokens_out?: number;
+  cost_usd?: number;
+  status?: string;
+}
+
+export interface TelemetryAggregates {
+  total_runs: number;
+  total_tokens_in: number;
+  total_tokens_out: number;
+  total_cost_usd: number;
+}
+
+export interface TelemetryPreferences {
+  telemetry_enabled: boolean;
+  last_n_summary: TelemetryEntry[];
+  aggregates: TelemetryAggregates;
+}
+
+// ---------------------------------------------------------------- run preset types
+//
+// The on-disk ``config`` payload is a free-form bag matching the
+// backend ``RunPresetCreate.config`` field. Callers merge it over their
+// run-start defaults at submit time. We type the well-known stage
+// knobs and leave the rest as ``unknown`` so adding a new field on the
+// server doesn't require a frontend rev.
+export interface RunPresetConfig {
+  idea_iters?: number;
+  max_revision_iters?: number;
+  journal?: string;
+  domain?: string;
+  executor?: string;
+  [key: string]: unknown;
+}
+
+export interface RunPreset {
+  id: string;
+  name: string;
+  created_at: string;
+  config: RunPresetConfig;
+}
 
 // ---------------------------------------------------------------- keys types
 export type KeyState = "unset" | "from_env" | "in_app";

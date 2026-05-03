@@ -116,7 +116,7 @@ def _start_payload(project_dir: str = "/tmp/plato-fake") -> dict:
 
 def test_start_returns_loop_id_and_running(client: TestClient) -> None:
     resp = client.post("/api/v1/loop/start", json=_start_payload())
-    assert resp.status_code == 200
+    assert resp.status_code == 201
     body = resp.json()
     assert isinstance(body["loop_id"], str)
     assert len(body["loop_id"]) == 12  # uuid.uuid4().hex[:12]
@@ -143,7 +143,7 @@ async def test_start_schedules_research_loop(
     monkeypatch.setattr(loop_control, "_build_loop", _capturing_build)
 
     resp = await async_client.post("/api/v1/loop/start", json=_start_payload())
-    assert resp.status_code == 200
+    assert resp.status_code == 201
 
     # Yield once so the supervisor task can enter `await loop.run`.
     await asyncio.sleep(0.01)
@@ -266,7 +266,7 @@ def test_auth_required_blocks_missing_header(monkeypatch: pytest.MonkeyPatch, tm
             json=_start_payload(),
             headers={"X-Plato-User": "alice"},
         )
-        assert resp_ok.status_code == 200
+        assert resp_ok.status_code == 201
 
     loop_control.reset_registry()
 

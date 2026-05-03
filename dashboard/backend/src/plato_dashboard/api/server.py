@@ -2,16 +2,133 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import AsyncIterator
+from typing import AsyncIterator, Literal
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
+
+# Run id correlation header is echoed into log files via a contextvar, so
+# anything richer than `[A-Za-z0-9_-]` could smuggle newlines or control
+# characters into structured logs. We sanitise instead of rejecting so a
+# stray value never 500s an otherwise valid request.
+_RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+
+# Maximum entries returned by GET /projects/{pid}/runs/{run_id}/artifacts.
+# Above this we sort alphabetically and truncate so the response stays
+# bounded — a misconfigured run that dumps thousands of plots into the
+# run dir shouldn't blow the JSON serializer.
+_ARTIFACT_LIMIT = 100
+
+ArtifactKind = Literal["paper_pdf", "manifest", "report", "data", "log", "other"]
+
+
+class Artifact(BaseModel):
+    """One file under a run directory, surfaced to the dashboard listing."""
+
+    path: str
+    size: int
+    mtime: str  # ISO-8601 UTC timestamp
+    kind: ArtifactKind
+
+
+class ArtifactList(BaseModel):
+    """Envelope for ``GET /projects/{pid}/runs/{run_id}/artifacts``."""
+
+    items: list[Artifact] = Field(default_factory=list)
+
+
+def _classify_artifact(rel_path: str) -> ArtifactKind:
+    """Bucket an artefact by trailing filename / extension.
+
+    The kinds are coarse on purpose — the UI needs enough signal to
+    pick the right action (open inline vs. download) and to render an
+    icon, not a full MIME hierarchy.
+    """
+    name = rel_path.rsplit("/", 1)[-1].lower()
+    ext = name.rsplit(".", 1)[-1] if "." in name else ""
+
+    if ext == "pdf" and "paper" in name:
+        return "paper_pdf"
+    if name == "manifest.json":
+        return "manifest"
+    if name in {
+        "validation_report.json",
+        "referee_report.md",
+        "review.md",
+        "report.md",
+    } or name.endswith("_report.json") or name.endswith("_report.md"):
+        return "report"
+    if ext in {"jsonl", "csv", "tsv", "parquet", "npz", "npy", "json"}:
+        return "data"
+    if ext in {"log", "txt"} or "log" in name:
+        return "log"
+    return "other"
+
+
+# Internal junk we never want to advertise as a downloadable artefact.
+# Hidden files (starting with ".") are filtered separately so we catch
+# nested dotfiles too. ``.lock`` matches pip / uv lockfiles dropped by
+# stray subprocess runs.
+_ARTIFACT_SKIP_NAMES = {"__pycache__", ".tmp", ".lock"}
+
+
+def _list_run_artifacts(run_dir: Path) -> list[Artifact]:
+    """Walk ``run_dir`` and return up to ``_ARTIFACT_LIMIT`` artefacts.
+
+    Sort is alphabetical on the relative POSIX path so truncation is
+    deterministic — re-running the same query yields the same prefix.
+    Anything that fails ``stat`` (race with cleanup, broken symlink) is
+    skipped silently so a partial listing still beats a 500.
+    """
+    raw: list[tuple[str, Path]] = []
+    for path in run_dir.rglob("*"):
+        if not path.is_file():
+            continue
+        try:
+            rel = path.relative_to(run_dir).as_posix()
+        except ValueError:
+            continue
+        parts = rel.split("/")
+        if any(seg.startswith(".") for seg in parts):
+            continue
+        if any(seg in _ARTIFACT_SKIP_NAMES for seg in parts):
+            continue
+        if rel.endswith(".lock"):
+            continue
+        raw.append((rel, path))
+
+    raw.sort(key=lambda pair: pair[0])
+    raw = raw[:_ARTIFACT_LIMIT]
+
+    out: list[Artifact] = []
+    for rel, path in raw:
+        try:
+            st = path.stat()
+        except OSError:
+            continue
+        mtime_iso = (
+            datetime.fromtimestamp(st.st_mtime, tz=timezone.utc)
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
+        out.append(
+            Artifact(
+                path=rel,
+                size=st.st_size,
+                mtime=mtime_iso,
+                kind=_classify_artifact(rel),
+            )
+        )
+    return out
 
 from ..auth import auth_required, extract_user_id
 from ..domain.models import (
@@ -58,6 +175,8 @@ from .loop_control import router as loop_router
 from .novelty import router as novelty_router
 from .research_signals import router as research_signals_router
 from .retrieval_summary import router as retrieval_summary_router
+from .run_presets import router as run_presets_router
+from .telemetry_view import router as telemetry_router
 from .user_preferences import router as user_preferences_router
 
 
@@ -195,8 +314,15 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=list(settings.cors_origins),
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=[
+            "Content-Type",
+            "Authorization",
+            "X-Plato-User",
+            "X-Plato-Run-Id",
+            "If-None-Match",
+            "If-Modified-Since",
+        ],
     )
 
     # Per-request run_id correlation. Reads ``X-Plato-Run-Id`` (set by
@@ -208,7 +334,8 @@ def create_app() -> FastAPI:
     async def _bind_run_id(request: Request, call_next):  # noqa: ANN001
         from plato.logging_config import run_id_var
 
-        rid = request.headers.get("X-Plato-Run-Id") or ""
+        raw_rid = request.headers.get("X-Plato-Run-Id") or ""
+        rid = raw_rid if _RUN_ID_PATTERN.match(raw_rid) else ""
         token = run_id_var.set(rid or None)
         try:
             return await call_next(request)
@@ -233,6 +360,8 @@ def create_app() -> FastAPI:
     app.include_router(novelty_router, prefix="/api/v1", tags=["novelty"])
     app.include_router(research_signals_router, prefix="/api/v1", tags=["research_signals"])
     app.include_router(retrieval_summary_router, prefix="/api/v1", tags=["retrieval"])
+    app.include_router(run_presets_router, prefix="/api/v1", tags=["run_presets"])
+    app.include_router(telemetry_router, prefix="/api/v1", tags=["telemetry"])
     app.include_router(user_preferences_router, prefix="/api/v1", tags=["preferences"])
 
     @app.get("/api/v1/health")
@@ -331,6 +460,29 @@ def create_app() -> FastAPI:
         ok = await cancel_run(run_id)
         return {"cancelled": ok}
 
+    @app.get(
+        "/api/v1/projects/{pid}/runs/{run_id}/artifacts",
+        response_model=ArtifactList,
+    )
+    def list_run_artifacts(
+        pid: str,
+        run_id: str,
+        request: Request,
+        store: ProjectStore = Depends(_get_store),
+    ) -> ArtifactList:
+        """List downloadable files under a run directory.
+
+        Pairs with ``GET /projects/{pid}/files/{relpath}`` — that route
+        does the actual streaming with path-traversal guards. This
+        endpoint just advertises which files exist so the UI can render
+        a download list instead of guessing filenames.
+        """
+        _enforce_run_tenant(store.project_dir(pid), run_id, _get_user_id(request))
+        run_dir = store.runs_dir(pid) / run_id
+        if not run_dir.is_dir():
+            raise HTTPException(404, detail={"code": "run_not_found"})
+        return ArtifactList(items=_list_run_artifacts(run_dir))
+
     @app.get("/api/v1/projects/{pid}/runs/{run_id}/events")
     async def run_events(
         pid: str,
@@ -354,7 +506,14 @@ def create_app() -> FastAPI:
         )
 
     @app.get("/api/v1/projects/{pid}/runs", response_model=list[Run])
-    def list_runs(pid: str) -> list[Run]:
+    def list_runs(
+        pid: str,
+        store: ProjectStore = Depends(_get_store),  # noqa: ARG001
+    ) -> list[Run]:
+        # Depending on `_get_store` enforces the same auth check the rest of
+        # the project endpoints use: it raises 401 when auth_required() and
+        # X-Plato-User is missing, and scopes the run namespace to the
+        # caller's per-user project root.
         return list_active_runs(pid)
 
     # ------------------------------------------------------------ files

@@ -21,6 +21,8 @@ A ``validation_report.json`` is always written to
 from __future__ import annotations
 
 import json
+import logging
+import os
 import re
 import uuid
 from datetime import datetime, timezone
@@ -29,8 +31,45 @@ from typing import TYPE_CHECKING, Any
 
 from langchain_core.runnables import RunnableConfig
 
+from ..quality.retraction_db import RetractionDB
 from ..state.models import Source, ValidationResult
 from ..tools.citation_validator import CitationValidator
+
+logger = logging.getLogger(__name__)
+
+
+def _load_retraction_db(state: "GraphState") -> RetractionDB:
+    """Load the retraction DB from state, env var, or fall back to empty.
+
+    Resolution order:
+      1. ``state["retraction_db"]`` if a :class:`RetractionDB` is already set.
+      2. ``state["retraction_db_path"]`` (string path) if provided.
+      3. ``$PLATO_RETRACTION_DB_PATH`` environment variable.
+    Missing or unreadable files log a warning and return an empty DB so the
+    graph never crashes on a misconfigured path.
+    """
+    if isinstance(state, dict):
+        existing = state.get("retraction_db")
+        if isinstance(existing, RetractionDB):
+            return existing
+        path = state.get("retraction_db_path")
+    else:
+        path = None
+
+    if not path:
+        path = os.environ.get("PLATO_RETRACTION_DB_PATH")
+
+    if not path:
+        return RetractionDB.empty()
+
+    try:
+        return RetractionDB.from_csv(path)
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        logger.warning(
+            "RetractionDB load failed for %s (%s); continuing with empty DB.",
+            path, exc,
+        )
+        return RetractionDB.empty()
 
 if TYPE_CHECKING:  # pragma: no cover — annotation only
     from .parameters import GraphState
@@ -338,7 +377,8 @@ async def citation_validator_node(
             )
         return {"validation_report": report, "run_id": run_id}
 
-    async with CitationValidator() as validator:
+    retraction_db = _load_retraction_db(state)
+    async with CitationValidator(retraction_db=set(retraction_db)) as validator:
         results = await validator.validate_batch(sources)
 
     store = state.get("store") if isinstance(state, dict) else None

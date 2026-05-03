@@ -1,4 +1,5 @@
 import { Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 /**
  * Shared route-level loading skeleton.
@@ -22,6 +23,63 @@ export function RouteLoading({ label = "Loading…" }: { label?: string }) {
         className="animate-spin text-(--color-brand-hover)"
       />
       <span className="text-[12.5px]">{label}</span>
+    </div>
+  );
+}
+
+/**
+ * Skeleton placeholder for tables. Renders `rows` rows of grey bars
+ * sized to `columnWidths` (CSS widths like "32%", "120px"), so the
+ * loading state mirrors the column layout of the eventual content
+ * instead of showing a generic spinner that shifts the layout when
+ * data lands.
+ */
+export function TableSkeleton({
+  rows = 6,
+  columnWidths,
+  className,
+  caption = "Loading table data",
+}: {
+  rows?: number;
+  columnWidths: ReadonlyArray<string>;
+  className?: string;
+  caption?: string;
+}) {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-label={caption}
+      data-testid="table-skeleton"
+      className={cn("w-full", className)}
+    >
+      <span className="sr-only">{caption}</span>
+      <div className="flex items-center gap-3 px-4 py-2 hairline-b">
+        {columnWidths.map((width, i) => (
+          <div
+            key={`head-${i}`}
+            className="h-3 rounded-[3px] bg-(--color-bg-pill-inactive) animate-pulse"
+            style={{ width }}
+          />
+        ))}
+      </div>
+      {Array.from({ length: rows }).map((_, rowIdx) => (
+        <div
+          key={`row-${rowIdx}`}
+          className="flex items-center gap-3 px-4 py-3 hairline-b"
+        >
+          {columnWidths.map((width, colIdx) => (
+            <div
+              key={`cell-${rowIdx}-${colIdx}`}
+              className="h-3.5 rounded-[3px] bg-(--color-ghost-bg-hover) animate-pulse"
+              style={{
+                width,
+                animationDelay: `${(rowIdx * columnWidths.length + colIdx) * 40}ms`,
+              }}
+            />
+          ))}
+        </div>
+      ))}
     </div>
   );
 }

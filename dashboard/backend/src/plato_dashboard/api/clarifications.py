@@ -40,9 +40,13 @@ class ClarificationsAnswerRequest(BaseModel):
     The 50-answer cap blocks pathological payloads; per-answer length
     is capped at 4 KiB so a runaway client can't fill the project_dir
     with megabytes of free-form text before any LLM call has happened.
+
+    We accept ``list[Any]`` rather than ``list[str]`` so a non-string
+    element returns the handler's 400 ``invalid_answers`` instead of a
+    Pydantic 422. The element-type check happens inline in the handler.
     """
 
-    answers: list[str] = Field(max_length=50)
+    answers: list[Any] = Field(max_length=50)
 
 
 router = APIRouter()
@@ -178,9 +182,17 @@ def post_clarifications(
     _check_tenant(run_dir, request)
 
     answers = body.answers
-    # Per-answer length cap (4 KiB) — Pydantic doesn't enforce this on
-    # list elements, so we check inline.
+    # Element-type and per-answer length checks happen inline so we can
+    # return a domain-specific 400 instead of Pydantic's 422.
     for a in answers:
+        if not isinstance(a, str):
+            raise HTTPException(
+                400,
+                detail={
+                    "code": "invalid_answers",
+                    "message": "each answer must be a string",
+                },
+            )
         if len(a) > 4096:
             raise HTTPException(
                 400,

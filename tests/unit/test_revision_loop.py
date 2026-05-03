@@ -64,7 +64,7 @@ def _make_state(**overrides: Any) -> dict:
 def _llm_call_returning(payload: dict | str):
     """Build a mock side-effect for ``LLM_call`` that returns a fenced JSON block."""
 
-    def _side_effect(prompt, state):  # signature mirrors tools.LLM_call
+    def _side_effect(prompt, state, *, node_name=None):  # signature mirrors tools.LLM_call
         if isinstance(payload, dict):
             body = json.dumps(payload)
         else:
@@ -78,7 +78,7 @@ def _scripted_llm_call(scripts: Iterable[dict | str]):
     """A side-effect that walks through a list of payloads, one per call."""
     iterator = iter(scripts)
 
-    def _side_effect(prompt, state):
+    def _side_effect(prompt, state, *, node_name=None):
         try:
             payload = next(iterator)
         except StopIteration as exc:
@@ -291,7 +291,7 @@ def test_redraft_node_tolerates_unparseable_llm_output():
         revision_state={"iteration": 0, "max_iterations": 2},
     )
 
-    def _bad_side_effect(prompt, state):
+    def _bad_side_effect(prompt, state, *, node_name=None):
         return state, "not valid json at all"
 
     with patch.object(redraft_module, "LLM_call", side_effect=_bad_side_effect):

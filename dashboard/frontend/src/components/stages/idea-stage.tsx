@@ -14,7 +14,10 @@ interface Turn {
   ts: string;
 }
 
-// TODO: Phase 5 — load real transcript from <stage>_generation_output/idea.log
+// TODO(idea-stage): replace SAMPLE_TURNS with the live transcript from
+// idea_generation_output/idea.log via api.subscribeRun() once the backend
+// emits idea_maker / idea_hater turns as structured SSE events. Until then
+// the constant doubles as a Storybook fixture for the empty-run state.
 const SAMPLE_TURNS: Turn[] = [
   {
     agent: "idea_maker",
@@ -291,8 +294,10 @@ function EmptyIdeaHint({ onRun }: { onRun?: () => void }) {
 }
 
 function IdeaSidePanel({ onRun }: { onRun?: () => void }) {
-  // TODO: Phase 5 — these models will pass through to a real
-  // api.startRun(projectId, "idea", { mode, models: { idea_maker: maker, idea_hater: hater, ... } })
+  // TODO(idea-stage): wire these picker values into
+  // api.startRun(projectId, "idea", { mode, models: { idea_maker, idea_hater,
+  // planner, plan_reviewer, orchestration, formatter } }) — the endpoint
+  // already accepts the models map (see dashboard/frontend/src/lib/api.ts).
   const [mode, setMode] = React.useState<"fast" | "cmbagent">("fast");
   const [iterations, setIterations] = React.useState(4);
   const [maker, setMaker] = React.useState("gpt-5");
@@ -380,7 +385,9 @@ function IdeaSidePanel({ onRun }: { onRun?: () => void }) {
 
       <div className="mt-6 hairline-t pt-4">
         <h3 className="font-label">Run history</h3>
-        {/* TODO: Phase 5 — load real history from .history/idea_*.md */}
+        {/* TODO(idea-stage): replace this static demo list with
+            api.listRuns(projectId).filter(r => r.stage === "idea") and
+            render durations from run.started_at / run.finished_at. */}
         <ul className="mt-2 space-y-1">
           {[
             { ts: "12m ago", model: "gpt-5", duration: "11m 04s" },

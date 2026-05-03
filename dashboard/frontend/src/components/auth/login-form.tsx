@@ -53,7 +53,8 @@ export function LoginForm({ redirectTo = "/" }: LoginFormProps) {
           id="login-user-id"
           data-testid="login-user-id"
           autoFocus
-          autoComplete="username"
+          autoComplete="off"
+          spellCheck={false}
           type="text"
           value={value}
           onChange={(e) => setValue(e.target.value)}
@@ -72,6 +73,8 @@ export function LoginForm({ redirectTo = "/" }: LoginFormProps) {
       {error ? (
         <div
           role="alert"
+          aria-live="polite"
+          aria-atomic="true"
           data-testid="login-error"
           className="rounded-[6px] border border-(--color-status-red)/30 bg-(--color-status-red)/10 px-2.5 py-1.5 text-[12px] text-(--color-status-red)"
         >

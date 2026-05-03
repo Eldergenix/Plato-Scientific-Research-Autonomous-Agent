@@ -89,6 +89,8 @@ export function AgentLogStream({
       )}
       role="region"
       aria-label="Agent log stream"
+      aria-live="polite"
+      aria-atomic="false"
     >
       <div className="h-9 flex items-center px-3 gap-2 hairline-b bg-(--color-bg-marketing)">
         <button

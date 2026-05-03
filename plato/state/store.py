@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -59,7 +59,7 @@ _DEFAULT_DB_PATH = "~/.plato/research.db"
 
 
 @event.listens_for(Engine, "connect")
-def _set_sqlite_pragma(dbapi_connection, connection_record):  # type: ignore[no-untyped-def]
+def _set_sqlite_pragma(dbapi_connection, connection_record):
     """Turn WAL on so concurrent readers don't block the writer."""
     # The listener is registered on the abstract Engine class; bail early
     # for any non-sqlite dialects that may have been instantiated elsewhere.

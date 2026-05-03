@@ -76,7 +76,7 @@ any core change.
 | `DomainProfile`       | `plato/domain/__init__.py`        | `astro`, `biology`                                                  |
 | `SourceAdapter`       | `plato/retrieval/__init__.py`     | `arxiv`, `openalex`, `ads`, `crossref`, `pubmed`, `semantic_scholar`|
 | `Executor`            | `plato/executor/__init__.py`      | `cmbagent`, `local_jupyter`*, `modal`*, `e2b`*                      |
-| `KeywordExtractor`    | (planned — Phase 6)               | n/a                                                                 |
+| `KeywordExtractor`    | `plato/keyword_extractor/`        | Shipped in iter 16; see `plato/keyword_extractor/` for the registry.|
 | `JournalPreset`       | `plato/paper_agents/journal.py`   | `NONE`, `AAS`, `APS`, `JHEP`, `PASJ`, `ICML`, `NeurIPS`             |
 
 `*` = stub implementation; raises `NotImplementedError` on `run()`.

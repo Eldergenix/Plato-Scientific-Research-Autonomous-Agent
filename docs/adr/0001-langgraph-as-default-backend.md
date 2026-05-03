@@ -32,7 +32,7 @@ in-tree replacement.
    generation, literature checking, paper drafting, and refereeing.
 2. The `cmbagent` paths for **idea / method** are deprecated and will be
    removed once Phase 5's sandboxed `Executor` ships. Calls to
-   `Plato.get_idea(mode='cmbagent')`, `Plato.get_idea_cmagent`,
+   `Plato.get_idea(mode='cmbagent')`, `Plato.get_idea_cmbagent`,
    `Plato.get_method(mode='cmbagent')`, and `Plato.get_method_cmbagent`
    emit `DeprecationWarning` from Phase 1 onward.
 3. **`cmbagent` remains a hard dependency** for the time being, used

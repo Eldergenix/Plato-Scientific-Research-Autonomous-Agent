@@ -161,7 +161,21 @@ def get_manifest(
     manifest_path = run_dir / "manifest.json"
     if not manifest_path.is_file():
         raise HTTPException(404, detail={"code": "manifest_not_found", "run_id": run_id})
-    return _read_json(manifest_path)
+    payload = _read_json(manifest_path)
+    # Inject the project_id derived from the run directory layout so
+    # the frontend can subscribe to the per-project SSE endpoint
+    # (/projects/{pid}/runs/{run_id}/events) without a separate lookup.
+    # Flat layout (project_root/runs/<run_id>) has no project segment;
+    # in that case omit the field rather than guess.
+    if isinstance(payload, dict) and "project_id" not in payload:
+        try:
+            relative = run_dir.relative_to(settings.project_root)
+            parts = relative.parts
+            if len(parts) >= 3 and parts[-2] == "runs":
+                payload["project_id"] = parts[0]
+        except ValueError:
+            pass
+    return payload
 
 
 @router.get("/runs/{run_id}/evidence_matrix", response_model=EvidenceMatrixResponse)

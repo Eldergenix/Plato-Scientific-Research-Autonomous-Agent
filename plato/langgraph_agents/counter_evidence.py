@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Iterable, Optional
+from typing import Iterable, Optional
 
 from langchain_core.runnables import RunnableConfig
 
@@ -60,11 +60,11 @@ _PER_VARIANT_LIMIT = 10
 def _resolve_profile(state: GraphState) -> DomainProfile:
     """Mirror of ``literature._resolve_profile`` — kept private to avoid a
     cross-module import that the test suite would have to mock."""
-    profile = state.get("domain_profile")  # type: ignore[arg-type]
+    profile = state.get("domain_profile")
     if isinstance(profile, DomainProfile):
         return profile
 
-    name = state.get("domain")  # type: ignore[arg-type]
+    name = state.get("domain")
     if isinstance(name, str) and name:
         try:
             return get_domain(name)
@@ -98,7 +98,7 @@ def _existing_sources(state: GraphState) -> list[Source]:
         for s in literature.get("sources") or []:
             if isinstance(s, Source):
                 out.append(s)
-    for s in state.get("sources") or []:  # type: ignore[arg-type]
+    for s in state.get("sources") or []:
         if isinstance(s, Source):
             out.append(s)
     return out

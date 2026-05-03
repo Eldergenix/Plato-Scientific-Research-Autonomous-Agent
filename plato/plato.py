@@ -14,7 +14,6 @@ from .llm import LLM, models
 from .paper_agents.journal import Journal
 from .idea import Idea
 from .method import Method
-from .experiment import Experiment
 from .paper_agents.agents_graph import build_graph
 from .utils import llm_parser, input_check, check_file_paths, in_notebook
 from .langgraph_agents.agents_graph import build_lg_graph
@@ -237,8 +236,6 @@ class Plato:
     def show_keywords(self) -> None:
         """Show the keywords."""
 
-        print(self.research.keywords)
-
         if isinstance(self.research.keywords, dict):
             # Handle dict format (AAS keywords with URLs)
             keyword_list = "\n".join(
@@ -339,7 +336,7 @@ class Plato:
         if mode == "fast":
             self.get_idea_fast(llm=llm)
         elif mode == "cmbagent":
-            self.get_idea_cmagent(idea_maker_model=idea_maker_model,
+            self.get_idea_cmbagent(idea_maker_model=idea_maker_model,
                                   idea_hater_model=idea_hater_model,
                                   planner_model=planner_model,
                                   plan_reviewer_model=plan_reviewer_model,
@@ -348,7 +345,7 @@ class Plato:
         else:
             raise ValueError("Mode must be either 'fast' or 'cmbagent'")
 
-    def get_idea_cmagent(self,
+    def get_idea_cmbagent(self,
                     idea_maker_model: LLM | str = models["gpt-4o"],
                     idea_hater_model: LLM | str = models["o3-mini"],
                     planner_model: LLM | str = models["gpt-4o"],
@@ -367,7 +364,7 @@ class Plato:
             formatter_model: the LLM to be used for formatting the responses of the agents.
         """
         warnings.warn(
-            "Plato.get_idea(mode='cmbagent')/get_idea_cmagent is deprecated. "
+            "Plato.get_idea(mode='cmbagent')/get_idea_cmbagent is deprecated. "
             "Use Plato.get_idea(mode='fast') (LangGraph). The cmbagent path is "
             "retained only for Plato.get_results() until a sandboxed Executor lands.",
             DeprecationWarning,
@@ -450,7 +447,7 @@ class Plato:
 
         try:
             # Run the graph
-            graph.invoke(input_state, config) # type: ignore
+            graph.invoke(input_state, config)
             recorder.finish("success")
         except Exception as e:
             recorder.finish("error", error=str(e))
@@ -608,7 +605,7 @@ class Plato:
 
         # Run the graph
         try:
-            graph.invoke(input_state, config) # type: ignore
+            graph.invoke(input_state, config)
             recorder.finish("success")
 
             # End timer and report duration in minutes and seconds
@@ -770,7 +767,7 @@ class Plato:
 
         try:
             # Run the graph
-            graph.invoke(input_state, config) # type: ignore
+            graph.invoke(input_state, config)
             recorder.finish("success")
         except Exception as e:
             recorder.finish("error", error=str(e))
@@ -894,8 +891,7 @@ class Plato:
         import cmbagent
 
         keywords = cmbagent.get_keywords(input_text, n_keywords = n_keywords, kw_type = kw_type, api_keys = self.keys)
-        self.research.keywords = keywords # type: ignore
-        print('keywords: ', self.research.keywords)
+        self.research.keywords = keywords
 
     def get_paper(self,
                   journal: Journal = Journal.NONE,
@@ -973,7 +969,7 @@ class Plato:
 
         try:
             # Run the graph
-            asyncio.run(graph.ainvoke(input_state, config)) # type: ignore
+            asyncio.run(graph.ainvoke(input_state, config))
             recorder.finish("success")
         except Exception as e:
             recorder.finish("error", error=str(e))
@@ -1027,7 +1023,7 @@ class Plato:
 
         # Run the graph
         try:
-            graph.invoke(input_state, config) # type: ignore
+            graph.invoke(input_state, config)
             recorder.finish("success")
 
             # End timer and report duration in minutes and seconds
@@ -1039,7 +1035,7 @@ class Plato:
 
         except FileNotFoundError as e:
             recorder.finish("error", error=str(e))
-            print('Plato failed to provide a review for the paper. Ensure that a paper in the `paper` folder ex')
+            print('Plato failed to provide a review for the paper. Ensure that a paper in the `paper` folder exists.')
             print(f'Error: {e}')
         
     def research_pilot(self, data_description: str | None = None) -> None:

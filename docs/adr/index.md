@@ -17,6 +17,8 @@ that supersedes the old one and link both.
 | 0003 | Accepted    | [Domain profile pluggability](0003-domain-profile-pluggability.md) |
 | 0004 | Accepted    | [X-Plato-User multi-tenancy](0004-x-plato-user-multi-tenancy.md) |
 | 0005 | Accepted    | [Sandboxed Executor protocol](0005-sandboxed-executor-protocol.md) |
+| 0006 | Accepted (informational) | [AutoResearchClaw 23-stage pipeline mapping](0006-autoresearchclaw-stage-mapping.md) |
+| 0007 | Accepted (informational) | [Known deferred work and incompleteness register](0007-known-deferred-work.md) |
 
 ## How to add an ADR
 

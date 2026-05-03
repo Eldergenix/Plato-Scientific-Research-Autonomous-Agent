@@ -74,8 +74,6 @@ Your answear should not have the formating marks <TEXT> and </TEXT>, just the te
         # If the citation number is out of bounds, return it unchanged.
         return match.group(0)
     # Replace all instances of citations in the form [x] using the helper function.
-    # markdown_response = re.sub(r'\[(\d+)\]', citation_repl, cleaned_response)
-    #display(Markdown(markdown_response))
     return (cleaned_response, citations)
 
 

@@ -92,7 +92,7 @@ def compile_tex_document(state: dict, doc_name: str, doc_folder: str) -> None:
     doc_stem = file_path.stem
     bib_path = os.path.join(state['files']['Temp'], "bibliography.bib")
 
-    def run_xelatex(pass_num=None):
+    def run_xelatex():
         result = subprocess.run(["xelatex", doc_name], cwd=doc_folder,
                                 input="\n", capture_output=True, text=True)
         if result.returncode != 0:
@@ -101,7 +101,6 @@ def compile_tex_document(state: dict, doc_name: str, doc_folder: str) -> None:
             log_output(result)
             extract_latex_errors(state)
             return False
-            #raise RuntimeError(f"XeLaTeX failed (pass {pass_num}):\n{result.stderr}")
         return True
 
     def run_bibtex():
@@ -118,7 +117,7 @@ def compile_tex_document(state: dict, doc_name: str, doc_folder: str) -> None:
             f.write(result.stderr)
 
     # Pass 1
-    if not(run_xelatex(pass_num=1)):
+    if not run_xelatex():
         return False
 
     # Bibliography step if needed
@@ -129,8 +128,8 @@ def compile_tex_document(state: dict, doc_name: str, doc_folder: str) -> None:
         total_passes = 2
 
     # Additional passes
-    for i in range(2, total_passes + 1):
-        run_xelatex(pass_num=i)
+    for _ in range(2, total_passes + 1):
+        run_xelatex()
 
     print("✅", end="", flush=True)
     clean_files(doc_name, doc_folder)

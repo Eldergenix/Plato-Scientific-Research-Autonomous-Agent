@@ -48,6 +48,9 @@ class RetractionDB:
     def __contains__(self, doi: str) -> bool:
         return self.is_retracted(doi)
 
+    def __iter__(self):
+        return iter(self._dois)
+
     def __len__(self) -> int:
         return len(self._dois)
 

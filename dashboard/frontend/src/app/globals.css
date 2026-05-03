@@ -50,7 +50,9 @@
   --color-text-primary-strong: #ffffff;
   --color-text-secondary-spec: #e3e4e7;
   --color-text-tertiary-spec: #919193;
-  --color-text-quaternary-spec: #515153;
+  /* Bumped from #515153 (2.54:1 vs #070707) to #86888c (~5.2:1) to clear
+     WCAG AA 4.5:1 for normal text. Used as muted/disabled body copy. */
+  --color-text-quaternary-spec: #86888c;
   --color-text-quinary: #555557;
   --color-text-row-title: #ffffff;
   --color-text-row-meta: #949496;
@@ -69,6 +71,20 @@
   --color-status-orange: #ff7236;
   --color-accent-row-progress: #24302a;
   --color-accent-row-backlog: #322c23;
+
+  /* Run status pill foreground + background tints (consumed by pages
+     that render status pills, e.g. /runs). Light-mode counterparts are
+     overridden under `:root.light` near the bottom of this file. */
+  --color-status-running: #4ea7fc;
+  --color-status-running-bg: rgba(74, 167, 252, 0.12);
+  --color-status-queued: #949496;
+  --color-status-queued-bg: rgba(148, 148, 150, 0.12);
+  --color-status-succeeded: #10a37f;
+  --color-status-succeeded-bg: rgba(16, 163, 127, 0.12);
+  --color-status-failed: #eb5757;
+  --color-status-failed-bg: rgba(235, 87, 87, 0.14);
+  --color-status-cancelled: #f0bf00;
+  --color-status-cancelled-bg: rgba(240, 191, 0, 0.12);
 
   /* Gradients */
   --gradient-progress: linear-gradient(90deg, #161b19 0%, #171718 100%);
@@ -114,7 +130,8 @@
   --color-text-primary: #f7f8f8;
   --color-text-secondary: #d0d6e0;
   --color-text-tertiary: #919193;
-  --color-text-quaternary: #62666d;
+  /* Bumped from #62666d (~3.4:1) to #86888c (~5.2:1) to clear WCAG AA. */
+  --color-text-quaternary: #86888c;
 
   --color-brand-indigo: #5e6ad2;
   --color-brand-interactive: #7170ff;
@@ -511,6 +528,57 @@
   animation: shimmer 1.6s linear infinite;
 }
 
+/* sheet animations — drive the Radix Dialog-based <Sheet> in
+   `components/ui/sheet.tsx`. Class names match the SIDE_CLASSES map
+   (animate-sheet-in-{left,right,top,bottom}) and the overlay's
+   animate-fade-in. Without these definitions Radix's data-[state=open]
+   would resolve to a missing animation and the panel would pop in. */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-fade-in {
+  animation: fade-in 150ms ease-out;
+}
+
+@keyframes sheet-in-left {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+@keyframes sheet-in-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+@keyframes sheet-in-top {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(0); }
+}
+@keyframes sheet-in-bottom {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+.animate-sheet-in-left   { animation: sheet-in-left   200ms ease-out; }
+.animate-sheet-in-right  { animation: sheet-in-right  200ms ease-out; }
+.animate-sheet-in-top    { animation: sheet-in-top    200ms ease-out; }
+.animate-sheet-in-bottom { animation: sheet-in-bottom 200ms ease-out; }
+
+/* Respect users who've requested less motion — collapse all in/out
+   animations to a near-instant fade so the panel still appears but
+   without the slide. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse-dot,
+  .animate-shimmer,
+  .animate-fade-in,
+  .animate-sheet-in-left,
+  .animate-sheet-in-right,
+  .animate-sheet-in-top,
+  .animate-sheet-in-bottom {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}
+
 /* =============================================================================
    Light-mode token overrides
    -----------------------------------------------------------------------------
@@ -544,7 +612,9 @@
   --color-text-secondary: #2c3038;
   --color-text-tertiary: #5d6470;
   --color-text-tertiary-spec: #5d6470;
-  --color-text-quaternary: #8a92a0;
+  /* Bumped from #8a92a0 (~2.9:1 vs #f8fafb) to #5e646e (~4.7:1) for WCAG AA. */
+  --color-text-quaternary: #5e646e;
+  --color-text-quaternary-spec: #5e646e;
   --color-text-row-title: #0a0a0b;
   --color-text-row-meta: #5d6470;
   --color-text-workspace: #0a0a0b;
@@ -555,4 +625,17 @@
 
   --gradient-progress: linear-gradient(90deg, #effaf3 0%, #f5f6f8 100%);
   --gradient-backlog: linear-gradient(90deg, #fef9ec 0%, #f5f6f8 100%);
+
+  /* Run-status pill tints — darker foregrounds and softer alpha tints so
+     pills stay readable against the near-white card background. */
+  --color-status-running: #1f72d6;
+  --color-status-running-bg: rgba(31, 114, 214, 0.12);
+  --color-status-queued: #5d6470;
+  --color-status-queued-bg: rgba(93, 100, 112, 0.10);
+  --color-status-succeeded: #0a8060;
+  --color-status-succeeded-bg: rgba(10, 128, 96, 0.12);
+  --color-status-failed: #c43c3c;
+  --color-status-failed-bg: rgba(196, 60, 60, 0.12);
+  --color-status-cancelled: #a07a00;
+  --color-status-cancelled-bg: rgba(160, 122, 0, 0.12);
 }

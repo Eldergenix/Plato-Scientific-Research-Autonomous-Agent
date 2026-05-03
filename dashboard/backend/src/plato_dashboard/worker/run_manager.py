@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import logging
 import multiprocessing as mp
 import os
 import signal
@@ -35,6 +36,8 @@ from ..domain.models import Run, StageId, utcnow
 from ..events.bus import EventBus
 from ..settings import get_settings
 from ..storage.key_store import ENV_KEYS, KeyStore
+
+_logger = logging.getLogger(__name__)
 
 # In-memory state. Promoted to Redis in Phase 2.
 _active_runs: dict[str, Run] = {}
@@ -392,9 +395,13 @@ async def _tail_events(run: Run, bus: EventBus, events_file: Path) -> None:
                         evt.setdefault("run_id", run.id)
                         evt.setdefault("project_id", run.project_id)
                         evt.setdefault("stage", run.stage)
-                        await bus.publish(f"run:{run.id}", evt)
 
                         kind = evt.get("kind")
+                        # Publish to the bus FIRST so SSE subscribers see the
+                        # transition event before any GET /runs/{id} reflects
+                        # the new status (avoids stale-status race).
+                        await bus.publish(f"run:{run.id}", evt)
+
                         if kind == "stage.started" and run.status == "queued":
                             run.status = "running"
                             _write_status(run)
@@ -439,14 +446,15 @@ async def _tail_events(run: Run, bus: EventBus, events_file: Path) -> None:
             exit_code = proc.exitcode
             if run.status not in ("succeeded", "failed", "cancelled"):
                 if exit_code == 0:
-                    run.status = "succeeded"
+                    new_status = "succeeded"
                 elif exit_code is not None and exit_code < 0:
-                    run.status = "cancelled"
+                    new_status = "cancelled"
                 else:
-                    run.status = "failed"
+                    new_status = "failed"
                     run.error = run.error or f"subprocess exited with code {exit_code}"
-                run.finished_at = utcnow()
-                _write_status(run)
+                # Publish the terminal event BEFORE flipping run.status so
+                # SSE subscribers don't poll GET /runs/{id} between the two
+                # ops and see a stale running/queued status.
                 await bus.publish(
                     f"run:{run.id}",
                     {
@@ -454,10 +462,13 @@ async def _tail_events(run: Run, bus: EventBus, events_file: Path) -> None:
                         "run_id": run.id,
                         "project_id": run.project_id,
                         "stage": run.stage,
-                        "status": run.status,
+                        "status": new_status,
                         "ts": utcnow().isoformat(),
                     },
                 )
+                run.status = new_status
+                run.finished_at = utcnow()
+                _write_status(run)
             finished_seen = True
             break
 
@@ -470,26 +481,64 @@ async def _tail_events(run: Run, bus: EventBus, events_file: Path) -> None:
 async def _supervise(run: Run, bus: EventBus, events_file: Path) -> None:
     proc = _subprocesses[run.id]
     try:
-        await _tail_events(run, bus, events_file)
-        # Make sure the process has fully exited before we drop our handle.
-        await asyncio.to_thread(proc.join, 2.0)
-    except asyncio.CancelledError:
-        await _terminate_process(run.id, proc)
-        run.status = "cancelled"
-        run.finished_at = utcnow()
-        _write_status(run)
-        await bus.publish(
-            f"run:{run.id}",
-            {
-                "kind": "stage.finished",
-                "run_id": run.id,
-                "project_id": run.project_id,
-                "stage": run.stage,
-                "status": "cancelled",
-                "ts": utcnow().isoformat(),
-            },
-        )
-        raise
+        try:
+            await _tail_events(run, bus, events_file)
+            # Make sure the process has fully exited before we drop our handle.
+            await asyncio.to_thread(proc.join, 2.0)
+        except asyncio.CancelledError:
+            await _terminate_process(run.id, proc)
+            run.status = "cancelled"
+            run.finished_at = utcnow()
+            _write_status(run)
+            await bus.publish(
+                f"run:{run.id}",
+                {
+                    "kind": "stage.finished",
+                    "run_id": run.id,
+                    "project_id": run.project_id,
+                    "stage": run.stage,
+                    "status": "cancelled",
+                    "ts": utcnow().isoformat(),
+                },
+            )
+            raise
+        except BaseException as exc:
+            # _tail_events crashed unexpectedly. Kill the subprocess, mark
+            # the run failed, notify subscribers, then re-raise.
+            _logger.exception("supervisor for run %s crashed: %s", run.id, exc)
+            try:
+                await _terminate_process(run.id, proc)
+            except BaseException:  # noqa: BLE001
+                _logger.exception(
+                    "failed to terminate subprocess for run %s during crash recovery",
+                    run.id,
+                )
+            if run.status not in ("succeeded", "failed", "cancelled"):
+                run.status = "failed"
+                run.error = run.error or f"supervisor crashed: {exc!r}"
+                run.finished_at = utcnow()
+                try:
+                    _write_status(run)
+                except BaseException:  # noqa: BLE001
+                    _logger.exception("failed to write status for run %s", run.id)
+                try:
+                    await bus.publish(
+                        f"run:{run.id}",
+                        {
+                            "kind": "stage.finished",
+                            "run_id": run.id,
+                            "project_id": run.project_id,
+                            "stage": run.stage,
+                            "status": "failed",
+                            "ts": utcnow().isoformat(),
+                        },
+                    )
+                except BaseException:  # noqa: BLE001
+                    _logger.exception(
+                        "failed to publish terminal event for run %s",
+                        run.id,
+                    )
+            raise
     finally:
         _subprocesses.pop(run.id, None)
 

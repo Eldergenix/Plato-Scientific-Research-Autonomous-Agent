@@ -16,7 +16,22 @@ from .critique_aggregator import critique_aggregator
 from .redraft_node import redraft_node
 from .citation_validator_node import citation_validator_node
 from .evidence_matrix_node import evidence_matrix_node
+from .scopes import (
+    ABSTRACT_SCOPE,
+    CITATION_VALIDATOR_SCOPE,
+    CITATIONS_SCOPE,
+    CONCLUSIONS_SCOPE,
+    EVIDENCE_MATRIX_SCOPE,
+    INTRODUCTION_SCOPE,
+    KEYWORDS_SCOPE,
+    METHODS_SCOPE,
+    PLOTS_SCOPE,
+    REFINE_SCOPE,
+    RESULTS_SCOPE,
+)
+from ..io import scoped_node
 from ..langgraph_agents.claim_extractor import claim_extractor
+from ..langgraph_agents.scopes import CLAIM_EXTRACTOR_SCOPE
 from ..state import make_checkpointer
 
 
@@ -76,23 +91,43 @@ def build_graph(mermaid_diagram=False, checkpointer=None):
     # Define the graph
     builder = StateGraph(GraphState)
 
-    # Define nodes: these do the work
+    # Define nodes: these do the work.
+    #
+    # R11 file-scope adoption: every node that writes a file is wrapped
+    # in ``scoped_node(fn, scope)`` so its writes go through a
+    # ScopedWriter rooted at state["files"]["Folder"]. Out-of-scope
+    # writes raise ``ScopeError`` at runtime — defence in depth against
+    # an LLM-generated path traversing into another tenant's project.
+    # ``preprocess_node`` only mutates state (no file artifacts), so we
+    # leave it un-scoped to avoid wrapping cost. The two fan-out hubs
+    # (``_claim_evidence_fanout`` / ``_reviewer_panel_fanout``), the four
+    # reviewer nodes, ``critique_aggregator`` and ``redraft_node`` are
+    # pure state transformations: any persistence they trigger goes
+    # through the shared ``LLM_calls.txt`` log, not a node-specific
+    # artifact, so they stay un-scoped (matches the langgraph_agents
+    # convention for ``counter_evidence_search`` / ``gap_detector``).
     builder.add_node("preprocess_node",       preprocess_node)
-    builder.add_node("abstract_node",         abstract_node)
-    builder.add_node("introduction_node",     introduction_node)
-    builder.add_node("methods_node",          methods_node)
-    builder.add_node("results_node",          results_node)
-    builder.add_node("conclusions_node",      conclusions_node)
-    builder.add_node("plots_node",            plots_node)
-    builder.add_node("refine_results",        refine_results)
-    builder.add_node("keywords_node",         keywords_node)
-    builder.add_node("citations_node",        citations_node)
+    builder.add_node("abstract_node",         scoped_node(abstract_node, ABSTRACT_SCOPE))
+    builder.add_node("introduction_node",     scoped_node(introduction_node, INTRODUCTION_SCOPE))
+    builder.add_node("methods_node",          scoped_node(methods_node, METHODS_SCOPE))
+    builder.add_node("results_node",          scoped_node(results_node, RESULTS_SCOPE))
+    builder.add_node("conclusions_node",      scoped_node(conclusions_node, CONCLUSIONS_SCOPE))
+    builder.add_node("plots_node",            scoped_node(plots_node, PLOTS_SCOPE))
+    builder.add_node("refine_results",        scoped_node(refine_results, REFINE_SCOPE))
+    builder.add_node("keywords_node",         scoped_node(keywords_node, KEYWORDS_SCOPE))
+    builder.add_node("citations_node",        scoped_node(citations_node, CITATIONS_SCOPE))
 
     # Phase 2 — R3 + R5: citation validation + claim/evidence matrix.
-    builder.add_node("citation_validator_node", citation_validator_node)
+    builder.add_node(
+        "citation_validator_node",
+        scoped_node(citation_validator_node, CITATION_VALIDATOR_SCOPE),
+    )
     builder.add_node("claim_evidence_fanout", _claim_evidence_fanout)
-    builder.add_node("claim_extractor",       claim_extractor)
-    builder.add_node("evidence_matrix_node",  evidence_matrix_node)
+    builder.add_node("claim_extractor",       scoped_node(claim_extractor, CLAIM_EXTRACTOR_SCOPE))
+    builder.add_node(
+        "evidence_matrix_node",
+        scoped_node(evidence_matrix_node, EVIDENCE_MATRIX_SCOPE),
+    )
 
     # Phase 3 — R6: multi-reviewer panel + revision loop
     builder.add_node("reviewer_panel_fanout", _reviewer_panel_fanout)

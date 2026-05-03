@@ -33,6 +33,40 @@ def _record_prompt_hash(state, node_name: str | None = None) -> None:
         pass
 
 
+def _record_node_tokens(
+    state,
+    node_name: str | None,
+    input_tokens: int,
+    output_tokens: int,
+) -> None:
+    """Record per-node token usage on the manifest recorder if present.
+
+    Cost is computed from the model name on the recorder's manifest
+    using the same price table as the LangChain callback so totals and
+    per-node sums stay consistent. Failures are swallowed — telemetry
+    must never abort the LLM path.
+    """
+    recorder = state.get("recorder") if isinstance(state, dict) else None
+    if recorder is None or not node_name:
+        return
+    try:
+        # Lazy import: avoids a hard dependency on the observability
+        # package for callers that don't use the recorder at all.
+        from ..observability.manifest_callback import _compute_cost
+
+        model = next(iter(recorder.manifest.models.values()), "")
+        cost = _compute_cost(model, input_tokens, output_tokens)
+        recorder.add_node_tokens(
+            node_name,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=cost,
+            calls=1,
+        )
+    except Exception:
+        pass
+
+
 def LLM_call(prompt, state, *, node_name: str | None = None):
     """
     This function calls the LLM and update tokens.
@@ -55,7 +89,8 @@ def LLM_call(prompt, state, *, node_name: str | None = None):
     state['tokens']['o'] = output_tokens
     with open(state['files']['LLM_calls'], 'a') as f:
         f.write(f"{state['tokens']['i']} {state['tokens']['o']} {state['tokens']['ti']} {state['tokens']['to']}\n")
-    
+    _record_node_tokens(state, node_name, input_tokens, output_tokens)
+
     return state, message.content
 
 
@@ -69,7 +104,7 @@ def LLM_call_stream(prompt, state, *, node_name: str | None = None):
     state["_last_prompt"] = prompt
     _record_prompt_hash(state, node_name)
     output_file_path = state['files']['f_stream']
-    
+
     # Start streaming and writing/printing immediately
     full_content = ''
     state['tokens']['i'] = 0
@@ -98,6 +133,8 @@ def LLM_call_stream(prompt, state, *, node_name: str | None = None):
         f.write('\n\n')
     with open(state['files']['LLM_calls'], 'a') as f:
         f.write(f"{state['tokens']['i']} {state['tokens']['o']} {state['tokens']['ti']} {state['tokens']['to']}\n")
+    # Stream path tracks per-call totals on state['tokens']['i'/'o'].
+    _record_node_tokens(state, node_name, state['tokens']['i'], state['tokens']['o'])
 
     return state, full_content
 
@@ -258,8 +295,7 @@ def fixer(state: GraphState, section_name):
     
     PROMPT = fixer_prompt(Text, section_name)
     state, result = LLM_call(PROMPT, state, node_name="fixer")
-    #result = llm.invoke(PROMPT).content
-    
+
     # Extract caption
     pattern = rf"\\begin{{{section_name}}}(.*?)\\end{{{section_name}}}"
     match = re.search(pattern, result, re.DOTALL)
@@ -277,7 +313,6 @@ def LaTeX_checker(state, text):
 
     PROMPT = LaTeX_prompt(text)
     state, result = LLM_call(PROMPT, state, node_name="latex_checker")
-    #result = llm.invoke(PROMPT).content
     text = extract_latex_block(state, result, "Text")
     return text
 

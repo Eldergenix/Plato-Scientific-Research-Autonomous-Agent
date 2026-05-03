@@ -53,6 +53,8 @@ nav:
       - "0003 Domain profile pluggability": adr/0003-domain-profile-pluggability.md
       - "0004 X-Plato-User multi-tenancy": adr/0004-x-plato-user-multi-tenancy.md
       - "0005 Sandboxed Executor protocol": adr/0005-sandboxed-executor-protocol.md
+      - "0006 AutoResearchClaw stage mapping": adr/0006-autoresearchclaw-stage-mapping.md
+      - "0007 Known deferred work register": adr/0007-known-deferred-work.md
 
 theme:
   name: material

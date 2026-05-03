@@ -83,16 +83,20 @@ class LoginRequest(BaseModel):
 
     The 128-char cap blocks pathological values that would also fail
     silently when written to the ``plato_user`` httponly cookie (most
-    browsers cap cookie values around 4 KiB).
+    browsers cap cookie values around 4 KiB). We accept ``None``/missing
+    here rather than letting Pydantic 422 — the handler returns a
+    consistent 400 ``invalid_user_id`` for every empty / null / missing
+    case so the frontend has one error code to render.
     """
 
-    user_id: str = Field(min_length=1, max_length=128)
+    user_id: str | None = Field(default=None, max_length=128)
 
 
 @router.post("/auth/login")
 def login(response: Response, body: LoginRequest) -> dict[str, Any]:
     """Set the ``plato_user`` cookie and echo the chosen user id back."""
-    user_id = body.user_id.strip()
+    raw = body.user_id
+    user_id = raw.strip() if isinstance(raw, str) else ""
     if not user_id:
         raise HTTPException(
             status_code=400,

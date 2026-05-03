@@ -38,6 +38,13 @@ def test_lazy_load_seeds_all_journal_dict_entries() -> None:
 
 def test_none_journal_lands_as_string_key() -> None:
     """``Journal.NONE.value`` is ``None`` — must not poison the registry."""
+    # Conftest snapshots the registry at fixture-setup, BEFORE the lazy-load
+    # has fired. Force the load here so the assertion sees real entries.
+    import plato.journal_preset as jp
+
+    jp._builtins_loaded = False
+    list_journal_presets()
+
     assert "NONE" in JOURNAL_PRESET_REGISTRY
     assert None not in JOURNAL_PRESET_REGISTRY  # type: ignore[operator]
 
@@ -45,12 +52,18 @@ def test_none_journal_lands_as_string_key() -> None:
 def test_get_journal_preset_returns_underlying_latex_presets() -> None:
     from plato.paper_agents.journal import LatexPresets
 
+    import plato.journal_preset as jp
+
+    jp._builtins_loaded = False
     aas = get_journal_preset("AAS")
     assert isinstance(aas, LatexPresets)
     assert aas.article == "aastex631"  # pinned in latex_presets.py
 
 
 def test_get_journal_preset_is_case_insensitive() -> None:
+    import plato.journal_preset as jp
+
+    jp._builtins_loaded = False
     upper = get_journal_preset("AAS")
     lower = get_journal_preset("aas")
     mixed = get_journal_preset("Aas")
@@ -66,7 +79,12 @@ def test_get_unknown_preset_raises_keyerror() -> None:
 def test_register_journal_preset_collision_requires_overwrite() -> None:
     from plato.paper_agents.journal import LatexPresets
 
-    stub = LatexPresets(article="article")  # smallest valid preset
+    import plato.journal_preset as jp
+
+    jp._builtins_loaded = False
+    list_journal_presets()  # ensure AAS is present so the collision can fire
+
+    stub = LatexPresets(article="article", abstract=lambda x: x)  # smallest valid preset
 
     with pytest.raises(ValueError):
         register_journal_preset("AAS", stub)
@@ -84,7 +102,7 @@ def test_register_journal_preset_collision_requires_overwrite() -> None:
 def test_register_journal_preset_normalises_name_to_upper() -> None:
     from plato.paper_agents.journal import LatexPresets
 
-    stub = LatexPresets(article="article")
+    stub = LatexPresets(article="article", abstract=lambda x: x)
     register_journal_preset("My_Custom_Journal", stub, overwrite=True)
     try:
         assert get_journal_preset("MY_CUSTOM_JOURNAL") is stub
@@ -98,4 +116,4 @@ def test_register_rejects_empty_name() -> None:
     from plato.paper_agents.journal import LatexPresets
 
     with pytest.raises(ValueError):
-        register_journal_preset("", LatexPresets(article="article"))
+        register_journal_preset("", LatexPresets(article="article", abstract=lambda x: x))

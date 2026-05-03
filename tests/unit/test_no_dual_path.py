@@ -18,19 +18,19 @@ def plato_instance(tmp_path):
     return p
 
 
-def test_get_idea_cmagent_emits_deprecation_warning(plato_instance):
-    """`get_idea_cmagent` (and `get_idea(mode='cmbagent')`) must warn."""
+def test_get_idea_cmbagent_emits_deprecation_warning(plato_instance):
+    """`get_idea_cmbagent` (and `get_idea(mode='cmbagent')`) must warn."""
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         # Patch the heavy `Idea` so the test does not actually invoke cmbagent.
         with patch("plato.plato.Idea") as MockIdea:
             MockIdea.return_value.develop_idea.return_value = "stub idea"
-            plato_instance.get_idea_cmagent()
+            plato_instance.get_idea_cmbagent()
 
     deprecations = [
         w for w in caught
         if issubclass(w.category, DeprecationWarning)
-        and "get_idea_cmagent" in str(w.message)
+        and "get_idea_cmbagent" in str(w.message)
     ]
     assert deprecations, f"expected DeprecationWarning, got: {[str(w.message) for w in caught]}"
 

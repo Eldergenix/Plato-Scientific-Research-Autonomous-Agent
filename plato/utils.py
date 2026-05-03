@@ -102,8 +102,8 @@ def in_notebook():
     """Check whether the code is run from a Jupyter Notebook or not, to use different display options"""
     
     try:
-        from IPython import get_ipython # type: ignore
-        if 'IPKernelApp' not in get_ipython().config:  # type: ignore # pragma: no cover
+        from IPython import get_ipython
+        if 'IPKernelApp' not in get_ipython().config:  # pragma: no cover
             return False
     except ImportError:
         return False

@@ -4,6 +4,7 @@ import * as React from "react";
 import { Check, X, Loader2 } from "lucide-react";
 import { api, type KeyState, type KeysStatus } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Pill } from "@/components/ui/pill";
 import { cn } from "@/lib/utils";
 
@@ -186,17 +187,14 @@ export default function KeysPage() {
                     )}
                   />
                   {isFromEnv && (
-                    <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-(--color-text-tertiary-spec)">
-                      <input
-                        type="checkbox"
-                        checked={isOverride}
-                        onChange={(e) =>
-                          setOverrides((o) => ({ ...o, [p.id]: e.target.checked }))
-                        }
-                        className="h-3 w-3"
-                      />
-                      <span>(Override)</span>
-                    </label>
+                    <Checkbox
+                      checked={isOverride}
+                      onCheckedChange={(c) =>
+                        setOverrides((o) => ({ ...o, [p.id]: c }))
+                      }
+                      className="text-[11px] text-(--color-text-tertiary-spec)"
+                      label="(Override)"
+                    />
                   )}
                 </div>
 

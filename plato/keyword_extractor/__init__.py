@@ -98,26 +98,34 @@ def list_keyword_extractors() -> list[str]:
 # cheap, and an unavailable optional dep (e.g. cmbagent missing in CI)
 # only breaks the one extractor that depends on it.
 
-_BUILTIN_EXTRACTORS: tuple[str, ...] = (
-    "default",
-    "cmbagent",
-    "mesh",
-    "openalex_concepts",
-)
-_builtins_loaded = False
-
-
 def _ensure_builtins_registered() -> None:
-    """Import every built-in extractor module exactly once."""
-    global _builtins_loaded
-    if _builtins_loaded:
+    """Re-seed the registry from the built-in extractor modules whenever it's empty.
+
+    The empty-registry guard (rather than a one-shot ``_builtins_loaded``
+    sentinel) lets tests and third-party callers clear the registry and
+    have built-ins re-seed on the next lookup. We cannot rely on
+    ``importlib.import_module`` re-running the module-level
+    ``register_keyword_extractor(...)`` side-effect — Python caches the
+    module in ``sys.modules`` after the first import, so subsequent
+    imports are no-ops. Instead we look up the extractor class on each
+    module and re-register an instance directly.
+    """
+    if KEYWORD_EXTRACTOR_REGISTRY:
         return
-    _builtins_loaded = True
     import importlib
 
-    for name in _BUILTIN_EXTRACTORS:
+    # ``module name`` -> ``class attribute exporting the extractor``
+    builtin_classes = {
+        "default": "DefaultKeywordExtractor",
+        "cmbagent": "CmbagentKeywordExtractor",
+        "mesh": "MeshKeywordExtractor",
+        "openalex_concepts": "OpenAlexConceptsKeywordExtractor",
+    }
+    for module_name, class_name in builtin_classes.items():
         try:
-            importlib.import_module(f".{name}", __name__)
+            module = importlib.import_module(f".{module_name}", __name__)
+            extractor_cls = getattr(module, class_name)
+            register_keyword_extractor(extractor_cls(), overwrite=True)
         except Exception:
             # Optional-dep failures (cmbagent, requests, ...) shouldn't
             # break the other extractors. Each module handles its own

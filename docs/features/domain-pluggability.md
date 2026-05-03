@@ -11,7 +11,7 @@
 class DomainProfile(BaseModel):
     name: str                    # "astro" | "biology" | ...
     retrieval_sources: list[str] # SourceAdapter names from ADAPTER_REGISTRY
-    keyword_extractor: str       # KeywordExtractor name (deferred)
+    keyword_extractor: str       # KeywordExtractor name from KEYWORD_EXTRACTOR_REGISTRY
     journal_presets: list[str]   # Journal enum values
     executor: str                # Executor name from EXECUTOR_REGISTRY
     novelty_corpus: str          # adapter-side corpus selector
@@ -87,7 +87,7 @@ auto-registration pattern:
 | DomainProfile   | `plato/domain/__init__.py`          | astro, biology                    |
 | SourceAdapter   | `plato/retrieval/__init__.py`       | arxiv, openalex, ads, crossref, pubmed, semantic_scholar |
 | Executor        | `plato/executor/__init__.py`        | cmbagent, local_jupyter (stub), modal (stub), e2b (stub) |
-| KeywordExtractor| _planned (deferred in iter 15)_     |                                   |
+| KeywordExtractor| `plato/keyword_extractor/`          | Shipped in iter 16; see `plato/keyword_extractor/` for the registry. |
 
 ## See also
 

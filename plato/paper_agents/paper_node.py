@@ -8,7 +8,6 @@ from tqdm import tqdm
 import asyncio
 from functools import partial
 import fitz  # PyMuPDF
-import cmbagent
 
 from .parameters import GraphState
 from .prompts import abstract_prompt, abstract_reflection, caption_prompt, clean_section_prompt, conclusions_prompt, introduction_prompt, introduction_reflection, keyword_prompt, methods_prompt, plot_prompt, references_prompt, refine_results_prompt, results_prompt, cmbagent_keywords_prompt
@@ -131,7 +130,7 @@ def keywords_node(state: GraphState, config: RunnableConfig):
                 state['params']['num_keywords'] = 0
 
             # take a random subset
-            keywords = random.sample(keywords, state['params']['num_keywords'])
+            keywords = random.sample(keywords, min(len(keywords), state['params']['num_keywords']))
 
             # join all keywords into a string with comma separated
             keywords = ", ".join(keywords)
@@ -171,7 +170,7 @@ def abstract_node(state: GraphState, config: RunnableConfig):
         print('Found on Abstract.tex', end="", flush=True)
 
     else:
-        # In case it fails, it has up to three attempts
+        # In case it fails, it has up to five attempts
         for attempt in range(5):
             print(f'{attempt} ', end="",flush=True)
             PROMPT = abstract_prompt(state, attempt)
@@ -185,12 +184,12 @@ def abstract_node(state: GraphState, config: RunnableConfig):
             except Exception:
                 time.sleep(2)
         else:
-            fail_message = '''Tried 3 times but failed to extract the abstract. Recommendations:
+            fail_message = '''Tried 5 times but failed to extract the abstract. Recommendations:
                                 - Run the paper writing module again
                                 - If still fails, try using a more power LLM, e.g. gemini-2.5-pro
                             '''
             print(fail_message)
-            raise RuntimeError("LLM failed to produce valid JSON after 3 attempts.")
+            raise RuntimeError("LLM failed to produce valid JSON after 5 attempts.")
     
         # perform self-reflections
         for i in range(1):

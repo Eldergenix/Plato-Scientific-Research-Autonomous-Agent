@@ -217,7 +217,7 @@ export function ModelPicker(props: ModelPickerProps) {
             <div className="max-h-[340px] overflow-y-auto py-1">
               {grouped.length === 0 ? (
                 <div className="px-3 py-6 text-center text-[12px] text-(--color-text-tertiary)">
-                  No models match "{query}"
+                  No models match &ldquo;{query}&rdquo;
                 </div>
               ) : (
                 grouped.map((group) => {

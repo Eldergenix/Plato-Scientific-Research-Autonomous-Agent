@@ -1,7 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { LineChart, X as CloseIcon } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, LineChart, Sparkles, X as CloseIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { TableSkeleton } from "@/components/shell/route-loading";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:7878/api/v1";
@@ -92,8 +95,12 @@ export default function EvalsPage() {
     };
   }, [openTask]);
 
+  // Retry counter — bumping this re-runs the summary fetch effect.
+  const [retryNonce, setRetryNonce] = React.useState(0);
+
   React.useEffect(() => {
     let cancelled = false;
+    setState({ kind: "loading" });
     fetch(`${API_BASE}/evals/summary`, { cache: "no-store" })
       .then(async (resp) => {
         if (cancelled) return;
@@ -118,7 +125,7 @@ export default function EvalsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [retryNonce]);
 
   return (
     <div
@@ -151,40 +158,35 @@ export default function EvalsPage() {
         </header>
 
         {state.kind === "loading" ? (
-          <div
+          <section
             data-testid="evals-loading"
-            className="surface-linear-card px-4 py-8 text-center text-[12.5px] text-(--color-text-tertiary)"
+            className="surface-linear-card overflow-hidden"
+            style={{ border: "1px solid var(--color-border-card)" }}
           >
-            Loading evals/results/summary.json…
-          </div>
+            <TableSkeleton
+              rows={6}
+              columnWidths={["32%", "12%", "16%", "16%", "16%"]}
+              caption="Loading eval summary"
+            />
+          </section>
         ) : null}
 
         {state.kind === "missing" ? (
-          <div
-            data-testid="evals-missing"
-            className="surface-linear-card px-4 py-8 text-center"
-          >
-            <p className="text-[13px] text-(--color-text-primary)">
-              No eval summary on disk yet.
-            </p>
-            <p className="mt-2 text-[12px] text-(--color-text-tertiary-spec)">
-              Run <code className="font-mono">python -m evals.runner</code> to
-              produce <code className="font-mono">evals/results/summary.json</code>{" "}
-              — the nightly workflow does this automatically.
-            </p>
-          </div>
+          <EvalsEmptyState testId="evals-missing" />
         ) : null}
 
         {state.kind === "error" ? (
-          <div
-            data-testid="evals-error"
-            className="surface-linear-card px-4 py-8 text-center text-[12.5px] text-(--color-status-red-spec)"
-          >
-            Failed to load eval summary: {state.message}
-          </div>
+          <EvalsErrorCard
+            message={state.message}
+            onRetry={() => setRetryNonce((n) => n + 1)}
+          />
         ) : null}
 
-        {state.kind === "ready" ? (
+        {state.kind === "ready" && state.data.task_count === 0 ? (
+          <EvalsEmptyState testId="evals-empty" />
+        ) : null}
+
+        {state.kind === "ready" && state.data.task_count > 0 ? (
           <>
             <section
               className="surface-linear-card px-4 py-4"
@@ -303,5 +305,68 @@ export default function EvalsPage() {
         ) : null}
       </div>
     </div>
+  );
+}
+
+function EvalsEmptyState({ testId }: { testId: string }) {
+  return (
+    <section
+      data-testid={testId}
+      className="surface-linear-card flex flex-col items-center gap-3 px-6 py-10 text-center"
+      style={{ border: "1px solid var(--color-border-card)" }}
+    >
+      <Sparkles
+        size={20}
+        strokeWidth={1.75}
+        className="text-(--color-brand-hover)"
+      />
+      <p className="text-[13.5px] font-[510] text-(--color-text-primary)">
+        No eval tasks yet
+      </p>
+      <p className="max-w-md text-[12.5px] text-(--color-text-tertiary-spec)">
+        Run an eval task to populate this page. Either kick off a research run
+        from a project, or schedule a recurring eval via{" "}
+        <code className="font-mono text-[11.5px]">/loop</code>.
+      </p>
+      <div className="mt-1 flex gap-2">
+        <Button asChild variant="primary" size="sm">
+          <Link href="/projects">Open projects</Link>
+        </Button>
+        <Button asChild variant="ghost" size="sm">
+          <Link href="/loop">Schedule via /loop</Link>
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+function EvalsErrorCard({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry: () => void;
+}) {
+  return (
+    <section
+      data-testid="evals-error"
+      className="surface-linear-card flex flex-col items-center gap-3 px-6 py-10 text-center"
+      style={{ border: "1px solid var(--color-border-card)" }}
+    >
+      <AlertTriangle
+        size={20}
+        strokeWidth={1.75}
+        className="text-(--color-status-red-spec)"
+      />
+      <p className="text-[13.5px] font-[510] text-(--color-text-primary)">
+        Failed to load eval summary
+      </p>
+      <p className="max-w-md font-mono text-[11.5px] text-(--color-text-tertiary-spec)">
+        {message}
+      </p>
+      <Button variant="ghost" size="sm" onClick={onRetry}>
+        Retry
+      </Button>
+    </section>
   );
 }

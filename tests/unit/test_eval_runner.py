@@ -26,7 +26,7 @@ def test_golden_task_validates_harmonic_oscillator_fixture():
     payload = json.loads((GOLDEN_DIR / "harmonic_oscillator.json").read_text())
     task = GoldenTask.model_validate(payload)
     assert task.id == "harmonic_oscillator"
-    assert "harmonic" in task.expected_idea_keywords
+    assert "harmonic oscillator" in task.expected_idea_keywords
     assert task.domain == "astro"
 
 
@@ -380,7 +380,7 @@ def test_discover_tasks_picks_up_gw231123_followup():
     assert "gw231123_followup" in by_id
     task = by_id["gw231123_followup"]
     assert "GW231123" in task.expected_idea_keywords
-    assert task.gold_sources == ["10.3847/2041-8213/ad5ce4"]
+    assert [gs.doi for gs in task.gold_sources] == ["10.3847/2041-8213/ad5ce4"]
 
 
 def test_discover_tasks_picks_up_cmb_lensing_residuals():

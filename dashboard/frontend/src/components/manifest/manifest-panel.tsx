@@ -5,6 +5,13 @@ import { Activity, ExternalLink, GitCommit } from "lucide-react";
 import { Pill } from "@/components/ui/pill";
 import { cn } from "@/lib/utils";
 
+export interface NodeTelemetry {
+  ti: number;
+  to: number;
+  calls: number;
+  cost_usd: number;
+}
+
 export interface RunManifest {
   run_id: string;
   workflow: string;
@@ -21,8 +28,15 @@ export interface RunManifest {
   cost_usd: number;
   tokens_in: number;
   tokens_out: number;
+  // Per-node telemetry breakdown — populated when LLM_call/LLM_call_stream
+  // run with a manifest recorder seeded on state. Absent on legacy runs.
+  tokens_per_node?: Record<string, NodeTelemetry>;
   error?: string | null;
   user_id?: string | null;
+  // Injected by the manifest endpoint from the run dir layout so the
+  // run-detail page can subscribe to the per-project SSE stream without
+  // a separate lookup. Absent for flat (single-project) installs.
+  project_id?: string | null;
 }
 
 const STATUS_TONE: Record<string, "green" | "amber" | "red" | "neutral"> = {
@@ -64,6 +78,10 @@ function formatTimestamp(iso: string | null | undefined): string {
  * forms we care about are bare DOIs (``10.x/...``) and arxiv IDs
  * (``arxiv:1234.5678`` or ``2403.12345``). Anything else falls through
  * to plain text — no clickable link.
+ *
+ * Defined at module scope so its identity is stable across renders —
+ * the run-detail page polls this panel every 2s and we don't want to
+ * reallocate a new function each tick.
  */
 function sourceUrl(id: string): string | null {
   const trimmed = id.trim();
@@ -83,7 +101,13 @@ export function ManifestPanel({ manifest }: { manifest: RunManifest }) {
   const truncatedRunId =
     manifest.run_id.length > 8 ? `${manifest.run_id.slice(0, 8)}…` : manifest.run_id;
 
-  const modelEntries = Object.entries(manifest.models ?? {});
+  // Memoize the entries array so it has stable identity between polls.
+  // The run-detail page refetches the manifest every 2s; without this,
+  // the table body re-keys on every tick even when models hasn't changed.
+  const modelEntries = React.useMemo(
+    () => Object.entries(manifest.models ?? {}),
+    [manifest.models],
+  );
 
   return (
     <section

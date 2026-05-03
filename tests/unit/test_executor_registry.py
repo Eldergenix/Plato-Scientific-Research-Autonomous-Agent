@@ -120,33 +120,28 @@ def test_e2b_executor_is_a_stub() -> None:
         asyncio.run(_drive())
 
 
-def test_local_jupyter_raises_helpful_error_when_dep_missing() -> None:
-    """If ``jupyter_client`` isn't installed the stub should hint at the fix.
+def test_local_jupyter_executes_methodology_as_code() -> None:
+    """The local_jupyter backend now runs methodology as Python code.
 
-    If it *is* installed (the real implementation would run), the stub
-    still raises ``NotImplementedError`` for now — both outcomes are
-    acceptable signals that the wiring is correct.
+    Falls back to a subprocess if ``jupyter_client`` isn't installed, so
+    this test must succeed in any environment with a Python interpreter.
     """
     ex = get_executor("local_jupyter")
 
     async def _drive():
-        await ex.run(
-            research_idea="i",
-            methodology="m",
+        return await ex.run(
+            research_idea="probe",
+            methodology="print('plato-local-jupyter-ok')",
             data_description="d",
             project_dir="/tmp",
             keys=None,
+            timeout=30,
         )
 
-    try:
-        import jupyter_client  # type: ignore[import-not-found]  # noqa: F401
-
-        expected = NotImplementedError
-    except ImportError:
-        expected = ImportError
-
-    with pytest.raises(expected):
-        asyncio.run(_drive())
+    result = asyncio.run(_drive())
+    assert isinstance(result, ExecutorResult)
+    assert "plato-local-jupyter-ok" in result.artifacts.get("stdout", "")
+    assert result.artifacts.get("success") is True
 
 
 def test_executor_result_defaults() -> None:

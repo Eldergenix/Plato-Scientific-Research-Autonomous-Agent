@@ -36,9 +36,9 @@ def build_evidence_pack(state) -> str:
 
     def _rank(claim):
         cid = claim.id if hasattr(claim, "id") else claim.get("id", "")
-        return -support_count.get(cid, 0)
+        return support_count.get(cid, 0)
 
-    top = sorted(claims, key=_rank)[:_EVIDENCE_PACK_TOP_N]
+    top = sorted(claims, key=_rank, reverse=True)[:_EVIDENCE_PACK_TOP_N]
 
     rows = []
     for i, claim in enumerate(top, 1):

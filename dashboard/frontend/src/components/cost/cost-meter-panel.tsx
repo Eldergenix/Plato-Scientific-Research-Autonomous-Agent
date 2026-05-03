@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { StatusIcon } from "@/components/views/status-icon";
 import { MODELS_BY_ID } from "@/lib/models";
 import type { Project, Provider, Stage, StageId } from "@/lib/types";
@@ -443,18 +444,12 @@ function BudgetCard({
       </div>
 
       {capCents != null ? (
-        <label
-          className="flex items-center gap-2 cursor-pointer text-[12px] text-(--color-text-row-meta)"
-          style={{ marginTop: 10 }}
-        >
-          <input
-            type="checkbox"
-            checked={stopOnOverrun}
-            onChange={(e) => persistStop(e.target.checked)}
-            className="accent-(--color-brand-interactive)"
-          />
-          Stop on overrun
-        </label>
+        <Checkbox
+          checked={stopOnOverrun}
+          onCheckedChange={persistStop}
+          className="mt-2.5 text-[12px] text-(--color-text-row-meta)"
+          label="Stop on overrun"
+        />
       ) : null}
     </div>
   );

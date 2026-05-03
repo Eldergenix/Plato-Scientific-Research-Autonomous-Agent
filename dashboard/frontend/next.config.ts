@@ -1,11 +1,10 @@
 import path from "node:path";
 import type { NextConfig } from "next";
 
-// Baseline security headers applied to every response. CSP is
-// intentionally permissive on `'unsafe-inline'` for now — the
-// inline themeBootstrap script in app/layout.tsx requires it. A
-// follow-up can replace the inline script with a nonce-based one
-// and tighten the CSP. The other headers are unconditional wins.
+// Baseline security headers applied to every response. The
+// Content-Security-Policy is set per-request by src/middleware.ts so
+// it can include a fresh nonce for the inline themeBootstrap script
+// in app/layout.tsx — keeping it out of this static list is intentional.
 const SECURITY_HEADERS = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },

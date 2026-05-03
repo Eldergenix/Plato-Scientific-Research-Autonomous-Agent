@@ -133,7 +133,7 @@ def test_protein_structure_task_has_biology_domain():
     assert task.domain == "biology"
     assert "AlphaFold" in task.expected_idea_keywords
     # Gold sources must include the AlphaFold paper DOI (per spec).
-    assert "10.1038/s41586-021-03819-2" in task.gold_sources
+    assert "10.1038/s41586-021-03819-2" in [gs.doi for gs in task.gold_sources]
 
 
 def test_eval_runner_biology_end_to_end_writes_manifest_with_biology_domain(

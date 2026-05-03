@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { setActiveUserId } from "@/lib/api";
 
 /**
  * Auth context for the dashboard's tenant-id login flow.
@@ -47,6 +48,11 @@ function readPersisted(): string | null {
 }
 
 function writePersisted(id: string | null): void {
+  // Mirror the persisted hint into the api.ts module-level store so
+  // every fetchJson call carries X-Plato-User. The api.ts bootstrap
+  // already seeds itself from localStorage on cold load; this keeps
+  // the two stores in sync after login/logout/refresh.
+  setActiveUserId(id);
   if (typeof window === "undefined") return;
   try {
     if (id === null) window.localStorage.removeItem(STORAGE_KEY);

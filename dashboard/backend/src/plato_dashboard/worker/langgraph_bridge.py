@@ -29,12 +29,28 @@ reason, no such event was captured, we fall back to ``ainvoke``.
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from datetime import datetime, timezone
 from typing import Any, Optional
 
 from ..events.bus import EventBus
 from ..domain.models import StageId
+
+
+_DEFAULT_RUN_TIMEOUT_S = 30 * 60  # 30 minutes
+
+
+def _run_timeout_seconds() -> float:
+    """Read PLATO_RUN_TIMEOUT_SECONDS or fall back to 30 minutes."""
+    raw = os.environ.get("PLATO_RUN_TIMEOUT_SECONDS")
+    if not raw:
+        return float(_DEFAULT_RUN_TIMEOUT_S)
+    try:
+        val = float(raw)
+    except ValueError:
+        return float(_DEFAULT_RUN_TIMEOUT_S)
+    return val if val > 0 else float(_DEFAULT_RUN_TIMEOUT_S)
 
 
 # Names of LangGraph nodes we surface to the dashboard. Anything else (the
@@ -190,7 +206,8 @@ async def stream_graph(
         event.setdefault("run_id", run_id)
         await bus.publish(channel, event)
 
-    try:
+    async def _drain() -> None:
+        nonlocal final_state, top_run_id
         async for ev in graph.astream_events(state, version="v2"):
             etype = ev.get("event")
             name = ev.get("name") or ""
@@ -299,6 +316,16 @@ async def stream_graph(
                     }
                 )
 
+    timeout_s = _run_timeout_seconds()
+    try:
+        await asyncio.wait_for(_drain(), timeout=timeout_s)
+    except asyncio.TimeoutError as exc:
+        msg = (
+            f"LangGraph stream exceeded PLATO_RUN_TIMEOUT_SECONDS="
+            f"{timeout_s:.0f}s and was aborted"
+        )
+        await _publish({"kind": "error", "stage": stage, "message": msg})
+        raise TimeoutError(msg) from exc
     except asyncio.CancelledError:
         # Cooperative cancellation — let the worker decide whether to publish.
         raise

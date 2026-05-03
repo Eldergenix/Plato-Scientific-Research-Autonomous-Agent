@@ -77,12 +77,9 @@ export function LicensesClient() {
 
   if (loading) {
     return (
-      <p
-        className="surface-linear-card p-5 text-[13px] text-(--color-text-row-meta)"
-        data-testid="licenses-loading"
-      >
-        Loading license audit…
-      </p>
+      <div data-testid="licenses-loading" className="space-y-4">
+        <LicenseTable distributions={[]} loading />
+      </div>
     );
   }
 

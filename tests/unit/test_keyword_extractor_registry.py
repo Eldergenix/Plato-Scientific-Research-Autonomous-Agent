@@ -63,6 +63,10 @@ def test_get_unknown_extractor_raises_keyerror() -> None:
 
 
 def test_register_keyword_extractor_collision_requires_overwrite() -> None:
+    # Trigger lazy registration of the built-ins so ``"default"`` is in
+    # the registry before we test the collision path.
+    list_keyword_extractors()
+
     class _Stub:
         name = "default"  # collides with the built-in
 

@@ -86,7 +86,7 @@ def _scripted_llm(scripts: list[str]):
     the last script if more calls come in."""
     idx = {"i": 0}
 
-    def _impl(prompt, state):
+    def _impl(prompt, state, *, node_name=None):
         state["tokens"]["ti"] += 1
         state["tokens"]["to"] += 1
         i = idx["i"]

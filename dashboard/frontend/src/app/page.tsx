@@ -17,6 +17,9 @@ import { CostMeterPanel, useCostMeter } from "@/components/cost/cost-meter-panel
 import { CreateProjectModal } from "@/components/projects/create-project-modal";
 import { PaperPreview, type PaperSection } from "@/components/stages/paper-preview";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Sheet } from "@/components/ui/sheet";
+import { Menu } from "lucide-react";
+import { usePathname } from "next/navigation";
 import { useProject } from "@/lib/use-project";
 import { api } from "@/lib/api";
 
@@ -50,12 +53,80 @@ import {
 } from "lucide-react";
 import type { StageId, Stage } from "@/lib/types";
 
+// UI shell state — sidebar collapse, mobile drawer, command palette.
+// Bundled because all three are about chrome/navigation visibility and
+// flip together (e.g., opening cmd-k from the mobile drawer closes the
+// drawer first). Treating them as one atom keeps related transitions
+// in a single dispatched action and gives child components stable
+// callback identity (each handler only needs to dispatch).
+type UiState = {
+  collapsed: boolean;
+  mobileNavOpen: boolean;
+  cmdOpen: boolean;
+};
+
+type UiAction =
+  | { type: "toggleCollapsed" }
+  | { type: "setMobileNav"; open: boolean }
+  | { type: "setCmd"; open: boolean }
+  | { type: "openCmdFromMobile" }
+  | { type: "closeMobileNav" };
+
+function uiReducer(state: UiState, action: UiAction): UiState {
+  switch (action.type) {
+    case "toggleCollapsed":
+      return { ...state, collapsed: !state.collapsed };
+    case "setMobileNav":
+      return { ...state, mobileNavOpen: action.open };
+    case "setCmd":
+      return { ...state, cmdOpen: action.open };
+    case "openCmdFromMobile":
+      return { ...state, mobileNavOpen: false, cmdOpen: true };
+    case "closeMobileNav":
+      return { ...state, mobileNavOpen: false };
+  }
+}
+
+const INITIAL_UI: UiState = {
+  collapsed: false,
+  mobileNavOpen: false,
+  cmdOpen: false,
+};
+
+// Log viewer state — height + paused. Bundled because both belong to
+// AgentLogStream and tend to flip together. Discrete heights keep the
+// state finite and the cycle/toggle helpers obvious.
+type LogState = { height: 0 | 30 | 60; paused: boolean };
+
+type LogAction =
+  | { type: "setHeight"; height: 0 | 30 | 60 }
+  | { type: "togglePause" }
+  | { type: "toggleDrawer" } // sidebar history pseudo-link + bottom bar: 0 <-> 30
+  | { type: "cycleHeight" }; // topbar display button: 0 -> 30 -> 60 -> 0
+
+function logReducer(state: LogState, action: LogAction): LogState {
+  switch (action.type) {
+    case "setHeight":
+      return { ...state, height: action.height };
+    case "togglePause":
+      return { ...state, paused: !state.paused };
+    case "toggleDrawer":
+      return { ...state, height: state.height === 0 ? 30 : 0 };
+    case "cycleHeight":
+      return {
+        ...state,
+        height: state.height === 0 ? 30 : state.height === 30 ? 60 : 0,
+      };
+  }
+}
+
+const INITIAL_LOG: LogState = { height: 0, paused: false };
+
 export default function Home() {
-  const [collapsed, setCollapsed] = React.useState(false);
-  const [cmdOpen, setCmdOpen] = React.useState(false);
+  const [ui, uiDispatch] = React.useReducer(uiReducer, INITIAL_UI);
+  const [logState, logDispatch] = React.useReducer(logReducer, INITIAL_LOG);
+  const pathname = usePathname();
   const [openStage, setOpenStage] = React.useState<StageId | null>(null);
-  const [logHeight, setLogHeight] = React.useState<0 | 30 | 60>(0);
-  const [paused, setPaused] = React.useState(false);
   const [elapsedMs, setElapsedMs] = React.useState(0);
   const [filterTab, setFilterTab] = React.useState<"active" | "backlog" | "all">(
     "active",
@@ -150,32 +221,183 @@ export default function Home() {
     return { ...project, stages };
   }, [project, filterTab]);
 
+  // Auto-close the mobile drawer on route change so the user lands on a
+  // clean page after navigating from inside the drawer.
+  React.useEffect(() => {
+    uiDispatch({ type: "closeMobileNav" });
+  }, [pathname]);
+
+  // Stable dispatcher wrappers — useReducer's dispatch is itself stable,
+  // but child components want concrete callbacks (boolean setters, void
+  // toggles). Wrapping once with useCallback gives us memoized identity
+  // for every child prop, including TopBar's onChangeFilter / onChangeDisplay.
+  const toggleCollapsed = React.useCallback(
+    () => uiDispatch({ type: "toggleCollapsed" }),
+    [],
+  );
+  const openCommand = React.useCallback(
+    () => uiDispatch({ type: "setCmd", open: true }),
+    [],
+  );
+  const setCmdOpen = React.useCallback(
+    (open: boolean) => uiDispatch({ type: "setCmd", open }),
+    [],
+  );
+  const setMobileNavOpen = React.useCallback(
+    (open: boolean) => uiDispatch({ type: "setMobileNav", open }),
+    [],
+  );
+  const closeMobileNav = React.useCallback(
+    () => uiDispatch({ type: "closeMobileNav" }),
+    [],
+  );
+  const openCommandFromMobile = React.useCallback(
+    () => uiDispatch({ type: "openCmdFromMobile" }),
+    [],
+  );
+
+  const setLogHeight = React.useCallback(
+    (height: 0 | 30 | 60) => logDispatch({ type: "setHeight", height }),
+    [],
+  );
+  const togglePause = React.useCallback(
+    () => logDispatch({ type: "togglePause" }),
+    [],
+  );
+  const toggleLogDrawer = React.useCallback(
+    () => logDispatch({ type: "toggleDrawer" }),
+    [],
+  );
+  const cycleLogHeight = React.useCallback(
+    () => logDispatch({ type: "cycleHeight" }),
+    [],
+  );
+
+  const openCreate = React.useCallback(() => setCreateOpen(true), []);
+  const openCreateFromMobile = React.useCallback(() => {
+    uiDispatch({ type: "closeMobileNav" });
+    setCreateOpen(true);
+  }, []);
+
+  const handleSelectStage = React.useCallback(
+    (stage: string) => {
+      // Sidebar TEAM_LINKS uses pseudo-ids: "stages" → idea (jump to first stage),
+      // "history" → toggle log drawer, "referee" → real referee stage.
+      if (stage === "history") {
+        logDispatch({ type: "toggleDrawer" });
+        return;
+      }
+      if (stage === "stages") {
+        setOpenStage("idea");
+        return;
+      }
+      setOpenStage(stage as StageId);
+    },
+    [],
+  );
+
+  const handleSelectStageFromMobile = React.useCallback(
+    (stage: string) => {
+      uiDispatch({ type: "closeMobileNav" });
+      handleSelectStage(stage);
+    },
+    [handleSelectStage],
+  );
+
+  const setFilterTabStable = React.useCallback(
+    (t: "active" | "backlog" | "all") => setFilterTab(t),
+    [],
+  );
+
+  const cycleFilterTab = React.useCallback(
+    () =>
+      setFilterTab((t) =>
+        t === "active" ? "backlog" : t === "backlog" ? "all" : "active",
+      ),
+    [],
+  );
+
+  const onRunPipelineIdea = React.useCallback(
+    () => guardedStartRun("idea"),
+    [guardedStartRun],
+  );
+
+  const onSelectStageWorkspace = React.useCallback(
+    (stage: StageId) => setOpenStage(stage),
+    [],
+  );
+
+  const dismissGateToast = React.useCallback(() => setGateToast(null), []);
+  const closeStageDetail = React.useCallback(() => setOpenStage(null), []);
+  const onCreatedProject = React.useCallback(() => {
+    setCreateOpen(false);
+    void refresh();
+  }, [refresh]);
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-(--color-bg-page) text-(--color-text-primary)">
-      <Sidebar
-        collapsed={collapsed}
-        onToggle={() => setCollapsed((c) => !c)}
-        onOpenCommand={() => setCmdOpen(true)}
-        onCreateProject={() => setCreateOpen(true)}
-        projectName={project.name}
-        activeStage={openStage ?? undefined}
-        onSelectStage={(stage) => {
-          // Sidebar TEAM_LINKS uses pseudo-ids: "stages" → idea (jump to first stage),
-          // "history" → toggle log drawer, "referee" → real referee stage.
-          if (stage === "history") {
-            setLogHeight((h) => (h === 0 ? 30 : 0));
-            return;
-          }
-          if (stage === "stages") {
-            setOpenStage("idea");
-            return;
-          }
-          setOpenStage(stage as StageId);
-        }}
-      />
+      {/* Desktop sidebar — hidden below md so the mobile drawer can take
+          over without overlapping content. md:hidden on the mobile header
+          below mirrors this so the two layouts never coexist. */}
+      <div className="hidden md:flex">
+        <Sidebar
+          collapsed={ui.collapsed}
+          onToggle={toggleCollapsed}
+          onOpenCommand={openCommand}
+          onCreateProject={openCreate}
+          projectName={project.name}
+          activeStage={openStage ?? undefined}
+          onSelectStage={handleSelectStage}
+        />
+      </div>
+
+      {/* Mobile drawer — same Sidebar inside a Sheet. Each action also
+          closes the drawer so a navigation initiated from inside doesn't
+          leave the sheet overlaying the destination. */}
+      <Sheet
+        open={ui.mobileNavOpen}
+        onOpenChange={setMobileNavOpen}
+        title="Navigation"
+        srOnly
+        side="left"
+        hideCloseButton
+        className="w-[280px]"
+      >
+        <Sidebar
+          collapsed={false}
+          onToggle={closeMobileNav}
+          onOpenCommand={openCommandFromMobile}
+          onCreateProject={openCreateFromMobile}
+          projectName={project.name}
+          activeStage={openStage ?? undefined}
+          onSelectStage={handleSelectStageFromMobile}
+        />
+      </Sheet>
 
       {/* Outer canvas with the Linear-style inset card */}
       <div className="flex-1 min-w-0 flex flex-col">
+        {/* Mobile-only sticky header with hamburger trigger. The
+            md:hidden breakpoint mirrors the desktop sidebar's md:flex so
+            the two never render side-by-side. */}
+        <div
+          className="flex h-12 items-center gap-2 px-3 hairline-b bg-(--color-bg-marketing) md:hidden"
+          data-testid="mobile-shell-header"
+        >
+          <button
+            type="button"
+            aria-label="Open navigation"
+            data-testid="mobile-nav-trigger"
+            onClick={() => setMobileNavOpen(true)}
+            className="size-8 inline-flex items-center justify-center rounded-[6px] text-(--color-text-tertiary) hover:bg-(--color-ghost-bg-hover) hover:text-(--color-text-primary)"
+            // setMobileNavOpen is a stable useCallback wrapper around uiDispatch.
+          >
+            <Menu size={16} strokeWidth={1.75} />
+          </button>
+          <span className="text-[13px] font-medium text-(--color-text-primary)">
+            Plato
+          </span>
+        </div>
+
         {capabilities?.is_demo && (
           <CapabilitiesBanner isDemo notes={capabilities.notes} />
         )}
@@ -280,6 +502,8 @@ export default function Home() {
       {gateToast && (
         <div
           role="alert"
+          aria-live="assertive"
+          aria-atomic="true"
           className="fixed bottom-12 right-4 z-50 max-w-sm surface-linear-card px-4 py-3"
           style={{
             background: "var(--color-bg-card)",

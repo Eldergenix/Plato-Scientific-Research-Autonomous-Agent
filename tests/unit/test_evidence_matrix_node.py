@@ -42,7 +42,7 @@ def _llm_returning(payloads):
     """Yield each payload as ```json fenced block, in order."""
     iterator = iter(payloads)
 
-    def _side_effect(prompt, state):
+    def _side_effect(prompt, state, *, node_name=None):
         try:
             payload = next(iterator)
         except StopIteration as exc:
@@ -194,7 +194,7 @@ def test_malformed_llm_response_retries_then_skips(tmp_path):
 
     bad_payloads = ["not json", "still not json", "really not json"]
 
-    def _bad_side_effect(prompt, state):
+    def _bad_side_effect(prompt, state, *, node_name=None):
         return state, bad_payloads.pop(0) if bad_payloads else "no json"
 
     with patch.object(node_module, "LLM_call", side_effect=_bad_side_effect):

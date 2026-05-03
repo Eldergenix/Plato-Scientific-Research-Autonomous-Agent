@@ -17,8 +17,6 @@ is unavailable or the project_dir isn't a repo, the loop logs a warning
 once and runs without commits.
 """
 from __future__ import annotations
-
-import asyncio
 import inspect
 import logging
 import shutil

@@ -26,7 +26,6 @@ export interface ReviewsPayload {
 }
 
 const AXES = ["methodology", "statistics", "novelty", "writing"] as const;
-type Axis = (typeof AXES)[number];
 
 export function CritiquePanel({ payload }: { payload: ReviewsPayload }) {
   const critiques = payload.critiques ?? {};

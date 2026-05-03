@@ -1,9 +1,10 @@
 import os
 import fitz  # PyMuPDF
 import base64
+from typing import Optional
 
-def pdf_to_images(pdf_path: str, out_dir: str = None, dpi: int = 200, fmt: str = "png",
-                  password: str = None, transparent: bool = False, keep_images=False):
+def pdf_to_images(pdf_path: str, out_dir: Optional[str] = None, dpi: int = 200, fmt: str = "png",
+                  password: Optional[str] = None, transparent: bool = False, keep_images=False):
     """
     Convert all pages of a PDF to images.
 

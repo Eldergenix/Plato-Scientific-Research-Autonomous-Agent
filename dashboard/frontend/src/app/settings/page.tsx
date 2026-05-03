@@ -5,10 +5,13 @@ import Link from "next/link";
 import {
   ChevronRight,
   Globe2,
+  Info,
   Monitor,
   Moon,
   ScrollText,
   Server,
+  Sliders,
+  Sparkles,
   Sun,
   Trash2,
   CheckCircle2,
@@ -16,7 +19,9 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { useTheme } from "@/components/shell/theme-provider";
 import { Button } from "@/components/ui/button";
-import { Pill } from "@/components/ui/pill";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { api, type TelemetryPreferences } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 // Mirror of RECOMMENDED_BY_STAGE in src/app/models/page.tsx — kept in sync
@@ -60,6 +65,22 @@ const SETTINGS_SECTIONS: Array<{
     testId: "settings-link-executors",
   },
   {
+    href: "/settings/llm-providers",
+    label: "LLM Providers",
+    description:
+      "Pick the provider/model used per stage. Add credentials under /keys.",
+    icon: Sparkles,
+    testId: "settings-link-llm-providers",
+  },
+  {
+    href: "/settings/run-presets",
+    label: "Run presets",
+    description:
+      "Save named run configurations — idea iters, journal, executor — and reuse them at run-start.",
+    icon: Sliders,
+    testId: "settings-link-run-presets",
+  },
+  {
     href: "/settings/licenses",
     label: "Licenses & SBOM",
     description:
@@ -101,6 +122,7 @@ export default function SettingsPage() {
   const [autoSkip, setAutoSkip] = React.useState<boolean>(false);
   const [hydrated, setHydrated] = React.useState(false);
   const [resetMsg, setResetMsg] = React.useState<string | null>(null);
+  const [resetConfirmOpen, setResetConfirmOpen] = React.useState(false);
 
   // Hydrate localStorage-backed state on mount.
   React.useEffect(() => {
@@ -125,10 +147,6 @@ export default function SettingsPage() {
 
   const onResetLocalData = () => {
     if (typeof window === "undefined") return;
-    const ok = window.confirm(
-      "Clear all locally-stored Plato data? This removes API keys saved in-app, approval state, theme preference, and other settings stored under the plato: namespace. This cannot be undone.",
-    );
-    if (!ok) return;
     try {
       const keys: string[] = [];
       for (let i = 0; i < window.localStorage.length; i += 1) {
@@ -166,7 +184,7 @@ export default function SettingsPage() {
             title="Configuration"
             subtitle="Server-side settings that affect every project in this workspace."
           />
-          <ul className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <ul className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {SETTINGS_SECTIONS.map((section) => {
               const Icon = section.icon;
               return (
@@ -303,41 +321,27 @@ export default function SettingsPage() {
             title="Approvals"
             subtitle="Control when Plato pauses for your approval between stages."
           />
-          <label className="mt-3 flex cursor-pointer items-start gap-3">
-            <input
-              type="checkbox"
-              checked={autoSkip}
-              disabled={!hydrated}
-              onChange={(e) => onAutoSkipChange(e.target.checked)}
-              className="mt-0.5 h-4 w-4 cursor-pointer disabled:cursor-not-allowed"
-            />
-            <span>
-              <span className="block text-[13px] font-[510] text-(--color-text-primary)">
-                Skip all approval gates
+          <Checkbox
+            checked={autoSkip}
+            disabled={!hydrated}
+            onCheckedChange={onAutoSkipChange}
+            className="mt-3 items-start gap-3"
+            label={
+              <span>
+                <span className="block text-[13px] font-[510] text-(--color-text-primary)">
+                  Skip all approval gates
+                </span>
+                <span className="block text-[12px] text-(--color-text-tertiary)">
+                  Auto-approve every checkpoint. Reads/writes{" "}
+                  <code className="font-mono text-[11px]">{APPROVALS_AUTO_SKIP_KEY}</code>.
+                </span>
               </span>
-              <span className="block text-[12px] text-(--color-text-tertiary)">
-                Auto-approve every checkpoint. Reads/writes{" "}
-                <code className="font-mono text-[11px]">{APPROVALS_AUTO_SKIP_KEY}</code>.
-              </span>
-            </span>
-          </label>
+            }
+          />
         </section>
 
         {/* Telemetry */}
-        <section className="surface-linear-card p-5">
-          <SectionTitle title="Telemetry" subtitle="Help improve Plato with anonymous usage data." />
-          <div className="mt-3 flex items-center justify-between gap-3 rounded-[8px] border border-(--color-border-card) bg-(--color-bg-card) px-3 py-2.5">
-            <div>
-              <div className="text-[13px] text-(--color-text-primary)">
-                Telemetry: not yet implemented
-              </div>
-              <div className="text-[12px] text-(--color-text-tertiary)">
-                This setting will become active once the backend collector ships.
-              </div>
-            </div>
-            <Pill tone="neutral">disabled</Pill>
-          </div>
-        </section>
+        <TelemetrySection />
 
         {/* Reset (danger) */}
         <section
@@ -351,7 +355,11 @@ export default function SettingsPage() {
             other locally-saved setting. Server-side data is unaffected.
           </p>
           <div className="mt-3 flex items-center gap-3">
-            <Button variant="danger" size="md" onClick={onResetLocalData}>
+            <Button
+              variant="danger"
+              size="md"
+              onClick={() => setResetConfirmOpen(true)}
+            >
               <Trash2 size={13} strokeWidth={1.75} />
               Clear all local data
             </Button>
@@ -361,6 +369,17 @@ export default function SettingsPage() {
           </div>
         </section>
       </div>
+
+      <ConfirmDialog
+        open={resetConfirmOpen}
+        onOpenChange={setResetConfirmOpen}
+        title="Clear all locally-stored Plato data?"
+        description="Removes API keys saved in-app, approval state, theme preference, and other settings stored under the plato: namespace. Server-side data is unaffected. This cannot be undone."
+        confirmLabel="Clear local data"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={onResetLocalData}
+      />
     </div>
   );
 }
@@ -389,4 +408,144 @@ function SectionTitle({
       ) : null}
     </div>
   );
+}
+
+// Local-only run-summary telemetry. Toggle persists in user_preferences.json
+// on the server; aggregates render the last 30 entries from
+// ~/.plato/telemetry.jsonl. Nothing about this section talks to a third
+// party — we own the file and the user owns their machine.
+function TelemetrySection() {
+  const [prefs, setPrefs] = React.useState<TelemetryPreferences | null>(null);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+  const [pending, setPending] = React.useState(false);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    api
+      .getTelemetryPreferences()
+      .then((p) => {
+        if (!cancelled) setPrefs(p);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setLoadError(err instanceof Error ? err.message : "Failed to load.");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const onToggle = async (next: boolean) => {
+    if (pending) return;
+    setPending(true);
+    const previous = prefs;
+    // Optimistic — flip immediately, roll back on failure.
+    setPrefs((p) => (p ? { ...p, telemetry_enabled: next } : p));
+    try {
+      const updated = await api.setTelemetryPreferences(next);
+      setPrefs(updated);
+      setLoadError(null);
+    } catch (err) {
+      setPrefs(previous);
+      setLoadError(err instanceof Error ? err.message : "Save failed.");
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const enabled = prefs?.telemetry_enabled ?? false;
+  const ready = prefs !== null;
+  const agg = prefs?.aggregates;
+
+  return (
+    <section className="surface-linear-card p-5">
+      <SectionTitle
+        title="Telemetry"
+        subtitle="Local-only usage stats. Never transmitted off this machine."
+      />
+
+      <Checkbox
+        checked={enabled}
+        disabled={!ready || pending}
+        onCheckedChange={onToggle}
+        data-testid="settings-telemetry-toggle"
+        className="mt-3 items-start gap-3"
+        label={
+          <span>
+            <span className="block text-[13px] font-[510] text-(--color-text-primary)">
+              Track local usage stats (run counts, durations, token usage)
+            </span>
+            <span className="block text-[12px] text-(--color-text-tertiary)">
+              Appended to{" "}
+              <code className="font-mono text-[11px]">~/.plato/telemetry.jsonl</code>
+              . Set <code className="font-mono text-[11px]">PLATO_TELEMETRY_DISABLED=1</code>{" "}
+              to disable from the shell.
+            </span>
+          </span>
+        }
+      />
+
+      <div className="mt-3 flex items-start gap-2 rounded-[8px] border border-(--color-border-card) bg-(--color-bg-pill-inactive) px-3 py-2">
+        <Info
+          size={14}
+          strokeWidth={1.75}
+          className="mt-0.5 text-(--color-text-tertiary)"
+        />
+        <p className="text-[12px] text-(--color-text-tertiary-spec)">
+          What we record per run: timestamp, run_id, workflow name, duration,
+          input/output tokens, cost, status. Nothing else — no prompts, no
+          outputs, no project paths. The file lives entirely on your machine.
+        </p>
+      </div>
+
+      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <SummaryStat
+          label="Recent runs"
+          value={agg ? String(agg.total_runs) : "—"}
+        />
+        <SummaryStat
+          label="Tokens (in / out)"
+          value={
+            agg
+              ? `${formatInt(agg.total_tokens_in)} / ${formatInt(agg.total_tokens_out)}`
+              : "—"
+          }
+        />
+        <SummaryStat
+          label="Cost (USD)"
+          value={agg ? `$${agg.total_cost_usd.toFixed(4)}` : "—"}
+        />
+      </div>
+
+      {loadError ? (
+        <p className="mt-2 text-[12px] text-(--color-status-red)">{loadError}</p>
+      ) : !ready ? (
+        <p className="mt-2 text-[12px] text-(--color-text-tertiary)">Loading…</p>
+      ) : (
+        <p className="mt-2 text-[12px] text-(--color-text-tertiary)">
+          {agg && agg.total_runs > 0
+            ? `Aggregated from the last ${agg.total_runs} run${agg.total_runs === 1 ? "" : "s"}.`
+            : "No runs recorded yet."}
+        </p>
+      )}
+    </section>
+  );
+}
+
+function SummaryStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[8px] border border-(--color-border-card) bg-(--color-bg-card) px-3 py-2">
+      <div className="text-[11px] uppercase tracking-[0.04em] text-(--color-text-quaternary-spec)">
+        {label}
+      </div>
+      <div className="mt-0.5 font-mono text-[13px] text-(--color-text-primary)">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function formatInt(n: number): string {
+  return new Intl.NumberFormat("en-US").format(Math.round(n));
 }

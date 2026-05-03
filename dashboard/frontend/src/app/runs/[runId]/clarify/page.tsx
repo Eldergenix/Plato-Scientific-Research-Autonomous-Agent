@@ -8,6 +8,7 @@ import {
   type ClarificationsPayload,
 } from "@/components/clarifier/clarifying-questions-modal";
 import { RunDetailNav } from "@/components/manifest/run-detail-nav";
+import { getActiveRunId, getActiveUserId, setActiveRunId } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 /* -----------------------------------------------------------------------------
@@ -20,7 +21,20 @@ type Loadable<T> =
   | { state: "error"; error: string };
 
 async function fetchOptional<T>(url: string): Promise<T | null> {
-  const resp = await fetch(url, { cache: "no-store" });
+  // Mirror fetchJson's correlation headers so the dashboard backend
+  // can join this fetch into the same X-Plato-Run-Id / X-Plato-User
+  // trace as the rest of the run-detail subtree.
+  const headers: Record<string, string> = {};
+  const runId = getActiveRunId();
+  if (runId) headers["X-Plato-Run-Id"] = runId;
+  const userId = getActiveUserId();
+  if (userId) headers["X-Plato-User"] = userId;
+
+  const resp = await fetch(url, {
+    cache: "no-store",
+    credentials: "include",
+    headers,
+  });
   if (resp.status === 404) return null;
   if (!resp.ok) {
     const body = await resp.json().catch(() => null);
@@ -45,6 +59,15 @@ export default function ClarifyPage() {
   // Always-open modal for the full-page direct-link flow. Closing it
   // collapses back to the inline ClarifierStep so users can re-open.
   const [modalOpen, setModalOpen] = React.useState(true);
+
+  // Bind run id to the api.ts module-level store so the local
+  // fetchOptional (which reads getActiveRunId) carries
+  // X-Plato-Run-Id. Cleared on unmount.
+  React.useEffect(() => {
+    if (!runId) return;
+    setActiveRunId(runId);
+    return () => setActiveRunId(null);
+  }, [runId]);
 
   const refresh = React.useCallback(async () => {
     if (!runId) return;

@@ -62,6 +62,10 @@ docs = [
   "mkdocs-jupyter>=0.25.1",
   "mkdocs-git-committers-plugin-2>=2.5.0",
 ]
+dev = [
+  "mypy>=1.20",
+  "types-requests",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -96,3 +100,7 @@ disallow_any_generics = false  # tighten in a follow-up pass
 # Third-party packages without type stubs that we know about.
 module = ["cmbagent.*", "pymupdf.*", "fitz.*", "futurehouse_client.*"]
 ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
