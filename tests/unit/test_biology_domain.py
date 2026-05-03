@@ -32,6 +32,10 @@ def test_biology_appears_in_list_domains() -> None:
     assert "astro" in domains
 
 
-def test_biology_executor_placeholder() -> None:
-    # Placeholder per spec until biology-specific executor lands.
-    assert get_domain("biology").executor == "cmbagent"
+def test_biology_executor_is_local_jupyter() -> None:
+    # Iter-21: biology now defaults to ``local_jupyter`` — a domain-neutral
+    # executor that runs arbitrary Python without dragging in astro-specific
+    # tooling. Users who want a sandboxed alternative can pass
+    # ``executor="modal"`` / ``executor="e2b"`` per-call to
+    # ``Plato.get_results`` or override the profile entirely.
+    assert get_domain("biology").executor == "local_jupyter"
