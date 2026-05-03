@@ -329,8 +329,8 @@ def fix_latex(state, f_temp):
 
         # make a LLM call with the problematic text and the LaTeX errors
         # uses state['files']['LaTeX_err'] and state['latex']['sction'] for the prompt
-        PROMPT = fix_latex_bug_prompt(state)  
-        state, result = LLM_call(PROMPT, state)
+        PROMPT = fix_latex_bug_prompt(state)
+        state, result = LLM_call(PROMPT, state, node_name="fix_latex")
         fixed_text = extract_latex_block(state, result, "Text")
         state['paper'][state['latex']['section_to_fix']] = fixed_text
 

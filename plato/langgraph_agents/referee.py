@@ -22,7 +22,7 @@ def referee(state: GraphState, config: RunnableConfig):
 
     # call the LLM
     PROMPT = reviewer_fast_prompt(state)
-    state, result = LLM_call_stream(PROMPT, state)
+    state, result = LLM_call_stream(PROMPT, state, node_name="referee")
     text = extract_latex_block(state, result, "REVIEW")
 
     # remove LLM added lines

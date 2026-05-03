@@ -10,7 +10,7 @@ def idea_maker(state: GraphState, config: RunnableConfig):
     print(f"Maker (iteration {state['idea']['iteration']+1})")
 
     PROMPT = idea_maker_prompt(state)
-    state, result = LLM_call_stream(PROMPT, state)
+    state, result = LLM_call_stream(PROMPT, state, node_name="idea_maker")
     text = extract_latex_block(state, result, "IDEA")
 
     # remove LLM added lines
@@ -47,7 +47,7 @@ def idea_hater(state: GraphState, config: RunnableConfig):
     print(f"Hater (iteration {state['idea']['iteration']})")
 
     PROMPT = idea_hater_prompt(state)
-    state, result = LLM_call_stream(PROMPT, state)
+    state, result = LLM_call_stream(PROMPT, state, node_name="idea_hater")
     text = extract_latex_block(state, result, "CRITIC")
 
     # remove LLM added lines

@@ -174,7 +174,7 @@ def evidence_matrix_node(
             parsed: dict[str, Any] | None = None
             for _ in range(_RETRIES):
                 try:
-                    _state, raw = LLM_call(prompt, state)
+                    _state, raw = LLM_call(prompt, state, node_name="evidence_matrix")
                 except Exception:
                     time.sleep(0.05)
                     continue

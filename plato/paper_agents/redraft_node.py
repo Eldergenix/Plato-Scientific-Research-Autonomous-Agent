@@ -52,7 +52,7 @@ def redraft_node(state: GraphState, config: RunnableConfig):
     ``max_iterations``.
     """
     prompt = redraft_prompt(state)
-    state, raw = LLM_call(prompt, state)
+    state, raw = LLM_call(prompt, state, node_name="redraft")
     parsed = _safe_parse_redraft(raw)
 
     paper: dict[str, Any] = dict(state.get("paper") or {})

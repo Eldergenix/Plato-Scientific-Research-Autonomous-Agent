@@ -61,7 +61,7 @@ def novelty_decider(state: GraphState, config: RunnableConfig):
     # Try for three times in case it fails
     for _ in tqdm(range(5), desc="Analyzing novelty", unit="try"):
 
-        state, result = LLM_call_stream(PROMPT, state)
+        state, result = LLM_call_stream(PROMPT, state, node_name="novelty_decider")
         try:
             result    = json_parser3(result)
             reason    = result["Reason"]
@@ -222,7 +222,7 @@ def literature_summary(state: GraphState, config: RunnableConfig):
 
     # generate the summary
     PROMPT = summary_literature_prompt(state)
-    state, result = LLM_call_stream(PROMPT, state)
+    state, result = LLM_call_stream(PROMPT, state, node_name="literature_summary")
     text = extract_latex_block(state, result, "SUMMARY")
 
     # write summary to file

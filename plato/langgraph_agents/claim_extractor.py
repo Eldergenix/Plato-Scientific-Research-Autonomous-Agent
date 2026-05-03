@@ -150,7 +150,7 @@ async def claim_extractor(state: GraphState, config: Optional[RunnableConfig] = 
 
         parsed: list[dict[str, Any]] | None = None
         for attempt in range(_CLAIM_RETRIES):
-            state, raw = LLM_call_stream(prompt, state)
+            state, raw = LLM_call_stream(prompt, state, node_name="claim_extractor")
             try:
                 parsed = _parse_claims_json(raw)
                 break

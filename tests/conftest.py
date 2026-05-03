@@ -28,8 +28,17 @@ def _reset_global_registries():
     from plato.retrieval import ADAPTER_REGISTRY
     from plato.tools.registry import _REGISTRY as TOOL_REGISTRY
 
+    # Iter-16 additions: KeywordExtractor + JournalPreset registries follow
+    # the same import-time side-effect pattern as the adapter / tool ones,
+    # so they need the same snapshot-restore plumbing or any test that
+    # exercises ``register_*`` will leak fakes into siblings.
+    from plato.keyword_extractor import KEYWORD_EXTRACTOR_REGISTRY
+    from plato.journal_preset import JOURNAL_PRESET_REGISTRY
+
     adapter_snapshot = dict(ADAPTER_REGISTRY)
     tool_snapshot = dict(TOOL_REGISTRY)
+    keyword_extractor_snapshot = dict(KEYWORD_EXTRACTOR_REGISTRY)
+    journal_preset_snapshot = dict(JOURNAL_PRESET_REGISTRY)
     try:
         yield
     finally:
@@ -37,3 +46,7 @@ def _reset_global_registries():
         ADAPTER_REGISTRY.update(adapter_snapshot)
         TOOL_REGISTRY.clear()
         TOOL_REGISTRY.update(tool_snapshot)
+        KEYWORD_EXTRACTOR_REGISTRY.clear()
+        KEYWORD_EXTRACTOR_REGISTRY.update(keyword_extractor_snapshot)
+        JOURNAL_PRESET_REGISTRY.clear()
+        JOURNAL_PRESET_REGISTRY.update(journal_preset_snapshot)

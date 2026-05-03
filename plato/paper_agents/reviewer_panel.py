@@ -93,7 +93,7 @@ def _run_reviewer(
 ) -> dict:
     """Shared reviewer body: call LLM, parse JSON, merge into state['critiques']."""
     prompt = prompt_fn(state)
-    state, raw = LLM_call(prompt, state)
+    state, raw = LLM_call(prompt, state, node_name=f"reviewer_{reviewer_key}")
     critique = _parse_critique(raw)
 
     existing = state.get("critiques") or {}

@@ -72,11 +72,32 @@ def keywords_node(state: GraphState, config: RunnableConfig):
 
         if state['paper']['cmbagent_keywords']:
             ################ CMB Agent keywords ###############
-            # Extract keywords
+            # Iter 16: route the cmbagent path through the new
+            # ``KeywordExtractor`` registry so a non-astro
+            # ``DomainProfile`` can swap in ``mesh`` /
+            # ``openalex_concepts`` / ``default`` without touching this
+            # node. Resolution order:
+            #   1. ``state['paper']['keyword_extractor']`` — explicit override.
+            #   2. ``state['domain_profile'].keyword_extractor`` — domain default.
+            #   3. ``"cmbagent"`` — preserves the legacy behaviour.
+            from ..keyword_extractor import get_keyword_extractor
+
+            extractor_name = (
+                (state.get("paper") or {}).get("keyword_extractor")
+                or getattr(state.get("domain_profile"), "keyword_extractor", None)
+                or "cmbagent"
+            )
+            try:
+                extractor = get_keyword_extractor(extractor_name)
+            except KeyError:
+                # Unknown name → fall back to cmbagent rather than abort.
+                extractor = get_keyword_extractor("cmbagent")
+
             PROMPT = cmbagent_keywords_prompt(state)
-            keywords = cmbagent.get_keywords(PROMPT, n_keywords = 8)
-        
-            # Extract keys and join them with a comma.
+            keywords = extractor.extract(PROMPT, n_keywords=8)
+
+            # Extract keys and join them with a comma. Same shape as
+            # the legacy ``cmbagent.get_keywords`` direct call.
             keywords = ", ".join(keywords.keys())
             ###################################################
         else:
@@ -88,7 +109,7 @@ def keywords_node(state: GraphState, config: RunnableConfig):
                 
                 # Extract keywords
                 PROMPT, keywords_list = keyword_prompt(state)
-                state, result = LLM_call(PROMPT, state)
+                state, result = LLM_call(PROMPT, state, node_name="keywords")
                 keywords = extract_latex_block(state, result, "Keywords")
                 
                 # get the keywords and make a list with them
@@ -154,7 +175,7 @@ def abstract_node(state: GraphState, config: RunnableConfig):
         for attempt in range(5):
             print(f'{attempt} ', end="",flush=True)
             PROMPT = abstract_prompt(state, attempt)
-            state, result = LLM_call(PROMPT, state)
+            state, result = LLM_call(PROMPT, state, node_name="abstract")
 
             try:
                 parsed_json = json_parser3(result)  #more stable than json_parser
@@ -176,7 +197,7 @@ def abstract_node(state: GraphState, config: RunnableConfig):
 
             # improve abstract
             PROMPT = abstract_reflection(state)
-            state, result = LLM_call(PROMPT, state)
+            state, result = LLM_call(PROMPT, state, node_name="abstract_reflection")
             state['paper']['Abstract'] = extract_latex_block(state, result, "Abstract")
             state['paper']['Abstract'] = fix_percent(state['paper']['Abstract']) #fix % by \%
 
@@ -239,8 +260,14 @@ def section_node(state: GraphState, config: RunnableConfig, section_name: str,
             print(f'{attempt} ', end="",flush=True)
 
             # --- Step 1: Prompt and parse section ---
+            # ``section_name`` is the canonical Pascal-case identifier
+            # (Introduction / Methods / Results / Conclusions). We
+            # lowercase it for the manifest's ``prompt_hashes`` so the
+            # key matches the LangGraph node id ("introduction_node"
+            # → manifest key "introduction").
+            _node_name = section_name.lower()
             PROMPT = prompt_fn(state)
-            state, result = LLM_call(PROMPT, state)
+            state, result = LLM_call(PROMPT, state, node_name=_node_name)
             section_text = extract_latex_block(state, result, section_name)
             state['paper'][section_name] = section_text
 
@@ -248,7 +275,7 @@ def section_node(state: GraphState, config: RunnableConfig, section_name: str,
             if reflection_fn:
                 for _ in range(2):
                     PROMPT = reflection_fn(state)
-                    state, section_text = LLM_call(PROMPT, state)
+                    state, section_text = LLM_call(PROMPT, state, node_name=f"{_node_name}_reflection")
 
             # --- Step 3: Check LaTeX ---
             section_text = LaTeX_checker(state, section_text)
@@ -366,7 +393,7 @@ def plots_node(state: GraphState, config: RunnableConfig):
                 image = image_to_base64(file)
 
                 PROMPT = caption_prompt(state, image)
-                state, result = LLM_call(PROMPT, state)
+                state, result = LLM_call(PROMPT, state, node_name="plots_caption")
                 caption = extract_latex_block(state, result, "Caption")
                 caption = LaTeX_checker(state, caption)  #make sure is written in LaTeX
                 images[f"image{i}"] = {'name': file.name, 'caption': caption}
@@ -394,7 +421,7 @@ def plots_node(state: GraphState, config: RunnableConfig):
                 print(f'{attempt} ', end="",flush=True)
                 
                 PROMPT = plot_prompt(state, images)
-                state, result = LLM_call(PROMPT, state)
+                state, result = LLM_call(PROMPT, state, node_name="plots_insert")
                 results = extract_latex_block(state, result, "Section")
 
                 # Check LaTeX
@@ -478,7 +505,7 @@ def refine_results(state: GraphState, config: RunnableConfig):
         
             # Call the LLM to refine the results section
             PROMPT = refine_results_prompt(state)
-            state, result = LLM_call(PROMPT, state)
+            state, result = LLM_call(PROMPT, state, node_name="refine_results")
             results = extract_latex_block(state, result, "Results")
         
             # Check LaTeX
@@ -524,7 +551,7 @@ def check_references(state: GraphState, text: str)-> str:
     """
 
     PROMPT = references_prompt(state, text)
-    state, result = LLM_call(PROMPT, state)
+    state, result = LLM_call(PROMPT, state, node_name="check_references")
     section_text = extract_latex_block(state, result, "Text")
 
     return section_text
@@ -610,7 +637,7 @@ async def citations_node(state: GraphState, config: RunnableConfig):
             section_text = temp_file(state, f_temp, 'read')
         else:
             PROMPT = clean_section_prompt(state, state['paper'][section_name])
-            state, result = LLM_call(PROMPT, state)
+            state, result = LLM_call(PROMPT, state, node_name="citations_cleanup")
             section_text = extract_latex_block(state, result, "Text")
             section_text = LaTeX_checker(state, section_text)          #check LaTeX
             section_text = clean_section(section_text, section_name)   #remove unwanted LaTeX text
