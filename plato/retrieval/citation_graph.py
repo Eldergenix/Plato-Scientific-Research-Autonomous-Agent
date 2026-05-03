@@ -1,25 +1,35 @@
-"""Phase 5 / Workflow #7 — 1-hop citation-graph expansion via OpenAlex.
+"""Phase 5 / Workflow #7 — N-hop citation-graph expansion via OpenAlex.
 
 Given a list of seed :class:`Source` records, walk OpenAlex's citation
-graph one hop in either direction:
+graph in either direction:
 
 - ``referenced_works`` — papers each seed *cites* (its bibliography).
 - ``cited_by`` — papers that cite each seed.
 
-Only ``depth=1`` is currently supported. ``depth>1`` raises
-``NotImplementedError``: BFS at depth ≥ 2 is its own scaffold (rate
-limiting, frontier dedup, stop conditions) and is deferred to a follow-up
-workflow rather than half-built here.
+``depth`` controls how many hops to walk. ``depth=1`` (the default) is the
+direct-neighbour case — referenced/cited works of the seed papers
+themselves. ``depth>=2`` triggers a frontier-based BFS: at each level we
+take the *new* sources discovered in the previous level, expand them, and
+add anything we haven't already visited. The walk stops when either:
 
-Seeds without an ``openalex_id`` are skipped — DOI → OpenAlex resolution
-is exposed as the separate :func:`expand_via_doi` convenience.
+  - the configured ``depth`` is exhausted, OR
+  - the configured ``total_limit`` is reached, OR
+  - the next frontier is empty (no new sources to expand).
+
+Concurrent HTTP fetches at each depth level are bounded by an
+``asyncio.Semaphore`` so the OpenAlex rate-limit is respected even on
+high-fanout seeds. Sources without an ``openalex_id`` are skipped — DOI
+→ OpenAlex resolution is exposed as the separate :func:`expand_via_doi`
+convenience.
 
 All emitted Sources carry ``retrieved_via="openalex"`` and are deduped
-against the seeds (via :func:`plato.retrieval.dedup.dedup_sources`) before
-being returned, so a self-referential loop is filtered out.
+against the seeds and against each previously-emitted source (via the
+visited-set + :func:`plato.retrieval.dedup.dedup_sources`), so a
+self-referential loop is filtered out.
 """
 from __future__ import annotations
 
+import asyncio
 from typing import Literal
 from urllib.parse import quote_plus
 
@@ -111,25 +121,66 @@ async def _fetch_cited_by(
     return sources
 
 
+_DEFAULT_BFS_CONCURRENCY = 8
+"""Max concurrent OpenAlex calls per depth level. Conservative — OpenAlex
+recommends polite-pool requests stay below 10/s with no API key."""
+
+
+async def _fetch_one(
+    client: httpx.AsyncClient,
+    openalex_id: str,
+    direction: ExpansionDirection,
+    limit_per_seed: int,
+    semaphore: asyncio.Semaphore,
+) -> list[Source]:
+    """Bounded-concurrency wrapper around the per-direction fetchers.
+
+    Errors from a single seed are swallowed so one rate-limited call
+    can't poison the rest of the frontier — the absent results just don't
+    appear in the emitted set.
+    """
+    async with semaphore:
+        try:
+            if direction == "referenced_works":
+                return await _fetch_referenced_works(
+                    client, openalex_id, limit_per_seed
+                )
+            elif direction == "cited_by":
+                return await _fetch_cited_by(client, openalex_id, limit_per_seed)
+            else:  # pragma: no cover — guarded by the Literal type
+                raise ValueError(f"Unknown expansion direction: {direction!r}")
+        except httpx.HTTPError:
+            return []
+
+
 async def expand_citations(
     seeds: list[Source],
     *,
     direction: ExpansionDirection = "referenced_works",
     depth: int = 1,
     limit_per_seed: int = 25,
+    total_limit: int | None = None,
+    concurrency: int = _DEFAULT_BFS_CONCURRENCY,
     http_client: httpx.AsyncClient | None = None,
 ) -> list[Source]:
     """Walk OpenAlex's citation graph from each seed Source.
 
-    For each seed with an ``openalex_id``, fetch up to ``limit_per_seed``
-    works in the chosen direction (``referenced_works`` or ``cited_by``)
-    and emit them as Sources. ``depth=1`` is the only currently-supported
-    value; higher depths require a BFS scaffold that's deferred.
+    For ``depth=1`` (the default), fetch up to ``limit_per_seed`` works in
+    the chosen direction (``referenced_works`` or ``cited_by``) for each
+    seed and return the deduped union with seeds removed.
+
+    For ``depth>=2``, run a frontier-based BFS: at each level expand only
+    the *new* sources discovered in the previous level (so a paper found
+    at depth-1 is expanded once when it surfaces, not again at depth-2),
+    bounded by ``concurrency`` concurrent OpenAlex calls per level. The
+    walk stops as soon as ``total_limit`` is reached or the next frontier
+    is empty.
 
     Sources without an ``openalex_id`` are skipped (we'd need a DOI →
     OpenAlex resolution, which is its own retrieval round). Returns the
-    deduped union of all emitted Sources, with seed papers excluded so a
-    reference-pointing-back-to-itself loop is filtered out.
+    deduped union of all emitted Sources, with seed papers and
+    intra-frontier duplicates excluded so a reference-pointing-back-to-
+    itself loop is filtered out.
 
     Parameters
     ----------
@@ -139,17 +190,23 @@ async def expand_citations(
         ``"referenced_works"`` (papers each seed cites) or ``"cited_by"``
         (papers that cite each seed).
     depth:
-        Currently must be 1. Higher depths raise ``NotImplementedError``.
+        Number of BFS hops. Must be ``>= 1``. ``depth=0`` returns an empty
+        list (no expansion); ``depth=1`` returns direct neighbours;
+        ``depth>=2`` triggers the frontier walk.
     limit_per_seed:
-        Cap on works fetched per seed.
+        Cap on works fetched per seed at every depth level.
+    total_limit:
+        Optional cap on the total number of emitted Sources across all
+        depths. The walk short-circuits as soon as the cap is reached.
+    concurrency:
+        Max concurrent OpenAlex calls per depth level. Defaults to 8 to
+        stay polite with the OpenAlex anonymous rate limit.
     http_client:
         Optional reusable :class:`httpx.AsyncClient`. If ``None`` we
         create — and cleanly close — our own.
     """
-    if depth != 1:
-        raise NotImplementedError(
-            "expand_citations only supports depth=1; deeper BFS is deferred."
-        )
+    if depth < 1:
+        return []
     if not seeds:
         return []
 
@@ -160,31 +217,56 @@ async def expand_citations(
 
     owns_client = http_client is None
     client = http_client or httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT)
+    semaphore = asyncio.Semaphore(max(1, int(concurrency)))
 
     try:
         emitted: list[Source] = []
-        for seed in seeds_to_expand:
-            assert seed.openalex_id is not None  # narrowed by the filter above
-            if direction == "referenced_works":
-                fetched = await _fetch_referenced_works(
-                    client, seed.openalex_id, limit_per_seed
+        # ``visited`` covers seeds + every source we've already emitted at
+        # any depth level, so we never re-fetch the same OpenAlex work.
+        visited: set[str] = set(seed_keys)
+        frontier: list[Source] = list(seeds_to_expand)
+
+        for current_depth in range(depth):
+            if not frontier:
+                break
+
+            # Fan out the frontier into a single asyncio.gather so the
+            # ``concurrency`` semaphore actually rate-limits across the
+            # whole level rather than one seed at a time.
+            tasks = [
+                _fetch_one(
+                    client,
+                    seed.openalex_id,  # type: ignore[arg-type]
+                    direction,
+                    limit_per_seed,
+                    semaphore,
                 )
-            elif direction == "cited_by":
-                fetched = await _fetch_cited_by(
-                    client, seed.openalex_id, limit_per_seed
-                )
-            else:  # pragma: no cover — guarded by the Literal type
-                raise ValueError(f"Unknown expansion direction: {direction!r}")
-            emitted.extend(fetched)
+                for seed in frontier
+                if seed.openalex_id
+            ]
+            results = await asyncio.gather(*tasks)
+
+            next_frontier: list[Source] = []
+            for fetched in results:
+                for src in fetched:
+                    key = src.openalex_id
+                    if not key or key in visited:
+                        continue
+                    visited.add(key)
+                    emitted.append(src)
+                    next_frontier.append(src)
+                    if total_limit is not None and len(emitted) >= total_limit:
+                        # Truncate emitted in case the inner loop ran past
+                        # the cap on the same fetched batch.
+                        emitted = emitted[:total_limit]
+                        return dedup_sources(emitted)
+
+            frontier = next_frontier
     finally:
         if owns_client:
             await client.aclose()
 
-    # Drop anything that points back at a seed (the self-loop case) before
-    # the final dedup pass so the seed itself never re-surfaces in the
-    # expansion result set.
-    filtered = [s for s in emitted if s.openalex_id not in seed_keys]
-    return dedup_sources(filtered)
+    return dedup_sources(emitted)
 
 
 async def expand_via_doi(

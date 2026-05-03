@@ -133,9 +133,85 @@ async def test_expand_citations_cited_by_uses_cites_filter() -> None:
 
 
 @pytest.mark.asyncio
-async def test_expand_citations_depth_above_one_raises() -> None:
-    with pytest.raises(NotImplementedError):
-        await expand_citations([_seed()], depth=2)
+async def test_expand_citations_depth_zero_returns_empty() -> None:
+    """``depth=0`` is the no-op: zero hops means nothing emitted."""
+    out = await expand_citations([_seed()], depth=0)
+    assert out == []
+
+
+@pytest.mark.asyncio
+async def test_expand_citations_depth_two_visits_grandchildren() -> None:
+    """Iter 18 BFS replaces the iter-10 NIE — depth=2 must walk one more hop."""
+    seed = _seed(openalex_id="W1", title="Root")
+
+    routes = {
+        # Depth-1 expansion: seed W1 references W2 only.
+        "/works/W1": {
+            "id": "https://openalex.org/W1",
+            "title": "Root",
+            "referenced_works": ["https://openalex.org/W2"],
+        },
+        # Depth-2 expansion: W2 references W3.
+        "/works/W2": {
+            "id": "https://openalex.org/W2",
+            "title": "Child",
+            "referenced_works": ["https://openalex.org/W3"],
+        },
+        # Batch resolution payloads. ``filter=openalex:`` matches both
+        # the depth-1 W2 lookup and the depth-2 W3 lookup; the helper
+        # returns the same payload for either, but ``_map_work_to_source``
+        # picks the right id off each entry.
+        "filter=openalex": {
+            "results": [
+                _work_payload(work_id="W2", title="Child"),
+                _work_payload(work_id="W3", title="Grandchild"),
+            ]
+        },
+    }
+
+    with patch("httpx.AsyncClient.get", new=_make_get_mock(routes)):
+        out = await expand_citations([seed], direction="referenced_works", depth=2)
+
+    ids = {s.openalex_id for s in out}
+    # Both child (depth-1) and grandchild (depth-2) must surface.
+    assert "W2" in ids
+    assert "W3" in ids
+    assert "W1" not in ids  # seed itself must never re-surface
+
+
+@pytest.mark.asyncio
+async def test_expand_citations_total_limit_short_circuits_bfs() -> None:
+    """``total_limit`` must stop the BFS as soon as the cap is hit."""
+    seed = _seed(openalex_id="W1", title="Root")
+
+    routes = {
+        "/works/W1": {
+            "id": "https://openalex.org/W1",
+            "title": "Root",
+            "referenced_works": [
+                "https://openalex.org/W2",
+                "https://openalex.org/W3",
+                "https://openalex.org/W4",
+            ],
+        },
+        "filter=openalex": {
+            "results": [
+                _work_payload(work_id="W2", title="Child A"),
+                _work_payload(work_id="W3", title="Child B"),
+                _work_payload(work_id="W4", title="Child C"),
+            ]
+        },
+    }
+
+    with patch("httpx.AsyncClient.get", new=_make_get_mock(routes)):
+        out = await expand_citations(
+            [seed],
+            direction="referenced_works",
+            depth=3,
+            total_limit=2,
+        )
+
+    assert len(out) == 2
 
 
 @pytest.mark.asyncio

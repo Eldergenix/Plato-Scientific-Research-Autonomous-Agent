@@ -7,9 +7,19 @@ from .prompts.experiment import experiment_planner_prompt, experiment_engineer_p
 from .utils import create_work_dir, get_task_result
 
 class Experiment:
-    """
-    This class is used to perform the experiment.
-    TODO: improve docstring
+    """Drive a cmbagent ``planning_and_control_context_carryover`` run.
+
+    Bundles the four prompts cmbagent wants (planner / engineer /
+    researcher / orchestration), the model selection per role, and the
+    work directory. Once constructed, call :meth:`run_experiment` with a
+    data description to actually execute. Plot paths and the markdown
+    results summary are populated on ``self.plot_paths`` and
+    ``self.results`` afterwards.
+
+    This is the legacy backend behind ``Plato.get_results()``; iter 9+
+    surfaced it via the :class:`plato.executor.Executor` Protocol so
+    ``DomainProfile.executor="cmbagent"`` resolves to it via
+    :class:`plato.executor.cmbagent.CmbagentExecutor`.
     """
 
     def __init__(self,
@@ -65,9 +75,20 @@ class Experiment:
         )
 
     def run_experiment(self, data_description: str, **kwargs):
-        """
-        Run the experiment.
-        TODO: improve docstring
+        """Run the experiment via cmbagent's planning-and-control loop.
+
+        Echoes the active model + budget configuration to stdout (for
+        eyeballing during long runs), then dispatches to
+        ``cmbagent.planning_and_control_context_carryover`` with this
+        instance's pre-baked planner / engineer / researcher prompts.
+        Populates ``self.results`` (markdown summary) and
+        ``self.plot_paths`` (PNG/PDF artifact paths) on completion.
+
+        ``data_description`` is the user-supplied description of the
+        dataset under analysis; cmbagent threads it into every agent
+        turn. Extra ``kwargs`` are accepted for forward-compatibility
+        but currently unused — pass overrides to :meth:`__init__`
+        instead.
         """
 
         print(f"Engineer model: {self.engineer_model}")
