@@ -53,6 +53,14 @@ export interface Project {
   activeRun?: ActiveRun | null;
   totalTokens: number;
   totalCostCents: number;
+  // Iter-27: per-project approvals carried alongside the Project shape
+  // so synchronous gate evaluation (``getBlockingApproval``) doesn't
+  // have to await an extra round trip per stage. ``null`` / undefined
+  // means "no approvals recorded yet".
+  approvals?: {
+    per_stage: Record<string, "pending" | "approved" | "rejected" | "skipped">;
+    auto_skip: boolean;
+  } | null;
 }
 
 export interface ActiveRun {
