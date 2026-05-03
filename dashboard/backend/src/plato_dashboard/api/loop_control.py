@@ -30,7 +30,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
@@ -44,20 +44,34 @@ logger = logging.getLogger(__name__)
 # Request / response schemas
 # --------------------------------------------------------------------------- #
 class LoopStartRequest(BaseModel):
-    project_dir: str = Field(..., description="Absolute path to the Plato project directory.")
+    project_dir: str = Field(
+        ...,
+        max_length=4096,
+        description="Absolute path to the Plato project directory.",
+    )
     max_iters: Optional[int] = Field(
         default=None,
         description="Hard iteration cap. ``null`` means run until time/cost cap fires.",
         ge=1,
+        le=10_000,
     )
-    time_budget_hours: float = Field(default=8.0, gt=0)
-    max_cost_usd: float = Field(default=50.0, gt=0)
-    branch_prefix: str = Field(default="plato-runs")
+    time_budget_hours: float = Field(default=8.0, gt=0, le=24 * 30)
+    max_cost_usd: float = Field(default=50.0, gt=0, le=10_000)
+    # branch_prefix flows into ``git checkout -b <prefix>-<n>`` so we
+    # restrict it to git-safe characters and a sensible length.
+    branch_prefix: str = Field(
+        default="plato-runs",
+        max_length=64,
+        pattern=r"^[A-Za-z0-9_./-]+$",
+    )
 
 
 class LoopStatus(BaseModel):
     loop_id: str
-    status: str  # running | stopped | interrupted | error
+    # Discriminated by Literal so a typo in _supervise (e.g. "errored")
+    # would fail validation at write-time rather than silently
+    # producing a value the frontend can't match.
+    status: Literal["running", "stopped", "interrupted", "error"]
     iterations: int
     kept: int
     discarded: int
@@ -243,7 +257,7 @@ async def _supervise(record: LoopRecord) -> None:
 router = APIRouter(prefix="/api/v1/loop", tags=["loop"])
 
 
-@router.post("/start", response_model=LoopStatus, status_code=status.HTTP_200_OK)
+@router.post("/start", response_model=LoopStatus, status_code=status.HTTP_201_CREATED)
 async def start_loop(
     req: LoopStartRequest,
     user: Optional[str] = Depends(_user_id),
