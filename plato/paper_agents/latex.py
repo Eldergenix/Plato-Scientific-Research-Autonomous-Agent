@@ -8,6 +8,8 @@ from .prompts import fix_latex_bug_prompt
 from .tools import LLM_call, extract_latex_block, temp_file
 from .journal import LatexPresets
 from .latex_presets import journal_dict
+from .scopes import LATEX_FIX_SCOPE
+from ..io import ScopedWriter
 
 
 # Characters that should be escaped in BibTeX (outside math mode)
@@ -314,6 +316,35 @@ def process_bib_file(input_file, output_file):
     print(f"Sanitized BibTeX saved to: {output_file}")
 
     
+def _wrap_for_fix(state, text: str) -> str:
+    """Wrap ``text`` in a full LaTeX document the same way ``temp_file('write')`` does.
+
+    fix_latex used to defer to ``temp_file(..., 'write', ...)``, which
+    silently wrapped the provided body in the journal preset's
+    document scaffolding. Iter-20 routes the bytes through
+    :class:`ScopedWriter` (so the per-node provenance audit covers
+    fix_latex too) — that means we now own the wrapping ourselves.
+    The exact byte sequence has to match what the legacy
+    ``temp_file('write')`` produced or downstream
+    ``compile_tex_document`` reads will diff.
+    """
+    journaldict: LatexPresets = journal_dict[state['paper']['journal']]
+    return rf"""\documentclass[{journaldict.layout}]{{{journaldict.article}}}
+
+\usepackage{{amsmath}}
+\usepackage{{multirow}}
+\usepackage{{natbib}}
+\usepackage{{graphicx}}
+{journaldict.usepackage}
+
+\begin{{document}}
+
+{text}
+
+\end{{document}}
+                """
+
+
 def fix_latex(state, f_temp):
     """
     This function is designed to attemp to fix LaTeX errors
@@ -323,7 +354,18 @@ def fix_latex(state, f_temp):
     file_path = Path(f_temp)
     f_stem    = file_path.with_suffix('')
     suffix    = file_path.suffix
-    
+
+    # Iter-20 (R11 completion): fix_latex now writes its versioned
+    # recovery candidates through a ScopedWriter rooted at the paper
+    # folder + ``LATEX_FIX_SCOPE``. The scope's allow-list permits
+    # ``temp/*_v[1-9].tex`` (and the .bib equivalents), which is
+    # exactly the ``<section>_v<n>.<ext>`` pattern this loop emits.
+    # Falls back to the legacy ``temp_file`` write when ``Paper_folder``
+    # isn't set so the helper stays usable from contexts that don't
+    # carry the per-paper layout (one-off scripts, tests).
+    paper_folder = state.get('files', {}).get('Paper_folder')
+    writer = ScopedWriter(paper_folder, LATEX_FIX_SCOPE) if paper_folder else None
+
     # You have three attemps to fix the problem
     for i in range(3):
 
@@ -334,16 +376,20 @@ def fix_latex(state, f_temp):
         fixed_text = extract_latex_block(state, result, "Text")
         state['paper'][state['latex']['section_to_fix']] = fixed_text
 
-        # save text to file
+        # save text to file — scoped when we have a paper folder, legacy
+        # path otherwise.
         f_name = f"{f_stem}_v{i+1}{suffix}"
-        temp_file(state, f_name, 'write', fixed_text)
+        if writer is not None:
+            writer.write(f"temp/{Path(f_name).name}", _wrap_for_fix(state, fixed_text))
+        else:
+            temp_file(state, f_name, 'write', fixed_text)
 
         # compile again; if successful change file names and exit
         if compile_tex_document(state, f_name, state['files']['Temp']):
             os.system(f'mv {f_temp} {f_stem}_orig{suffix}')
             os.system(f"mv {f_name} {f_temp}")
             return state, True
-    
+
     return state, False
         
 
