@@ -44,11 +44,45 @@ def _memory_saver():
 
 _DEFAULT_SQLITE_PATH = "~/.plato/state.db"
 
+# SQLite busy-timeout in milliseconds. Sets how long a write transaction
+# will wait for a competing writer to release the lock before raising
+# ``sqlite3.OperationalError("database is locked")``. The dashboard
+# worker pool (R2 risk register R6) can produce overlapping checkpoint
+# writes from concurrent runs; without this, the second writer fails
+# instantly. 10 seconds is long enough to absorb realistic contention
+# but short enough that a real deadlock surfaces quickly.
+_SQLITE_BUSY_TIMEOUT_MS = 10_000
+
 
 def _resolve_sqlite_path(path: str | os.PathLike[str]) -> Path:
     expanded = Path(path).expanduser()
     expanded.parent.mkdir(parents=True, exist_ok=True)
     return expanded
+
+
+def _apply_concurrency_pragmas(conn: sqlite3.Connection) -> None:
+    """Set the WAL + concurrency PRAGMAs the LangGraph checkpointer needs.
+
+    - ``journal_mode=WAL``: enables concurrent readers + a single writer
+      (the default ``DELETE`` mode serialises everything).
+    - ``synchronous=NORMAL``: with WAL this is safe — the WAL file is
+      still fsync'd on commit, only the main DB file's checkpoint sync
+      is relaxed. Durability under app crash is preserved; only sudden
+      power loss can lose the very last commit, which is acceptable for
+      a checkpointer that auto-rebuilds from state.
+    - ``busy_timeout``: see :data:`_SQLITE_BUSY_TIMEOUT_MS`.
+    - ``wal_autocheckpoint=1000``: keep the WAL file from growing
+      unbounded under heavy load (default is also 1000 but stating it
+      explicitly documents the contract).
+
+    All four PRAGMAs are idempotent — re-applying them on a reused
+    connection is a no-op, so callers who want to re-harden a borrowed
+    handle can call this helper directly.
+    """
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute(f"PRAGMA busy_timeout={_SQLITE_BUSY_TIMEOUT_MS}")
+    conn.execute("PRAGMA wal_autocheckpoint=1000")
 
 
 def make_checkpointer(
@@ -100,7 +134,7 @@ def make_checkpointer(
 
         resolved = _resolve_sqlite_path(path or _DEFAULT_SQLITE_PATH)
         conn = sqlite3.connect(str(resolved), check_same_thread=False)
-        conn.execute("PRAGMA journal_mode=WAL")
+        _apply_concurrency_pragmas(conn)
         return SqliteSaver(conn)
 
     if backend == "postgres":

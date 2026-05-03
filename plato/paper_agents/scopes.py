@@ -110,6 +110,43 @@ REFINE_SCOPE = FileScope(
     read=["**/*"],
 )
 
+# Iter-18 (R11 completion): the citations flow writes per-section
+# .bib files plus first- and second-pass cleaned tex. These don't
+# slot into any single section's scope (they're cross-cutting
+# helpers called from ``add_citations_async`` and ``citations_node``)
+# so they get their own scope rather than widening every section
+# scope. ``*_w_citations*.tex`` covers both ``_w_citations.tex`` and
+# ``_w_citations2.tex`` — the cleanup pass that follows the LLM
+# rewrite.
+CITATIONS_SCOPE = FileScope(
+    write=[
+        "temp/*.bib",
+        "temp/*_w_citations.tex",
+        "temp/*_w_citations2.tex",
+    ],
+    read=["**/*"],
+)
+
+# Iter-18: the LaTeX fixer (``latex.fix_latex``) writes versioned
+# recovery files when a section fails to compile. It's called from
+# inside many different node contexts (abstract / introduction /
+# methods / refine / citations / ...), so the per-node scopes can't
+# express what it actually writes — every section can produce up to
+# three ``<section>_v[1-3].tex`` recovery candidates. A single broad
+# scope captures the contract without forcing every per-section scope
+# to widen its write set just to permit recovery files.
+LATEX_FIX_SCOPE = FileScope(
+    write=[
+        "temp/*_v[1-9].tex",
+        "temp/*_v[1-9][0-9].tex",
+        "temp/*_v[1-9].bib",
+        "temp/*_v[1-9][0-9].bib",
+        # The fixer also renames the original aside as ``<section>_orig``;
+        # leave that to the caller's mv pipeline (no scoped write).
+    ],
+    read=["**/*"],
+)
+
 
 __all__ = [
     "ABSTRACT_SCOPE",
@@ -120,4 +157,6 @@ __all__ = [
     "KEYWORDS_SCOPE",
     "PLOTS_SCOPE",
     "REFINE_SCOPE",
+    "CITATIONS_SCOPE",
+    "LATEX_FIX_SCOPE",
 ]

@@ -1,4 +1,4 @@
-import { test, expect, type Route } from "@playwright/test";
+import { test, expect, type Route } from "./fixtures";
 
 /**
  * Settings → Domains: pick a profile, inspect its full schema, set it as
