@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { FlaskConical, AlertTriangle, Square, RefreshCw } from "lucide-react";
+import { FlaskConical, AlertTriangle, Square, RefreshCw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Pill } from "@/components/ui/pill";
 import { StatusDot } from "@/components/ui/status-dot";
@@ -11,6 +11,24 @@ import type { Project } from "@/lib/types";
 
 const TABS = ["Summary", "Plots", "Code & execution"] as const;
 type Tab = (typeof TABS)[number];
+
+// Iter-28: backend already publishes node.entered/node.exited events
+// over the run:{run_id} SSE channel (see langgraph_bridge.py). The
+// AgentSwimlane consumes them via a parent-supplied prop so the
+// component stays presentational and the parent owns the event
+// subscription lifecycle.
+export interface NodeActivityEvent {
+  /** Node name from AGENT_NODE_NAMES (idea_maker, methods_node, etc.). */
+  name: string;
+  /** Backend stage that owns the run (idea / method / results / paper / referee). */
+  stage?: string;
+  /** ms timestamp the event landed in the panel — used for sort + diff. */
+  ts: number;
+  /** node.entered or node.exited. */
+  kind: "entered" | "exited";
+  /** Only set on node.exited; ms the node spent active. */
+  durationMs?: number;
+}
 
 // Iter-22: dropped the SAMPLE_PLOTS fallback (4 hardcoded astro plots —
 // ringdown_spectrogram / qnm_fit_2_2_0 / qnm_fit_3_3_0 / psd_band). The
@@ -25,9 +43,18 @@ export interface ResultsStageProps {
   project: Project;
   /** Live plot list — passed in from useProject().plots and refreshed on plot.created SSE events. */
   plots?: { name: string; url: string }[];
+  /** Iter-28: live agent-activity events streamed from useProject().nodeEvents. */
+  nodeEvents?: NodeActivityEvent[];
+  /** Iter-28: parent's cancel-run callback. When omitted, the cancel button stays disabled. */
+  onCancelRun?: () => void | Promise<void>;
 }
 
-export function ResultsStage({ project, plots }: ResultsStageProps) {
+export function ResultsStage({
+  project,
+  plots,
+  nodeEvents,
+  onCancelRun,
+}: ResultsStageProps) {
   const [tab, setTab] = React.useState<Tab>("Plots");
   const run = project.activeRun;
   const elapsedMs = run ? Date.now() - new Date(run.startedAt).getTime() : 0;
@@ -60,7 +87,7 @@ export function ResultsStage({ project, plots }: ResultsStageProps) {
               </span>
             </Pill>
           </div>
-          <RunMonitor project={project} />
+          <RunMonitor project={project} nodeEvents={nodeEvents} />
         </div>
 
         <div className="px-6 pt-3 hairline-b">
@@ -90,12 +117,18 @@ export function ResultsStage({ project, plots }: ResultsStageProps) {
           {tab === "Code & execution" && <CodePane project={project} />}
         </div>
       </main>
-      <ResultsSidePanel project={project} />
+      <ResultsSidePanel project={project} onCancelRun={onCancelRun} />
     </div>
   );
 }
 
-function RunMonitor({ project }: { project: Project }) {
+function RunMonitor({
+  project,
+  nodeEvents,
+}: {
+  project: Project;
+  nodeEvents?: NodeActivityEvent[];
+}) {
   const run = project.activeRun;
   if (!run) return null;
   const pct = run.step && run.totalSteps ? (run.step / run.totalSteps) * 100 : 0;
@@ -116,39 +149,137 @@ function RunMonitor({ project }: { project: Project }) {
         </span>
       </div>
 
-      <AgentSwimlane />
+      <AgentSwimlane nodeEvents={nodeEvents} runStartedAt={run.startedAt} />
     </div>
   );
 }
 
-function AgentSwimlane() {
-  // Iter-25: deleted the three hardcoded lane mark arrays
-  // ([10,22,34,41,55,68,81] / [18,27,39,47,60,72,88] / [5,30,50,75,92])
-  // that used to render decorative "agent activity" bars regardless of
-  // run state — pure UI noise that suggested live telemetry where there
-  // was none. Now: render an empty rail for each agent so the layout
-  // shape is preserved (the run-monitor strip below keeps the same
-  // height) until a future iter wires the bars to the SSE event stream
-  // (``run.event.subscribe``).
-  const lanes = [
-    { name: "engineer", color: "bg-(--color-status-emerald)" },
-    { name: "researcher", color: "bg-(--color-brand-lavender)" },
-    { name: "planner", color: "bg-(--color-text-secondary)" },
-  ];
+/**
+ * Iter-28 SSE wire-up: AgentSwimlane consumes node.entered / node.exited
+ * events and renders one lane per node name, with a tick mark per
+ * event positioned on the timeline by relative offset from
+ * ``runStartedAt``. Active nodes (entered without a matching exited)
+ * are highlighted; finished nodes show a ghost mark.
+ *
+ * Empty state preserved: when no events yet (or the prop is undefined),
+ * we render the same empty rails the iter-25 placeholder used so the
+ * layout shape doesn't jump on first event arrival.
+ */
+function AgentSwimlane({
+  nodeEvents,
+  runStartedAt,
+}: {
+  nodeEvents?: NodeActivityEvent[];
+  runStartedAt: string;
+}) {
+  const events = nodeEvents ?? [];
+  const startMs = React.useMemo(
+    () => new Date(runStartedAt).getTime(),
+    [runStartedAt],
+  );
+
+  // Group events by node name. For each name, count active = entered
+  // count - exited count. The most-recent event ts is used to clamp
+  // the lane width.
+  const lanes = React.useMemo(() => {
+    const byName = new Map<
+      string,
+      { name: string; events: NodeActivityEvent[]; activeCount: number }
+    >();
+    for (const e of events) {
+      const slot = byName.get(e.name) ?? {
+        name: e.name,
+        events: [],
+        activeCount: 0,
+      };
+      slot.events.push(e);
+      slot.activeCount += e.kind === "entered" ? 1 : -1;
+      byName.set(e.name, slot);
+    }
+    return Array.from(byName.values()).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+  }, [events]);
+
+  const maxOffsetMs = React.useMemo(() => {
+    const now = Date.now();
+    const lastTs = events.length > 0 ? events[events.length - 1].ts : now;
+    // Track width = whichever is larger — current elapsed or "last event was X ago".
+    return Math.max(now - startMs, lastTs - startMs, 1000);
+  }, [events, startMs]);
+
+  if (lanes.length === 0) {
+    // Empty state: same shape as iter-25 placeholder so first-event
+    // arrival doesn't pop the layout.
+    const placeholders = ["engineer", "researcher", "planner"];
+    return (
+      <div
+        className="space-y-1.5"
+        data-testid="agent-swimlane"
+        title="Live agent activity will populate when the worker emits node.entered events"
+      >
+        {placeholders.map((name) => (
+          <div key={name} className="flex items-center gap-3">
+            <span className="w-20 text-[11px] font-mono text-(--color-text-quaternary)">
+              {name}
+            </span>
+            <div className="flex-1 h-3 rounded-[3px] bg-(--color-ghost-bg) relative" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div
       className="space-y-1.5"
       data-testid="agent-swimlane"
-      title="Live agent activity will populate when wired to the event stream"
+      data-lane-count={lanes.length}
     >
-      {lanes.map((lane) => (
-        <div key={lane.name} className="flex items-center gap-3">
-          <span className="w-20 text-[11px] font-mono text-(--color-text-tertiary)">
-            {lane.name}
-          </span>
-          <div className="flex-1 h-3 rounded-[3px] bg-(--color-ghost-bg) relative" />
-        </div>
-      ))}
+      {lanes.map((lane) => {
+        const isActive = lane.activeCount > 0;
+        return (
+          <div
+            key={lane.name}
+            className="flex items-center gap-3"
+            data-lane-name={lane.name}
+            data-lane-active={isActive ? "true" : "false"}
+          >
+            <span
+              className={cn(
+                "w-20 text-[11px] font-mono truncate",
+                isActive
+                  ? "text-(--color-status-emerald)"
+                  : "text-(--color-text-tertiary)",
+              )}
+              title={lane.name}
+            >
+              {lane.name}
+            </span>
+            <div className="flex-1 h-3 rounded-[3px] bg-(--color-ghost-bg) relative">
+              {lane.events.map((e, i) => {
+                const offset = Math.max(0, e.ts - startMs);
+                const left = (offset / maxOffsetMs) * 100;
+                return (
+                  <span
+                    key={i}
+                    className={cn(
+                      "absolute top-0 bottom-0 w-1 rounded-full opacity-80",
+                      e.kind === "entered"
+                        ? "bg-(--color-status-emerald)"
+                        : "bg-(--color-brand-lavender)",
+                    )}
+                    style={{ left: `${left}%` }}
+                    title={`${e.kind} · ${e.name}${
+                      e.durationMs ? ` · ${e.durationMs}ms` : ""
+                    }`}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -261,13 +392,35 @@ function CodePane({ project }: { project: Project }) {
   );
 }
 
-function ResultsSidePanel({ project }: { project: Project }) {
-  // Iter-25: replaced the hardcoded run_id="run_8a2f1c" / "1h 24m ago"
-  // / fixed engineer/researcher/planner config with values pulled from
-  // ``project.activeRun`` (or an honest "no active run" state when the
-  // project is idle). Resume / Cancel buttons are stub — wiring them
-  // to ``api.cancelRun`` happens in a follow-up.
+function ResultsSidePanel({
+  project,
+  onCancelRun,
+}: {
+  project: Project;
+  onCancelRun?: () => void | Promise<void>;
+}) {
+  // Iter-28: Cancel button now wired through to ``api.cancelRun`` via
+  // the parent's onCancelRun callback (passed down from page.tsx →
+  // useProject().cancelRun). Resume is still disabled — the backend
+  // ``/runs/{run_id}/resume`` endpoint doesn't exist yet, and silently
+  // pretending to support resume would be worse than the disabled
+  // affordance.
   const run = project.activeRun;
+  const [cancelling, setCancelling] = React.useState(false);
+  const [cancelError, setCancelError] = React.useState<string | null>(null);
+
+  const handleCancel = React.useCallback(async () => {
+    if (!onCancelRun || cancelling) return;
+    setCancelError(null);
+    setCancelling(true);
+    try {
+      await onCancelRun();
+    } catch (e: unknown) {
+      setCancelError(e instanceof Error ? e.message : "Failed to cancel run");
+    } finally {
+      setCancelling(false);
+    }
+  }, [onCancelRun, cancelling]);
   return (
     <aside
       className="w-[320px] hairline-l bg-(--color-bg-marketing) p-4 overflow-auto"
@@ -301,15 +454,38 @@ function ResultsSidePanel({ project }: { project: Project }) {
           </div>
 
           <div className="mt-3 grid grid-cols-2 gap-1.5">
-            <Button variant="ghost" size="md" disabled>
+            <Button
+              variant="ghost"
+              size="md"
+              disabled
+              title="Resume requires a /runs/{id}/resume endpoint that doesn't exist yet"
+            >
               <RefreshCw size={12} strokeWidth={1.5} />
               Resume
             </Button>
-            <Button variant="danger" size="md" disabled>
-              <Square size={12} strokeWidth={1.5} />
-              Cancel
+            <Button
+              variant="danger"
+              size="md"
+              disabled={!onCancelRun || cancelling}
+              onClick={handleCancel}
+              data-testid="results-side-cancel"
+            >
+              {cancelling ? (
+                <Loader2 size={12} strokeWidth={1.5} className="animate-spin" />
+              ) : (
+                <Square size={12} strokeWidth={1.5} />
+              )}
+              {cancelling ? "Cancelling…" : "Cancel"}
             </Button>
           </div>
+          {cancelError ? (
+            <p
+              className="mt-2 text-[11px] text-(--color-status-red)"
+              data-testid="results-side-cancel-error"
+            >
+              {cancelError}
+            </p>
+          ) : null}
 
           <h3 className="font-label mt-6">Run config</h3>
           <div className="mt-2 space-y-2">
