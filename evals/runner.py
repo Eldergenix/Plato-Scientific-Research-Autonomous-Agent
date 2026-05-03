@@ -28,8 +28,15 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from evals.judge import LLMJudge
 from evals.metrics import Metrics
 from evals.tasks import GoldenTask, discover_tasks
+
+
+# Default 3-model panel. Anti-self-judging is enforced inside LLMJudge,
+# so as long as the drafting model isn't in this list the judge runs.
+# Override per-instance via ``EvalRunner(..., judge_models=[...])``.
+DEFAULT_JUDGE_MODELS = ("gpt-4o", "claude-sonnet-4-5", "gemini-2.5-pro")
 
 
 # ``Plato`` is intentionally untyped here so the eval harness can be
@@ -50,12 +57,19 @@ class EvalRunner:
         max_cost_usd: float = 20.0,
         idea_mode: str = "fast",
         method_mode: str = "fast",
+        judge_models: list[str] | None = None,
+        drafting_model: str = "gpt-4.1",
     ) -> None:
         self.tasks = list(tasks)
         self.output_dir = Path(output_dir)
         self.max_cost_usd = float(max_cost_usd)
         self.idea_mode = idea_mode
         self.method_mode = method_mode
+        # Anti-self-judging guard inside LLMJudge will raise if
+        # ``drafting_model`` is in the panel — keep the default list
+        # disjoint from the default ``drafting_model``.
+        self.judge_models = list(judge_models or DEFAULT_JUDGE_MODELS)
+        self.drafting_model = drafting_model
 
     async def run(
         self,
@@ -96,6 +110,12 @@ class EvalRunner:
 
             task_dir = self.output_dir / task.id
             task_dir.mkdir(parents=True, exist_ok=True)
+
+            # Score the drafted paper with the LLM judge panel + the
+            # task's expected keywords / gold sources. Failures don't
+            # abort the panel — populate what we can and keep going.
+            await self._score_against_task(metrics, task, task_dir / "project")
+
             (task_dir / "metrics.json").write_text(
                 json.dumps(metrics.model_dump(mode="json"), indent=2, sort_keys=True)
             )
@@ -146,6 +166,70 @@ class EvalRunner:
 
         return self._aggregate_metrics(project_dir)
 
+    async def _score_against_task(
+        self,
+        metrics: Metrics,
+        task: GoldenTask,
+        project_dir: Path,
+    ) -> None:
+        """Run the LLM judge + keyword/gold-source scoring on a finished task.
+
+        Mutates ``metrics`` in place. Any failure in the judge call or
+        keyword recall is logged into ``metrics.tool_call_error_rate``
+        rather than crashing the panel — the harness must always
+        produce a metrics row per task.
+        """
+        # 1. Pull the drafted artifacts from the project_dir.
+        idea_text = _read_artifact(project_dir, "input_files/idea.md")
+        method_text = _read_artifact(project_dir, "input_files/methods.md")
+        paper_text = _read_artifact(project_dir, "paper/paper_v1.tex") or (idea_text or "") + "\n" + (method_text or "")
+
+        # 2. Compute keyword recall against task.expected_idea_keywords.
+        if task.expected_idea_keywords and (idea_text or method_text):
+            haystack = ((idea_text or "") + " " + (method_text or "")).lower()
+            hits = sum(
+                1
+                for kw in task.expected_idea_keywords
+                if kw.lower() in haystack
+            )
+            metrics.keyword_recall = hits / len(task.expected_idea_keywords)
+
+        # 3. Compute gold-source recall against task.gold_sources.
+        if task.gold_sources:
+            hits = 0
+            sources_text = paper_text.lower()
+            for gold in task.gold_sources:
+                # Match on either DOI substring or arxiv id substring —
+                # whichever the gold ref provides.
+                doi = (gold.get("doi") or "").lower().strip()
+                arxiv = (gold.get("arxiv_id") or "").lower().strip()
+                if (doi and doi in sources_text) or (arxiv and arxiv in sources_text):
+                    hits += 1
+            metrics.gold_source_recall = hits / len(task.gold_sources)
+
+        # 4. LLM judge panel — only run when we have some paper text.
+        if paper_text.strip() and self.drafting_model not in self.judge_models:
+            try:
+                judge = LLMJudge(self.judge_models)
+                result = await judge.judge(
+                    paper_text=paper_text,
+                    drafting_model=self.drafting_model,
+                )
+                # Map the 0..5 axis scores into the existing metrics
+                # fields. paper_coherence == coherence; we average
+                # rigor + grounding into novelty_consistency as a
+                # stand-in until a dedicated novelty signal lands.
+                metrics.paper_coherence = float(result.coherence)
+                metrics.referee_severity_max = max(
+                    0.0, 5.0 - float(result.rigor)
+                )
+                metrics.novelty_consistency = float(result.novelty)
+            except Exception:  # noqa: BLE001
+                # Surface as a tool error but don't kill the panel.
+                metrics.tool_call_error_rate = max(
+                    metrics.tool_call_error_rate or 0.0, 0.5
+                )
+
     def _aggregate_metrics(self, project_dir: Path) -> Metrics:
         """Compute Metrics from manifests + Stream A artifacts under project_dir."""
         runs_dir = project_dir / "runs"
@@ -171,6 +255,17 @@ class EvalRunner:
             latency_seconds=latency_seconds,
             tool_call_error_rate=None,
         )
+
+
+def _read_artifact(project_dir: Path, rel_path: str) -> str:
+    """Read a project-dir artifact, returning ``""`` on any failure."""
+    path = project_dir / rel_path
+    if not path.is_file():
+        return ""
+    try:
+        return path.read_text()
+    except OSError:
+        return ""
 
 
 def _error_metrics() -> Metrics:
@@ -306,6 +401,8 @@ def _summarize(results: dict[str, Metrics]) -> dict[str, Any]:
         "tokens_out",
         "latency_seconds",
         "tool_call_error_rate",
+        "keyword_recall",
+        "gold_source_recall",
     ]
     for field in fields:
         values = [

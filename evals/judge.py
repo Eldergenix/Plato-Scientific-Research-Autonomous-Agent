@@ -93,18 +93,72 @@ class LLMJudge:
         return _aggregate(results)
 
     async def _call_judge(self, *, model: str, prompt: str) -> JudgeResult:
-        """Stub model call — overridden in production, mocked in tests.
+        """Invoke the judge model and parse its scores.
 
-        The base implementation deliberately returns a neutral score so
-        that running the harness without a real LLM provider does not
-        crash; tests should always mock this method.
+        Falls back to a neutral 0/0/0/0 result with the failure mode
+        captured in the ``rationale`` field if any of:
+        - the model name is unknown to ``plato.llm.models``,
+        - the underlying provider key is unset,
+        - the LLM call raises (rate limit, network, etc.),
+        - the response can't be JSON-parsed.
+
+        Tests that don't want to touch the network override this method.
         """
+        try:
+            return await self._real_call_judge(model=model, prompt=prompt)
+        except Exception as exc:  # noqa: BLE001
+            return JudgeResult(
+                coherence=0,
+                grounding=0,
+                novelty=0,
+                rigor=0,
+                rationale=f"judge {model} failed: {exc!r}",
+            )
+
+    async def _real_call_judge(self, *, model: str, prompt: str) -> JudgeResult:
+        """Concrete LLM invocation — split out so the public method can wrap it
+        in a single try/except without tangling the happy-path logic."""
+        import json
+        import re
+
+        # Lazy import so ``evals`` stays importable on installs that
+        # haven't pulled the LLM provider extras.
+        from plato.llm import models as _models, llm_parser
+
+        if model not in _models:
+            raise KeyError(
+                f"Unknown judge model {model!r}. "
+                f"Add it to plato.llm.models or pick one of {sorted(_models)}."
+            )
+        client = llm_parser(model)
+        # ``client`` is a BaseChatModel — ainvoke is async and returns
+        # a Message; .content is the raw string.
+        from langchain_core.messages import HumanMessage
+
+        result = await client.llm.ainvoke([HumanMessage(content=prompt)])
+        text = getattr(result, "content", "") or ""
+
+        # Find the trailing JSON object — the prompt asks for prose
+        # then JSON, so we scan from the back.
+        match = re.search(r"\{[^{}]*?\"coherence\"[^{}]*?\}", text, flags=re.DOTALL)
+        if not match:
+            raise ValueError(f"no JSON object in response: {text[:200]!r}")
+        payload = json.loads(match.group(0))
+
+        def _score(key: str) -> int:
+            v = payload.get(key, 0)
+            try:
+                n = int(v)
+            except (TypeError, ValueError):
+                n = 0
+            return max(0, min(5, n))
+
         return JudgeResult(
-            coherence=0,
-            grounding=0,
-            novelty=0,
-            rigor=0,
-            rationale=f"stub judge response from {model}",
+            coherence=_score("coherence"),
+            grounding=_score("grounding"),
+            novelty=_score("novelty"),
+            rigor=_score("rigor"),
+            rationale=text[: match.start()].strip(),
         )
 
 
