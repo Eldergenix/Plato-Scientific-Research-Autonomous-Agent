@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 
 /**
  * Cmd/Ctrl+K opens the command palette. Typing filters the list,

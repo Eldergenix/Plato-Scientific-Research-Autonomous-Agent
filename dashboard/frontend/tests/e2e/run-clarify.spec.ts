@@ -1,4 +1,4 @@
-import { test, expect, type Route } from "@playwright/test";
+import { test, expect, type Route } from "./fixtures";
 
 /**
  * Clarifying-questions full-page flow.
