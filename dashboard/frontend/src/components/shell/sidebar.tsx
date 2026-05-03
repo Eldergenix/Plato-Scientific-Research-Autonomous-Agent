@@ -363,9 +363,25 @@ export function Sidebar({
 
       {/* Bottom bar */}
       <div className="flex items-center" style={{ height: 45, padding: 10, gap: 4 }}>
-        <SidebarIconButton aria-label="Help">
+        {/* Anchor styled like SidebarIconButton — using <a> directly so
+            the link semantics survive (right-click → "open in new tab"
+            etc.). The Help button used to be a no-op <button>; now it
+            ships the user to the README. */}
+        <a
+          href="https://github.com/AstroPilot-AI/Plato"
+          target="_blank"
+          rel="noreferrer noopener"
+          aria-label="Help — open Plato documentation"
+          className="flex items-center justify-center rounded-[12px] transition-colors hover:bg-(--color-ghost-bg-hover)"
+          style={{
+            width: 24,
+            height: 25,
+            backgroundColor: "var(--color-bg-button-glass)",
+            boxShadow: "var(--shadow-icon-button)",
+          }}
+        >
           <HelpCircle size={14} strokeWidth={1.75} className="text-(--color-text-tertiary)" />
-        </SidebarIconButton>
+        </a>
         <span
           className="ml-1 mr-auto"
           style={{ fontSize: 12, fontWeight: 500 }}
@@ -637,9 +653,21 @@ function CollapsedSidebar({
             className="text-(--color-text-tertiary)"
           />
         </SidebarIconButton>
-        <SidebarIconButton aria-label="Help">
+        <a
+          href="https://github.com/AstroPilot-AI/Plato"
+          target="_blank"
+          rel="noreferrer noopener"
+          aria-label="Help — open Plato documentation"
+          className="flex items-center justify-center rounded-[12px] transition-colors hover:bg-(--color-ghost-bg-hover)"
+          style={{
+            width: 24,
+            height: 25,
+            backgroundColor: "var(--color-bg-button-glass)",
+            boxShadow: "var(--shadow-icon-button)",
+          }}
+        >
           <HelpCircle size={14} strokeWidth={1.75} className="text-(--color-text-tertiary)" />
-        </SidebarIconButton>
+        </a>
       </div>
     </aside>
   );
