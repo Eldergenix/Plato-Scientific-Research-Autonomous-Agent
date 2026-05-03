@@ -199,6 +199,22 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # Per-request run_id correlation. Reads ``X-Plato-Run-Id`` (set by
+    # the frontend on every fetch via use-project / loop-api) and binds
+    # it to the run_id contextvar so every log record emitted under
+    # this request — including from worker threads spawned via
+    # ``asyncio.to_thread`` — carries the same correlation key.
+    @app.middleware("http")
+    async def _bind_run_id(request: Request, call_next):  # noqa: ANN001
+        from plato.logging_config import run_id_var
+
+        rid = request.headers.get("X-Plato-Run-Id") or ""
+        token = run_id_var.set(rid or None)
+        try:
+            return await call_next(request)
+        finally:
+            run_id_var.reset(token)
+
     app.include_router(manifests_router, prefix="/api/v1", tags=["manifests"])
 
     # Frontend-pass routers. ``loop_router`` already declares its own
