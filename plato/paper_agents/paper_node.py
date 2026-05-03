@@ -19,6 +19,7 @@ from .journal import LatexPresets
 from .latex_presets import journal_dict
 from .scopes import (
     ABSTRACT_SCOPE,
+    CITATIONS_SCOPE,
     CONCLUSIONS_SCOPE,
     INTRODUCTION_SCOPE,
     KEYWORDS_SCOPE,
@@ -577,10 +578,19 @@ async def add_citations_async(state, text, section_name):
         new_text, references = await loop.run_in_executor(None, func)
         new_text = clean_section(new_text, section_name)
 
-        # save temporary file
-        temp_file(state, f_temp2, 'write', references)
-        temp_file(state, f_temp1, 'write', new_text)
-        
+        # R11 (iter-18): route the citations writes through ScopedWriter
+        # so this helper can only touch paths that match
+        # ``CITATIONS_SCOPE`` (temp/*.bib, temp/*_w_citations.tex). The
+        # legacy ``temp_file(... 'write')`` calls bypassed the scope
+        # contract — replacing them keeps the per-node provenance
+        # auditable across the citations flow.
+        writer = ScopedWriter(state['files']['Paper_folder'], CITATIONS_SCOPE)
+        # ScopedWriter resolves relative to Paper_folder; f_temp1/f_temp2
+        # are absolute, so re-derive the relative path from the canonical
+        # ``temp/<file>`` layout.
+        writer.write(f"temp/{f_temp2.name}", references)
+        writer.write(f"temp/{f_temp1.name}", new_text)
+
     print(f'    {section_name} done')
     return section_name, new_text, references
 
@@ -641,8 +651,10 @@ async def citations_node(state: GraphState, config: RunnableConfig):
             section_text = extract_latex_block(state, result, "Text")
             section_text = LaTeX_checker(state, section_text)          #check LaTeX
             section_text = clean_section(section_text, section_name)   #remove unwanted LaTeX text
-            temp_file(state, f_temp, 'write', section_text)
-            
+            # R11 (iter-18): route the cleanup write through CITATIONS_SCOPE.
+            writer = ScopedWriter(state['files']['Paper_folder'], CITATIONS_SCOPE)
+            writer.write(f"temp/{f_temp.name}", section_text)
+
         state['paper'][section_name] = section_text
     save_paper(state, state['files']['Paper_v4'])
     compile_latex(state, state['files']['Paper_v4'])
