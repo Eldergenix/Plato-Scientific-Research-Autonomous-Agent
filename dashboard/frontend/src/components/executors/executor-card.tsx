@@ -18,7 +18,14 @@ const KIND_LABEL: Record<ExecutorKind, string> = {
   stub: "stub",
 };
 
-const STUB_NAMES = new Set(["modal", "e2b"]);
+// Iter-21 cleanup: dropped the hard-coded STUB_NAMES shim. After iter-18
+// (LocalJupyterExecutor) and iter-20 (Modal + E2B real impls), every
+// shipped backend has a real implementation; the iter-21 ``executors.py``
+// router probes the SDK at request time and reports ``kind="real"`` when
+// importable or ``kind="lazy"`` otherwise. The frontend now trusts that
+// classification and only shows the legacy "stub" warning when the
+// backend literally reports ``kind="stub"`` — which currently happens for
+// no shipped backend, only for unknown / future-third-party registrations.
 
 export interface ExecutorCardProps {
   executor: ExecutorInfo;
@@ -33,7 +40,7 @@ export function ExecutorCard({
   onSetDefault,
   pending,
 }: ExecutorCardProps) {
-  const isStub = executor.kind === "stub" || STUB_NAMES.has(executor.name);
+  const isStub = executor.kind === "stub";
 
   return (
     <section
@@ -77,8 +84,9 @@ export function ExecutorCard({
         >
           <AlertTriangle size={13} strokeWidth={1.75} className="mt-px shrink-0" />
           <span>
-            Modal/E2B require their respective SDKs to be installed and
-            configured. The current backend is a stub and will raise on run.
+            This executor is registered as a stub — its run path will
+            raise NotImplementedError. Wait for a real implementation
+            before selecting it as the default.
           </span>
         </div>
       ) : null}

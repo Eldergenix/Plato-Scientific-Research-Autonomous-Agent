@@ -47,22 +47,42 @@ def test_each_executor_has_required_fields(client) -> None:
         assert isinstance(entry["description"], str) and entry["description"]
 
 
-def test_modal_and_e2b_are_stubs_and_unavailable(client) -> None:
+def test_modal_and_e2b_kind_reflects_sdk_presence(client) -> None:
+    """Iter-21: modal/e2b are real implementations now. Their kind
+    reflects whether the host SDK is importable in the current env —
+    "real" when present, "lazy" when not. Either way, never "stub" for
+    a shipped backend.
+    """
+    import importlib.util
+
     body = client.get("/api/v1/executors").json()
     by_name = {e["name"]: e for e in body["executors"]}
-    assert by_name["modal"]["kind"] == "stub"
-    assert by_name["modal"]["available"] is False
-    assert by_name["e2b"]["kind"] == "stub"
-    assert by_name["e2b"]["available"] is False
+
+    for name, sdk in (("modal", "modal"), ("e2b", "e2b_code_interpreter")):
+        entry = by_name[name]
+        sdk_present = importlib.util.find_spec(sdk) is not None
+        expected_kind = "real" if sdk_present else "lazy"
+        assert (
+            entry["kind"] == expected_kind
+        ), f"{name} kind mismatch: got {entry['kind']!r}, expected {expected_kind!r}"
+        assert entry["available"] is sdk_present
+        assert entry["kind"] != "stub", (
+            f"{name} should never report kind=stub after iter-20 — "
+            "the real impl is shipped, only SDK installation is optional."
+        )
 
 
-def test_local_jupyter_is_lazy(client) -> None:
+def test_local_jupyter_kind_reflects_jupyter_client_presence(client) -> None:
+    """Iter-21: LocalJupyter is a real impl too. Its kind tracks
+    jupyter_client importability in the active env."""
+    import importlib.util
+
     body = client.get("/api/v1/executors").json()
     by_name = {e["name"]: e for e in body["executors"]}
-    assert by_name["local_jupyter"]["kind"] == "lazy"
-    # The kernel-execution loop isn't plumbed; surface "not available"
-    # even when jupyter_client is importable so the UI can warn.
-    assert by_name["local_jupyter"]["available"] is False
+    entry = by_name["local_jupyter"]
+    sdk_present = importlib.util.find_spec("jupyter_client") is not None
+    assert entry["kind"] == ("real" if sdk_present else "lazy")
+    assert entry["available"] is sdk_present
 
 
 def test_cmbagent_kind_reflects_import_state(client, monkeypatch) -> None:
