@@ -1,0 +1,67 @@
+# Plato Docker build context excludes.
+#
+# Without this file every `docker build` ships the full repo into the
+# build context: .git/, node_modules/, .next/, virtualenvs, and
+# caches — slowing builds and risking secrets in untracked .env files
+# baking into image layers.
+
+# VCS
+.git
+.github
+.gitignore
+
+# Python build / cache
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+*.egg-info
+build
+dist
+
+# Virtualenvs
+.venv
+venv
+env
+ENV
+*.env
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+.env.test
+
+# Node / Next
+node_modules
+**/node_modules
+.next
+**/.next
+dashboard/frontend/out
+dashboard/frontend/.turbo
+dashboard/frontend/test-results
+dashboard/frontend/playwright-report
+
+# IDE / editor
+.idea
+.vscode
+*.swp
+.DS_Store
+
+# Plato runtime / project working dirs
+project/
+~/.plato
+.plato
+runs/
+input_files/
+
+# Documentation site builds
+site/
+
+# CI / agent scratch
+.claude
