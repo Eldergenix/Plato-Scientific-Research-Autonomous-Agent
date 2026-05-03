@@ -52,5 +52,72 @@ CONCLUSIONS_SCOPE = FileScope(
     read=["**/*"],
 )
 
+INTRODUCTION_SCOPE = FileScope(
+    write=[
+        "temp/Introduction.tex",
+        "paper/introduction.tex",
+        "paper/introduction.json",
+    ],
+    read=["**/*"],
+)
 
-__all__ = ["ABSTRACT_SCOPE", "METHODS_SCOPE", "CONCLUSIONS_SCOPE"]
+RESULTS_SCOPE = FileScope(
+    write=[
+        "temp/Results.tex",
+        "paper/results.tex",
+        "paper/results.json",
+    ],
+    read=["**/*"],
+)
+
+KEYWORDS_SCOPE = FileScope(
+    write=[
+        # Active: Keywords.tex compiled by compile_tex_document.
+        "temp/Keywords.tex",
+        # Reserved structured outputs.
+        "paper/keywords.tex",
+        "paper/AAS_keywords.txt",
+    ],
+    read=["**/*"],
+)
+
+PLOTS_SCOPE = FileScope(
+    write=[
+        # JSON caption caches written per batch (e.g. plots_1_7.json).
+        "temp/plots_*.json",
+        # Compiled results-with-figures section files.
+        "temp/Results_*.tex",
+        # Reserved structured plot output.
+        "paper/Plots/**/*",
+    ],
+    read=["**/*"],
+)
+
+REFINE_SCOPE = FileScope(
+    write=[
+        "temp/Results_refined.tex",
+        # Paper version artifacts produced by save_paper.
+        "paper_v*.tex",
+        "paper_v*.pdf",
+        "paper_v*.aux",
+        "paper_v*.log",
+        "paper_v*.out",
+        "paper_v*.bbl",
+        "paper_v*.blg",
+        # Sidecar companion files.
+        "paper_folder/**/*",
+    ],
+    read=["**/*"],
+)
+
+
+__all__ = [
+    "ABSTRACT_SCOPE",
+    "METHODS_SCOPE",
+    "CONCLUSIONS_SCOPE",
+    "INTRODUCTION_SCOPE",
+    "RESULTS_SCOPE",
+    "KEYWORDS_SCOPE",
+    "PLOTS_SCOPE",
+    "REFINE_SCOPE",
+]

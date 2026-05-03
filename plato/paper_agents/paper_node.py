@@ -16,7 +16,13 @@ from .literature import process_tex_file_with_references
 from .latex import compile_latex, save_paper, save_bib, process_bib_file, compile_tex_document, fix_latex, fix_percent
 from .journal import LatexPresets
 from .latex_presets import journal_dict
-from .scopes import ABSTRACT_SCOPE, METHODS_SCOPE, CONCLUSIONS_SCOPE
+from .scopes import (
+    ABSTRACT_SCOPE,
+    CONCLUSIONS_SCOPE,
+    INTRODUCTION_SCOPE,
+    METHODS_SCOPE,
+    RESULTS_SCOPE,
+)
 from ..config import INPUT_FILES
 from ..io import ScopedWriter
 
@@ -278,7 +284,8 @@ def section_node(state: GraphState, config: RunnableConfig, section_name: str,
 def introduction_node(state: GraphState, config: RunnableConfig):
     return section_node(state, config, section_name="Introduction",
                         prompt_fn=introduction_prompt,
-                        reflection_fn=introduction_reflection)
+                        reflection_fn=introduction_reflection,
+                        scope=INTRODUCTION_SCOPE)
 
 def methods_node(state: GraphState, config: RunnableConfig):
     return section_node(state, config, section_name="Methods",
@@ -289,7 +296,8 @@ def methods_node(state: GraphState, config: RunnableConfig):
 def results_node(state: GraphState, config: RunnableConfig):
     return section_node(state, config, section_name="Results",
                         prompt_fn=results_prompt,
-                        reflection_fn=None)
+                        reflection_fn=None,
+                        scope=RESULTS_SCOPE)
 
 def conclusions_node(state: GraphState, config: RunnableConfig):
     return section_node(state, config, section_name="Conclusions",

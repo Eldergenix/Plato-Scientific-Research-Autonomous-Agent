@@ -416,7 +416,7 @@ class Plato:
             "get_idea_fast",
             models={"idea_maker": llm.name, "idea_hater": llm.name},
         )
-        config["callbacks"] = callbacks_for(recorder.manifest.run_id, recorder.manifest.workflow)
+        config["callbacks"] = callbacks_for(recorder.manifest.run_id, recorder.manifest.workflow, recorder=recorder)
 
         # Build graph
         graph = build_lg_graph(mermaid_diagram=False)
@@ -573,7 +573,7 @@ class Plato:
             "check_idea_semantic_scholar",
             models={"novelty": llm.name, "literature_summary": llm.name},
         )
-        config["callbacks"] = callbacks_for(recorder.manifest.run_id, recorder.manifest.workflow)
+        config["callbacks"] = callbacks_for(recorder.manifest.run_id, recorder.manifest.workflow, recorder=recorder)
 
         # Phase 2 wiring: domain drives multi-source retrieval (arxiv+openalex+ads+semantic_scholar for astro)
         # Initialize the state
@@ -739,7 +739,7 @@ class Plato:
             "get_method_fast",
             models={"methods": llm.name},
         )
-        config["callbacks"] = callbacks_for(recorder.manifest.run_id, recorder.manifest.workflow)
+        config["callbacks"] = callbacks_for(recorder.manifest.run_id, recorder.manifest.workflow, recorder=recorder)
 
         # Initialize the state
         input_state = {
@@ -939,7 +939,7 @@ class Plato:
                    "add_citations": add_citations,
                    "cmbagent_keywords": cmbagent_keywords},
         )
-        config["callbacks"] = callbacks_for(recorder.manifest.run_id, recorder.manifest.workflow)
+        config["callbacks"] = callbacks_for(recorder.manifest.run_id, recorder.manifest.workflow, recorder=recorder)
 
         # Initialize the state
         input_state = {
@@ -997,7 +997,7 @@ class Plato:
         f_data_description = os.path.join(self.project_dir, INPUT_FILES, DESCRIPTION_FILE)
 
         recorder = self._start_manifest("referee", models={"referee": llm.name})
-        config["callbacks"] = callbacks_for(recorder.manifest.run_id, recorder.manifest.workflow)
+        config["callbacks"] = callbacks_for(recorder.manifest.run_id, recorder.manifest.workflow, recorder=recorder)
 
         # Initialize the state
         input_state = {

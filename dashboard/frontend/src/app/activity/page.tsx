@@ -152,8 +152,12 @@ export default function ActivityPage() {
     () => allEvents.filter((e) => inRange(e.ts, range) && matchesFilter(e, filter) && matchesQuery(e, query)),
     [allEvents, range, filter, query],
   );
-  const shown = filtered.slice(0, visible);
-  const groups = groupByDate(shown);
+  // Memoized so unrelated state changes (e.g. typing in the search box
+  // before a debounce settles) don't re-bucket the visible slice.
+  const groups = React.useMemo(
+    () => groupByDate(filtered.slice(0, visible)),
+    [filtered, visible],
+  );
   const hasMore = filtered.length > visible;
   const loading = projects === null && !error;
 

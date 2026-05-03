@@ -19,6 +19,17 @@ import { PaperPreview, type PaperSection } from "@/components/stages/paper-previ
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useProject } from "@/lib/use-project";
 
+// Hoisted to module scope so PaperPreview's `versions` prop has a stable
+// identity across renders — re-rendering StagePane (which fires every
+// second during an active run via the elapsed-timer interval) no longer
+// allocates a fresh array. Pairs with the section list below.
+const DEFAULT_PAPER_VERSIONS = [
+  { id: "v1", label: "v1" },
+  { id: "v2", label: "v2" },
+  { id: "v3", label: "v3" },
+  { id: "v4", label: "v4", current: true },
+];
+
 const DEFAULT_PAPER_SECTIONS: PaperSection[] = [
   { id: "abstract", name: "Abstract", status: "compiled", markdown: "## Abstract\n\nWe present a hierarchical Bayesian pipeline for joint extraction of (2,2,0) and (3,3,0) ringdown modes from GW231123…" },
   { id: "introduction", name: "Introduction", status: "compiled" },
@@ -409,12 +420,7 @@ function StagePane({
       return project.stages.paper.status === "done" ? (
         <PaperPreview
           sections={DEFAULT_PAPER_SECTIONS}
-          versions={[
-            { id: "v1", label: "v1" },
-            { id: "v2", label: "v2" },
-            { id: "v3", label: "v3" },
-            { id: "v4", label: "v4", current: true },
-          ]}
+          versions={DEFAULT_PAPER_VERSIONS}
         />
       ) : (
         <EmptyStage
