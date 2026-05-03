@@ -121,16 +121,26 @@ export function useProject(): ProjectState {
           run.id,
           (evt) => {
             if (evt.kind === "log.line") {
-              setLog((prev) => [
-                ...prev,
-                {
-                  ts: String(evt.ts),
-                  source: String(evt.source ?? stage),
-                  agent: evt.agent as string | undefined,
-                  level: (evt.level as "info" | "warn" | "error" | "tool") ?? "info",
-                  text: String(evt.text ?? ""),
-                },
-              ]);
+              // Ring-buffer cap: keep at most LOG_MAX entries so a long
+              // run can't grow the log array (and the rendered DOM)
+              // without bound. Visualization layer should still pair
+              // this with virtualization for full safety.
+              const LOG_MAX = 2000;
+              setLog((prev) => {
+                const next = [
+                  ...prev,
+                  {
+                    ts: String(evt.ts),
+                    source: String(evt.source ?? stage),
+                    agent: evt.agent as string | undefined,
+                    level:
+                      (evt.level as "info" | "warn" | "error" | "tool") ??
+                      "info",
+                    text: String(evt.text ?? ""),
+                  },
+                ];
+                return next.length > LOG_MAX ? next.slice(-LOG_MAX) : next;
+              });
             } else if (evt.kind === "plot.created") {
               // Live plot file watcher: a new plot file appeared on disk.
               void refreshPlots();

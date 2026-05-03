@@ -56,11 +56,22 @@ function writePersisted(id: string | null): void {
 }
 
 async function fetchMe(): Promise<{ user_id: string | null; auth_required: boolean }> {
-  const r = await fetch(`${AUTH_BASE}/auth/me`, {
-    method: "GET",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-  });
+  // Wrap fetch itself in try/catch — when the user is offline, fetch()
+  // throws TypeError("Failed to fetch") rather than resolving to a
+  // non-ok response. Without this guard the rejection bubbles up to
+  // the void-awaited refresh() in useEffect and silently leaves the
+  // auth provider's `loading` flag stuck on true forever, blocking
+  // every auth-gated UI.
+  let r: Response;
+  try {
+    r = await fetch(`${AUTH_BASE}/auth/me`, {
+      method: "GET",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch {
+    return { user_id: null, auth_required: false };
+  }
   if (!r.ok) {
     // Treat any failure as "not signed in, auth not required" — the UI
     // still loads, the user can sign in if they want.
