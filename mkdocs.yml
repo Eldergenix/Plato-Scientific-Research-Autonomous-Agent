@@ -18,8 +18,13 @@ nav:
   - Features:
       - Multi-source retrieval: features/multi-source-retrieval.md
       - Citation validation: features/citation-validation.md
+      - Evidence matrix: features/evidence-matrix.md
+      - Reviewer panel: features/reviewer-panel.md
+      - Reproducibility manifest: features/manifest.md
       - Autonomous loop: features/autonomous-loop.md
       - Observability: features/observability.md
+      - Domain pluggability: features/domain-pluggability.md
+      - Multi-tenant auth: features/multi-tenant-auth.md
   - Examples:
       - End-to-end research: examples/plato_oscillator_full_run.ipynb
       - Enhance input description: examples/enhance_input.ipynb
