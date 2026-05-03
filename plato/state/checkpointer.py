@@ -27,9 +27,20 @@ import warnings
 from pathlib import Path
 from typing import Any, Literal
 
-from langgraph.checkpoint.memory import MemorySaver
+# ``MemorySaver`` is the fallback path; lazy-import so plato.state
+# (which is imported by every graph builder) doesn't pay the
+# langgraph.checkpoint.memory import cost on every fresh process —
+# even when the caller picks ``sqlite`` or ``postgres`` and never
+# touches MemorySaver.
 
 Backend = Literal["memory", "sqlite", "postgres"]
+
+
+def _memory_saver():
+    """Lazy import of MemorySaver — see module-level note."""
+    from langgraph.checkpoint.memory import MemorySaver
+
+    return MemorySaver()
 
 _DEFAULT_SQLITE_PATH = "~/.plato/state.db"
 
@@ -72,7 +83,7 @@ def make_checkpointer(
                 RuntimeWarning,
                 stacklevel=2,
             )
-        return MemorySaver()
+        return _memory_saver()
 
     if backend == "sqlite":
         try:
@@ -85,7 +96,7 @@ def make_checkpointer(
                 RuntimeWarning,
                 stacklevel=2,
             )
-            return MemorySaver()
+            return _memory_saver()
 
         resolved = _resolve_sqlite_path(path or _DEFAULT_SQLITE_PATH)
         conn = sqlite3.connect(str(resolved), check_same_thread=False)
@@ -105,7 +116,7 @@ def make_checkpointer(
                 RuntimeWarning,
                 stacklevel=2,
             )
-            return MemorySaver()
+            return _memory_saver()
 
         return PostgresSaver.from_conn_string(dsn)
 
