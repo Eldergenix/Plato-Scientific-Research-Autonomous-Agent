@@ -20,6 +20,7 @@ from .scopes import (
     ABSTRACT_SCOPE,
     CONCLUSIONS_SCOPE,
     INTRODUCTION_SCOPE,
+    KEYWORDS_SCOPE,
     METHODS_SCOPE,
     RESULTS_SCOPE,
 )
@@ -112,8 +113,12 @@ def keywords_node(state: GraphState, config: RunnableConfig):
             keywords = ", ".join(keywords)
             ###################################################
 
-        # write results to temporary file
-        temp_file(state, f_temp, 'write', keywords)
+        # R11: route the keyword write through ScopedWriter so the
+        # node can only touch files in its declared KEYWORDS_SCOPE.
+        # The compile pass still reads the same temp/ file so the
+        # downstream LaTeX pipeline is unaffected.
+        writer = ScopedWriter(state['files']['Paper_folder'], KEYWORDS_SCOPE)
+        writer.write("temp/Keywords.tex", _wrap_latex_section(state, keywords))
         compile_tex_document(state, f_temp, state['files']['Temp'])
 
     minutes, seconds = divmod(time.time()-state['time']['start'], 60)

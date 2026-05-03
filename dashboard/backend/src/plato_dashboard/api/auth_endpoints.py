@@ -32,6 +32,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Body, HTTPException, Request, Response
+from pydantic import BaseModel, Field
 
 from ..settings import get_settings
 
@@ -77,16 +78,26 @@ def _auth_required() -> bool:
     return get_settings().is_auth_required
 
 
+class LoginRequest(BaseModel):
+    """Body for ``POST /auth/login``.
+
+    The 128-char cap blocks pathological values that would also fail
+    silently when written to the ``plato_user`` httponly cookie (most
+    browsers cap cookie values around 4 KiB).
+    """
+
+    user_id: str = Field(min_length=1, max_length=128)
+
+
 @router.post("/auth/login")
-def login(response: Response, body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+def login(response: Response, body: LoginRequest) -> dict[str, Any]:
     """Set the ``plato_user`` cookie and echo the chosen user id back."""
-    raw = body.get("user_id")
-    if not isinstance(raw, str) or not raw.strip():
+    user_id = body.user_id.strip()
+    if not user_id:
         raise HTTPException(
             status_code=400,
             detail={"code": "invalid_user_id", "message": "user_id must be a non-empty string"},
         )
-    user_id = raw.strip()
     response.set_cookie(
         key=_COOKIE_NAME,
         value=user_id,
