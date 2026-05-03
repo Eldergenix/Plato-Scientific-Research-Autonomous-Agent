@@ -1,6 +1,7 @@
 from langchain_core.runnables import RunnableConfig
 import random
 import base64
+import json
 import time
 from pathlib import Path
 from tqdm import tqdm
@@ -22,6 +23,8 @@ from .scopes import (
     INTRODUCTION_SCOPE,
     KEYWORDS_SCOPE,
     METHODS_SCOPE,
+    PLOTS_SCOPE,
+    REFINE_SCOPE,
     RESULTS_SCOPE,
 )
 from ..config import INPUT_FILES
@@ -368,8 +371,13 @@ def plots_node(state: GraphState, config: RunnableConfig):
                 caption = LaTeX_checker(state, caption)  #make sure is written in LaTeX
                 images[f"image{i}"] = {'name': file.name, 'caption': caption}
 
-            # save temporary json file with image name + image caption
-            temp_file(state, f_temp, 'write', images, json_file=True)
+            # R11: route the JSON write through ScopedWriter so this
+            # node can only write paths that match PLOTS_SCOPE
+            # (temp/plots_*.json + temp/Results_*.tex). Mirrors the
+            # bytes the json_file=True branch of temp_file would have
+            # produced.
+            writer = ScopedWriter(state['files']['Paper_folder'], PLOTS_SCOPE)
+            writer.write(f"temp/{f_temp.name}", json.dumps(images, indent=2))
 
         # temporary file with the images
         print(f'   Inserting figures {start+1}-{min(start+batch_size, num_images)}'.ljust(33,'.'), end="", flush=True)
@@ -402,10 +410,14 @@ def plots_node(state: GraphState, config: RunnableConfig):
                     break
             else:
                 raise RuntimeError("Unable to put the images in the text. Failed after three attemps")
-                
-            
-            # save temporary file
-            temp_file(state, f_temp, 'write', state['paper']['Results'])
+
+
+            # R11: scoped write for the Results-with-figures partial.
+            writer = ScopedWriter(state['files']['Paper_folder'], PLOTS_SCOPE)
+            writer.write(
+                f"temp/{f_temp.name}",
+                _wrap_latex_section(state, state['paper']['Results']),
+            )
 
             # save paper
             save_paper(state, state['files']['Paper_v1'])
@@ -478,8 +490,12 @@ def refine_results(state: GraphState, config: RunnableConfig):
             # Check that all references are done properly
             state['paper']['Results'] = check_references(state, section_text)
 
-            # save temporary file
-            temp_file(state, f_temp, 'write', state['paper']['Results'])
+            # R11: scoped write for the refined Results.tex.
+            writer = ScopedWriter(state['files']['Paper_folder'], REFINE_SCOPE)
+            writer.write(
+                "temp/Results_refined.tex",
+                _wrap_latex_section(state, state['paper']['Results']),
+            )
 
             # try to compile the paper
             if compile_tex_document(state, f_temp, state['files']['Temp']):

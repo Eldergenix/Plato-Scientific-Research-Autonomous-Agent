@@ -28,8 +28,20 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
 
 from ..settings import Settings, get_settings
+
+
+class ClarificationsAnswerRequest(BaseModel):
+    """Body for ``POST /runs/{run_id}/clarifications``.
+
+    The 50-answer cap blocks pathological payloads; per-answer length
+    is capped at 4 KiB so a runaway client can't fill the project_dir
+    with megabytes of free-form text before any LLM call has happened.
+    """
+
+    answers: list[str] = Field(max_length=50)
 
 
 router = APIRouter()
@@ -154,7 +166,7 @@ def get_clarifications(
 @router.post("/runs/{run_id}/clarifications")
 def post_clarifications(
     run_id: str,
-    body: dict[str, Any],
+    body: ClarificationsAnswerRequest,
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
@@ -164,12 +176,18 @@ def post_clarifications(
 
     _check_tenant(run_dir, request)
 
-    answers = body.get("answers")
-    if not isinstance(answers, list) or not all(isinstance(a, str) for a in answers):
-        raise HTTPException(
-            400,
-            detail={"code": "invalid_answers", "message": "answers must be a list of strings"},
-        )
+    answers = body.answers
+    # Per-answer length cap (4 KiB) — Pydantic doesn't enforce this on
+    # list elements, so we check inline.
+    for a in answers:
+        if len(a) > 4096:
+            raise HTTPException(
+                400,
+                detail={
+                    "code": "answer_too_long",
+                    "message": "each answer must be at most 4096 characters",
+                },
+            )
 
     questions, _ = _load_clarifications(run_dir)
     if len(answers) != len(questions):
