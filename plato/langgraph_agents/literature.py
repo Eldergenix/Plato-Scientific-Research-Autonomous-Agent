@@ -10,11 +10,39 @@ from .prompts import novelty_prompt, summary_literature_prompt
 from ..paper_agents.tools import extract_latex_block, LLM_call_stream, json_parser3
 from ..domain import DomainProfile, get_domain
 from ..retrieval.orchestrator import retrieve
-# Importing the source modules has the side effect of registering each
-# adapter (arxiv, openalex, crossref, ads, pubmed, semantic_scholar) in
-# ADAPTER_REGISTRY.
-from ..retrieval.sources import arxiv, openalex, crossref, ads, pubmed, semantic_scholar as _ss_adapter  # noqa: F401
 from ..safety import detect_injection_signals, wrap_external
+
+
+# Lazy adapter registration. Importing each source module fires its
+# ``register_adapter(...)`` call, but doing it at module-load time
+# pulled in 6 modules' worth of httpx/feedparser/etc. on every
+# ``build_lg_graph`` import. We defer the registration until the
+# first real retrieval call so the graph builder stays cheap.
+_adapters_registered = False
+
+
+def _ensure_adapters_registered() -> None:
+    """Import every retrieval source module exactly once."""
+    global _adapters_registered
+    if _adapters_registered:
+        return
+    _adapters_registered = True
+    import importlib
+
+    for name in (
+        "arxiv",
+        "openalex",
+        "crossref",
+        "ads",
+        "pubmed",
+        "semantic_scholar",
+    ):
+        try:
+            importlib.import_module(f"plato.retrieval.sources.{name}")
+        except Exception:
+            # Optional adapter dependency missing — skip but keep
+            # iterating so the others still register.
+            pass
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +136,10 @@ async def semantic_scholar(state: GraphState, config: Optional[RunnableConfig] =
     and return wrapped, sanitized paper info to the rest of the literature
     graph. Phase 2 (R4) + Phase 3 (R12).
     """
+
+    # Lazy adapter registration — pulls in the 6 source modules on
+    # first call rather than on every ``build_lg_graph`` import.
+    _ensure_adapters_registered()
 
     profile = _resolve_profile(state)
     query = state['literature']['query']
