@@ -18,6 +18,7 @@ import { CreateProjectModal } from "@/components/projects/create-project-modal";
 import { PaperPreview, type PaperSection } from "@/components/stages/paper-preview";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useProject } from "@/lib/use-project";
+import { api } from "@/lib/api";
 
 // Hoisted to module scope so PaperPreview's `versions` prop has a stable
 // identity across renders — re-rendering StagePane (which fires every
@@ -64,6 +65,38 @@ export default function Home() {
   const cost = useCostMeter();
   const [createOpen, setCreateOpen] = React.useState(false);
   const [cancelConfirmOpen, setCancelConfirmOpen] = React.useState(false);
+
+  // Fetch the current key-status snapshot once on mount so the
+  // Run-pipeline button can render in a clearly-disabled state when
+  // the user has no LLM provider keys set anywhere (env vars or in-app
+  // store). Previously the button fired silently and the run failed
+  // with a console.error the user never saw.
+  const [hasAnyLlmKey, setHasAnyLlmKey] = React.useState<boolean | null>(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    api
+      .getKeysStatus()
+      .then((s) => {
+        if (cancelled) return;
+        const llmStates = [s.OPENAI, s.GEMINI, s.ANTHROPIC, s.PERPLEXITY];
+        setHasAnyLlmKey(llmStates.some((v) => v && v !== "unset"));
+      })
+      .catch(() => {
+        // Backend offline / 5xx: don't disable the button on a probe
+        // failure — the user should still be able to try.
+        if (!cancelled) setHasAnyLlmKey(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const runPipelineDisabledReason = React.useMemo(() => {
+    if (hasAnyLlmKey === false) {
+      return "Add an LLM API key in /keys before running the pipeline.";
+    }
+    return undefined;
+  }, [hasAnyLlmKey]);
 
   const requestCancel = React.useCallback(() => {
     if (!project.activeRun) return;
@@ -166,6 +199,7 @@ export default function Home() {
               onChangeFilter={setFilterTab}
               onCancelRun={requestCancel}
               onRunPipeline={() => guardedStartRun("idea")}
+              runPipelineDisabledReason={runPipelineDisabledReason}
               onOpenCostMeter={cost.openMeter}
               onAddFilter={() =>
                 setFilterTab((t) =>

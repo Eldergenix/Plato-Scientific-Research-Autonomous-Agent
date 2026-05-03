@@ -37,6 +37,8 @@ export interface TopBarProps {
   onToggleDetails?: () => void;
   onMoreActions?: () => void;
   onRunPipeline?: () => void;
+  /** Disabled-state tooltip surfaced on the Run-pipeline button when truthy. */
+  runPipelineDisabledReason?: string;
   onToggleFavorite?: () => void;
   onOpenNotifications?: () => void;
   isFavorite?: boolean;
@@ -190,12 +192,27 @@ function CostMeter({
 
 /**
  * Pill-shaped "Run pipeline" primary button using brand indigo.
+ *
+ * Pass ``disabledReason`` to render the button in a disabled state with
+ * the reason surfaced as a native ``title`` tooltip — used by callers
+ * that detect missing API keys, demo-mode budget exhaustion, etc.
  */
-function RunPipelineButton({ onClick }: { onClick?: () => void }) {
+function RunPipelineButton({
+  onClick,
+  disabledReason,
+}: {
+  onClick?: () => void;
+  disabledReason?: string;
+}) {
+  const disabled = Boolean(disabledReason);
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+      title={disabledReason}
+      aria-disabled={disabled || undefined}
+      data-testid="run-pipeline-button"
       className={cn(
         "inline-flex items-center gap-1.5 h-7 px-3 rounded-full",
         "bg-(--color-brand-indigo) text-white",
@@ -205,6 +222,7 @@ function RunPipelineButton({ onClick }: { onClick?: () => void }) {
         "hover:bg-(--color-brand-interactive)",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-brand-interactive)",
         "focus-visible:ring-offset-2 focus-visible:ring-offset-(--color-bg-page)",
+        "disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-(--color-brand-indigo)",
       )}
     >
       <Play size={12} strokeWidth={1.75} />
@@ -239,6 +257,7 @@ export function TopBar({
   onToggleDetails,
   onMoreActions,
   onRunPipeline,
+  runPipelineDisabledReason,
   onToggleFavorite,
   onOpenNotifications,
   isFavorite,
@@ -336,7 +355,10 @@ export function TopBar({
               )}
             </>
           ) : (
-            <RunPipelineButton onClick={onRunPipeline} />
+            <RunPipelineButton
+              onClick={onRunPipeline}
+              disabledReason={runPipelineDisabledReason}
+            />
           )}
 
           <Row1IconButton
