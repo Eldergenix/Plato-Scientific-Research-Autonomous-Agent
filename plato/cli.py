@@ -1,9 +1,25 @@
 import sys
 import argparse
+from importlib.metadata import PackageNotFoundError, version
+
+
+def _plato_version() -> str:
+    """Resolve the installed Plato version, with a graceful dev fallback."""
+    try:
+        return version("plato")
+    except PackageNotFoundError:
+        return "0.0.0+dev"
 
 
 def main():
     parser = argparse.ArgumentParser(prog="plato")
+    parser.add_argument(
+        "--version",
+        "-V",
+        action="version",
+        version=f"%(prog)s {_plato_version()}",
+        help="Print the installed Plato version and exit.",
+    )
     subparsers = parser.add_subparsers(dest="command")
 
     # `plato run` — legacy Streamlit GUI
@@ -121,7 +137,11 @@ def main():
     elif args.command == "loop":
         _run_loop(args)
     else:
-        parser.print_help()
+        # No subcommand → print help to stderr and exit non-zero so CI /
+        # shell-script callers can distinguish "no command" from a
+        # successful run.
+        parser.print_help(sys.stderr)
+        sys.exit(2)
 
 
 def _run_app(args) -> None:
