@@ -1,16 +1,26 @@
 """Executor backend discovery endpoint.
 
-Plato ships four executor backends in :mod:`plato.executor`: ``cmbagent``
-(the default real one), ``local_jupyter`` (kernel-based, lazy import),
-``modal`` (stub), and ``e2b`` (stub). The dashboard's settings page wants
-to render them as a single picker so a user can flip the default for new
-runs without editing YAML.
+Plato ships four executor backends in :mod:`plato.executor`:
+
+- ``cmbagent`` — the historical default, wraps cmbagent's planning loop.
+- ``local_jupyter`` — kernel-based execution via ``jupyter_client``.
+- ``modal`` — Modal Labs sandbox per run (iter-20 real impl).
+- ``e2b`` — E2B Code Interpreter sandbox per run (iter-20 real impl).
+
+The dashboard's settings page wants to render them as a single picker so a
+user can flip the default for new runs without editing YAML.
 
 This router exposes a tiny read-only catalogue. Per-executor *preferences*
 (which one to default to) live next door in
-:mod:`plato_dashboard.api.executor_preferences` so the persistence
-concern stays separate from discovery — and so we don't fight Stream 6's
-``user_preferences`` namespace at integration time.
+:mod:`plato_dashboard.api.executor_preferences` so the persistence concern
+stays separate from discovery.
+
+Iter-21 update: every backend now has a real implementation. The
+classification logic was previously hard-coded to call ``local_jupyter`` /
+``modal`` / ``e2b`` "scaffolds" and report them as ``available=False``
+even after their respective real impls landed. We now probe the host
+SDK at request time and surface ``"real"`` / ``"lazy"`` honestly so users
+can actually pick the backend they want from the UI.
 """
 from __future__ import annotations
 
@@ -40,51 +50,81 @@ class ExecutorList(BaseModel):
 # UI — short enough to fit in a card subtitle without truncation.
 _DESCRIPTIONS: dict[str, str] = {
     "cmbagent": (
-        "Default backend. Wraps cmbagent's planning + control loop "
+        "Historical default. Wraps cmbagent's planning + control loop "
         "(engineer / researcher / planner) on top of OpenAI + Anthropic."
     ),
     "local_jupyter": (
-        "Run generated code in a local Jupyter kernel. Requires "
-        "jupyter-client; the execution loop itself is still scaffolding."
+        "Run generated code in a local Jupyter kernel. "
+        "Requires the jupyter-client package (pip install jupyter-client)."
     ),
     "modal": (
-        "Modal Labs sandbox executor. Stub — install the modal SDK and "
-        "configure credentials before this can run."
+        "Modal Labs sandbox executor. Spins up a per-run sandbox with "
+        "matplotlib pre-installed. Requires the modal SDK + a configured "
+        "Modal token (pip install modal && modal token new)."
     ),
     "e2b": (
-        "E2B sandbox executor. Stub — install the e2b SDK and configure "
-        "credentials before this can run."
+        "E2B Code Interpreter sandbox executor. Each run runs in its own "
+        "Jupyter-flavoured sandbox. Requires the e2b-code-interpreter SDK "
+        "and the E2B_API_KEY env var."
     ),
 }
+
+
+# Each backend gets a tuple of (sdk_module_name, kind_when_present).
+# When the import succeeds, the executor is "real" and "available";
+# when it fails, the executor is "lazy" (real impl shipped, just install
+# the optional dep). This replaces the iter-17 hard-coded matrix.
+_SDK_PROBES: dict[str, tuple[str, ...]] = {
+    "cmbagent": ("cmbagent",),
+    "local_jupyter": ("jupyter_client",),
+    "modal": ("modal",),
+    "e2b": ("e2b_code_interpreter",),
+}
+
+
+def _sdk_present(name: str) -> bool:
+    """Probe each backend's optional SDK without actually importing it long-term.
+
+    We use ``importlib.util.find_spec`` rather than a real ``import`` so
+    repeated catalogue requests don't keep heavy SDK modules resident in
+    sys.modules just because the dashboard rendered the settings page.
+    Returns ``True`` if every required SDK module is locatable.
+    """
+    import importlib.util
+
+    probes = _SDK_PROBES.get(name)
+    if not probes:
+        return True  # Unknown backend — let the registry decide.
+    for module in probes:
+        try:
+            if importlib.util.find_spec(module) is None:
+                return False
+        except (ValueError, ImportError, ModuleNotFoundError):
+            return False
+    return True
 
 
 def _classify_kind(name: str) -> ExecutorKind:
     """Map an executor name to one of {real, lazy, stub}.
 
-    ``cmbagent`` is "real" when its host package imports cleanly; otherwise
-    we downgrade it to "lazy" so the UI surfaces the install-required
-    state. ``local_jupyter`` is always "lazy" — it depends on
-    ``jupyter_client`` which we don't pull in by default. ``modal`` and
-    ``e2b`` are pure scaffolds.
+    Iter-21 contract: all shipped backends are now real. ``"lazy"`` means
+    the implementation is real but the optional SDK isn't installed in
+    the current environment. ``"stub"`` is kept in the enum for
+    forward-compat (e.g. a future backend that ships before its impl
+    lands) but no current backend returns it.
     """
-    if name == "cmbagent":
-        try:
-            import cmbagent  # noqa: F401
-        except ImportError:
-            return "lazy"
-        return "real"
-    if name == "local_jupyter":
-        return "lazy"
-    return "stub"
+    if name not in _SDK_PROBES:
+        return "stub"
+    return "real" if _sdk_present(name) else "lazy"
 
 
 def _is_available(name: str, kind: ExecutorKind) -> bool:
-    """Best-effort check that ``get_executor(name).run`` won't immediately
-    fall over with NotImplementedError.
+    """Best-effort: ``True`` when ``get_executor(name).run`` won't immediately
+    fall over with ImportError or NotImplementedError.
 
-    We don't actually invoke ``run`` — instantiating the executor is
-    enough. For ``cmbagent`` we additionally require the upstream package
-    to import; for ``local_jupyter`` we require ``jupyter_client``.
+    The executor must be registered AND its required SDK importable. We
+    don't actually invoke ``run`` — that would spin up the sandbox /
+    kernel, which is wasteful for a catalogue lookup.
     """
     from plato.executor import get_executor
 
@@ -95,22 +135,7 @@ def _is_available(name: str, kind: ExecutorKind) -> bool:
 
     if kind == "stub":
         return False
-    if name == "cmbagent":
-        try:
-            import cmbagent  # noqa: F401
-        except ImportError:
-            return False
-        return True
-    if name == "local_jupyter":
-        try:
-            import jupyter_client  # noqa: F401
-        except ImportError:
-            return False
-        # The current scaffold raises NotImplementedError on run() even
-        # with jupyter installed, so the kernel-execution loop isn't
-        # plumbed yet. Surface that honestly.
-        return False
-    return True
+    return _sdk_present(name)
 
 
 @router.get("/executors", response_model=ExecutorList)

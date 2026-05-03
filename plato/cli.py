@@ -118,6 +118,27 @@ def main():
         default="plato-runs",
         help="Tracking-branch prefix for git checkpoints (default: plato-runs)",
     )
+    # Iter-21: surface the registry-driven domain + executor knobs that
+    # ``Plato()`` and ``Plato.get_results`` already accept. Without these,
+    # the loop always uses the astro DomainProfile + cmbagent executor
+    # even when the registries have biology / local_jupyter / modal / e2b
+    # available.
+    loop.add_argument(
+        "--domain",
+        default="astro",
+        help=(
+            "Domain profile name (registered via plato.domain.register_domain). "
+            "Built-ins: astro (default), biology."
+        ),
+    )
+    loop.add_argument(
+        "--executor",
+        default=None,
+        help=(
+            "Executor backend name. Built-ins: cmbagent, local_jupyter, "
+            "modal, e2b. Defaults to the active DomainProfile.executor."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -227,7 +248,19 @@ def _run_loop(args) -> None:
         # factory in programmatic use.
         from plato import Plato  # noqa: WPS433 — intentional inline import
 
-        return Plato(project_dir=args.project_dir)
+        # Iter-21: the loop CLI now threads the user's --domain pick into
+        # the Plato constructor and stashes --executor on the instance so
+        # downstream get_results() invocations dispatch through the
+        # registry rather than always falling back to cmbagent.
+        domain = getattr(args, "domain", "astro") or "astro"
+        plato_obj = Plato(project_dir=args.project_dir, domain=domain)
+        executor_override = getattr(args, "executor", None)
+        if executor_override:
+            # Stash on the instance so a custom score/run loop can consume
+            # it. ResearchLoop forwards kwargs into get_results in a future
+            # commit; for now this lives on the instance for inspection.
+            plato_obj._cli_executor_override = executor_override  # type: ignore[attr-defined]
+        return plato_obj
 
     def _score_fn(_plato):
         return latest_manifest_score(args.project_dir)
