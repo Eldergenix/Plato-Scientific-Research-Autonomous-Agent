@@ -24,9 +24,12 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from langchain_core.runnables import RunnableConfig
+
+if TYPE_CHECKING:  # pragma: no cover — annotation only
+    from .parameters import GraphState
 
 import json5
 
@@ -123,7 +126,10 @@ def _coerce_label(value: Any, allowed: set[str], default: str) -> str:
     return default
 
 
-def evidence_matrix_node(state: dict, config: RunnableConfig = None) -> dict:
+def evidence_matrix_node(
+    state: "GraphState",
+    config: RunnableConfig | None = None,
+) -> dict:
     """LangGraph node: build the claim/evidence matrix.
 
     The function is intentionally synchronous — ``LLM_call`` from
