@@ -272,7 +272,11 @@ function SidePanel({
           enhanceToast ? "opacity-100" : "opacity-0",
         )}
       >
-        Coming soon — enhance_data_description requires a real Plato install in the worker venv.
+        Enhancement runs on the worker via{" "}
+        <code className="font-mono">enhance_data_description</code>; the
+        UI hook for triggering it from this panel ships in a follow-up
+        — for now use{" "}
+        <code className="font-mono">plato run --enhance</code>.
       </div>
 
       <h3 className="font-label mt-6">Presets</h3>
