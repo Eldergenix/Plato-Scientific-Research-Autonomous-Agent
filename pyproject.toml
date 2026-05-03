@@ -50,6 +50,11 @@ postgres = [
   "langgraph-checkpoint-postgres>=2.0.0",
   "psycopg[binary]>=3.1",
 ]
+rerank = [
+  "sentence-transformers>=2.7",
+  "torch>=2.0",
+  "cohere>=5.0",
+]
 docs = [
   "mkdocs",
   "mkdocstrings[python]",

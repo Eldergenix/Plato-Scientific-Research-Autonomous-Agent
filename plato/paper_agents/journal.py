@@ -18,6 +18,16 @@ class Journal(str, Enum):
     """NeurIPS - Conference on Neural Information Processing Systems."""
     PASJ = "PASJ"
     """Publications of the Astronomical Society of Japan."""
+    NATURE = "NATURE"
+    """Nature journal (Springer Nature). Requires naturemag.cls from TeX Live publishers bundle (or article fallback)."""
+    CELL = "CELL"
+    """Cell journal (Cell Press). No standard CTAN class; falls back to article with double spacing + line numbers."""
+    SCIENCE = "SCIENCE"
+    """Science journal (AAAS). No standard CTAN class; falls back to article."""
+    PLOS_BIO = "PLOS_BIO"
+    """PLOS Biology (Public Library of Science). Requires plos2015.cls from TeX Live extras (or article fallback)."""
+    ELIFE = "ELIFE"
+    """eLife journal. Requires elife.cls (``tlmgr install elife``) — falls back to article."""
 
 class LatexPresets(BaseModel):
     """Latex presets to be set depending on the journal"""

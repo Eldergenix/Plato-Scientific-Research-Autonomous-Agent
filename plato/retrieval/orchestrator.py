@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 from . import ADAPTER_REGISTRY, SourceAdapter, get_adapter
 from .citation_graph import ExpansionDirection, expand_citations
 from .dedup import dedup_sources
+from .reranker import rerank
 from ..state.models import Source
 
 if TYPE_CHECKING:
@@ -110,7 +111,11 @@ async def retrieve(
             continue
         flat.extend(result)
 
-    return dedup_sources(flat)[:limit]
+    deduped = dedup_sources(flat)
+    # R4 — relevance-rerank deduplicated candidates. Backends are
+    # opt-in (``plato[rerank]``); without them the call falls through
+    # to a first-seen-wins slice with a one-time warning.
+    return rerank(query, deduped, top_k=limit)
 
 
 async def retrieve_with_expansion(
