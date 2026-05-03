@@ -1,5 +1,6 @@
 from typing_extensions import TypedDict, Any
 from typing import Annotated, Optional
+from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AnyMessage
 from langgraph.graph.message import add_messages
 
@@ -62,7 +63,9 @@ class LATEX(TypedDict):
 class LLM(TypedDict):
     model: str
     max_output_tokens: int
-    llm: Any
+    # See plato.langgraph_agents.parameters for the rationale on the
+    # ``BaseChatModel`` type — same fix here.
+    llm: BaseChatModel
     temperature: float
 
 # TIME class
