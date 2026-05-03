@@ -9,10 +9,29 @@ export interface PlotEntry {
   url: string;
 }
 
+// Iter-28 — agent-activity ring buffer entry. Mirrors the
+// ``NodeActivityEvent`` type that ResultsStage expects, lifted up
+// to the hook surface so any consumer that wants to render swimlanes
+// can subscribe via ``useProject().nodeEvents``.
+export interface NodeEventEntry {
+  name: string;
+  stage?: string;
+  ts: number;
+  kind: "entered" | "exited";
+  durationMs?: number;
+}
+
 interface ProjectState {
   project: Project;
   log: LogLine[];
   plots: PlotEntry[];
+  /**
+   * Iter-28: ring-buffer of node.entered / node.exited events from
+   * the active run. Capped at NODE_EVENTS_MAX so a long run can't
+   * grow without bound; consumers (AgentSwimlane) snapshot the
+   * latest window.
+   */
+  nodeEvents: NodeEventEntry[];
   isLive: boolean; // true when fetched from API; false when offline / pre-bootstrap
   loading: boolean; // true until the first ``getProject`` resolves (or fails)
   capabilities: {
@@ -67,10 +86,16 @@ export const EMPTY_PROJECT: Project = {
   totalCostCents: 0,
 };
 
+// Cap on retained node.entered/node.exited events. AgentSwimlane only
+// needs the recent window; long runs would otherwise grow the array
+// without bound.
+const NODE_EVENTS_MAX = 500;
+
 export function useProject(): ProjectState {
   const [project, setProject] = React.useState<Project>(EMPTY_PROJECT);
   const [log, setLog] = React.useState<LogLine[]>([]);
   const [plots, setPlots] = React.useState<PlotEntry[]>([]);
+  const [nodeEvents, setNodeEvents] = React.useState<NodeEventEntry[]>([]);
   const [isLive, setIsLive] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [caps, setCaps] = React.useState<ProjectState["capabilities"]>(null);
@@ -166,6 +191,9 @@ export function useProject(): ProjectState {
         // call carries X-Plato-Run-Id for backend log correlation.
         // Cleared in the SSE close handler below.
         setActiveRunId(run.id);
+        // Iter-28: clear any node events from the previous run so the
+        // swimlane doesn't show stale lanes from a different run.
+        setNodeEvents([]);
         sseUnsubRef.current?.();
         sseUnsubRef.current = api.subscribeRunEvents(
           projectIdRef.current,
@@ -195,6 +223,34 @@ export function useProject(): ProjectState {
             } else if (evt.kind === "plot.created") {
               // Live plot file watcher: a new plot file appeared on disk.
               void refreshPlots();
+            } else if (
+              evt.kind === "node.entered" || evt.kind === "node.exited"
+            ) {
+              // Iter-28: AgentSwimlane consumer. Coerce ts to ms
+              // (backend emits ISO-8601 strings; Date.parse handles
+              // both string + number forms).
+              const tsMs = (() => {
+                const raw = evt.ts;
+                if (typeof raw === "number") return raw;
+                const parsed = Date.parse(String(raw));
+                return Number.isFinite(parsed) ? parsed : Date.now();
+              })();
+              const entry: NodeEventEntry = {
+                name: String((evt as { name?: unknown }).name ?? "unknown"),
+                stage: (evt as { stage?: string }).stage,
+                ts: tsMs,
+                kind: evt.kind === "node.entered" ? "entered" : "exited",
+                durationMs:
+                  evt.kind === "node.exited"
+                    ? (evt as { duration_ms?: number }).duration_ms
+                    : undefined,
+              };
+              setNodeEvents((prev) => {
+                const next = [...prev, entry];
+                return next.length > NODE_EVENTS_MAX
+                  ? next.slice(-NODE_EVENTS_MAX)
+                  : next;
+              });
             } else if (evt.kind === "stage.finished") {
               // Clear the run-id correlation header so post-run
               // requests (refresh, plot fetches) aren't tagged with
@@ -221,6 +277,7 @@ export function useProject(): ProjectState {
     project,
     log,
     plots,
+    nodeEvents,
     isLive,
     loading,
     capabilities: caps,

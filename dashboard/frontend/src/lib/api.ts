@@ -33,6 +33,28 @@ export interface RunEventPlotCreated {
   path?: string;
 }
 
+// Iter-28 — backend already emits these via langgraph_bridge.py for
+// every node in AGENT_NODE_NAMES. The frontend used to drop them into
+// RunEventUnknown so the AgentSwimlane could never show real activity.
+// Now they get explicit discriminants and useProject collects them
+// into ``nodeEvents`` for downstream consumers.
+export interface RunEventNodeEntered {
+  kind: "node.entered";
+  ts: number | string;
+  /** Node name from AGENT_NODE_NAMES (idea_maker, methods_node, ...). */
+  name: string;
+  /** Backend stage that owns the run (idea / method / results / ...). */
+  stage?: string;
+}
+
+export interface RunEventNodeExited {
+  kind: "node.exited";
+  ts: number | string;
+  name: string;
+  stage?: string;
+  duration_ms?: number;
+}
+
 export interface RunEventUnknown {
   kind: string;
   [key: string]: unknown;
@@ -42,6 +64,8 @@ export type RunEvent =
   | RunEventLogLine
   | RunEventStageFinished
   | RunEventPlotCreated
+  | RunEventNodeEntered
+  | RunEventNodeExited
   | RunEventUnknown;
 
 // Module-level run-id store. Components that know they're inside an
