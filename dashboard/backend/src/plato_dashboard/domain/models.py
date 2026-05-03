@@ -54,6 +54,26 @@ class ActiveRun(BaseModel):
     total_attempts: Optional[int] = None
 
 
+class CostCapState(BaseModel):
+    """Per-project cost cap with optional hard-stop enforcement.
+
+    Iter-26: replaces the localStorage-only ``plato:budget:`` and
+    ``plato:budget-stop:`` keys that the cost-meter-panel used to
+    persist client-side. Now lives on ``meta.json`` and is consulted by
+    ``run_stage`` server-side so even a malicious client can't bypass
+    the budget by editing localStorage.
+
+    - ``budget_cents``: ceiling in USD cents. ``None`` means no budget.
+    - ``stop_on_exceed``: when ``True`` AND ``project.total_cost_cents
+      >= budget_cents``, ``run_stage`` refuses to launch new runs with
+      HTTP 403 ``budget_exceeded``. Existing runs in flight are not
+      cancelled; the gate only applies to new launches.
+    """
+
+    budget_cents: Optional[int] = Field(default=None, ge=0)
+    stop_on_exceed: bool = False
+
+
 class Project(BaseModel):
     id: str = Field(default_factory=lambda: new_id("prj"))
     name: str = "Untitled project"
@@ -71,6 +91,9 @@ class Project(BaseModel):
     # ``None`` means "legacy un-namespaced project" — accessible only
     # when ``PLATO_DASHBOARD_AUTH_REQUIRED=1`` is unset.
     user_id: Optional[str] = None
+    # Iter-26: per-project cost cap moved server-side. ``None`` means
+    # no cap configured for this project (the legacy / default state).
+    cost_caps: Optional[CostCapState] = None
 
     @classmethod
     def empty(cls, name: str = "Untitled project", user_id: str | None = None) -> "Project":
