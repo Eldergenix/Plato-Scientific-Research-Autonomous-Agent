@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { LineChart } from "lucide-react";
+import { LineChart, X as CloseIcon } from "lucide-react";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:7878/api/v1";
@@ -53,6 +53,44 @@ export default function EvalsPage() {
   const [state, setState] = React.useState<Loadable<EvalSummary>>({
     kind: "loading",
   });
+  // Per-task drill-down: clicking a task id pulls its full
+  // metrics.json into a side panel without leaving the page.
+  const [openTask, setOpenTask] = React.useState<string | null>(null);
+  const [taskMetrics, setTaskMetrics] = React.useState<
+    Loadable<Record<string, unknown>> | null
+  >(null);
+
+  React.useEffect(() => {
+    if (!openTask) {
+      setTaskMetrics(null);
+      return;
+    }
+    let cancelled = false;
+    setTaskMetrics({ kind: "loading" });
+    fetch(`${API_BASE}/evals/tasks/${openTask}/metrics`, { cache: "no-store" })
+      .then(async (resp) => {
+        if (cancelled) return;
+        if (resp.status === 404) {
+          setTaskMetrics({ kind: "missing" });
+          return;
+        }
+        if (!resp.ok) {
+          setTaskMetrics({ kind: "error", message: `HTTP ${resp.status}` });
+          return;
+        }
+        setTaskMetrics({ kind: "ready", data: await resp.json() });
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setTaskMetrics({
+          kind: "error",
+          message: err instanceof Error ? err.message : "Network error",
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [openTask]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -159,15 +197,66 @@ export default function EvalsPage() {
               </div>
               <ul className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
                 {state.data.task_ids.map((id) => (
-                  <li
-                    key={id}
-                    className="rounded-[6px] bg-(--color-bg-pill-inactive) px-2 py-1 font-mono text-(--color-text-row-meta)"
-                  >
-                    {id}
+                  <li key={id}>
+                    <button
+                      type="button"
+                      onClick={() => setOpenTask(id)}
+                      data-testid={`evals-task-pill-${id}`}
+                      className="rounded-[6px] bg-(--color-bg-pill-inactive) px-2 py-1 font-mono text-(--color-text-row-meta) transition-colors hover:bg-(--color-ghost-bg-hover) hover:text-(--color-text-primary)"
+                    >
+                      {id}
+                    </button>
                   </li>
                 ))}
               </ul>
             </section>
+
+            {openTask ? (
+              <section
+                className="surface-linear-card px-4 py-4"
+                data-testid="evals-task-detail"
+                style={{ border: "1px solid var(--color-border-card)" }}
+              >
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[11.5px] uppercase tracking-wide text-(--color-text-tertiary-spec)">
+                      Task metrics
+                    </div>
+                    <div className="font-mono text-[13px] text-(--color-text-primary-strong)">
+                      {openTask}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setOpenTask(null)}
+                    aria-label="Close task detail"
+                    className="rounded-[6px] p-1 text-(--color-text-tertiary) hover:bg-(--color-ghost-bg-hover)"
+                  >
+                    <CloseIcon size={14} strokeWidth={1.75} />
+                  </button>
+                </div>
+                {taskMetrics?.kind === "loading" ? (
+                  <div className="text-[12.5px] text-(--color-text-tertiary)">
+                    Loading metrics.json…
+                  </div>
+                ) : null}
+                {taskMetrics?.kind === "missing" ? (
+                  <div className="text-[12.5px] text-(--color-text-tertiary)">
+                    No metrics.json on disk for this task yet.
+                  </div>
+                ) : null}
+                {taskMetrics?.kind === "error" ? (
+                  <div className="text-[12.5px] text-(--color-status-red-spec)">
+                    {taskMetrics.message}
+                  </div>
+                ) : null}
+                {taskMetrics?.kind === "ready" ? (
+                  <pre className="overflow-x-auto rounded-[6px] bg-(--color-bg-pill-inactive) p-3 font-mono text-[11.5px] leading-relaxed text-(--color-text-secondary)">
+                    {JSON.stringify(taskMetrics.data, null, 2)}
+                  </pre>
+                ) : null}
+              </section>
+            ) : null}
 
             <section
               className="surface-linear-card overflow-hidden"

@@ -52,4 +52,35 @@ def get_eval_summary() -> dict:
         ) from exc
 
 
+# Match a task id from a path segment. Same charset rule as the
+# X-Plato-User regex from iter 4 — keeps a crafted id from escaping
+# evals/results/ via path traversal.
+import re
+
+_TASK_ID_RE = re.compile(r"\A[A-Za-z0-9._-]{1,128}\Z")
+
+
+@router.get("/evals/tasks/{task_id}/metrics", response_model=JsonObjectResponse)
+def get_eval_task_metrics(task_id: str) -> dict:
+    """Return ``evals/results/<task_id>/metrics.json`` for the drill-down view."""
+    if not _TASK_ID_RE.match(task_id):
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "invalid_task_id"},
+        )
+    path = Path("evals/results") / task_id / "metrics.json"
+    if not path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "eval_task_metrics_not_found", "task_id": task_id},
+        )
+    try:
+        return json.loads(path.read_text())
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "eval_task_metrics_corrupt", "message": str(exc)},
+        ) from exc
+
+
 __all__ = ["router"]
