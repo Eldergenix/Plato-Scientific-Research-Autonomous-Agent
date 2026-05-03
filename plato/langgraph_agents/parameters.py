@@ -1,5 +1,6 @@
 from typing_extensions import TypedDict, Any
 from typing import Annotated
+from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AnyMessage
 from langgraph.graph.message import add_messages
 
@@ -36,7 +37,12 @@ class TOKENS(TypedDict):
 class LLM(TypedDict):
     model: str
     max_output_tokens: int
-    llm: Any
+    # ``BaseChatModel`` is the LangChain root for any chat-completion
+    # client (ChatOpenAI / ChatAnthropic / ChatGoogleGenerativeAI all
+    # subclass it). Was ``Any`` — every node-level ``.invoke()`` /
+    # ``.stream()`` call site silently passed type-check, so a wrong
+    # client only crashed deep inside the graph.
+    llm: BaseChatModel
     temperature: float
     stream_verbose: bool
 

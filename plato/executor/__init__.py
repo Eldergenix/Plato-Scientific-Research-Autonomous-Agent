@@ -83,7 +83,8 @@ def register_executor(executor: Executor, *, overwrite: bool = False) -> None:
 
 
 def get_executor(name: str) -> Executor:
-    """Look up a registered executor by name."""
+    """Look up a registered executor by name (lazy-loads built-ins)."""
+    _ensure_builtins_registered()
     if name not in EXECUTOR_REGISTRY:
         raise KeyError(
             f"Unknown executor {name!r}. Registered: {sorted(EXECUTOR_REGISTRY)}"
@@ -93,12 +94,41 @@ def get_executor(name: str) -> Executor:
 
 def list_executors() -> list[str]:
     """Return the sorted list of registered executor names."""
+    _ensure_builtins_registered()
     return sorted(EXECUTOR_REGISTRY)
 
 
-# --- Auto-register the built-in backends -----------------------------------
-# Importing these modules triggers their ``register_executor(...)`` call.
-from . import cmbagent as _cmbagent  # noqa: E402, F401
-from . import local_jupyter as _local_jupyter  # noqa: E402, F401
-from . import modal_backend as _modal_backend  # noqa: E402, F401
-from . import e2b_backend as _e2b_backend  # noqa: E402, F401
+# --- Lazy registration of built-in backends --------------------------------
+# Each backend module triggers ``register_executor(...)`` on import. We
+# defer those imports until first use so ``plato.executor`` can be
+# imported without paying the (sometimes heavy) cost of every backend
+# (cmbagent in particular pulls a large transitive graph). The first
+# call to ``get_executor`` / ``list_executors`` fires the imports.
+
+_BUILTIN_BACKENDS: tuple[str, ...] = (
+    "cmbagent",
+    "local_jupyter",
+    "modal_backend",
+    "e2b_backend",
+)
+_builtins_loaded = False
+
+
+def _ensure_builtins_registered() -> None:
+    """Import every built-in backend module exactly once."""
+    global _builtins_loaded
+    if _builtins_loaded:
+        return
+    _builtins_loaded = True
+    import importlib
+
+    for name in _BUILTIN_BACKENDS:
+        try:
+            importlib.import_module(f".{name}", __name__)
+        except Exception:
+            # An unavailable optional backend (e.g. modal SDK not
+            # installed) shouldn't block the others. Each backend
+            # module handles its own optional-dep behaviour.
+            pass
+
+
