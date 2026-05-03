@@ -105,6 +105,20 @@ class StageRunRequest(BaseModel):
     extra: dict = Field(default_factory=dict)
 
 
+class JsonObjectResponse(BaseModel):
+    """Generic free-form JSON-object response.
+
+    Used as the ``response_model`` for endpoints whose payload is a
+    JSON sidecar produced by the agent graphs (manifests, critiques,
+    citation graphs, etc.). The shape varies with the LLM workflow,
+    so we don't pin inner fields — but declaring an envelope object
+    gives FastAPI's OpenAPI generator something concrete instead of
+    an empty schema (``{}``).
+    """
+
+    model_config = {"extra": "allow"}
+
+
 class CreateProjectRequest(BaseModel):
     """Body for ``POST /api/v1/projects``.
 

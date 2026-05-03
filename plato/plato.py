@@ -1,4 +1,4 @@
-from typing import List
+from typing import TYPE_CHECKING, List
 import asyncio
 import logging
 import time
@@ -6,10 +6,6 @@ import os
 import shutil
 import warnings
 from pathlib import Path
-
-logger = logging.getLogger(__name__)
-from PIL import Image
-import cmbagent
 
 from .config import DEFAUL_PROJECT_NAME, INPUT_FILES, PLOTS_FOLDER, DESCRIPTION_FILE, IDEA_FILE, METHOD_FILE, RESULTS_FILE, LITERATURE_FILE
 from .research import Research
@@ -26,7 +22,17 @@ from .domain import DomainProfile, get_domain
 from .state import ManifestRecorder
 from .observability import callbacks_for
 from .executor import get_executor
-from cmbagent import preprocess_task
+
+# ``cmbagent`` and ``PIL`` previously fired on every ``from plato
+# import Plato`` — including ``plato --version`` and ``plato dashboard
+# --help``. Lazy-import them inside the methods that actually use
+# them so CLI cold-start drops by ~300-900ms and ``plato --version``
+# works on installs that don't have cmbagent (dashboard-only deploys,
+# CI, lighter dev environments).
+if TYPE_CHECKING:  # pragma: no cover — annotations only
+    from PIL import Image as _PILImage
+
+logger = logging.getLogger(__name__)
 
 class Plato:
     """
@@ -159,8 +165,12 @@ class Plato:
         
         self.research.results = self.setter(results, RESULTS_FILE)
 
-    def set_plots(self, plots: list[str] | list[Image.Image] | None = None) -> None:
+    def set_plots(self, plots: 'list[str] | list[_PILImage.Image] | None' = None) -> None:
         """Manually set the plots from their path."""
+        # Lazy import — keeps PIL out of every ``from plato import``
+        # path. PIL is only needed when the user is actually wiring
+        # plot files in, which is well after Plato construction.
+        from PIL import Image
 
         if plots is None:
             plots = [str(p) for p in (Path(self.project_dir) / "input_files" / "Plots").glob("*.png")]
@@ -173,7 +183,7 @@ class Plato:
             else:
                 img = plot
                 plot_name = f"plot_{i}.png"
-            
+
             img.save( os.path.join(self.project_dir, INPUT_FILES, PLOTS_FOLDER, plot_name) )
 
     def set_all(self) -> None:
@@ -263,6 +273,10 @@ class Plato:
                     self.research.data_description = f.read()
             except FileNotFoundError:
                 raise ValueError("No data description found. Please set a data description first before enhancing it.")
+
+        # Lazy import — keeps cmbagent out of the top-level plato.py
+        # import chain. See module-level comment.
+        from cmbagent import preprocess_task
 
         # Get the enhanced text from preprocess_task
         enhanced_text = preprocess_task(self.research.data_description,
@@ -876,7 +890,9 @@ class Plato:
         Returns:
             dict: Dictionary mapping keywords to their URLs
         """
-        
+        # Lazy import — see module-level comment.
+        import cmbagent
+
         keywords = cmbagent.get_keywords(input_text, n_keywords = n_keywords, kw_type = kw_type, api_keys = self.keys)
         self.research.keywords = keywords # type: ignore
         print('keywords: ', self.research.keywords)
