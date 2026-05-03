@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import { DashboardShell } from "@/components/shell/dashboard-shell";
 
-export const metadata: Metadata = { title: "Costs — Plato" };
+export const metadata: Metadata = { title: "Evals — Plato" };
 
-export default function CostsLayout({
+export default function EvalsLayout({
   children,
 }: {
   children: React.ReactNode;
