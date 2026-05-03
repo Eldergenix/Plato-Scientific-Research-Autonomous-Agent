@@ -15,11 +15,19 @@ simply absent and we fall through to the legacy un-namespaced layout.
 from __future__ import annotations
 
 import os
+import re
 
 from fastapi import HTTPException, Request, status
 
 USER_HEADER = "X-Plato-User"
 AUTH_REQUIRED_ENV = "PLATO_DASHBOARD_AUTH_REQUIRED"
+
+# A user id is used directly as a path segment under
+# ``<project_root>/users/<user_id>/``. Anything outside this allowlist
+# would either confuse the filesystem (slashes, dots) or open path
+# traversal (``..``) — neither is acceptable. 64 chars is generous for
+# any legitimate identity scheme (uuid, slug, email-local-part).
+_USER_ID_RE = re.compile(r"\A[A-Za-z0-9._-]{1,64}\Z")
 
 
 def auth_required() -> bool:
@@ -27,19 +35,38 @@ def auth_required() -> bool:
     return os.environ.get(AUTH_REQUIRED_ENV) == "1"
 
 
+def _is_safe_user_id(value: str) -> bool:
+    """Return True when ``value`` is safe to use as a path segment.
+
+    Rejects anything containing a path separator, parent-dir reference,
+    null byte, leading/trailing dot, or characters outside
+    ``[A-Za-z0-9._-]``. The dot constraint also blocks the ``.`` and
+    ``..`` directory entries. Length is capped at 64 to bound storage
+    layout depth.
+    """
+    if not _USER_ID_RE.match(value):
+        return False
+    # Forbid leading/trailing dot so we never produce a hidden directory
+    # or a path that resolves to the parent dir.
+    if value.startswith(".") or value.endswith("."):
+        return False
+    return True
+
+
 def extract_user_id(request: Request) -> str | None:
     """Return the requester's user id, or ``None`` when unauthenticated.
 
-    Returns the header value verbatim (stripped) when present. Returns
-    ``None`` either when the header is missing in not-required mode, or
-    when required-mode is on but no header was supplied — callers in
-    required-mode should refuse the request via :func:`require_user_id`.
+    The returned value has been validated against :data:`_USER_ID_RE`
+    so callers can use it directly as a filesystem path segment without
+    additional sanitization. An invalid value is treated as missing.
     """
     raw = request.headers.get(USER_HEADER)
     if raw is None:
         return None
     cleaned = raw.strip()
     if not cleaned:
+        return None
+    if not _is_safe_user_id(cleaned):
         return None
     return cleaned
 

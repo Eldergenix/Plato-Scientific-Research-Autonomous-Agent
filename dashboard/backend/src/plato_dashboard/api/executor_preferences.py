@@ -48,10 +48,17 @@ def _resolve_user_id(request: Request) -> str | None:
 
 
 def _prefs_path(settings: Settings, user_id: str | None) -> Path:
-    """Resolve the prefs file location for ``user_id`` (or legacy)."""
+    """Resolve the prefs file location for ``user_id`` (or legacy).
+
+    Co-locates with ``user_preferences.py``: both nest under
+    ``<project_root>/users/<user_id>/`` so a future merge can fold
+    them into a single file. (The previous ``project_root.parent``
+    path put executor prefs one directory above domain prefs and
+    blocked any such merge.)
+    """
     if user_id is None:
         return settings.project_root / _PREFS_FILENAME
-    return settings.project_root.parent / "users" / user_id / _PREFS_FILENAME
+    return settings.project_root / "users" / user_id / _PREFS_FILENAME
 
 
 def _read_prefs(path: Path) -> ExecutorPreference:

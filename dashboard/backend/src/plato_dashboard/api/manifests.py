@@ -26,14 +26,56 @@ router = APIRouter()
 
 
 def _user_id(req: Request) -> str | None:
-    """Local stub for user-id extraction.
+    """Extract the requester's user id from ``X-Plato-User``.
 
-    The real auth layer (``plato_dashboard.auth``) is not in place yet;
-    until it lands we just trust the ``X-Plato-User`` header. This keeps
-    the manifest endpoints decoupled from auth wiring without pretending
-    the field doesn't exist.
+    Delegates to the canonical ``plato_dashboard.auth.extract_user_id``
+    so this router cannot drift from the rest of the dashboard's auth
+    contract (validation regex, header name, fallback rules).
     """
-    return req.headers.get("X-Plato-User")
+    from ..auth import extract_user_id
+
+    return extract_user_id(req)
+
+
+def _enforce_tenant(run_dir: Path, run_id: str, requester: str | None) -> None:
+    """Refuse cross-tenant manifest reads.
+
+    Behaviour mirrors ``server._enforce_run_tenant``:
+
+    - If the run has no manifest yet, allow when auth isn't required.
+    - If the manifest's ``user_id`` differs from the requester, raise
+      403 (auth required) or 404 (auth optional, to avoid leaking the
+      run's existence).
+    """
+    from ..auth import auth_required as _auth_required
+
+    required = _auth_required()
+    if requester is None and not required:
+        return
+
+    manifest_path = run_dir / "manifest.json"
+    if not manifest_path.is_file():
+        if required:
+            raise HTTPException(403, detail={"code": "run_forbidden"})
+        return
+
+    try:
+        manifest_user = json.loads(manifest_path.read_text()).get("user_id")
+    except json.JSONDecodeError:
+        # A corrupt manifest is the manifest endpoint's own problem to
+        # surface — for tenant enforcement, fail closed.
+        raise HTTPException(403, detail={"code": "run_forbidden"})
+
+    if manifest_user is None:
+        # Pre-multi-tenant runs: allow only when auth isn't required.
+        if required:
+            raise HTTPException(403, detail={"code": "run_forbidden"})
+        return
+
+    if manifest_user != requester:
+        status = 403 if required else 404
+        code = "run_forbidden" if status == 403 else "run_not_found"
+        raise HTTPException(status, detail={"code": code, "run_id": run_id})
 
 
 def _find_run_dir(project_root: Path, run_id: str) -> Path | None:
@@ -80,10 +122,11 @@ def get_manifest(
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> dict:
-    _user_id(request)  # reserved for future per-user filtering
+    requester = _user_id(request)
     run_dir = _find_run_dir(settings.project_root, run_id)
     if run_dir is None:
         raise HTTPException(404, detail={"code": "run_not_found", "run_id": run_id})
+    _enforce_tenant(run_dir, run_id, requester)
     manifest_path = run_dir / "manifest.json"
     if not manifest_path.is_file():
         raise HTTPException(404, detail={"code": "manifest_not_found", "run_id": run_id})
@@ -102,10 +145,11 @@ def get_evidence_matrix(
     We classify by shape (presence of ``text`` vs. ``support``) so the
     writer doesn't have to commit to a single record type per file.
     """
-    _user_id(request)
+    requester = _user_id(request)
     run_dir = _find_run_dir(settings.project_root, run_id)
     if run_dir is None:
         raise HTTPException(404, detail={"code": "run_not_found", "run_id": run_id})
+    _enforce_tenant(run_dir, run_id, requester)
 
     claims: list[dict] = []
     links: list[dict] = []
@@ -138,10 +182,11 @@ def get_validation_report(
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> dict:
-    _user_id(request)
+    requester = _user_id(request)
     run_dir = _find_run_dir(settings.project_root, run_id)
     if run_dir is None:
         raise HTTPException(404, detail={"code": "run_not_found", "run_id": run_id})
+    _enforce_tenant(run_dir, run_id, requester)
     report_path = run_dir / "validation_report.json"
     if not report_path.is_file():
         raise HTTPException(

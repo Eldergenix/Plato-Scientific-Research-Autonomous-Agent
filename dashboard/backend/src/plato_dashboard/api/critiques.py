@@ -140,4 +140,19 @@ def get_critiques(
     return {"critiques": {}, "digest": None, "revision_state": None}
 
 
+# Architectural-plan alias. The plan document specifies
+# ``/api/v1/runs/{run_id}/reviews`` as the route name; the existing
+# implementation lives under ``/critiques``. Rather than break clients
+# that already use ``/critiques``, expose ``/reviews`` as a sibling
+# alias that delegates to the same handler.
+@router.get("/runs/{run_id}/reviews")
+def get_reviews(
+    run_id: str,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    """Alias for ``GET /runs/{run_id}/critiques`` (same payload)."""
+    return get_critiques(run_id=run_id, request=request, settings=settings)
+
+
 __all__ = ["router"]

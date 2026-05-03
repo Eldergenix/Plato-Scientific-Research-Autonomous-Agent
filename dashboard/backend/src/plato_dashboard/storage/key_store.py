@@ -29,6 +29,12 @@ ENV_KEYS = {
     "ANTHROPIC": "ANTHROPIC_API_KEY",
     "PERPLEXITY": "PERPLEXITY_API_KEY",
     "SEMANTIC_SCHOLAR": "SEMANTIC_SCHOLAR_KEY",
+    # R8 — observability. The dashboard's Langfuse integration reads
+    # these env-vars (or the in-app store as a fallback) so users can
+    # opt into traces without exporting shell variables.
+    "LANGFUSE_PUBLIC": "LANGFUSE_PUBLIC_KEY",
+    "LANGFUSE_SECRET": "LANGFUSE_SECRET_KEY",
+    "LANGFUSE_HOST": "LANGFUSE_HOST",
 }
 
 

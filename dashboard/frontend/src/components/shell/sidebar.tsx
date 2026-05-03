@@ -62,6 +62,11 @@ const WORKSPACE_LINKS: NavLink[] = [
   { href: "/activity", label: "Activity", icon: Activity },
   { href: "/loop", label: "Autonomous loop", icon: Repeat },
   { href: "/keys", label: "Keys", icon: KeyRound },
+  // Settings is also reachable via the bottom-bar gear, but keeping a
+  // labelled nav entry here ensures /settings can be a destination
+  // search results route to and that the active-state highlighting in
+  // the workspace list doesn't disappear once the user lands there.
+  { href: "/settings", label: "Settings", icon: SettingsIcon },
 ];
 
 const TEAM_LINKS: { id: string; label: string; icon: LucideIcon }[] = [

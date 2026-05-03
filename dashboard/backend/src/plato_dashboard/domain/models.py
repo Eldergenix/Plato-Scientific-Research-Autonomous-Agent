@@ -102,11 +102,34 @@ class StageRunRequest(BaseModel):
     extra: dict = Field(default_factory=dict)
 
 
+class CreateProjectRequest(BaseModel):
+    """Body for ``POST /api/v1/projects``.
+
+    The 255-char cap on ``name`` mirrors common filesystem display
+    constraints; the 16k cap on ``data_description`` keeps a
+    runaway client from filling project_dir with a megabyte of text
+    before any LLM call has happened.
+    """
+
+    name: str = Field("Untitled project", max_length=255, min_length=1)
+    data_description: Optional[str] = Field(default=None, max_length=16384)
+
+
 class StageContent(BaseModel):
     stage: StageId
     markdown: str
     updated_at: datetime
     origin: Literal["ai", "edited"] = "ai"
+
+
+class WriteStageRequest(BaseModel):
+    """Body for ``PUT /api/v1/projects/{pid}/state/{stage}``.
+
+    Cap markdown at 256 KiB — generous for a section but enough to
+    prevent unbounded payloads from a buggy editor or an attacker.
+    """
+
+    markdown: str = Field("", max_length=262144)
 
 
 class KeysPayload(BaseModel):
@@ -115,6 +138,9 @@ class KeysPayload(BaseModel):
     ANTHROPIC: Optional[str] = None
     PERPLEXITY: Optional[str] = None
     SEMANTIC_SCHOLAR: Optional[str] = None
+    LANGFUSE_PUBLIC: Optional[str] = None
+    LANGFUSE_SECRET: Optional[str] = None
+    LANGFUSE_HOST: Optional[str] = None
 
 
 class KeysStatus(BaseModel):
@@ -123,6 +149,9 @@ class KeysStatus(BaseModel):
     ANTHROPIC: Literal["unset", "from_env", "in_app"] = "unset"
     PERPLEXITY: Literal["unset", "from_env", "in_app"] = "unset"
     SEMANTIC_SCHOLAR: Literal["unset", "from_env", "in_app"] = "unset"
+    LANGFUSE_PUBLIC: Literal["unset", "from_env", "in_app"] = "unset"
+    LANGFUSE_SECRET: Literal["unset", "from_env", "in_app"] = "unset"
+    LANGFUSE_HOST: Literal["unset", "from_env", "in_app"] = "unset"
 
 
 class Capabilities(BaseModel):

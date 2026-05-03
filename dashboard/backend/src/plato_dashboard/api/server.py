@@ -15,12 +15,14 @@ from fastapi.staticfiles import StaticFiles
 from ..auth import auth_required, extract_user_id
 from ..domain.models import (
     Capabilities,
+    CreateProjectRequest,
     KeysPayload,
     Project,
     Run,
     StageContent,
     StageId,
     StageRunRequest,
+    WriteStageRequest,
 )
 from ..events.bus import EventBus, get_bus
 from ..settings import Settings, get_settings
@@ -43,6 +45,7 @@ from .manifests import router as manifests_router
 # Frontend pass routers — see streams F1, F2, F4, F6, F7, F8, F9, F10, F11+F12.
 # (F5's citation_graph_view router is auto-mounted by api/__init__.py.)
 from .auth_endpoints import router as auth_router
+from .citation_graph_view import router as citation_graph_router
 from .clarifications import router as clarifications_router
 from .critiques import router as critiques_router
 from .domains import router as domains_router
@@ -186,6 +189,7 @@ def create_app() -> FastAPI:
     # ``/api/v1/loop`` prefix so we mount it at root; the others are
     # prefix-less and get ``/api/v1`` here.
     app.include_router(auth_router, prefix="/api/v1", tags=["auth"])
+    app.include_router(citation_graph_router, prefix="/api/v1", tags=["citations"])
     app.include_router(clarifications_router, prefix="/api/v1", tags=["clarifications"])
     app.include_router(critiques_router, prefix="/api/v1", tags=["critiques"])
     app.include_router(domains_router, prefix="/api/v1", tags=["domains"])
@@ -213,10 +217,11 @@ def create_app() -> FastAPI:
 
     @app.post("/api/v1/projects", response_model=Project, status_code=201)
     def create_project(
-        body: dict, store: ProjectStore = Depends(_get_store)
+        body: CreateProjectRequest, store: ProjectStore = Depends(_get_store)
     ) -> Project:
-        name = body.get("name", "Untitled project")
-        return store.create(name=name, initial_data_description=body.get("data_description"))
+        return store.create(
+            name=body.name, initial_data_description=body.data_description
+        )
 
     @app.get("/api/v1/projects/{pid}", response_model=Project)
     def get_project(pid: str, store: ProjectStore = Depends(_get_store)) -> Project:
@@ -240,12 +245,12 @@ def create_app() -> FastAPI:
     async def write_stage(
         pid: str,
         stage: StageId,
-        body: dict,
+        body: WriteStageRequest,
         store: ProjectStore = Depends(_get_store),
         caps: Capabilities = Depends(get_capabilities),
     ) -> StageContent:
         require_stage_allowed(stage, caps)
-        return await store.write_stage(pid, stage, body.get("markdown", ""), origin="edited")
+        return await store.write_stage(pid, stage, body.markdown, origin="edited")
 
     # ------------------------------------------------------------ runs
     @app.post("/api/v1/projects/{pid}/stages/{stage}/run", response_model=Run, status_code=202)

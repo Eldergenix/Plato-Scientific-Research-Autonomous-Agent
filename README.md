@@ -7,6 +7,39 @@
 
 Plato is a multi-agent AI system that takes experimental data and produces peer-reviewable scientific papers end-to-end — generating the research idea, designing the methodology, running the analysis (via [cmbagent](https://github.com/CMBAgents/cmbagent)), and writing the LaTeX manuscript through a reviewer-panel revision loop.
 
+## What's new in 0.2
+
+Phase 5 hardening landed alongside the dashboard's 13-stream feature push:
+
+- **Multi-source retrieval** — six adapters (arXiv, OpenAlex, ADS, Crossref,
+  PubMed, Semantic Scholar) behind a domain-aware orchestrator with rate-limit
+  backoff, ETag caching, and per-host circuit breakers.
+- **Citation validation** — every reference is resolved against Crossref +
+  Retraction Watch + arXiv before the paper finalizes. The run dir gets a
+  `validation_report.json` with per-reference pass/fail.
+- **Claim → Evidence Matrix** — the literature pass extracts atomic claims
+  with quote spans and links them to source records. Persisted as
+  `evidence_matrix.jsonl` per run.
+- **Reviewer panel + revision loop** — methodology / statistics / novelty /
+  writing axes feed an aggregator that drives a redraft loop bounded by
+  `Plato.get_paper(max_revision_iters=...)`.
+- **Autonomous research loop** — `plato loop --hours 8 --max-cost-usd 50`
+  iterates under a wall-clock + cost budget, committing improvements and
+  reverting regressions.
+- **Reproducibility manifest** — every workflow emits `manifest.json` with
+  git sha, project sha-256, model versions, source ids, tokens, and cost.
+- **Observability** — opt in by setting `LANGFUSE_*` env vars; LangFuse
+  callbacks are wired into every LangGraph invocation.
+- **Pluggable domains** — `DomainProfile` registry exposes retrieval,
+  keyword extractor, journal preset, executor, and novelty corpus as swap
+  points. Astro is the default; biology ships out-of-the-box.
+- **Multi-tenant dashboard** — set `PLATO_DASHBOARD_AUTH_REQUIRED=1` and
+  the dashboard reads `X-Plato-User` from the upstream proxy to scope
+  every project, key store, and run artifact per tenant.
+
+See `docs/adr/` for the design decisions behind these changes and
+`dashboard/CHANGELOG.md` for the full list.
+
 ## Resources
 
 - [🌐 Project page](https://astropilot-ai.github.io/PlatoPaperPage/)
@@ -54,32 +87,32 @@ Initialize a `Plato` instance and describe the data and tools to be employed.
 ```python
 from plato import Plato
 
-den = Plato(project_dir="project_dir")
+p = Plato(project_dir="project_dir")
 
 prompt = """
 Analyze the experimental data stored in data.csv using sklearn and pandas.
 This data includes time-series measurements from a particle detector.
 """
 
-den.set_data_description(prompt)
+p.set_data_description(prompt)
 ```
 
 Generate a research idea from that data specification.
 
 ```python
-den.get_idea()
+p.get_idea()
 ```
 
 Generate the methodology required for working on that idea.
 
 ```python
-den.get_method()
+p.get_method()
 ```
 
 With the methodology setup, perform the required computations and get the plots and results.
 
 ```python
-den.get_results()
+p.get_results()
 ```
 
 Finally, generate a latex article with the results. You can specify the journal style, in this example we choose the [APS (Physical Review Journals)](https://journals.aps.org/) style.
@@ -87,13 +120,13 @@ Finally, generate a latex article with the results. You can specify the journal 
 ```python
 from plato import Journal
 
-den.get_paper(journal=Journal.APS)
+p.get_paper(journal=Journal.APS)
 ```
 
 You can also manually provide any info as a string or markdown file in an intermediate step, using the `set_idea`, `set_method` or `set_results` methods. For instance, for providing a file with the methodology developed by the user:
 
 ```python
-den.set_method(path_to_the_method_file.md)
+p.set_method(path_to_the_method_file.md)
 ```
 
 ## Plato Dashboard (new, recommended)
