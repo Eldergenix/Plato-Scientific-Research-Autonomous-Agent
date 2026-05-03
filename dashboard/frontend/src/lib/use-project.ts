@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { api } from "./api";
+import { api, setActiveRunId } from "./api";
 import { SAMPLE_LOG, SAMPLE_PROJECT } from "./sample-data";
 import type { LogLine, Project, StageId } from "./types";
 
@@ -115,6 +115,10 @@ export function useProject(): ProjectState {
       if (!isLive || !projectIdRef.current) return;
       try {
         const run = await api.startRun(projectIdRef.current, stage, body);
+        // Set the module-level run-id so every subsequent fetchJson
+        // call carries X-Plato-Run-Id for backend log correlation.
+        // Cleared in the SSE close handler below.
+        setActiveRunId(run.id);
         sseUnsubRef.current?.();
         sseUnsubRef.current = api.subscribeRunEvents(
           projectIdRef.current,
@@ -145,6 +149,10 @@ export function useProject(): ProjectState {
               // Live plot file watcher: a new plot file appeared on disk.
               void refreshPlots();
             } else if (evt.kind === "stage.finished") {
+              // Clear the run-id correlation header so post-run
+              // requests (refresh, plot fetches) aren't tagged with
+              // a stale run id.
+              setActiveRunId(null);
               void refresh();
               void refreshPlots();
             }
