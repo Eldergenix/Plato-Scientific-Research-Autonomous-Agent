@@ -37,6 +37,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from ..domain.models import JsonObjectResponse
 from ..settings import Settings, get_settings
 from .manifests import _find_run_dir, _read_json, _user_id
 
@@ -96,7 +97,7 @@ def _enforce_tenant(run_dir: Path, requester: str | None) -> None:
         raise HTTPException(403, detail={"code": "run_forbidden"})
 
 
-@router.get("/runs/{run_id}/critiques")
+@router.get("/runs/{run_id}/critiques", response_model=JsonObjectResponse)
 def get_critiques(
     run_id: str,
     request: Request,
@@ -145,7 +146,7 @@ def get_critiques(
 # implementation lives under ``/critiques``. Rather than break clients
 # that already use ``/critiques``, expose ``/reviews`` as a sibling
 # alias that delegates to the same handler.
-@router.get("/runs/{run_id}/reviews")
+@router.get("/runs/{run_id}/reviews", response_model=JsonObjectResponse)
 def get_reviews(
     run_id: str,
     request: Request,

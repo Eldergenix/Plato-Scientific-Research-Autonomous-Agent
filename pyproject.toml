@@ -69,3 +69,30 @@ build-backend = "hatchling.build"
 
 [tool.setuptools.packages.find]
 where = ["."]
+
+# ---------------------------------------------------------------------------
+# Static type-checking — minimal opt-in baseline.
+#
+# Not strict mode: the codebase has plenty of legacy ``Any`` usages
+# (LangGraph state, KeyManager, etc.) that will need a planned cleanup
+# before strict can be turned on. The settings below catch the
+# highest-value mistakes (missing returns, unreachable code, untyped
+# decorators leaking into typed call sites) without forcing a full
+# annotation pass first.
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+warn_redundant_casts = true
+warn_unreachable = true
+warn_unused_ignores = true
+warn_no_return = true
+no_implicit_optional = true
+check_untyped_defs = false  # tighten in a follow-up pass
+disallow_untyped_defs = false  # tighten in a follow-up pass
+disallow_any_generics = false  # tighten in a follow-up pass
+
+[[tool.mypy.overrides]]
+# Third-party packages without type stubs that we know about.
+module = ["cmbagent.*", "pymupdf.*", "fitz.*", "futurehouse_client.*"]
+ignore_missing_imports = true

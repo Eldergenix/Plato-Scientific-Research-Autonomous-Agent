@@ -30,6 +30,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from ..domain.models import JsonObjectResponse
 from ..settings import Settings, get_settings
 
 
@@ -142,7 +143,7 @@ def _load_clarifications(run_dir: Path) -> tuple[list[str], bool]:
 # --------------------------------------------------------------------------- #
 # Routes
 # --------------------------------------------------------------------------- #
-@router.get("/runs/{run_id}/clarifications")
+@router.get("/runs/{run_id}/clarifications", response_model=JsonObjectResponse)
 def get_clarifications(
     run_id: str,
     request: Request,

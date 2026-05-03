@@ -20,6 +20,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from ..auth import auth_required, extract_user_id
+from ..domain.models import JsonObjectResponse
 from ..settings import Settings, get_settings
 from .manifests import _find_run_dir, _read_json
 
@@ -169,7 +170,7 @@ def _from_manifest_extra(manifest: dict) -> dict[str, Any] | None:
     return _build_payload(log)
 
 
-@router.get("/runs/{run_id}/retrieval_summary")
+@router.get("/runs/{run_id}/retrieval_summary", response_model=JsonObjectResponse)
 def get_retrieval_summary(
     run_id: str,
     request: Request,

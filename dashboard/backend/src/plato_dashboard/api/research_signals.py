@@ -21,6 +21,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from ..domain.models import JsonObjectResponse
 from ..settings import Settings, get_settings
 from .manifests import _find_run_dir, _read_json, _user_id
 
@@ -112,7 +113,7 @@ def _check_tenant(run_dir: Path, request: Request, settings: Settings) -> None:
         )
 
 
-@router.get("/runs/{run_id}/counter_evidence")
+@router.get("/runs/{run_id}/counter_evidence", response_model=JsonObjectResponse)
 def get_counter_evidence(
     run_id: str,
     request: Request,
@@ -158,7 +159,7 @@ def get_counter_evidence(
     return {"sources": sources, "queries_used": queries_used}
 
 
-@router.get("/runs/{run_id}/gaps")
+@router.get("/runs/{run_id}/gaps", response_model=JsonObjectResponse)
 def get_gaps(
     run_id: str,
     request: Request,
