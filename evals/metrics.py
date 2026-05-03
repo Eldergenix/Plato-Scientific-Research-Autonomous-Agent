@@ -28,7 +28,7 @@ class Metrics(BaseModel):
         description="Fraction of claims without a 'supports' EvidenceLink.",
     )
     novelty_consistency: float | None = None
-    referee_severity_max: int | None = None
+    referee_severity_max: float | None = None
     paper_coherence: float | None = Field(
         default=None, description="Judge score 0..5; None if no judge ran."
     )
@@ -37,6 +37,22 @@ class Metrics(BaseModel):
     tokens_out: int = 0
     latency_seconds: float = 0.0
     tool_call_error_rate: float | None = None
+    keyword_recall: float | None = Field(
+        default=None,
+        description=(
+            "Fraction of GoldenTask.expected_idea_keywords that appear in "
+            "the drafted idea/method text. None when the task didn't ship "
+            "any expected keywords."
+        ),
+    )
+    gold_source_recall: float | None = Field(
+        default=None,
+        description=(
+            "Fraction of GoldenTask.gold_sources whose DOI or arXiv id "
+            "appears in the paper text. None when the task didn't ship "
+            "gold sources."
+        ),
+    )
 
 
 def citation_validation_rate(validations: Iterable[ValidationResult]) -> float:

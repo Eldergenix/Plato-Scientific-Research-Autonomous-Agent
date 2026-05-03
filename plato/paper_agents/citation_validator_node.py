@@ -25,12 +25,15 @@ import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from langchain_core.runnables import RunnableConfig
 
 from ..state.models import Source, ValidationResult
 from ..tools.citation_validator import CitationValidator
+
+if TYPE_CHECKING:  # pragma: no cover — annotation only
+    from .parameters import GraphState
 
 
 _BIB_ENTRY_HEAD_RE = re.compile(r"@(\w+)\s*\{")
@@ -308,7 +311,10 @@ def _passed(result: ValidationResult) -> bool:
     return bool(result.doi_resolved or result.arxiv_resolved)
 
 
-async def citation_validator_node(state: dict, config: RunnableConfig = None) -> dict:
+async def citation_validator_node(
+    state: "GraphState",
+    config: RunnableConfig | None = None,
+) -> dict:
     """LangGraph node: validate references and emit ``validation_report.json``.
 
     Returns a partial state update with ``validation_report`` populated.
