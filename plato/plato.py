@@ -836,7 +836,21 @@ class Plato:
             with open(os.path.join(self.project_dir, INPUT_FILES, METHOD_FILE), 'r') as f:
                 self.research.methodology = f.read()
 
-        executor_name = executor if executor is not None else self.domain.executor
+        # Iter-22 — executor resolution order (highest priority first):
+        #   1. Explicit ``executor=`` kwarg passed by the caller.
+        #   2. ``self._cli_executor_override`` set by the CLI when
+        #      ``plato loop --executor <name>`` was used. This is what makes
+        #      the iter-21 CLI flag actually take effect downstream — the
+        #      ResearchLoop / dashboard worker / interactive caller all
+        #      go through ``get_results`` and pick up the override here
+        #      without each call site having to re-thread the kwarg.
+        #   3. The active ``DomainProfile.executor`` (registry default).
+        if executor is not None:
+            executor_name = executor
+        elif getattr(self, "_cli_executor_override", None):
+            executor_name = self._cli_executor_override
+        else:
+            executor_name = self.domain.executor
         executor_obj = get_executor(executor_name)
 
         result = asyncio.run(executor_obj.run(
