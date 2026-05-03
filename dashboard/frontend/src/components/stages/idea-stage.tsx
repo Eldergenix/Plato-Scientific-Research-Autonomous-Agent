@@ -171,7 +171,7 @@ export function IdeaStage({
         </div>
       </main>
 
-      <IdeaSidePanel onRun={onRun} />
+      <IdeaSidePanel projectId={projectId} onRun={onRun} />
     </div>
   );
 }
@@ -319,9 +319,18 @@ function EmptyIdeaHint({ onRun }: { onRun?: () => void }) {
   );
 }
 
-function IdeaSidePanel({ onRun }: { onRun?: () => void }) {
-  // TODO: Phase 5 — these models will pass through to a real
-  // api.startRun(projectId, "idea", { mode, models: { idea_maker: maker, idea_hater: hater, ... } })
+function IdeaSidePanel({
+  projectId,
+  onRun,
+}: {
+  projectId?: string;
+  onRun?: () => void;
+}) {
+  // Iter-23: 7 model-picker selects (+ mode + iterations) now thread
+  // through to ``api.startRun(projectId, "idea", { mode, models })``
+  // when ``projectId`` is set. Falls back to the legacy no-op
+  // ``onRun()`` callback otherwise (e.g. when rendered from the empty
+  // EMPTY_PROJECT first-paint state where no project exists yet).
   const [mode, setMode] = React.useState<"fast" | "cmbagent">("fast");
   const [iterations, setIterations] = React.useState(4);
   const [maker, setMaker] = React.useState("gpt-5");
@@ -330,6 +339,77 @@ function IdeaSidePanel({ onRun }: { onRun?: () => void }) {
   const [reviewer, setReviewer] = React.useState("o3-mini");
   const [orchestration, setOrchestration] = React.useState("gpt-4.1");
   const [formatter, setFormatter] = React.useState("o3-mini");
+  const [submitting, setSubmitting] = React.useState(false);
+  const [submitError, setSubmitError] = React.useState<string | null>(null);
+
+  // Iter-23: real run-history list driven by GET /projects/{pid}/idea_history.
+  const [history, setHistory] = React.useState<
+    import("@/lib/api").IdeaHistoryResponse["entries"] | null
+  >(null);
+  const [historyError, setHistoryError] = React.useState<string | null>(null);
+
+  const refreshHistory = React.useCallback(async () => {
+    if (!projectId) {
+      setHistory(null);
+      return;
+    }
+    try {
+      const r = await api.listIdeaHistory(projectId);
+      setHistory(r.entries);
+      setHistoryError(null);
+    } catch (e: unknown) {
+      setHistoryError(e instanceof Error ? e.message : "Failed to load history");
+    }
+  }, [projectId]);
+
+  React.useEffect(() => {
+    void refreshHistory();
+  }, [refreshHistory]);
+
+  const handleRun = React.useCallback(async () => {
+    setSubmitError(null);
+    if (projectId) {
+      const models: Record<string, string> = {
+        idea_maker: maker,
+        idea_hater: hater,
+        planner,
+        plan_reviewer: reviewer,
+        orchestration,
+        formatter,
+      };
+      try {
+        setSubmitting(true);
+        await api.startRun(projectId, "idea", { mode, models });
+        // Fire the legacy callback too for parents that listen for
+        // post-submit refreshes (e.g. switching panes).
+        onRun?.();
+        // Refresh history once the run is acknowledged so the user
+        // sees their new entry pending in the list.
+        void refreshHistory();
+      } catch (e: unknown) {
+        setSubmitError(
+          e instanceof Error ? e.message : "Failed to start run",
+        );
+      } finally {
+        setSubmitting(false);
+      }
+    } else {
+      // Without projectId we can't dispatch — preserve the original
+      // no-op behaviour so the button still feels responsive.
+      onRun?.();
+    }
+  }, [
+    projectId,
+    mode,
+    maker,
+    hater,
+    planner,
+    reviewer,
+    orchestration,
+    formatter,
+    onRun,
+    refreshHistory,
+  ]);
 
   return (
     <aside className="w-[320px] hairline-l bg-(--color-bg-marketing) p-4 overflow-auto">
@@ -398,39 +478,131 @@ function IdeaSidePanel({ onRun }: { onRun?: () => void }) {
         </div>
       </details>
 
-      <Button variant="primary" size="md" className="mt-4 w-full" onClick={onRun}>
-        <Sparkles size={13} strokeWidth={1.5} />
+      <Button
+        variant="primary"
+        size="md"
+        className="mt-4 w-full"
+        onClick={handleRun}
+        disabled={submitting}
+        data-testid="idea-generate-button"
+      >
+        {submitting ? (
+          <Loader2 size={13} strokeWidth={1.5} className="animate-spin" />
+        ) : (
+          <Sparkles size={13} strokeWidth={1.5} />
+        )}
         Generate new idea
       </Button>
-      <Button variant="ghost" size="md" className="mt-2 w-full" onClick={onRun}>
+      <Button
+        variant="ghost"
+        size="md"
+        className="mt-2 w-full"
+        onClick={handleRun}
+        disabled={submitting}
+      >
         <RefreshCw size={12} strokeWidth={1.5} />
         Refine current
       </Button>
+      {submitError ? (
+        <p
+          className="mt-2 text-[11px] text-(--color-status-red)"
+          data-testid="idea-submit-error"
+        >
+          {submitError}
+        </p>
+      ) : null}
 
       <div className="mt-6 hairline-t pt-4">
         <h3 className="font-label">Run history</h3>
-        {/* Iter-22: deleted the hardcoded "12m ago / yesterday / 2 days ago"
-            mock list that misled users into thinking historical runs were
-            being shown. Until ``.history/idea_*.md`` is exposed via a real
-            endpoint, render an empty state pointing at the runs page
-            (which DOES carry real history). */}
-        <div
-          className="mt-2 surface-card border-dashed border-(--color-border-standard) px-3 py-3 text-center"
-          data-testid="idea-history-empty"
-        >
-          <History
-            size={16}
-            strokeWidth={1.5}
-            className="mx-auto text-(--color-text-quaternary)"
-          />
-          <p className="mt-1 text-[11.5px] text-(--color-text-tertiary) leading-[1.5]">
-            No history captured yet. Past runs will appear here once the
-            <code className="font-mono"> .history/idea_*.md</code> reader
-            ships; meanwhile, see <code className="font-mono">/runs</code>
-            for the full per-run manifest log.
-          </p>
-        </div>
+        {/* Iter-23: history is populated from GET /idea_history. When no
+            past runs exist (or the project hasn't loaded yet) we render
+            the empty state. Errors fall through to the empty state too;
+            they're surfaced inline so a transient backend hiccup
+            doesn't blank the panel. */}
+        {history && history.length > 0 ? (
+          <ul
+            className="mt-2 space-y-1"
+            data-testid="idea-history-list"
+          >
+            {history.map((r) => {
+              const dur =
+                r.duration_seconds !== null && r.duration_seconds !== undefined
+                  ? formatRelativeDuration(r.duration_seconds)
+                  : "—";
+              const model =
+                r.models["idea_maker"] ||
+                r.models["idea"] ||
+                Object.values(r.models)[0] ||
+                r.workflow;
+              return (
+                <li
+                  key={r.run_id}
+                  className="surface-ghost px-2 py-1.5 text-[11.5px]"
+                  data-testid={`idea-history-row-${r.run_id}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-(--color-text-primary)">
+                      {r.started_at
+                        ? formatRelativeTime(r.started_at)
+                        : "unknown"}
+                    </span>
+                    <span className="font-mono text-(--color-text-quaternary) tabular-nums">
+                      {dur}
+                    </span>
+                  </div>
+                  <span className="text-(--color-text-tertiary) font-mono text-[10.5px]">
+                    {model} · {r.status}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <div
+            className="mt-2 surface-card border-dashed border-(--color-border-standard) px-3 py-3 text-center"
+            data-testid="idea-history-empty"
+          >
+            <History
+              size={16}
+              strokeWidth={1.5}
+              className="mx-auto text-(--color-text-quaternary)"
+            />
+            <p className="mt-1 text-[11.5px] text-(--color-text-tertiary) leading-[1.5]">
+              No idea-generation runs yet. Click
+              <strong> Generate new idea </strong> above to start your
+              first one — it'll appear here automatically when the run
+              kicks off. See <code className="font-mono">/runs</code>
+              for the full per-run manifest log.
+            </p>
+            {historyError ? (
+              <p
+                className="mt-2 text-[11px] text-(--color-status-amber)"
+                data-testid="idea-history-error"
+              >
+                {historyError}
+              </p>
+            ) : null}
+          </div>
+        )}
       </div>
     </aside>
   );
+}
+
+
+/** Iter-23: tiny duration formatter used by the run-history list.
+ * Renders ``Ns`` / ``Nm Ss`` / ``Nh Mm`` for sub-min / sub-hour /
+ * multi-hour spans. Intentionally compact — the side panel column is
+ * narrow, so we avoid the ``durationFormat`` helper from utils which
+ * pads to "11m 04s" form.
+ */
+function formatRelativeDuration(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "—";
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remSeconds = Math.round(seconds - minutes * 60);
+  if (minutes < 60) return `${minutes}m ${remSeconds.toString().padStart(2, "0")}s`;
+  const hours = Math.floor(minutes / 60);
+  const remMinutes = minutes - hours * 60;
+  return `${hours}h ${remMinutes.toString().padStart(2, "0")}m`;
 }

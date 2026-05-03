@@ -59,6 +59,7 @@ from .novelty import router as novelty_router
 from .research_signals import router as research_signals_router
 from .retrieval_summary import router as retrieval_summary_router
 from .user_preferences import router as user_preferences_router
+from .idea_history import router as idea_history_router
 
 
 def _resolve_project_root(settings: Settings, user_id: str | None) -> Path:
@@ -234,6 +235,7 @@ def create_app() -> FastAPI:
     app.include_router(research_signals_router, prefix="/api/v1", tags=["research_signals"])
     app.include_router(retrieval_summary_router, prefix="/api/v1", tags=["retrieval"])
     app.include_router(user_preferences_router, prefix="/api/v1", tags=["preferences"])
+    app.include_router(idea_history_router, prefix="/api/v1", tags=["idea_history"])
 
     @app.get("/api/v1/health")
     def health() -> dict:

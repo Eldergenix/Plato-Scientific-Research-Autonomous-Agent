@@ -2,8 +2,7 @@
 
 import * as React from "react";
 import { api, setActiveRunId } from "./api";
-import { SAMPLE_LOG, SAMPLE_PROJECT } from "./sample-data";
-import type { LogLine, Project, StageId } from "./types";
+import type { LogLine, Project, Stage, StageId } from "./types";
 
 export interface PlotEntry {
   name: string;
@@ -14,7 +13,8 @@ interface ProjectState {
   project: Project;
   log: LogLine[];
   plots: PlotEntry[];
-  isLive: boolean; // true when fetched from API; false when running off sample
+  isLive: boolean; // true when fetched from API; false when offline / pre-bootstrap
+  loading: boolean; // true until the first ``getProject`` resolves (or fails)
   capabilities: {
     is_demo: boolean;
     allowed_stages: StageId[];
@@ -26,11 +26,53 @@ interface ProjectState {
   refreshPlots: () => Promise<void>;
 }
 
+// Iter-23: replaced the SAMPLE_PROJECT first-paint flash. The previous
+// hook seeded React state with a hardcoded ``demo-gw231123 / run_8a2f1c``
+// project so the UI could render before the backend responded — but
+// every dashboard load briefly showed fake astro project data, even on
+// completely empty installs and even for biology / ML domains. The
+// "is this my data?" flash was confusing and the offline banner showed
+// fabricated history.
+//
+// Now: bootstrap from an EMPTY_PROJECT shape with no fake metadata.
+// Consumers consult the new ``loading`` flag (true until the first
+// ``getProject`` resolves or fails) to render skeletons / empty states
+// instead of the prior phantom run + token totals.
+const _emptyStages: Record<StageId, Stage> = {
+  data: { id: "data", label: "Data", status: "empty" },
+  idea: { id: "idea", label: "Idea", status: "empty" },
+  literature: { id: "literature", label: "Literature", status: "empty" },
+  method: { id: "method", label: "Method", status: "empty" },
+  results: { id: "results", label: "Results", status: "empty" },
+  paper: { id: "paper", label: "Paper", status: "empty" },
+  referee: { id: "referee", label: "Referee", status: "empty" },
+};
+
+export const EMPTY_PROJECT: Project = {
+  id: "",
+  // Mirror the backend's ``Project.name`` default ("Untitled project"
+  // — see ``plato_dashboard.domain.models.Project``). Keeping the name
+  // non-empty means the topbar renders something instead of a 0-width
+  // h1; matching the backend default means the user can't visually
+  // tell whether they're seeing the placeholder or a freshly-created
+  // project that they haven't named yet (which is fine — both states
+  // present the same affordance: rename it).
+  name: "Untitled project",
+  createdAt: new Date(0).toISOString(),
+  updatedAt: new Date(0).toISOString(),
+  journal: "NONE",
+  stages: _emptyStages,
+  activeRun: null,
+  totalTokens: 0,
+  totalCostCents: 0,
+};
+
 export function useProject(): ProjectState {
-  const [project, setProject] = React.useState<Project>(SAMPLE_PROJECT);
-  const [log, setLog] = React.useState<LogLine[]>(SAMPLE_LOG);
+  const [project, setProject] = React.useState<Project>(EMPTY_PROJECT);
+  const [log, setLog] = React.useState<LogLine[]>([]);
   const [plots, setPlots] = React.useState<PlotEntry[]>([]);
   const [isLive, setIsLive] = React.useState(false);
+  const [loading, setLoading] = React.useState(true);
   const [caps, setCaps] = React.useState<ProjectState["capabilities"]>(null);
   const sseUnsubRef = React.useRef<(() => void) | null>(null);
   const projectIdRef = React.useRef<string | null>(null);
@@ -99,9 +141,14 @@ export function useProject(): ProjectState {
           // ignore
         }
       } catch {
-        // Backend offline — keep showing the rich sample data so the design
-        // remains demo-able as a static page (HuggingFace Spaces fallback).
+        // Iter-23: backend offline → stay on EMPTY_PROJECT instead of
+        // SAMPLE_PROJECT. The offline banner is the right place to tell
+        // the user the backend is unreachable; rendering fake astro
+        // data underneath made every offline state look like a live
+        // (but stale) GW231123 session.
         setIsLive(false);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     })();
     return () => {
@@ -175,6 +222,7 @@ export function useProject(): ProjectState {
     log,
     plots,
     isLive,
+    loading,
     capabilities: caps,
     startRun,
     cancelRun,
