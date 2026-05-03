@@ -115,6 +115,78 @@ def _load_run_manifest_user(project_dir: Path, run_id: str) -> str | None:
     return user if isinstance(user, str) else None
 
 
+def _enforce_project_tenant(
+    store: ProjectStore, pid: str, requester_user_id: str | None
+) -> None:
+    """Refuse cross-tenant project access at the API entry point.
+
+    The directory layout (``<base>/users/<uid>/<pid>``) already isolates
+    tenants for code paths that go through ``_get_store`` — but several
+    endpoints (``run_stage``, ``list_runs``, ``list_plots``,
+    ``get_file``) don't, and ``run_manager.start_run`` resolves
+    ``project_dir`` from ``settings.project_root / pid`` directly,
+    landing in the legacy un-namespaced tree. This guard short-circuits
+    the request before it reaches the worker, so iter-24 closes the
+    cross-tenant launch bypass without a deeper run_manager refactor.
+
+    Behaviour matrix (mirrors ``_enforce_run_tenant``):
+
+    - Legacy single-user mode (requester=None, ``auth_required()`` is
+      False): no-op. Existing un-namespaced installs keep working.
+    - Required-mode (``auth_required()`` is True): the project's
+      ``meta.json`` must exist under the requester's namespace AND
+      its ``user_id`` must match. Anything else → 403.
+    - Not-required-mode + header present: best-effort match. A project
+      missing user_id (pre-iter-24 legacy) is allowed (backwards
+      compat). A project whose user_id disagrees → 404 (avoid leaking
+      existence).
+    """
+    from ..auth import auth_required as _auth_required
+
+    if requester_user_id is None and not _auth_required():
+        return
+
+    required = _auth_required()
+
+    try:
+        proj = store.load(pid)
+    except FileNotFoundError:
+        # Project doesn't exist in the requester's namespace. In
+        # required-mode this is a tenant violation (or the project
+        # doesn't exist at all — same response either way). In
+        # not-required-mode return 404 so we don't leak existence.
+        raise HTTPException(
+            status_code=403 if required else 404,
+            detail={
+                "code": "project_forbidden" if required else "project_not_found",
+                "pid": pid,
+            },
+        )
+
+    owner = proj.user_id
+    if owner is None:
+        # Legacy project (no user_id field). In required-mode this is
+        # a tenant violation (we can't prove ownership, fail closed).
+        # In not-required-mode this is a pre-iter-24 project visible to
+        # any authed user — same as the existing _enforce_run_tenant
+        # contract for legacy runs.
+        if required:
+            raise HTTPException(
+                status_code=403,
+                detail={"code": "project_forbidden", "pid": pid},
+            )
+        return
+
+    if owner != requester_user_id:
+        raise HTTPException(
+            status_code=403 if required else 404,
+            detail={
+                "code": "project_forbidden" if required else "project_not_found",
+                "pid": pid,
+            },
+        )
+
+
 def _enforce_run_tenant(
     project_dir: Path, run_id: str, requester_user_id: str | None
 ) -> None:
@@ -252,28 +324,51 @@ def create_app() -> FastAPI:
 
     @app.post("/api/v1/projects", response_model=Project, status_code=201)
     def create_project(
-        body: CreateProjectRequest, store: ProjectStore = Depends(_get_store)
+        body: CreateProjectRequest,
+        request: Request,
+        store: ProjectStore = Depends(_get_store),
     ) -> Project:
+        # Iter-24: bind the new project to the requester. Required-mode
+        # forces a non-None user_id (``_get_store`` already 401s on
+        # missing header, so by the time we land here ``user_id`` is
+        # set). In not-required-mode the project gets ``user_id=None``
+        # which keeps the legacy single-user shape on disk.
         return store.create(
-            name=body.name, initial_data_description=body.data_description
+            name=body.name,
+            initial_data_description=body.data_description,
+            user_id=_get_user_id(request),
         )
 
     @app.get("/api/v1/projects/{pid}", response_model=Project)
-    def get_project(pid: str, store: ProjectStore = Depends(_get_store)) -> Project:
+    def get_project(
+        pid: str,
+        request: Request,
+        store: ProjectStore = Depends(_get_store),
+    ) -> Project:
+        _enforce_project_tenant(store, pid, _get_user_id(request))
         try:
             return store.load(pid)
         except FileNotFoundError as exc:
             raise HTTPException(404, detail={"code": "project_not_found"}) from exc
 
     @app.delete("/api/v1/projects/{pid}", status_code=204)
-    def delete_project(pid: str, store: ProjectStore = Depends(_get_store)) -> None:
+    def delete_project(
+        pid: str,
+        request: Request,
+        store: ProjectStore = Depends(_get_store),
+    ) -> None:
+        _enforce_project_tenant(store, pid, _get_user_id(request))
         store.delete(pid)
 
     # ------------------------------------------------------------ stages
     @app.get("/api/v1/projects/{pid}/state/{stage}", response_model=StageContent | None)
     async def read_stage(
-        pid: str, stage: StageId, store: ProjectStore = Depends(_get_store)
+        pid: str,
+        stage: StageId,
+        request: Request,
+        store: ProjectStore = Depends(_get_store),
     ) -> StageContent | None:
+        _enforce_project_tenant(store, pid, _get_user_id(request))
         return await store.read_stage(pid, stage)
 
     @app.put("/api/v1/projects/{pid}/state/{stage}", response_model=StageContent)
@@ -281,9 +376,11 @@ def create_app() -> FastAPI:
         pid: str,
         stage: StageId,
         body: WriteStageRequest,
+        request: Request,
         store: ProjectStore = Depends(_get_store),
         caps: Capabilities = Depends(get_capabilities),
     ) -> StageContent:
+        _enforce_project_tenant(store, pid, _get_user_id(request))
         require_stage_allowed(stage, caps)
         return await store.write_stage(pid, stage, body.markdown, origin="edited")
 
@@ -292,10 +389,17 @@ def create_app() -> FastAPI:
     async def run_stage(
         pid: str,
         stage: StageId,
-        request: StageRunRequest,
+        run_request: StageRunRequest,
+        request: Request,
         bus: EventBus = Depends(get_bus),
+        store: ProjectStore = Depends(_get_store),
         caps: Capabilities = Depends(get_capabilities),
     ) -> Run:
+        # Iter-24 SECURITY: enforce tenant ownership BEFORE consulting
+        # ``count_active_runs`` or invoking ``start_run`` so a
+        # cross-tenant pid never lands a queued/running entry in the
+        # in-memory registry (which is shared across all tenants).
+        _enforce_project_tenant(store, pid, _get_user_id(request))
         require_stage_allowed(stage, caps)
         require_under_budget(caps)
         if count_active_runs() >= caps.max_concurrent_runs:
@@ -307,7 +411,7 @@ def create_app() -> FastAPI:
                     "message": "Wait for an active run to finish, or cancel one.",
                 },
             )
-        return await start_run(pid, stage, request.model_dump(), bus)
+        return await start_run(pid, stage, run_request.model_dump(), bus)
 
     @app.get("/api/v1/projects/{pid}/runs/{run_id}", response_model=Run)
     def get_run_status(
@@ -356,12 +460,22 @@ def create_app() -> FastAPI:
         )
 
     @app.get("/api/v1/projects/{pid}/runs", response_model=list[Run])
-    def list_runs(pid: str) -> list[Run]:
+    def list_runs(
+        pid: str,
+        request: Request,
+        store: ProjectStore = Depends(_get_store),
+    ) -> list[Run]:
+        _enforce_project_tenant(store, pid, _get_user_id(request))
         return list_active_runs(pid)
 
     # ------------------------------------------------------------ files
     @app.get("/api/v1/projects/{pid}/plots", response_model=list[dict])
-    def list_plots(pid: str, store: ProjectStore = Depends(_get_store)) -> list[dict]:
+    def list_plots(
+        pid: str,
+        request: Request,
+        store: ProjectStore = Depends(_get_store),
+    ) -> list[dict]:
+        _enforce_project_tenant(store, pid, _get_user_id(request))
         return [
             {"name": p.name, "url": f"/api/v1/projects/{pid}/files/input_files/plots/{p.name}"}
             for p in store.list_plots(pid)
@@ -369,12 +483,31 @@ def create_app() -> FastAPI:
 
     @app.get("/api/v1/projects/{pid}/files/{relpath:path}")
     def get_file(
-        pid: str, relpath: str, store: ProjectStore = Depends(_get_store)
+        pid: str,
+        relpath: str,
+        request: Request,
+        store: ProjectStore = Depends(_get_store),
     ) -> FileResponse:
+        # Iter-24 security: tenant check + path-traversal hardening.
+        _enforce_project_tenant(store, pid, _get_user_id(request))
+
         root = store.project_dir(pid).resolve()
         target = (root / relpath).resolve()
-        if not str(target).startswith(str(root)):
-            raise HTTPException(403, detail={"code": "path_traversal_blocked"})
+
+        # ``str.startswith`` is path-prefix-collision vulnerable: if
+        # ``root`` is ``/foo/bar/12`` and ``target`` is
+        # ``/foo/bar/123/x.txt``, the legacy check would erroneously
+        # pass. ``Path.is_relative_to`` (Python 3.9+) compares path
+        # *components*, so it correctly distinguishes ``12`` from ``123``.
+        # Also handles symlink escapes correctly because we already
+        # ``.resolve()`` both root and target to their canonical forms.
+        try:
+            target.relative_to(root)
+        except ValueError as exc:
+            raise HTTPException(
+                403, detail={"code": "path_traversal_blocked"}
+            ) from exc
+
         if not target.is_file():
             raise HTTPException(404)
         return FileResponse(target)

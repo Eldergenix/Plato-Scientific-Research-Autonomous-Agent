@@ -143,8 +143,19 @@ class ProjectStore:
         )
         return project
 
-    def create(self, name: str = "Untitled project", initial_data_description: str | None = None) -> Project:
-        project = Project.empty(name=name)
+    def create(
+        self,
+        name: str = "Untitled project",
+        initial_data_description: str | None = None,
+        *,
+        user_id: str | None = None,
+    ) -> Project:
+        # Iter-24: bind the new project to ``user_id`` from the request's
+        # X-Plato-User header. Subsequent project-level endpoints
+        # consult this field via ``_enforce_project_tenant`` so cross-
+        # tenant reads/writes are 403'd in required-mode and 404'd in
+        # not-required-mode (matching ``_enforce_run_tenant``).
+        project = Project.empty(name=name, user_id=user_id)
         self.save(project)
         if initial_data_description is not None:
             self.write_stage_sync(project.id, "data", initial_data_description)

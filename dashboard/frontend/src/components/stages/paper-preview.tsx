@@ -80,56 +80,15 @@ const TABS: Array<{ id: Tab; label: string; icon: React.ComponentType<{ size?: n
 ];
 
 // ---------------------------------------------------------------------------
-// Sample data — used when callers don't supply sections (storybook / demo).
+// Iter-24 cleanup: deleted SAMPLE_SECTIONS — six PaperSection entries that
+// rendered the GW231123 ringdown abstract / methods / results as the
+// default content for every paper-stage render. Callers that omit
+// ``sections`` now hit the empty state below instead of leaking the
+// astro narrative across non-astro projects (or the "Untitled project"
+// first-paint state). When the parent has no sections to pass — because
+// the paper graph hasn't run, or the paper/sections/* files don't exist
+// yet — the user sees an honest "no paper yet" affordance.
 // ---------------------------------------------------------------------------
-
-const SAMPLE_SECTIONS: PaperSection[] = [
-  {
-    id: "abstract",
-    name: "Abstract",
-    status: "compiled",
-    markdown:
-      "We analyse the post-merger ringdown of GW231123 using a two-mode quasi-normal-mode template and find evidence for the (3,3,0) overtone at modest significance (Bayes factor ~6.4).",
-    tex: "\\begin{abstract}\nWe analyse the post-merger ringdown of GW231123 using a two-mode quasi-normal-mode template...\n\\end{abstract}",
-  },
-  {
-    id: "intro",
-    name: "Introduction",
-    status: "compiled",
-    markdown:
-      "Quasi-normal modes (QNMs) provide a direct probe of the no-hair conjecture. The detection of multiple modes in a single ringdown enables consistency tests of the Kerr metric.",
-    tex: "\\section{Introduction}\nQuasi-normal modes (QNMs) provide a direct probe of the no-hair conjecture...",
-  },
-  {
-    id: "methods",
-    name: "Methods",
-    status: "warning",
-    markdown:
-      "We perform Bayesian inference on a 0.4 s ringdown segment using `bilby` with a `dynesty` sampler (1024 live points). Strain data is whitened against a Welch PSD estimate.",
-    tex: "\\section{Methods}\nWe perform Bayesian inference on a 0.4 s ringdown segment...",
-    errorMessage: "Citation key `gw231123_paper` referenced but not in .bib",
-  },
-  {
-    id: "results",
-    name: "Results",
-    status: "compiled",
-    markdown:
-      "The dominant (2,2,0) mode is recovered at f = 270.4 ± 4.1 Hz with τ = 4.06 ± 0.18 ms. The (3,3,0) overtone amplitude posterior excludes zero at 95% credibility.",
-    tex: "\\section{Results}\nThe dominant (2,2,0) mode is recovered at $f = 270.4 \\pm 4.1$ Hz...",
-  },
-  {
-    id: "conclusions",
-    name: "Conclusions",
-    status: "failed",
-    tex: "\\section{Conclusions}\nOur analysis is consistent with a Kerr-like remnant at the level of...\n\\input{tables/kerr_consistency.tex}",
-    errorMessage: "LaTeX Error: File `tables/kerr_consistency.tex` not found.",
-  },
-  {
-    id: "references",
-    name: "References",
-    status: "pending",
-  },
-];
 
 // ---------------------------------------------------------------------------
 // Component
@@ -137,7 +96,7 @@ const SAMPLE_SECTIONS: PaperSection[] = [
 
 export function PaperPreview({
   pdfUrl,
-  sections = SAMPLE_SECTIONS,
+  sections = [],
   versions,
   onRetrySection,
   onAutoFix,
