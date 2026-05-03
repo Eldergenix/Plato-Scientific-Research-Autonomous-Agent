@@ -44,12 +44,35 @@ export type RunEvent =
   | RunEventPlotCreated
   | RunEventUnknown;
 
+// Module-level run-id store. Components that know they're inside an
+// active run (workspace shell, run-detail subroutes, loop monitor)
+// set this so every subsequent fetchJson call carries the matching
+// X-Plato-Run-Id header. The dashboard backend's middleware reads
+// the same header into a contextvar that flows to the log
+// formatter — closing the iter-12 correlation loop.
+let _activeRunId: string | null = null;
+
+export function setActiveRunId(id: string | null): void {
+  _activeRunId = id;
+}
+
+export function getActiveRunId(): string | null {
+  return _activeRunId;
+}
+
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   let r: Response;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(init?.headers as Record<string, string> | undefined ?? {}),
+  };
+  if (_activeRunId && !("X-Plato-Run-Id" in headers)) {
+    headers["X-Plato-Run-Id"] = _activeRunId;
+  }
   try {
     r = await fetch(`${API_BASE}${path}`, {
       ...init,
-      headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+      headers,
     });
   } catch (e) {
     throw new ApiError(0, {
