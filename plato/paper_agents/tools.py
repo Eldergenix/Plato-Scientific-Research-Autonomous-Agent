@@ -1,3 +1,4 @@
+import hashlib
 import re
 import sys
 import json
@@ -10,11 +11,39 @@ from .journal import LatexPresets
 from .latex_presets import journal_dict
 
 
-def LLM_call(prompt, state):
-    """
-    This function calls the LLM and update tokens
-    """
+def _record_prompt_hash(state, node_name: str | None = None) -> None:
+    """R9: hash the prompt and stash on the active manifest recorder.
 
+    No-op when ``state["recorder"]`` is unset (legacy callers, tests
+    that don't bother seeding it). The recorder field itself is
+    declared on both GraphState TypedDicts since iter 5 — safe to
+    read with ``.get()``.
+    """
+    recorder = state.get("recorder") if isinstance(state, dict) else None
+    if recorder is None or not node_name:
+        return
+    try:
+        # The prompt may be a string or a list of LangChain messages.
+        # Stringify before hashing so both paths produce a stable digest.
+        prompt = state.get("_last_prompt", "")
+        digest = hashlib.sha256(str(prompt).encode("utf-8")).hexdigest()
+        recorder.update(prompt_hashes={node_name: digest})
+    except Exception:
+        # Manifest failures must never abort an LLM call.
+        pass
+
+
+def LLM_call(prompt, state, *, node_name: str | None = None):
+    """
+    This function calls the LLM and update tokens.
+
+    When ``node_name`` is supplied AND ``state["recorder"]`` is set,
+    a ``sha256(prompt)`` is recorded into the manifest's
+    ``prompt_hashes`` dict (R9). This is opt-in per call site so the
+    instrumentation can roll out node-by-node.
+    """
+    state["_last_prompt"] = prompt
+    _record_prompt_hash(state, node_name)
     message = state['llm']['llm'].invoke(prompt)
     input_tokens  = message.usage_metadata['input_tokens']
     output_tokens = message.usage_metadata['output_tokens']
@@ -30,11 +59,15 @@ def LLM_call(prompt, state):
     return state, message.content
 
 
-def LLM_call_stream(prompt, state):
+def LLM_call_stream(prompt, state, *, node_name: str | None = None):
     """
     Calls the LLM with streaming enabled and writes output to file in real-time.
     Also updates token usage tracking.
+
+    R9 prompt hashing: see :func:`LLM_call` for the contract.
     """
+    state["_last_prompt"] = prompt
+    _record_prompt_hash(state, node_name)
     output_file_path = state['files']['f_stream']
     
     # Start streaming and writing/printing immediately
