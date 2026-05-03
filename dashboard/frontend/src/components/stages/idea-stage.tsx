@@ -14,34 +14,15 @@ interface Turn {
   ts: string;
 }
 
-// TODO: Phase 5 — load real transcript from <stage>_generation_output/idea.log
-const SAMPLE_TURNS: Turn[] = [
-  {
-    agent: "idea_maker",
-    ts: "11:01",
-    text: "Proposal: Use the post-merger ringdown of GW231123 to test the no-hair theorem at high-mass regime. Fit damped sinusoid to extract (f, τ) and compare against Kerr-mode predictions.",
-  },
-  {
-    agent: "idea_hater",
-    ts: "11:04",
-    text: "Too generic. Every BBH ringdown paper says this. What is unique about GW231123? Mass? SNR? Detector geometry?",
-  },
-  {
-    agent: "idea_maker",
-    ts: "11:06",
-    text: "Refining: GW231123 is the highest-mass BBH detected (M_f ≈ 110 M⊙) — the QNM frequencies fall closer to seismic noise than typical events. Propose a quasi-Bayesian pipeline that explicitly marginalises over noise PSD uncertainty in the ringdown band.",
-  },
-  {
-    agent: "idea_hater",
-    ts: "11:09",
-    text: "Better. But marginalising over PSD is solved (cf. Cornish 2023). The novel angle should be the joint mode + secondary-mode (l=3) extraction at this mass — secondary modes have not been confidently measured in any LIGO event.",
-  },
-  {
-    agent: "idea_maker",
-    ts: "11:11",
-    text: "Final idea: Joint extraction of (2,2,0) and (3,3,0) ringdown modes from GW231123 using a hierarchical Bayesian pipeline that propagates PSD uncertainty. Goal: first detection of l=3 mode in a LIGO event, providing strongest no-hair-theorem test to date for high-mass binaries.",
-  },
-];
+// Iter-22: deleted the hardcoded SAMPLE_TURNS GW231123 ringdown narrative
+// that used to ship as the agent transcript for every project (regardless
+// of domain or whether anything had actually run). The transcript pane
+// now renders an honest empty state until a future iteration plumbs in
+// the real ``<stage>_generation_output/idea.log`` reader.
+//
+// When that reader lands, it should populate a ``Turn[]`` and the
+// ``TranscriptPane`` component below will render it without further
+// changes.
 
 export interface IdeaStageProps {
   projectId?: string;
@@ -186,44 +167,7 @@ export function IdeaStage({
             )}
           </section>
 
-          <section className="bg-(--color-bg-marketing) p-6 overflow-auto">
-            <h3 className="font-label flex items-center gap-2">
-              <span>Agent transcript</span>
-              <span className="text-[11px] text-(--color-text-quaternary) normal-case font-mono">
-                {SAMPLE_TURNS.length} iterations
-              </span>
-            </h3>
-            <ol className="mt-3 space-y-3">
-              {SAMPLE_TURNS.map((t, i) => (
-                <li
-                  key={i}
-                  className={cn(
-                    "surface-card p-3",
-                    t.agent === "idea_maker" ? "border-(--color-brand-indigo)/20" : "border-(--color-status-amber)/20",
-                  )}
-                >
-                  <div className="flex items-baseline gap-2 mb-1.5">
-                    <span
-                      className={cn(
-                        "text-[11px] font-mono font-medium",
-                        t.agent === "idea_maker"
-                          ? "text-(--color-brand-hover)"
-                          : "text-(--color-status-amber)",
-                      )}
-                    >
-                      {t.agent}
-                    </span>
-                    <span className="text-[11px] text-(--color-text-quaternary) tabular-nums">
-                      {t.ts}
-                    </span>
-                  </div>
-                  <p className="text-[12.5px] leading-[1.6] text-(--color-text-secondary)">
-                    {t.text}
-                  </p>
-                </li>
-              ))}
-            </ol>
-          </section>
+          <TranscriptPane turns={[]} />
         </div>
       </main>
 
@@ -269,6 +213,91 @@ function IdeaOriginPill({
     </Pill>
   );
 }
+
+function TranscriptPane({ turns }: { turns: Turn[] }) {
+  // Iter-22: shipped as an honest empty state. The original
+  // implementation hardcoded SAMPLE_TURNS — a 5-turn GW231123 ringdown
+  // narrative — and rendered it for every project. Now that the data
+  // source isn't wired up yet (see TODO above), we render an empty
+  // state instead of fake data. When ``<stage>_generation_output/idea.log``
+  // becomes available, the parent will pass a populated ``turns`` and
+  // this component renders them without further changes.
+  if (turns.length === 0) {
+    return (
+      <section
+        className="bg-(--color-bg-marketing) p-6 overflow-auto"
+        data-testid="idea-transcript-pane"
+      >
+        <h3 className="font-label flex items-center gap-2">
+          <span>Agent transcript</span>
+          <span className="text-[11px] text-(--color-text-quaternary) normal-case font-mono">
+            no transcript yet
+          </span>
+        </h3>
+        <div className="mt-6 surface-card border-dashed border-(--color-border-standard) p-5 text-center">
+          <Sparkles
+            size={20}
+            strokeWidth={1.5}
+            className="mx-auto text-(--color-text-quaternary)"
+          />
+          <div className="mt-2 text-[13px] font-medium text-(--color-text-primary)">
+            No agent transcript captured
+          </div>
+          <p className="mt-1 text-[12px] text-(--color-text-tertiary) leading-[1.55] max-w-sm mx-auto">
+            Run idea generation to see the live debate between the
+            idea-maker and idea-hater agents.
+          </p>
+        </div>
+      </section>
+    );
+  }
+  return (
+    <section
+      className="bg-(--color-bg-marketing) p-6 overflow-auto"
+      data-testid="idea-transcript-pane"
+    >
+      <h3 className="font-label flex items-center gap-2">
+        <span>Agent transcript</span>
+        <span className="text-[11px] text-(--color-text-quaternary) normal-case font-mono">
+          {turns.length} iterations
+        </span>
+      </h3>
+      <ol className="mt-3 space-y-3">
+        {turns.map((t, i) => (
+          <li
+            key={i}
+            className={cn(
+              "surface-card p-3",
+              t.agent === "idea_maker"
+                ? "border-(--color-brand-indigo)/20"
+                : "border-(--color-status-amber)/20",
+            )}
+          >
+            <div className="flex items-baseline gap-2 mb-1.5">
+              <span
+                className={cn(
+                  "text-[11px] font-mono font-medium",
+                  t.agent === "idea_maker"
+                    ? "text-(--color-brand-hover)"
+                    : "text-(--color-status-amber)",
+                )}
+              >
+                {t.agent}
+              </span>
+              <span className="text-[11px] text-(--color-text-quaternary) tabular-nums">
+                {t.ts}
+              </span>
+            </div>
+            <p className="text-[12.5px] leading-[1.6] text-(--color-text-secondary)">
+              {t.text}
+            </p>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 
 function EmptyIdeaHint({ onRun }: { onRun?: () => void }) {
   return (
@@ -380,26 +409,27 @@ function IdeaSidePanel({ onRun }: { onRun?: () => void }) {
 
       <div className="mt-6 hairline-t pt-4">
         <h3 className="font-label">Run history</h3>
-        {/* TODO: Phase 5 — load real history from .history/idea_*.md */}
-        <ul className="mt-2 space-y-1">
-          {[
-            { ts: "12m ago", model: "gpt-5", duration: "11m 04s" },
-            { ts: "yesterday", model: "claude-3.7-sonnet", duration: "8m 22s" },
-            { ts: "2 days ago", model: "gpt-4.1", duration: "6m 51s" },
-          ].map((r, i) => (
-            <li key={i} className="surface-ghost px-2 py-1.5 text-[11.5px]">
-              <div className="flex items-center justify-between">
-                <span className="text-(--color-text-primary)">{r.ts}</span>
-                <span className="font-mono text-(--color-text-quaternary) tabular-nums">
-                  {r.duration}
-                </span>
-              </div>
-              <span className="text-(--color-text-tertiary) font-mono text-[10.5px]">
-                {r.model}
-              </span>
-            </li>
-          ))}
-        </ul>
+        {/* Iter-22: deleted the hardcoded "12m ago / yesterday / 2 days ago"
+            mock list that misled users into thinking historical runs were
+            being shown. Until ``.history/idea_*.md`` is exposed via a real
+            endpoint, render an empty state pointing at the runs page
+            (which DOES carry real history). */}
+        <div
+          className="mt-2 surface-card border-dashed border-(--color-border-standard) px-3 py-3 text-center"
+          data-testid="idea-history-empty"
+        >
+          <History
+            size={16}
+            strokeWidth={1.5}
+            className="mx-auto text-(--color-text-quaternary)"
+          />
+          <p className="mt-1 text-[11.5px] text-(--color-text-tertiary) leading-[1.5]">
+            No history captured yet. Past runs will appear here once the
+            <code className="font-mono"> .history/idea_*.md</code> reader
+            ships; meanwhile, see <code className="font-mono">/runs</code>
+            for the full per-run manifest log.
+          </p>
+        </div>
       </div>
     </aside>
   );
