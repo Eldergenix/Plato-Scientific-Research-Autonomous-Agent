@@ -36,20 +36,25 @@ StrengthLabel = Literal["weak", "moderate", "strong"]
 
 
 class Source(BaseModel):
-    """A literature source — a paper, preprint, or data set Plato has retrieved."""
+    """A literature source — a paper, preprint, or data set Plato has retrieved.
 
-    id: str = Field(description="Internal stable identifier (uuid or hash).")
-    doi: str | None = None
-    arxiv_id: str | None = None
-    openalex_id: str | None = None
-    semantic_scholar_id: str | None = None
-    title: str
+    String fields are length-bounded so a buggy adapter (or scraped HTML
+    garbage in a title/abstract) can't silently produce a multi-MB row
+    that bloats the manifest and breaks downstream consumers.
+    """
+
+    id: str = Field(description="Internal stable identifier (uuid or hash).", max_length=256)
+    doi: str | None = Field(default=None, max_length=256)
+    arxiv_id: str | None = Field(default=None, max_length=64)
+    openalex_id: str | None = Field(default=None, max_length=64)
+    semantic_scholar_id: str | None = Field(default=None, max_length=64)
+    title: str = Field(max_length=1024)
     authors: list[str] = Field(default_factory=list)
-    year: int | None = None
-    venue: str | None = None
-    abstract: str | None = None
-    pdf_url: str | None = None
-    url: str | None = None
+    year: int | None = Field(default=None, ge=1500, le=2100)
+    venue: str | None = Field(default=None, max_length=256)
+    abstract: str | None = Field(default=None, max_length=32768)
+    pdf_url: str | None = Field(default=None, max_length=2048)
+    url: str | None = Field(default=None, max_length=2048)
     retracted: bool = False
     retrieved_via: RetrievedVia
     fetched_at: datetime
@@ -58,10 +63,13 @@ class Source(BaseModel):
 class Claim(BaseModel):
     """An atomic claim with optional source provenance."""
 
-    id: str
-    text: str
+    id: str = Field(max_length=128)
+    # 8 KiB cap covers any reasonable atomic claim sentence; anything
+    # bigger is almost certainly a malformed LLM output, not a claim.
+    text: str = Field(max_length=8192)
     source_id: str | None = Field(
         default=None,
+        max_length=256,
         description="Source paper that asserts the claim. None for claims drafted by Plato itself.",
     )
     quote_span: tuple[int, int] | None = Field(
