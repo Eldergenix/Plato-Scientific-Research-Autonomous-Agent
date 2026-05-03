@@ -135,7 +135,13 @@ export function AgentLogStream({
               No log lines yet. Start a run to see agent reasoning here.
             </p>
           ) : (
-            filtered.map((line, i) => <LogRow key={i} line={line} />)
+            // Composite key (ts + source + index) keeps React's diff
+            // stable when filters change. A pure index key forces a
+            // full unmount/remount of every row when the filter shifts
+            // and rows shuffle indices.
+            filtered.map((line, i) => (
+              <LogRow key={`${line.ts}-${line.source}-${i}`} line={line} />
+            ))
           )}
         </div>
       )}
