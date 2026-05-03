@@ -142,7 +142,7 @@ export default function DomainsSettingsPage() {
   );
 
   return (
-    <div className="min-h-screen bg-(--color-bg-page) px-6 py-8">
+    <div className="min-h-screen bg-(--color-bg-page) px-3 py-6 sm:px-6 sm:py-8">
       <div className="mx-auto max-w-4xl space-y-6">
         <header className="surface-linear-card p-5">
           <Link

@@ -202,3 +202,14 @@ def literature_summary(state: GraphState, config: RunnableConfig):
     print(text)
 
     print(f"done {state['tokens']['ti']} {state['tokens']['to']}")
+
+    # Returning a partial state update (rather than falling off the end
+    # with an implicit ``None``) so the checkpointer captures the
+    # generated summary text. Without this, a resume from this node
+    # would skip the summary entirely.
+    return {
+        "literature": {
+            **state['literature'],
+            'summary': text,
+        }
+    }

@@ -106,3 +106,4 @@ class GraphState(TypedDict):
     # Phase 2 — R5 claim/evidence matrix
     claims: list[Any]                      # Claim objects produced by ``claim_extractor``
     evidence_links: list[Any]              # EvidenceLink rows produced by ``evidence_matrix_node``
+    unsupported_claim_rate: float          # fraction with no "supports" link (consumed by reviewer panel)
