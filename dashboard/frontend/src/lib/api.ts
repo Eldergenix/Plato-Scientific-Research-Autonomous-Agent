@@ -6,6 +6,44 @@ import type {
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:7878/api/v1";
 
+// Discriminated union for SSE payloads emitted by the FastAPI event
+// bus (see plato_dashboard.events.bus). Consumers should switch on
+// ``kind`` rather than reading bare ``Record<string, unknown>``
+// fields. Unknown event kinds fall through to ``RunEventUnknown``
+// so a backend addition won't crash the frontend on first contact.
+export interface RunEventLogLine {
+  kind: "log.line";
+  ts: number | string;
+  source?: string;
+  agent?: string;
+  level?: "info" | "warn" | "error" | "tool";
+  text?: string;
+}
+
+export interface RunEventStageFinished {
+  kind: "stage.finished";
+  ts: number | string;
+  stage: StageId;
+  ok?: boolean;
+}
+
+export interface RunEventPlotCreated {
+  kind: "plot.created";
+  ts: number | string;
+  path?: string;
+}
+
+export interface RunEventUnknown {
+  kind: string;
+  [key: string]: unknown;
+}
+
+export type RunEvent =
+  | RunEventLogLine
+  | RunEventStageFinished
+  | RunEventPlotCreated
+  | RunEventUnknown;
+
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   let r: Response;
   try {
@@ -178,14 +216,18 @@ export const api = {
   subscribeRunEvents(
     pid: string,
     runId: string,
-    onEvent: (evt: Record<string, unknown>) => void,
+    onEvent: (evt: RunEvent) => void,
     onError?: (e: unknown) => void,
   ): () => void {
     const url = `${API_BASE}/projects/${pid}/runs/${runId}/events`;
     const es = new EventSource(url);
     es.onmessage = (e) => {
       try {
-        onEvent(JSON.parse(e.data));
+        // The backend bus emits Record<string, unknown> shapes; we
+        // narrow at the boundary so consumers can discriminate on
+        // ``kind`` instead of doing String(evt.kind) inline.
+        const raw = JSON.parse(e.data) as Record<string, unknown>;
+        onEvent(raw as RunEvent);
       } catch (err) {
         onError?.(err);
       }

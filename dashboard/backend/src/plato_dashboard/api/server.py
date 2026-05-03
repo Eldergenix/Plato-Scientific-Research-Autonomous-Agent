@@ -1,6 +1,7 @@
 from __future__ import annotations
 import asyncio
 import json
+import logging
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -46,6 +47,7 @@ from .manifests import router as manifests_router
 # (F5's citation_graph_view router is auto-mounted by api/__init__.py.)
 from .auth_endpoints import router as auth_router
 from .citation_graph_view import router as citation_graph_router
+from .evals_view import router as evals_router
 from .clarifications import router as clarifications_router
 from .critiques import router as critiques_router
 from .domains import router as domains_router
@@ -164,10 +166,24 @@ def _enforce_run_tenant(
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
+    # Single source of truth for the dashboard's logging stack. This
+    # also caps LangChain / httpx / openai / langfuse loggers at
+    # WARNING so the worker process doesn't drown the operator in
+    # framework chatter, and exposes the run_id contextvar so a
+    # future per-request middleware can set it for log correlation.
+    from plato.logging_config import configure_logging
+
+    configure_logging()
+
     settings = get_settings()
-    print(f"Plato Dashboard starting on http://{settings.host}:{settings.port}")
-    print(f"  project root: {settings.project_root}")
-    print(f"  demo mode: {settings.demo_mode} · auth: {settings.auth}")
+    logger = logging.getLogger(__name__)
+    logger.info(
+        "Plato Dashboard starting on http://%s:%s", settings.host, settings.port
+    )
+    logger.info("  project root: %s", settings.project_root)
+    logger.info(
+        "  demo mode: %s · auth: %s", settings.demo_mode, settings.auth
+    )
     yield
 
 
@@ -190,6 +206,7 @@ def create_app() -> FastAPI:
     # prefix-less and get ``/api/v1`` here.
     app.include_router(auth_router, prefix="/api/v1", tags=["auth"])
     app.include_router(citation_graph_router, prefix="/api/v1", tags=["citations"])
+    app.include_router(evals_router, prefix="/api/v1", tags=["evals"])
     app.include_router(clarifications_router, prefix="/api/v1", tags=["clarifications"])
     app.include_router(critiques_router, prefix="/api/v1", tags=["critiques"])
     app.include_router(domains_router, prefix="/api/v1", tags=["domains"])

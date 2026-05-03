@@ -101,7 +101,13 @@ class EvalRunner:
                 break
 
             start = time.perf_counter()
-            metrics = await asyncio.to_thread(self._run_task, task, plato_factory)
+            # Pass the panel-level remaining budget so the per-task
+            # run can stop between pipeline stages instead of running
+            # to completion before the next inter-task check fires.
+            remaining = max(self.max_cost_usd - running_cost, 0.0)
+            metrics = await asyncio.to_thread(
+                self._run_task, task, plato_factory, remaining_budget_usd=remaining
+            )
             wall = time.perf_counter() - start
             # Prefer manifest-derived latency when present; fall back to wall clock.
             if metrics.latency_seconds == 0.0:
@@ -127,13 +133,26 @@ class EvalRunner:
         )
         return results
 
-    def _run_task(self, task: GoldenTask, plato_factory: PlatoFactory) -> Metrics:
+    def _run_task(
+        self,
+        task: GoldenTask,
+        plato_factory: PlatoFactory,
+        *,
+        remaining_budget_usd: float | None = None,
+    ) -> Metrics:
         """Drive the real Plato pipeline for a single golden task.
 
         Tests inject a mock factory that writes synthetic manifests; in
         production this calls into ``plato.plato.Plato``. Any exception
         from the Plato run is caught and surfaced as an error Metrics
         record so the panel keeps moving.
+
+        ``remaining_budget_usd`` is checked between pipeline stages
+        (after each ``get_idea`` / ``get_method``) so a single
+        expensive task can't silently exceed the panel-level cap. The
+        check happens by inspecting freshly-written manifest files
+        rather than instrumenting Plato directly — keeps the runner
+        free of provider-specific cost-tracking knowledge.
         """
         project_dir = self.output_dir / task.id / "project"
         project_dir.mkdir(parents=True, exist_ok=True)
@@ -143,9 +162,21 @@ class EvalRunner:
         except Exception:  # pragma: no cover - factory failures are rare
             return _error_metrics()
 
+        def _budget_blown() -> bool:
+            if remaining_budget_usd is None:
+                return False
+            spent = sum(
+                float(m.get("cost_usd", 0) or 0)
+                for m in _read_manifests(project_dir / "runs")
+            )
+            return spent >= remaining_budget_usd
+
         try:
             plato.set_data_description(task.data_description)
             plato.get_idea(mode=self.idea_mode)
+            if _budget_blown():
+                # Stop after idea — the next stage would push us over.
+                return self._aggregate_metrics(project_dir)
             plato.get_method(mode=self.method_mode)
             # get_results / get_paper are intentionally skipped: they
             # require cmbagent + LaTeX and produce too much variance for
