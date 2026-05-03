@@ -12,36 +12,13 @@ import type { Project } from "@/lib/types";
 const TABS = ["Summary", "Plots", "Code & execution"] as const;
 type Tab = (typeof TABS)[number];
 
-const SAMPLE_PLOTS: PlotItem[] = [
-  {
-    name: "ringdown_spectrogram.png",
-    url: "",
-    caption: "Ringdown spectrogram (H1)",
-    createdAt: new Date(Date.now() - 1000 * 60 * 12).toISOString(),
-    generatingStep: 3,
-  },
-  {
-    name: "qnm_fit_2_2_0.png",
-    url: "",
-    caption: "(2,2,0) mode fit",
-    createdAt: new Date(Date.now() - 1000 * 60 * 8).toISOString(),
-    generatingStep: 4,
-  },
-  {
-    name: "qnm_fit_3_3_0.png",
-    url: "",
-    caption: "(3,3,0) mode fit (preliminary)",
-    createdAt: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
-    generatingStep: 4,
-  },
-  {
-    name: "psd_band.png",
-    url: "",
-    caption: "PSD ringdown band",
-    createdAt: new Date(Date.now() - 1000 * 60 * 2).toISOString(),
-    generatingStep: 5,
-  },
-];
+// Iter-22: dropped the SAMPLE_PLOTS fallback (4 hardcoded astro plots —
+// ringdown_spectrogram / qnm_fit_2_2_0 / qnm_fit_3_3_0 / psd_band). The
+// fallback fired whenever the live ``plots`` prop was empty, which meant
+// brand-new projects (and every non-astro domain) rendered fake astro
+// plot tiles with broken ``url=""`` thumbnails. ResultsStage now renders
+// the empty-plots state via PlotGrid's existing empty-state branch, so
+// what users see matches what's actually on disk.
 
 
 export interface ResultsStageProps {
@@ -55,9 +32,12 @@ export function ResultsStage({ project, plots }: ResultsStageProps) {
   const run = project.activeRun;
   const elapsedMs = run ? Date.now() - new Date(run.startedAt).getTime() : 0;
 
-  // Promote backend plots → PlotItem[]; fall back to sample if none yet.
+  // Promote backend plots → PlotItem[]. Iter-22: removed the SAMPLE_PLOTS
+  // fallback that rendered fake astro plots whenever the live list was
+  // empty — empty now stays empty, and PlotGrid is responsible for the
+  // empty-state UI.
   const liveItems: PlotItem[] = React.useMemo(() => {
-    if (!plots || plots.length === 0) return SAMPLE_PLOTS;
+    if (!plots || plots.length === 0) return [];
     return plots.map((p) => ({
       name: p.name,
       url: p.url,

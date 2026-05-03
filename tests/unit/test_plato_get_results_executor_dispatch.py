@@ -185,3 +185,82 @@ def test_get_results_does_not_import_cmbagent_when_using_fake(
     plato.get_results(executor=recording_executor.name)
 
     assert len(recording_executor.calls) == 1
+
+
+def test_cli_executor_override_used_when_kwarg_omitted(
+    tmp_path: Path, recording_executor: _RecordingExecutor
+) -> None:
+    """Iter-22: when the CLI sets ``plato._cli_executor_override``, get_results
+    must pick it up as a fallback after the explicit kwarg.
+
+    The CLI does this in ``_run_loop._plato_factory`` after iter-21 — without
+    the get_results read on the Plato side, the override would land on the
+    instance but be silently ignored by every caller.
+    """
+    plato = Plato(project_dir=str(tmp_path))
+    _seed_inputs(plato, idea="i", method="m", description="d")
+
+    # Simulate the CLI's iter-21 write.
+    plato._cli_executor_override = recording_executor.name  # type: ignore[attr-defined]
+
+    plato.get_results()  # no executor kwarg → override should win
+
+    assert len(recording_executor.calls) == 1
+    assert recording_executor.calls[0]["research_idea"] == "i"
+
+
+def test_explicit_executor_kwarg_beats_cli_override(
+    tmp_path: Path, recording_executor: _RecordingExecutor
+) -> None:
+    """An explicit ``executor=`` kwarg must beat the CLI override."""
+    other = _RecordingExecutor("other-priority-executor")
+    register_executor(other, overwrite=True)
+    try:
+        plato = Plato(project_dir=str(tmp_path))
+        _seed_inputs(plato, idea="i", method="m", description="d")
+        plato._cli_executor_override = other.name  # type: ignore[attr-defined]
+
+        # Explicit kwarg points at recording_executor; should win over override.
+        plato.get_results(executor=recording_executor.name)
+
+        assert len(recording_executor.calls) == 1
+        assert other.calls == []
+    finally:
+        EXECUTOR_REGISTRY.pop(other.name, None)
+
+
+def test_cli_executor_override_beats_domain_default(
+    tmp_path: Path, recording_executor: _RecordingExecutor
+) -> None:
+    """CLI override must beat the active DomainProfile.executor."""
+    domain = DomainProfile(
+        name="iter22-override-domain",
+        retrieval_sources=[],
+        executor="cmbagent",  # Domain default would dispatch here without override.
+    )
+    plato = Plato(project_dir=str(tmp_path), domain=domain)
+    _seed_inputs(plato, idea="i", method="m", description="d")
+
+    plato._cli_executor_override = recording_executor.name  # type: ignore[attr-defined]
+    plato.get_results()  # no kwarg → override beats domain default
+
+    assert len(recording_executor.calls) == 1
+
+
+def test_cli_executor_override_falsy_is_ignored(
+    tmp_path: Path, recording_executor: _RecordingExecutor
+) -> None:
+    """An empty / None override must not sneak past the fallback chain."""
+    domain = DomainProfile(
+        name="iter22-override-falsy",
+        retrieval_sources=[],
+        executor=recording_executor.name,
+    )
+    plato = Plato(project_dir=str(tmp_path), domain=domain)
+    _seed_inputs(plato, idea="i", method="m", description="d")
+
+    # Override deliberately falsy → should fall through to domain default.
+    plato._cli_executor_override = ""  # type: ignore[attr-defined]
+    plato.get_results()
+
+    assert len(recording_executor.calls) == 1
