@@ -240,4 +240,12 @@ export interface KeysStatus {
   ANTHROPIC: KeyState;
   PERPLEXITY: KeyState;
   SEMANTIC_SCHOLAR: KeyState;
+  // R8 — observability keys are stored alongside LLM provider keys.
+  // Backend ENV_KEYS includes all three so the dashboard `/keys` UI
+  // can configure Langfuse without shell env vars; the frontend
+  // shape must mirror it or `Object.keys(keysStatus)` iteration in
+  // the UI silently drops these three states.
+  LANGFUSE_PUBLIC: KeyState;
+  LANGFUSE_SECRET: KeyState;
+  LANGFUSE_HOST: KeyState;
 }

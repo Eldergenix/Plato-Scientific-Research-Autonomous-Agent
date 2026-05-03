@@ -14,7 +14,7 @@ Plato makes use of [cmbagent](https://github.com/CMBAgents/cmbagent) as a backen
 from plato import Plato
 
 # Follow the research plan, write and execute code, make plots, and summarize the results
-den.get_results(engineer_model='gemini-2.5-pro',
+p.get_results(engineer_model='gemini-2.5-pro',
 		researcher_model='gemini-2.5-pro',
 		restart_at_step=2)
 ```
@@ -27,7 +27,7 @@ change LLM models and step according to your case.
 from plato import Plato
 
 # Follow the research plan, write and execute code, make plots, and summarize the results
-den.get_results(engineer_model='gemini-2.5-pro',
+p.get_results(engineer_model='gemini-2.5-pro',
 		researcher_model='gemini-2.5-pro')
 ```
 
@@ -43,7 +43,7 @@ This module will provide a check mark (✅ or ❌) after each section it writes.
 from plato import Plato, Journal
 
 # Write a paper with [APS (Physical Review Journals)](https://journals.aps.org/) style
-den.get_paper(journal=Journal.AAS, llm='gemini-2.5-flash', add_citations=False)
+p.get_paper(journal=Journal.AAS, llm='gemini-2.5-flash', add_citations=False)
 ```
 
 The parts that have been already written, will just be read, while the missing parts, e.g. methods.tex, will be regenerated.
