@@ -105,13 +105,17 @@ export class ApiError extends Error {
 
 // ---------------------------------------------------------------- shape
 // The backend uses snake_case; the frontend uses camelCase. Translate.
-type RawProject = Omit<Project, "totalTokens" | "totalCostCents" | "createdAt" | "updatedAt" | "stages" | "activeRun"> & {
+type RawProject = Omit<Project, "totalTokens" | "totalCostCents" | "createdAt" | "updatedAt" | "stages" | "activeRun" | "approvals"> & {
   total_tokens: number;
   total_cost_cents: number;
   created_at: string;
   updated_at: string;
   stages: Record<string, RawStage>;
   active_run: RawActiveRun | null;
+  // Iter-27: approvals come along on every Project read so
+  // ``getBlockingApproval`` can evaluate the gate synchronously without
+  // an extra round trip per stage.
+  approvals?: ApprovalsState | null;
 };
 type RawStage = {
   id: StageId;
@@ -169,6 +173,7 @@ function adaptProject(p: RawProject): Project {
           totalAttempts: p.active_run.total_attempts ?? undefined,
         }
       : null,
+    approvals: p.approvals ?? null,
   };
 }
 
@@ -196,6 +201,19 @@ export interface IdeaHistoryResponse {
 export interface CostCapState {
   budget_cents: number | null;
   stop_on_exceed: boolean;
+}
+
+// Iter-27 — mirror of ``plato_dashboard.domain.models.ApprovalsState``.
+// ``per_stage`` keys are stage ids; values are one of
+// ``"pending" | "approved" | "rejected" | "skipped"``.
+export type ApprovalState =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "skipped";
+export interface ApprovalsState {
+  per_stage: Record<string, ApprovalState>;
+  auto_skip: boolean;
 }
 
 // ---------------------------------------------------------------- API
@@ -289,6 +307,28 @@ export const api = {
   /** Iter-26: persist the per-project cost cap (see ``getCostCaps``). */
   async setCostCaps(pid: string, body: CostCapState): Promise<CostCapState> {
     return fetchJson(`/projects/${pid}/cost_caps`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
+  },
+
+  /**
+   * Iter-27: read the per-project approvals state (per_stage map +
+   * auto_skip global bypass). Backend persists in meta.json; the
+   * iter-27 ``run_stage`` gate consults it before launching to refuse
+   * downstream stages whose upstream gate hasn't been approved.
+   *
+   * Returns the empty default shape (``per_stage={}``,
+   * ``auto_skip=false``) when no approvals are configured for ``pid``.
+   */
+  async getApprovals(pid: string): Promise<ApprovalsState> {
+    return fetchJson(`/projects/${pid}/approvals`);
+  },
+
+  /** Iter-27: persist the per-project approvals state. Replaces the
+   * entire payload — clients with partial updates should fetch first. */
+  async setApprovals(pid: string, body: ApprovalsState): Promise<ApprovalsState> {
+    return fetchJson(`/projects/${pid}/approvals`, {
       method: "PUT",
       body: JSON.stringify(body),
     });
