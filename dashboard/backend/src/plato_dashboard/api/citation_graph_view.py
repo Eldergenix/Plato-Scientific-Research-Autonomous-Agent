@@ -27,6 +27,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from ..domain.models import JsonObjectResponse
 from ..settings import Settings, get_settings
 
 
@@ -230,7 +231,7 @@ def _check_tenant(run_dir: Path, request_user: str | None) -> None:
 # --------------------------------------------------------------------------- #
 # Route
 # --------------------------------------------------------------------------- #
-@router.get("/runs/{run_id}/citation_graph")
+@router.get("/runs/{run_id}/citation_graph", response_model=JsonObjectResponse)
 def get_citation_graph(
     run_id: str,
     request: Request,

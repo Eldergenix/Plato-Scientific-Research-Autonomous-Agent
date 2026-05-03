@@ -26,8 +26,13 @@ class KeyManager(BaseModel):
         self.LANGFUSE_SECRET  = os.getenv("LANGFUSE_SECRET_KEY")
         self.LANGFUSE_HOST    = os.getenv("LANGFUSE_HOST")
 
-    def __getitem__(self, key: str) -> str:
+    def __getitem__(self, key: str) -> str | None:
+        # Every KeyManager attribute is initialised to ``None`` when no
+        # env var is set, so the honest return type is ``str | None``.
+        # Previously declared ``-> str``, which lied to type-checkers
+        # and let callers chain string ops on a value that could be
+        # ``None`` at runtime.
         return getattr(self, key)
 
-    def __setitem__(self, key: str, value: str) -> None:
+    def __setitem__(self, key: str, value: str | None) -> None:
         setattr(self, key, value)

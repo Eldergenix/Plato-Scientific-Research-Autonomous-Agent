@@ -37,7 +37,7 @@ def _serialize(name: str) -> dict[str, Any]:
     }
 
 
-@router.get("/domains")
+@router.get("/domains", response_model=JsonObjectResponse)
 def get_domains() -> dict[str, Any]:
     """Return every registered domain profile + the global default."""
     return {
