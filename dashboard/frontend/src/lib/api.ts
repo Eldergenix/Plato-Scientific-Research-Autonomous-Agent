@@ -172,6 +172,26 @@ function adaptProject(p: RawProject): Project {
   };
 }
 
+// ---------------------------------------------------------------- iter-23
+// Idea-history response shape — mirror of
+// ``plato_dashboard.api.idea_history.IdeaHistoryResponse``.
+export interface IdeaHistoryEntry {
+  run_id: string;
+  workflow: string;
+  started_at: string | null;
+  ended_at: string | null;
+  status: string;
+  models: Record<string, string>;
+  cost_usd: number;
+  tokens_in: number;
+  tokens_out: number;
+  duration_seconds: number | null;
+}
+
+export interface IdeaHistoryResponse {
+  entries: IdeaHistoryEntry[];
+}
+
 // ---------------------------------------------------------------- API
 export const api = {
   async health(): Promise<{ ok: boolean; demo_mode: boolean }> {
@@ -233,6 +253,16 @@ export const api = {
 
   async cancelRun(pid: string, runId: string): Promise<{ cancelled: boolean }> {
     return fetchJson(`/projects/${pid}/runs/${runId}/cancel`, { method: "POST" });
+  },
+
+  /**
+   * Iter-23: list past idea-generation runs for ``pid`` from disk
+   * manifests. Drives the IdeaSidePanel "Run history" view —
+   * replaces the iter-22 empty state once any historical run exists.
+   * Backend route: ``GET /api/v1/projects/{pid}/idea_history``.
+   */
+  async listIdeaHistory(pid: string): Promise<IdeaHistoryResponse> {
+    return fetchJson(`/projects/${pid}/idea_history`);
   },
 
   /** Subscribe to SSE for a run. Returns an unsubscribe fn. */
