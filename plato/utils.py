@@ -83,15 +83,20 @@ def create_work_dir(work_dir: str | Path, name: str) -> Path:
     os.makedirs(work_dir, exist_ok=True)
     return Path(work_dir)
 
-def get_task_result(chat_history, name: str):
-    """Get task result from chat history"""
-    
+def get_task_result(chat_history: list[dict], name: str) -> str | None:
+    """Get task result from chat history.
+
+    Walks the chat history newest-first and returns the ``content`` of
+    the most recent message whose ``name`` matches. Returns ``None``
+    when no message matches — the caller decides whether that's an
+    error. Previously the function fell through to a bare
+    ``task_result = result`` line that raised ``NameError`` when the
+    loop exited without a match.
+    """
     for obj in chat_history[::-1]:
-        if obj['name'] == name:
-            result = obj['content']
-            break
-    task_result = result
-    return task_result
+        if obj.get('name') == name:
+            return obj.get('content')
+    return None
 
 def in_notebook():
     """Check whether the code is run from a Jupyter Notebook or not, to use different display options"""

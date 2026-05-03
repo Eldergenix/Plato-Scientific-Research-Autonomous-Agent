@@ -32,13 +32,16 @@ class Journal(str, Enum):
 
 class Stage(BaseModel):
     id: StageId
-    label: str
+    # 256-char cap on free-form strings — these end up in meta.json on
+    # disk; an unbounded label/model from a buggy run-result writer
+    # would silently produce a bloated metadata row.
+    label: str = Field(max_length=256)
     status: StageStatus = "empty"
-    model: Optional[str] = None
-    duration_ms: Optional[int] = None
+    model: Optional[str] = Field(default=None, max_length=256)
+    duration_ms: Optional[int] = Field(default=None, ge=0)
     last_run_at: Optional[datetime] = None
     origin: Optional[Literal["ai", "edited"]] = None
-    progress_label: Optional[str] = None
+    progress_label: Optional[str] = Field(default=None, max_length=256)
 
 
 class ActiveRun(BaseModel):
