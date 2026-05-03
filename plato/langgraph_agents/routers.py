@@ -31,12 +31,29 @@ def router(state: GraphState) -> str:
 
     if state['idea']['iteration']<state['idea']['total_iterations']:
         return "hater"
-    else: 
-        return "__end__"
+    else:
+        # Use the canonical END sentinel rather than the literal
+        # ``"__end__"`` string. Today they are equal, but a future
+        # LangGraph release might introduce strict node-set validation
+        # on conditional edges, in which case the bare string would
+        # raise GraphValueError.
+        return END
+
+
+# Whitelist of valid literature_router targets. Keeping this in sync
+# with novelty_decider's writes guards against an LLM-malformed
+# Decision routing the graph into a non-existent node (which would
+# raise GraphValueError at runtime).
+_VALID_LITERATURE_TARGETS = {"literature_summary", "semantic_scholar"}
+
 
 def literature_router(state: GraphState) -> str:
-    """
-    This simple function determines which agent should go after calling the novelty_decider one
-    """
+    """Pick the next literature node based on novelty_decider's write."""
 
-    return state['literature']['next_agent']
+    target = state['literature']['next_agent']
+    if target not in _VALID_LITERATURE_TARGETS:
+        raise ValueError(
+            f"literature_router: unknown next_agent {target!r} "
+            f"(valid: {sorted(_VALID_LITERATURE_TARGETS)})"
+        )
+    return target

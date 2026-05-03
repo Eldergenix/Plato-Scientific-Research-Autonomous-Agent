@@ -1,10 +1,13 @@
 from typing import List
 import asyncio
+import logging
 import time
 import os
 import shutil
 import warnings
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 from PIL import Image
 import cmbagent
 
@@ -267,20 +270,15 @@ class Plato:
                                         summarizer_model = summarizer_model,
                                         summarizer_response_formatter_model = summarizer_response_formatter_model
                                         )
-        
-        # Debug: Check if the enhanced text is different from original
-        print(f"Original text length: {len(self.research.data_description)}")
-        print(f"Enhanced text length: {len(enhanced_text)}")
-        print(f"Texts are different: {self.research.data_description != enhanced_text}")
-        
-        # If the enhanced text is the same as original, try reading from enhanced_input.md
+
+        # Fall back to the on-disk enhanced_input.md when the cmbagent
+        # preprocess returned the input verbatim (some summarizers do
+        # so when the input is already short enough to skip).
         if self.research.data_description == enhanced_text:
             enhanced_input_path = os.path.join(self.project_dir, "enhanced_input.md")
             if os.path.exists(enhanced_input_path):
-                print("Reading enhanced content from enhanced_input.md")
                 with open(enhanced_input_path, 'r', encoding='utf-8') as f:
                     enhanced_text = f.read()
-                print(f"Enhanced text from file length: {len(enhanced_text)}")
         
         # Update the research object with enhanced text
         self.research.data_description = enhanced_text
@@ -524,10 +522,14 @@ class Plato:
 
         signals = detect_injection_signals(answer)
         if signals:
-            print(
-                f"[plato] WARNING: injection signals {signals} in FutureHouse "
-                f"response; wrapping in <external> markers.",
-                flush=True,
+            # Security event — emit through the logging stack so it
+            # lands in any configured handler (file / journald / Sentry)
+            # and respects the global log level rather than going to
+            # raw stdout.
+            logger.warning(
+                "Injection signals %s in FutureHouse response; "
+                "wrapping in <external> markers.",
+                signals,
             )
         answer = wrap_external(answer, "futurehouse_response")
 

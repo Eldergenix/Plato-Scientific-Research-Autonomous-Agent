@@ -218,6 +218,12 @@ def _run_loop(args) -> None:
     from plato.loop.research_loop import latest_manifest_score
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    # Quiet down noisy third-party loggers — LangChain emits a lot of
+    # INFO-level chatter on every chain step, and httpx/openai dump
+    # every request at DEBUG. Cap them at WARNING so the user sees
+    # only the loop progress plus genuine warnings/errors.
+    for noisy in ("langchain", "langchain_core", "langgraph", "httpx", "openai"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
 
     def _plato_factory():
         # Lazy import: failing here is non-fatal — caller may pass a custom

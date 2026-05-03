@@ -149,19 +149,27 @@ def preprocess_node(state: GraphState, config: RunnableConfig):
             if os.path.exists(file_path):
                 os.remove(file_path)
 
-        return {**state,
-                "files":            state['files'],
-                "llm":              state['llm'],
-                "tokens":           state['tokens'],
-                "data_description": description,
-                "referee":          state['referee']}
-    #########################################
-            
-
-    return {**state,
+        # Return only the keys that this node actually changed.
+        # Returning ``{**state, ...}`` would re-emit every existing
+        # key as part of the state update, causing reducer-equipped
+        # fields (e.g. ``messages`` with ``add_messages``) to
+        # double-apply — the message list grew unboundedly across
+        # checkpoints.
+        return {
             "files":            state['files'],
             "llm":              state['llm'],
             "tokens":           state['tokens'],
             "data_description": description,
-            "idea":             idea}
+            "referee":          state['referee'],
+        }
+    #########################################
+
+
+    return {
+        "files":            state['files'],
+        "llm":              state['llm'],
+        "tokens":           state['tokens'],
+        "data_description": description,
+        "idea":             idea,
+    }
 

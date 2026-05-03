@@ -112,7 +112,7 @@ export default function ExecutorsSettingsPage() {
   const defaultName = state.kind === "ready" ? state.defaultName : "";
 
   return (
-    <div className="min-h-screen bg-(--color-bg-page) px-6 py-8">
+    <div className="min-h-screen bg-(--color-bg-page) px-3 py-6 sm:px-6 sm:py-8">
       <div className="mx-auto max-w-3xl space-y-6">
         <Breadcrumb />
 
