@@ -10,6 +10,17 @@ from .clarifier import research_question_clarifier
 from .counter_evidence import counter_evidence_search
 from .gap_detector import gap_detector
 from .routers import router, task_router, literature_router, clarifier_router
+from .scopes import (
+    CLARIFIER_SCOPE,
+    IDEA_HATER_SCOPE,
+    IDEA_SCOPE,
+    LITERATURE_SUMMARY_SCOPE,
+    METHODS_FAST_SCOPE,
+    NOVELTY_DECIDER_SCOPE,
+    REFEREE_SCOPE,
+    SEMANTIC_SCHOLAR_SCOPE,
+)
+from ..io import scoped_node
 from ..state import make_checkpointer
 
 
@@ -28,18 +39,34 @@ def build_lg_graph(mermaid_diagram=False, checkpointer=None):
     # Define the graph
     builder = StateGraph(GraphState)
 
-    # Define nodes: these do the work
+    # Define nodes: these do the work.
+    #
+    # R11 file-scope adoption: every node that writes a file is wrapped
+    # in ``scoped_node(fn, scope)`` so its writes go through a
+    # ScopedWriter rooted at state["files"]["Folder"]. Out-of-scope
+    # writes raise ``ScopeError`` at runtime — defence in depth against
+    # an LLM-generated path traversing into another tenant's project.
+    # ``preprocess_node`` only edits state (no file writes), so we leave
+    # it un-scoped to avoid wrapping cost. ``counter_evidence_search``
+    # and ``gap_detector`` are pure state transformations today; if
+    # they grow file outputs, wrap them then.
     builder.add_node("preprocess_node",              preprocess_node)
-    builder.add_node("research_question_clarifier",  research_question_clarifier)
-    builder.add_node("maker",                        idea_maker)
-    builder.add_node("hater",                        idea_hater)
-    builder.add_node("methods",                      methods_fast)
-    builder.add_node("novelty",                      novelty_decider)
-    builder.add_node("semantic_scholar",             semantic_scholar)
-    builder.add_node("literature_summary",           literature_summary)
+    builder.add_node(
+        "research_question_clarifier",
+        scoped_node(research_question_clarifier, CLARIFIER_SCOPE),
+    )
+    builder.add_node("maker",                        scoped_node(idea_maker, IDEA_SCOPE))
+    builder.add_node("hater",                        scoped_node(idea_hater, IDEA_HATER_SCOPE))
+    builder.add_node("methods",                      scoped_node(methods_fast, METHODS_FAST_SCOPE))
+    builder.add_node("novelty",                      scoped_node(novelty_decider, NOVELTY_DECIDER_SCOPE))
+    builder.add_node("semantic_scholar",             scoped_node(semantic_scholar, SEMANTIC_SCHOLAR_SCOPE))
+    builder.add_node(
+        "literature_summary",
+        scoped_node(literature_summary, LITERATURE_SUMMARY_SCOPE),
+    )
     builder.add_node("counter_evidence_search",      counter_evidence_search)
     builder.add_node("gap_detector",                 gap_detector)
-    builder.add_node("referee",                      referee)
+    builder.add_node("referee",                      scoped_node(referee, REFEREE_SCOPE))
 
     # Define edges: these determine how the control flow moves
     builder.add_edge(START,                          "preprocess_node")
