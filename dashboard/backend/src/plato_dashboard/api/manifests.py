@@ -23,7 +23,13 @@ from pydantic import BaseModel, Field
 from ..settings import Settings, get_settings
 
 
-router = APIRouter()
+router = APIRouter(tags=["manifests"])
+
+_RUN_GUARDS: dict[int | str, dict] = {
+    404: {"description": "Run dir not found, or specific artefact missing."},
+    403: {"description": "Run belongs to a different tenant (auth-required mode)."},
+    500: {"description": "Sidecar JSON file is corrupt."},
+}
 
 
 # ---------------------------------------------------------------------------
@@ -147,12 +153,18 @@ def _read_json(path: Path) -> Any:
         ) from exc
 
 
-@router.get("/runs/{run_id}/manifest", response_model=ManifestResponse)
+@router.get(
+    "/runs/{run_id}/manifest",
+    response_model=ManifestResponse,
+    summary="Read a run's manifest.json",
+    responses=_RUN_GUARDS,
+)
 def get_manifest(
     run_id: str,
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> dict:
+    """Return the run's manifest, with `project_id` injected from the layout."""
     requester = _user_id(request)
     run_dir = _find_run_dir(settings.project_root, run_id)
     if run_dir is None:
@@ -178,7 +190,12 @@ def get_manifest(
     return payload
 
 
-@router.get("/runs/{run_id}/evidence_matrix", response_model=EvidenceMatrixResponse)
+@router.get(
+    "/runs/{run_id}/evidence_matrix",
+    response_model=EvidenceMatrixResponse,
+    summary="Aggregated claims and evidence links for a run",
+    responses=_RUN_GUARDS,
+)
 def get_evidence_matrix(
     run_id: str,
     request: Request,
@@ -222,13 +239,17 @@ def get_evidence_matrix(
 
 
 @router.get(
-    "/runs/{run_id}/validation_report", response_model=ValidationReportResponse
+    "/runs/{run_id}/validation_report",
+    response_model=ValidationReportResponse,
+    summary="Read the validation_report.json for a run",
+    responses=_RUN_GUARDS,
 )
 def get_validation_report(
     run_id: str,
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> dict:
+    """Return the run's validation report (free-form payload)."""
     requester = _user_id(request)
     run_dir = _find_run_dir(settings.project_root, run_id)
     if run_dir is None:

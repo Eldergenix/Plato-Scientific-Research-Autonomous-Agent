@@ -36,7 +36,7 @@ from pydantic import BaseModel, Field
 
 from ..settings import get_settings
 
-router = APIRouter()
+router = APIRouter(tags=["auth"])
 
 _COOKIE_NAME = "plato_user"
 # 30-day cookie. Keeps the user signed in across browser restarts without
@@ -92,7 +92,13 @@ class LoginRequest(BaseModel):
     user_id: str | None = Field(default=None, max_length=128)
 
 
-@router.post("/auth/login")
+@router.post(
+    "/auth/login",
+    summary="Set the plato_user session cookie",
+    responses={
+        400: {"description": "`user_id` is empty, missing, or longer than 128 chars."},
+    },
+)
 def login(response: Response, body: LoginRequest) -> dict[str, Any]:
     """Set the ``plato_user`` cookie and echo the chosen user id back."""
     raw = body.user_id
@@ -115,14 +121,14 @@ def login(response: Response, body: LoginRequest) -> dict[str, Any]:
     return {"user_id": user_id, "ok": True}
 
 
-@router.post("/auth/logout")
+@router.post("/auth/logout", summary="Clear the plato_user session cookie")
 def logout(response: Response) -> dict[str, Any]:
     """Clear the ``plato_user`` cookie."""
     response.delete_cookie(key=_COOKIE_NAME, path="/")
     return {"ok": True}
 
 
-@router.get("/auth/me")
+@router.get("/auth/me", summary="Current user id and auth-required flag")
 def me(request: Request) -> dict[str, Any]:
     """Resolve the current user id (header or cookie) and the auth flag."""
     return {

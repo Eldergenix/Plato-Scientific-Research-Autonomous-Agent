@@ -107,13 +107,19 @@ def _coerce_quote_span(abstract: str, span_text: str | None) -> tuple[int, int] 
 
 def _iter_inputs(state: GraphState) -> list[Source | str]:
     """Pick sources or fall back to the legacy paper-info strings."""
-    sources = state.get("sources") if isinstance(state, dict) else None
+    # ``state`` is the GraphState TypedDict (always a dict at runtime);
+    # the redundant isinstance check upstream confused mypy into typing
+    # the lookups as ``object``. Read directly via .get() instead.
+    sources: Any = state.get("sources")
     if sources:
         return list(sources)
 
-    literature = state.get("literature") if isinstance(state, dict) else None
+    literature = state.get("literature")
     if literature and literature.get("papers"):
-        papers = literature["papers"]
+        # ``papers`` is typed as ``str`` on LITERATURE but the runtime
+        # payload is sometimes a list of dicts; widen for the isinstance
+        # branch below so mypy doesn't mark it unreachable.
+        papers: Any = literature["papers"]
         if isinstance(papers, list):
             return [p for p in papers if p]
     return []
@@ -137,7 +143,8 @@ async def claim_extractor(state: GraphState, config: Optional[RunnableConfig] = 
     """
 
     inputs = _iter_inputs(state)
-    existing = list(state.get("claims") or []) if isinstance(state, dict) else []
+    claims_raw: Any = state.get("claims") or []
+    existing = list(claims_raw)
     new_claims: list[Claim] = []
 
     for idx, item in enumerate(inputs):

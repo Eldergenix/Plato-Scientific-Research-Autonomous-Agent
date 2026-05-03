@@ -428,7 +428,7 @@ export default function Home() {
                   t === "active" ? "backlog" : t === "backlog" ? "all" : "active",
                 )
               }
-              onChangeDisplay={() => setLogHeight((h) => (h === 0 ? 30 : h === 30 ? 60 : 0))}
+              onChangeDisplay={cycleLogHeight}
               onToggleDetails={cost.openMeter}
               onMoreActions={() => setCmdOpen(true)}
               onToggleFavorite={() => {
@@ -463,22 +463,22 @@ export default function Home() {
 
             <AgentLogStream
               lines={log}
-              height={logHeight}
+              height={logState.height}
               onChangeHeight={setLogHeight}
-              paused={paused}
-              onTogglePause={() => setPaused((p) => !p)}
+              paused={logState.paused}
+              onTogglePause={togglePause}
             />
           </main>
 
           <BottomBar
             onAskAi={() => setCmdOpen(true)}
-            onOpenHistory={() => setLogHeight((h) => (h === 0 ? 30 : 0))}
+            onOpenHistory={toggleLogDrawer}
           />
         </div>
       </div>
 
       <CommandPalette
-        open={cmdOpen}
+        open={ui.cmdOpen}
         onOpenChange={setCmdOpen}
         onRunStage={(s) => guardedStartRun(s)}
         onCreateProject={() => setCreateOpen(true)}

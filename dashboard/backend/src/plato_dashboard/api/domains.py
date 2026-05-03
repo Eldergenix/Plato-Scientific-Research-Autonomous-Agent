@@ -19,7 +19,7 @@ from plato.domain import get_domain, list_domains
 
 from ..domain.models import JsonObjectResponse
 
-router = APIRouter()
+router = APIRouter(tags=["domains"])
 
 # The default domain is currently hard-coded to astro: it's the only
 # profile that has full Phase-2 retrieval wiring. When the user-preferences
@@ -39,7 +39,11 @@ def _serialize(name: str) -> dict[str, Any]:
     }
 
 
-@router.get("/domains", response_model=JsonObjectResponse)
+@router.get(
+    "/domains",
+    response_model=JsonObjectResponse,
+    summary="List registered domain profiles",
+)
 def get_domains() -> dict[str, Any]:
     """Return every registered domain profile + the global default."""
     return {

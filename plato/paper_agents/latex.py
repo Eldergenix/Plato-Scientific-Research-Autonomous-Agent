@@ -2,6 +2,7 @@ import subprocess
 import os
 import re
 from pathlib import Path
+from typing import Any
 
 from .parameters import GraphState
 from .prompts import fix_latex_bug_prompt
@@ -85,14 +86,20 @@ def clean_files(doc_name, doc_folder):
             os.system(f'rm {doc_folder}/{doc_stem}.{suffix}')
 
 
-def compile_tex_document(state: dict, doc_name: str, doc_folder: str) -> None:
+def compile_tex_document(state: Any, doc_name: Any, doc_folder: str) -> bool:
+    """Compile a LaTeX document; returns True on success, False on xelatex failure.
+
+    Loose ``Any`` types on ``state`` and ``doc_name`` accept both the
+    ``GraphState`` TypedDict and Path-or-str doc names that callers in
+    paper_node.py already pass.
+    """
 
     file_path = Path(doc_name)
     doc_name = file_path.name
     doc_stem = file_path.stem
     bib_path = os.path.join(state['files']['Temp'], "bibliography.bib")
 
-    def run_xelatex():
+    def run_xelatex() -> bool:
         result = subprocess.run(["xelatex", doc_name], cwd=doc_folder,
                                 input="\n", capture_output=True, text=True)
         if result.returncode != 0:

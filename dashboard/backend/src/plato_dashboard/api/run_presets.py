@@ -34,7 +34,14 @@ from pydantic import BaseModel, Field
 from ..auth import auth_required, extract_user_id
 from ..settings import Settings, get_settings
 
-router = APIRouter()
+router = APIRouter(tags=["run_presets"])
+
+_AUTH_REQUIRED: dict[int | str, dict] = {
+    401: {"description": "Auth required and `X-Plato-User` header is missing."},
+}
+_PRESET_NOT_FOUND: dict[int | str, dict] = {
+    404: {"description": "No preset with that id under the caller's namespace."},
+}
 
 _PRESETS_FILENAME = "run_presets.json"
 # Preset names show up in dropdowns and in the on-disk JSON, so keep
@@ -145,21 +152,33 @@ def _ensure_unique_name(presets: list[RunPreset], name: str, *, exclude_id: str 
             )
 
 
-@router.get("/run-presets", response_model=list[RunPreset])
+@router.get(
+    "/run-presets",
+    response_model=list[RunPreset],
+    summary="List run presets for the caller",
+    responses=_AUTH_REQUIRED,
+)
 def list_run_presets(
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> list[RunPreset]:
+    """Return the saved presets in the caller's namespace."""
     user_id = _resolve_user_id(request)
     return _load_presets(_presets_path(settings, user_id))
 
 
-@router.get("/run-presets/{preset_id}", response_model=RunPreset)
+@router.get(
+    "/run-presets/{preset_id}",
+    response_model=RunPreset,
+    summary="Read a single preset",
+    responses={**_AUTH_REQUIRED, **_PRESET_NOT_FOUND},
+)
 def get_run_preset(
     preset_id: str,
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> RunPreset:
+    """Return one preset by id."""
     user_id = _resolve_user_id(request)
     presets = _load_presets(_presets_path(settings, user_id))
     target = next((p for p in presets if p.id == preset_id), None)
@@ -171,12 +190,23 @@ def get_run_preset(
     return target
 
 
-@router.post("/run-presets", response_model=RunPreset, status_code=201)
+@router.post(
+    "/run-presets",
+    response_model=RunPreset,
+    status_code=201,
+    summary="Create a run preset",
+    responses={
+        **_AUTH_REQUIRED,
+        400: {"description": "Invalid name (charset, length)."},
+        409: {"description": "A preset with that name already exists for this user."},
+    },
+)
 def create_run_preset(
     body: RunPresetCreate,
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> RunPreset:
+    """Persist a new preset (mints a fresh id and `created_at`)."""
     user_id = _resolve_user_id(request)
     name = _validate_name(body.name)
     path = _presets_path(settings, user_id)
@@ -194,13 +224,24 @@ def create_run_preset(
     return preset
 
 
-@router.put("/run-presets/{preset_id}", response_model=RunPreset)
+@router.put(
+    "/run-presets/{preset_id}",
+    response_model=RunPreset,
+    summary="Update a preset's name or config",
+    responses={
+        **_AUTH_REQUIRED,
+        **_PRESET_NOT_FOUND,
+        400: {"description": "Empty update or invalid name."},
+        409: {"description": "Renaming would collide with another preset."},
+    },
+)
 def update_run_preset(
     preset_id: str,
     body: RunPresetUpdate,
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> RunPreset:
+    """Patch a preset in place; either `name` or `config` (or both) must be set."""
     user_id = _resolve_user_id(request)
     path = _presets_path(settings, user_id)
     presets = _load_presets(path)
@@ -237,12 +278,18 @@ def update_run_preset(
     return updated
 
 
-@router.delete("/run-presets/{preset_id}", status_code=204)
+@router.delete(
+    "/run-presets/{preset_id}",
+    status_code=204,
+    summary="Delete a preset",
+    responses={**_AUTH_REQUIRED, **_PRESET_NOT_FOUND},
+)
 def delete_run_preset(
     preset_id: str,
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> None:
+    """Remove the preset by id; 404 if it doesn't belong to the caller."""
     user_id = _resolve_user_id(request)
     path = _presets_path(settings, user_id)
     presets = _load_presets(path)

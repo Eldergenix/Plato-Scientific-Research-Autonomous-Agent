@@ -31,7 +31,7 @@ from ..domain.models import JsonObjectResponse
 from ..settings import Settings, get_settings
 
 
-router = APIRouter()
+router = APIRouter(tags=["citations"])
 
 
 # --------------------------------------------------------------------------- #
@@ -231,12 +231,22 @@ def _check_tenant(run_dir: Path, request_user: str | None) -> None:
 # --------------------------------------------------------------------------- #
 # Route
 # --------------------------------------------------------------------------- #
-@router.get("/runs/{run_id}/citation_graph", response_model=JsonObjectResponse)
+@router.get(
+    "/runs/{run_id}/citation_graph",
+    response_model=JsonObjectResponse,
+    summary="1-hop citation graph for a run",
+    responses={
+        404: {"description": "Run dir not found under any project root."},
+        403: {"description": "Run belongs to a different tenant."},
+        500: {"description": "Citation graph file is on disk but not valid JSON."},
+    },
+)
 def get_citation_graph(
     run_id: str,
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> dict:
+    """Return seeds, expanded sources, and edges from the retrieval pipeline."""
     run_dir = _find_run_dir(settings.project_root, run_id)
     if run_dir is None:
         raise HTTPException(

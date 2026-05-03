@@ -1,3 +1,5 @@
+from typing import Any
+
 from langchain_core.runnables import RunnableConfig
 
 from ..paper_agents.tools import extract_latex_block, LLM_call_stream, clean_section
@@ -14,7 +16,12 @@ def referee(state: GraphState, config: RunnableConfig):
         paper_name = "paper_v2_no_citations.pdf"
     elif state['referee']['paper_version']==4:
         paper_name = "paper_v4_final.pdf"
-    pdf_path = f"{state['files']['Paper_folder']}/{paper_name}"
+    # ``Paper_folder`` is set at runtime by ``preprocess_node`` for the
+    # referee task but isn't declared on the langgraph_agents FILES
+    # TypedDict (it lives on paper_agents/parameters.py instead). The
+    # cast keeps the dynamic read happy without unifying both schemas.
+    files_any: dict[str, Any] = state['files']  # type: ignore[assignment]
+    pdf_path = f"{files_any['Paper_folder']}/{paper_name}"
     out_dir = f"{state['files']['paper_images']}"
 
     # get the base64 representation of the images

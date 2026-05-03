@@ -24,7 +24,7 @@ from ..settings import Settings, get_settings
 from .manifests import _find_run_dir, _read_json
 
 
-router = APIRouter()
+router = APIRouter(tags=["novelty"])
 
 
 _EMPTY_PAYLOAD: dict[str, Any] = {
@@ -120,12 +120,21 @@ def _from_manifest_extra(manifest: dict) -> dict[str, Any] | None:
     return _build_payload(novelty)
 
 
-@router.get("/runs/{run_id}/novelty", response_model=JsonObjectResponse)
+@router.get(
+    "/runs/{run_id}/novelty",
+    response_model=JsonObjectResponse,
+    summary="Novelty scores for a run",
+    responses={
+        404: {"description": "Run dir not found under any project root."},
+        403: {"description": "Run belongs to a different tenant (auth-required mode)."},
+    },
+)
 def get_novelty(
     run_id: str,
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> dict:
+    """Return the LLM, embedding, and composite novelty scores for a run."""
     requester = extract_user_id(request)
     run_dir = _find_run_dir(settings.project_root, run_id)
     if run_dir is None:

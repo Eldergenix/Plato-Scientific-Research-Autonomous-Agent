@@ -55,13 +55,15 @@ def redraft_node(state: GraphState, config: RunnableConfig):
     state, raw = LLM_call(prompt, state, node_name="redraft")
     parsed = _safe_parse_redraft(raw)
 
-    paper: dict[str, Any] = dict(state.get("paper") or {})
+    # ``state.get(...) or {}`` keeps a runtime fallback for partial
+    # updates; mypy thinks both fields are non-Optional.
+    paper: dict[str, Any] = dict(state.get("paper") or {})  # type: ignore[unreachable]
     for section in _REDRAFTABLE_SECTIONS:
         new_text = parsed.get(section)
         if isinstance(new_text, str) and new_text.strip():
             paper[section] = new_text
 
-    revision_state = dict(state.get("revision_state") or {})
+    revision_state: dict[str, Any] = dict(state.get("revision_state") or {})  # type: ignore[unreachable]
     revision_state["iteration"] = int(revision_state.get("iteration", 0) or 0) + 1
     revision_state.setdefault("max_iterations", 2)
 

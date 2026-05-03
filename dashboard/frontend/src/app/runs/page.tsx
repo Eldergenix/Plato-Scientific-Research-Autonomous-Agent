@@ -16,6 +16,13 @@ interface RunRow extends Run {
   projectName: string;
 }
 
+// SSE bursts (run.started + immediate stage transitions) get coalesced inside
+// this window so we hit the API once per burst rather than once per event —
+// also kills repaint flicker from rapid setState.
+const REFETCH_DEBOUNCE_MS = 250;
+// Polling fallback cadence when SSE is unavailable.
+const POLL_INTERVAL_MS = 5000;
+
 const STATUS_TABS: ReadonlyArray<{ id: StatusFilter; label: string }> = [
   { id: "all", label: "All" },
   { id: "running", label: "Running" },
@@ -44,6 +51,7 @@ function StatusPill({ status }: { status: RunStatus }) {
     <span
       className="inline-flex h-[20px] items-center rounded-full px-2 text-[11px] font-medium capitalize"
       style={{ backgroundColor: tone.bg, color: tone.fg }}
+      aria-label={`Status: ${status}`}
     >
       {status}
     </span>
@@ -60,49 +68,175 @@ function startedAtMs(r: Run): number {
   return r.startedAt ? new Date(r.startedAt).getTime() : 0;
 }
 
+// Connection state drives the header indicator. "connecting" is the brief
+// pre-onopen window — we render it the same as "open" to avoid a flash on
+// first paint. Goes "offline" the moment any project SSE drops.
+type ConnState = "connecting" | "open" | "offline";
+
 export default function RunsPage() {
   const [runs, setRuns] = React.useState<RunRow[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [tab, setTab] = React.useState<StatusFilter>("all");
   const [query, setQuery] = React.useState("");
+  const [connState, setConnState] = React.useState<ConnState>("connecting");
 
+  // Cache the project list across refetches so we don't re-fetch
+  // /projects on every SSE tick. Refreshed alongside runs whenever the
+  // mounted-state effect runs.
+  const projectsRef = React.useRef<{ id: string; name: string }[] | null>(null);
+  const cancelledRef = React.useRef(false);
+
+  // One-shot fetch shared by the initial load, the SSE-driven refetch, and
+  // the polling-fallback tick. Returns silently on unmount or transient
+  // per-project errors, only setting `error` when the projects-list call
+  // itself fails (otherwise a single bad project would blank the page).
+  const fetchRuns = React.useCallback(async () => {
+    try {
+      let projects = projectsRef.current;
+      if (projects === null) {
+        const fresh = await api.listProjects();
+        projects = fresh.map((p) => ({ id: p.id, name: p.name }));
+        projectsRef.current = projects;
+      }
+      if (cancelledRef.current) return;
+      const lists = await Promise.all(
+        projects.map(async (p) => {
+          try {
+            const list = await api.listRuns(p.id);
+            return list.map<RunRow>((r) => ({ ...r, projectName: p.name }));
+          } catch (err) {
+            // One project's runs failing shouldn't blank the whole page.
+            // Log silently and yield an empty slice for that project.
+            console.warn(`listRuns(${p.id}) failed`, err);
+            return [] as RunRow[];
+          }
+        }),
+      );
+      if (cancelledRef.current) return;
+      const flat = lists.flat();
+      flat.sort((a, b) => startedAtMs(b) - startedAtMs(a));
+      setRuns(flat);
+      setError(null);
+    } catch (err: unknown) {
+      if (cancelledRef.current) return;
+      if (err instanceof ApiError) {
+        setError(`API error ${err.status}`);
+      } else {
+        setError(err instanceof Error ? err.message : "Failed to load runs");
+      }
+      setRuns((prev) => prev ?? []);
+    }
+  }, []);
+
+  // Initial load + live subscription wiring. Single effect so we tear all
+  // of it down together on unmount.
   React.useEffect(() => {
-    let cancelled = false;
+    cancelledRef.current = false;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    const unsubscribers: Array<() => void> = [];
+    // Tracks per-project SSE state so the page-level indicator reflects
+    // ALL streams: any closed → "offline", all open → "open".
+    const states = new Map<string, "open" | "closed">();
+
+    const recomputeState = () => {
+      if (states.size === 0) {
+        setConnState("connecting");
+        return;
+      }
+      let allOpen = true;
+      for (const s of states.values()) {
+        if (s !== "open") {
+          allOpen = false;
+          break;
+        }
+      }
+      setConnState(allOpen ? "open" : "offline");
+    };
+
+    const scheduleRefetch = () => {
+      if (debounceTimer !== null) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        if (cancelledRef.current) return;
+        void fetchRuns();
+      }, REFETCH_DEBOUNCE_MS);
+    };
+
+    const startPolling = () => {
+      if (pollTimer !== null) return;
+      pollTimer = setInterval(() => {
+        if (cancelledRef.current) return;
+        void fetchRuns();
+      }, POLL_INTERVAL_MS);
+    };
+
+    const stopPolling = () => {
+      if (pollTimer !== null) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    };
+
     (async () => {
       try {
         const projects = await api.listProjects();
-        if (cancelled) return;
-        const lists = await Promise.all(
-          projects.map(async (p) => {
-            try {
-              const list = await api.listRuns(p.id);
-              return list.map<RunRow>((r) => ({ ...r, projectName: p.name }));
-            } catch (err) {
-              // One project's runs failing shouldn't blank the whole page.
-              // Log silently and yield an empty slice for that project.
-              console.warn(`listRuns(${p.id}) failed`, err);
-              return [] as RunRow[];
-            }
-          }),
-        );
-        if (cancelled) return;
-        const flat = lists.flat();
-        flat.sort((a, b) => startedAtMs(b) - startedAtMs(a));
-        setRuns(flat);
+        if (cancelledRef.current) return;
+        projectsRef.current = projects.map((p) => ({ id: p.id, name: p.name }));
+        await fetchRuns();
+        if (cancelledRef.current) return;
+
+        // No projects → no SSE channels to subscribe to. Show "open" since
+        // there's nothing to be offline from, and skip the polling timer.
+        if (projects.length === 0) {
+          setConnState("open");
+          return;
+        }
+
+        for (const p of projects) {
+          states.set(p.id, "closed");
+          const unsub = api.subscribeProjectEvents(
+            p.id,
+            (evt) => {
+              if (evt.kind === "run.started" || evt.kind === "run.finished") {
+                scheduleRefetch();
+              }
+            },
+            (state) => {
+              states.set(p.id, state);
+              recomputeState();
+              if (state === "open") {
+                stopPolling();
+              } else {
+                startPolling();
+              }
+            },
+          );
+          unsubscribers.push(unsub);
+        }
+        recomputeState();
       } catch (err: unknown) {
-        if (cancelled) return;
+        if (cancelledRef.current) return;
+        // Initial /projects fetch failed — surface the error and degrade
+        // to polling so we keep retrying in the background.
         if (err instanceof ApiError) {
           setError(`API error ${err.status}`);
         } else {
           setError(err instanceof Error ? err.message : "Failed to load runs");
         }
         setRuns([]);
+        setConnState("offline");
+        startPolling();
       }
     })();
+
     return () => {
-      cancelled = true;
+      cancelledRef.current = true;
+      if (debounceTimer !== null) clearTimeout(debounceTimer);
+      stopPolling();
+      for (const unsub of unsubscribers) unsub();
     };
-  }, []);
+  }, [fetchRuns]);
 
   const filtered = React.useMemo(() => {
     const list = runs ?? [];
@@ -144,6 +278,7 @@ export default function RunsPage() {
             </p>
           </div>
         </div>
+        <LiveIndicator state={connState} />
       </div>
 
       {/* Filter bar */}
@@ -199,6 +334,41 @@ export default function RunsPage() {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// Compact connection status pill for the page header. The dot uses a
+// CSS-only pulse when live so we don't repaint surrounding rows. Falls back
+// to a static grey dot when polling. Includes role=status + aria-live so
+// screen readers announce the transition (and don't get spammed: only the
+// label text changes, not the layout).
+function LiveIndicator({ state }: { state: ConnState }) {
+  const isLive = state === "open" || state === "connecting";
+  const label = isLive ? "Live" : "Offline (polling)";
+  const dotColor = isLive
+    ? "var(--color-status-succeeded)"
+    : "var(--color-text-quaternary)";
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      title={
+        isLive
+          ? "Streaming live updates from the server."
+          : "SSE unavailable. Falling back to 5s polling."
+      }
+      className="flex items-center gap-1.5 rounded-[6px] border border-(--color-border-solid) bg-(--color-bg-pill-inactive) px-2 py-1 text-[11px] font-medium text-(--color-text-row-meta)"
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          "inline-block h-2 w-2 rounded-full",
+          isLive && "animate-pulse-dot",
+        )}
+        style={{ backgroundColor: dotColor }}
+      />
+      <span>{label}</span>
     </div>
   );
 }

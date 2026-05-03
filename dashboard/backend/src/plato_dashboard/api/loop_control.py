@@ -257,11 +257,30 @@ async def _supervise(record: LoopRecord) -> None:
 router = APIRouter(prefix="/api/v1/loop", tags=["loop"])
 
 
-@router.post("/start", response_model=LoopStatus, status_code=status.HTTP_201_CREATED)
+_LOOP_NOT_FOUND: dict[int | str, dict] = {
+    404: {"description": "No loop with that loop_id is registered in this process."},
+}
+_LOOP_AUTH_GUARDS: dict[int | str, dict] = {
+    401: {"description": "Auth required and X-Plato-User header is missing."},
+    403: {"description": "Loop is owned by a different tenant."},
+}
+
+
+@router.post(
+    "/start",
+    response_model=LoopStatus,
+    status_code=status.HTTP_201_CREATED,
+    summary="Start an autonomous research loop",
+    responses={
+        **_LOOP_AUTH_GUARDS,
+        422: {"description": "Invalid request body (e.g. project_dir missing, branch_prefix bad chars)."},
+    },
+)
 async def start_loop(
     req: LoopStartRequest,
     user: Optional[str] = Depends(_user_id),
 ) -> LoopStatus:
+    """Schedule a ResearchLoop as an asyncio task and return its initial status."""
     loop_id = uuid.uuid4().hex[:12]
     research_loop = _build_loop(req)
     started_at = datetime.now(timezone.utc)
@@ -278,7 +297,12 @@ async def start_loop(
     return record.snapshot()
 
 
-@router.get("", response_model=list[LoopStatus])
+@router.get(
+    "",
+    response_model=list[LoopStatus],
+    summary="List loops visible to the caller",
+    responses=_LOOP_AUTH_GUARDS,
+)
 def list_loops(user: Optional[str] = Depends(_user_id)) -> list[LoopStatus]:
     """Return every loop visible to the caller, newest first."""
     rows: list[LoopStatus] = []
@@ -291,8 +315,14 @@ def list_loops(user: Optional[str] = Depends(_user_id)) -> list[LoopStatus]:
     return rows
 
 
-@router.get("/{loop_id}/status", response_model=LoopStatus)
+@router.get(
+    "/{loop_id}/status",
+    response_model=LoopStatus,
+    summary="Read a loop's current status",
+    responses={**_LOOP_AUTH_GUARDS, **_LOOP_NOT_FOUND},
+)
 def get_loop_status(loop_id: str, user: Optional[str] = Depends(_user_id)) -> LoopStatus:
+    """Return iteration count, kept/discarded counters, best score, status."""
     record = _LOOPS.get(loop_id)
     if record is None:
         raise HTTPException(status_code=404, detail={"code": "loop_not_found"})
@@ -300,7 +330,12 @@ def get_loop_status(loop_id: str, user: Optional[str] = Depends(_user_id)) -> Lo
     return record.snapshot()
 
 
-@router.post("/{loop_id}/stop", response_model=LoopStatus)
+@router.post(
+    "/{loop_id}/stop",
+    response_model=LoopStatus,
+    summary="Stop a running loop (idempotent)",
+    responses={**_LOOP_AUTH_GUARDS, **_LOOP_NOT_FOUND},
+)
 async def stop_loop(loop_id: str, user: Optional[str] = Depends(_user_id)) -> LoopStatus:
     """Cancel the asyncio task and return the resulting status. Idempotent."""
     record = _LOOPS.get(loop_id)
@@ -324,7 +359,12 @@ async def stop_loop(loop_id: str, user: Optional[str] = Depends(_user_id)) -> Lo
     return record.snapshot()
 
 
-@router.get("/{loop_id}/tsv", response_model=dict)
+@router.get(
+    "/{loop_id}/tsv",
+    response_model=dict,
+    summary="Parsed runs.tsv rows as JSON",
+    responses={**_LOOP_AUTH_GUARDS, **_LOOP_NOT_FOUND},
+)
 def get_loop_tsv(loop_id: str, user: Optional[str] = Depends(_user_id)) -> dict:
     """Return parsed runs.tsv rows as JSON.
 

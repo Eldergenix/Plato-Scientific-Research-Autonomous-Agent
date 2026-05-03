@@ -3,13 +3,13 @@
 These tests are intentionally backend-agnostic: they exercise the
 :class:`~plato.executor.Executor` Protocol and the registration helpers
 without spinning up cmbagent / jupyter / modal / e2b. The Modal and E2B
-stubs are checked end-to-end (they're cheap to await — they just raise
-:class:`NotImplementedError`).
+skeletons are checked end-to-end (they're cheap to await — they return
+a structured failure ``ExecutorResult`` when their SDK or credentials
+are missing, which is the case in CI).
 """
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 
 import pytest
 
@@ -87,12 +87,18 @@ def test_executor_result_round_trips_json() -> None:
     assert restored.model_dump(mode="json") == payload
 
 
-def test_modal_executor_is_a_stub() -> None:
-    """Modal stub must surface a clear NotImplementedError when awaited."""
+def test_modal_executor_skeleton_returns_structured_failure_when_unavailable() -> None:
+    """Modal skeleton returns a clean ExecutorResult when SDK or creds are absent.
+
+    The previous behaviour raised :class:`NotImplementedError`. ADR 0007
+    §1 was updated to reflect that the skeleton now ships the Protocol
+    shape and surfaces missing-SDK / missing-credentials states as
+    structured failure results so the workflow can persist them.
+    """
     ex = get_executor("modal")
 
     async def _drive():
-        await ex.run(
+        return await ex.run(
             research_idea="i",
             methodology="m",
             data_description="d",
@@ -100,15 +106,21 @@ def test_modal_executor_is_a_stub() -> None:
             keys=None,
         )
 
-    with pytest.raises(NotImplementedError, match="ModalExecutor"):
-        asyncio.run(_drive())
+    result = asyncio.run(_drive())
+    assert isinstance(result, ExecutorResult)
+    assert result.artifacts.get("backend") == "modal"
+    assert result.artifacts.get("success") is False
+    # Either the SDK is missing, credentials are missing, or the remote
+    # path is still TODO — all are acceptable signals from the skeleton.
+    assert result.artifacts.get("stage") in {"sdk_import", "credentials", "not_implemented"}
 
 
-def test_e2b_executor_is_a_stub() -> None:
+def test_e2b_executor_skeleton_returns_structured_failure_when_unavailable() -> None:
+    """E2B skeleton mirrors the modal contract."""
     ex = get_executor("e2b")
 
     async def _drive():
-        await ex.run(
+        return await ex.run(
             research_idea="i",
             methodology="m",
             data_description="d",
@@ -116,8 +128,11 @@ def test_e2b_executor_is_a_stub() -> None:
             keys=None,
         )
 
-    with pytest.raises(NotImplementedError, match="E2BExecutor"):
-        asyncio.run(_drive())
+    result = asyncio.run(_drive())
+    assert isinstance(result, ExecutorResult)
+    assert result.artifacts.get("backend") == "e2b"
+    assert result.artifacts.get("success") is False
+    assert result.artifacts.get("stage") in {"sdk_import", "credentials"}
 
 
 def test_local_jupyter_executes_methodology_as_code() -> None:

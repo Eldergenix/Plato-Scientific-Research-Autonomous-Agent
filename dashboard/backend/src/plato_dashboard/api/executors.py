@@ -19,7 +19,7 @@ from typing import Literal
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-router = APIRouter()
+router = APIRouter(tags=["executors"])
 
 ExecutorKind = Literal["real", "stub", "lazy"]
 
@@ -113,7 +113,11 @@ def _is_available(name: str, kind: ExecutorKind) -> bool:
     return True
 
 
-@router.get("/executors", response_model=ExecutorList)
+@router.get(
+    "/executors",
+    response_model=ExecutorList,
+    summary="List executor backends",
+)
 def list_executors_endpoint() -> ExecutorList:
     """Return the full executor catalogue with per-backend status."""
     from plato.executor import list_executors

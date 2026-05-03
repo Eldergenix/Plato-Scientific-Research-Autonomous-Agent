@@ -1,0 +1,69 @@
+# Plato — sample Caddy reverse-proxy config.
+#
+# Two responsibilities:
+#   1. Terminate TLS and route /api/* to the FastAPI backend, every
+#      other path to the Next.js frontend.
+#   2. Resolve the authenticated user via forward_auth (oauth2-proxy,
+#      Cloudflare Access, Authelia, …) and forward their identity to
+#      the backend as the X-Plato-User header.
+#
+# The backend reads X-Plato-User when PLATO_DASHBOARD_AUTH_REQUIRED=1
+# (see dashboard/backend/src/plato_dashboard/auth.py). The header is
+# always *stripped* on inbound traffic so a client can't impersonate a
+# user by setting it themselves — only the value Caddy injects from
+# the auth response is trusted.
+
+{
+	# Use an internal CA for local testing; remove for prod and let
+	# the site block below request real certs from Let's Encrypt.
+	# auto_https disable_certs
+	email ops@example.com
+}
+
+# Replace `plato.example.com` with your real hostname. Caddy will
+# request a Let's Encrypt cert automatically once DNS resolves.
+plato.example.com {
+	encode gzip zstd
+
+	# Strip any inbound X-Plato-User — only the value we set after
+	# forward_auth succeeds is trusted. Without this, a client could
+	# bypass auth entirely by sending the header themselves.
+	request_header -X-Plato-User
+
+	# Forward auth: every request hits the auth service first. On 2xx
+	# the auth service returns headers (e.g. X-Auth-Request-User from
+	# oauth2-proxy) that we copy to X-Plato-User before proxying to
+	# the backend.
+	forward_auth auth:4180 {
+		uri /oauth2/auth
+		# Pass these auth-response headers through to the upstream.
+		copy_headers X-Auth-Request-User>X-Plato-User X-Auth-Request-Email
+
+		# Anything 4xx (unauthenticated) → bounce to the sign-in page.
+		@unauth status 401 403
+		handle_response @unauth {
+			redir * /oauth2/start?rd={uri} 302
+		}
+	}
+
+	# /api/* → FastAPI backend.
+	handle /api/* {
+		reverse_proxy backend:7878
+	}
+
+	# /oauth2/* → the auth service itself, so login/callback work.
+	handle /oauth2/* {
+		reverse_proxy auth:4180
+	}
+
+	# Everything else → Next.js frontend.
+	handle {
+		reverse_proxy frontend:3000
+	}
+
+	log {
+		output stdout
+		format console
+		level INFO
+	}
+}

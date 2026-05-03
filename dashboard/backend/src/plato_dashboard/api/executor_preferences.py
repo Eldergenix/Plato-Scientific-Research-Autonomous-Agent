@@ -20,9 +20,13 @@ from pydantic import BaseModel
 from ..auth import auth_required, extract_user_id
 from ..settings import Settings, get_settings
 
-router = APIRouter()
+router = APIRouter(tags=["preferences"])
 
 _PREFS_FILENAME = "executor_prefs.json"
+
+_AUTH_REQUIRED_RESPONSE: dict[int | str, dict] = {
+    401: {"description": "Auth required and `X-Plato-User` header is missing."},
+}
 
 
 class ExecutorPreference(BaseModel):
@@ -84,16 +88,30 @@ def _write_prefs(path: Path, prefs: ExecutorPreference) -> None:
     path.write_text(json.dumps(prefs.model_dump(), indent=2))
 
 
-@router.get("/user/executor_preferences", response_model=ExecutorPreference)
+@router.get(
+    "/user/executor_preferences",
+    response_model=ExecutorPreference,
+    summary="Read default-executor preference",
+    responses=_AUTH_REQUIRED_RESPONSE,
+)
 def get_executor_preference(
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> ExecutorPreference:
+    """Resolve the default executor for the calling user (or anon)."""
     user_id = _resolve_user_id(request)
     return _read_prefs(_prefs_path(settings, user_id))
 
 
-@router.put("/user/executor_preferences", response_model=ExecutorPreference)
+@router.put(
+    "/user/executor_preferences",
+    response_model=ExecutorPreference,
+    summary="Set default executor",
+    responses={
+        **_AUTH_REQUIRED_RESPONSE,
+        400: {"description": "`default_executor` is not one of the registered backends."},
+    },
+)
 def set_executor_preference(
     body: ExecutorPreferenceUpdate,
     request: Request,

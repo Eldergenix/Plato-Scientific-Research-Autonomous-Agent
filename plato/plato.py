@@ -383,7 +383,7 @@ class Plato:
             with open(os.path.join(self.project_dir, INPUT_FILES, DESCRIPTION_FILE), 'r') as f:
                 self.research.data_description = f.read()
 
-        idea = Idea(work_dir = self.project_dir,
+        idea_agent = Idea(work_dir = self.project_dir,
                     idea_maker_model = idea_maker_model.name,
                     idea_hater_model = idea_hater_model.name,
                     planner_model = planner_model.name,
@@ -391,15 +391,15 @@ class Plato:
                     keys=self.keys,
                     orchestration_model = orchestration_model.name,
                     formatter_model = formatter_model.name)
-        
-        idea = idea.develop_idea(self.research.data_description)
-        self.research.idea = idea
+
+        idea_text = idea_agent.develop_idea(self.research.data_description)
+        self.research.idea = idea_text
         # Write idea to file
         idea_path = os.path.join(self.project_dir, INPUT_FILES, IDEA_FILE)
         with open(idea_path, 'w') as f:
-            f.write(idea)
+            f.write(idea_text)
 
-        self.idea = idea
+        self.idea = idea_text
 
     def get_idea_fast(self,
                       llm: LLM | str = models["gemini-2.0-flash"],
@@ -519,7 +519,7 @@ class Plato:
         
         task_response = fh_client.run_tasks_until_done(task_data)
 
-        answer = task_response[0].formatted_answer # type: ignore
+        answer = task_response[0].formatted_answer
 
         ## process the answer to remove everything above </DESIRED_RESPONSE_FORMAT>
         answer = answer.split("</DESIRED_RESPONSE_FORMAT>")[1]

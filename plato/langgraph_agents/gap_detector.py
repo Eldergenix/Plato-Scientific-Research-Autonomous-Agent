@@ -80,14 +80,15 @@ _MAX_KEYWORDS = 12
 
 
 def _idea_text(state: GraphState) -> str:
-    if not isinstance(state, dict):
-        return ""
     idea = state.get("idea")
     if isinstance(idea, dict):
         text = idea.get("idea")
         if isinstance(text, str):
             return text
-    desc = state.get("data_description")
+    # mypy treats ``data_description`` as a required ``str``; the
+    # runtime fallback covers partial states from short-circuit graphs
+    # where the field hasn't been populated yet.
+    desc = state.get("data_description")  # type: ignore[unreachable]
     return desc if isinstance(desc, str) else ""
 
 
@@ -130,8 +131,6 @@ def _detect_contradictions(
     by_claim: dict[str, set[str]] = defaultdict(set)
     src_ids: dict[str, set[str]] = defaultdict(set)
     for link in evidence_links:
-        if not isinstance(link, EvidenceLink):
-            continue
         by_claim[link.claim_id].add(link.support)
         src_ids[link.claim_id].add(link.source_id)
 
@@ -233,22 +232,28 @@ def _detect_homogeneity(
 async def gap_detector(state: GraphState, config: Optional[RunnableConfig] = None):
     """LangGraph node: pure-analysis gap detection over retrieved evidence."""
 
-    if not isinstance(state, dict):
-        return {"gaps": []}
-
-    sources_raw = state.get("sources") or []
-    literature = state.get("literature") or {}
+    # ``state`` is the GraphState TypedDict (a dict at runtime). The
+    # fields below are typed loosely (``list[Any]`` / ``Any``) so we
+    # rely on per-element isinstance filters to recover concrete types.
+    sources_iter: Any = state.get("sources") or []
+    sources_raw: list[Any] = list(sources_iter)
+    # ``literature`` is a required TypedDict field; partial state
+    # updates can still ship without it on early-graph nodes.
+    literature = state.get("literature") or {}  # type: ignore[unreachable]
     if isinstance(literature, dict):
-        for s in literature.get("sources") or []:
+        lit_sources: Any = literature.get("sources") or []
+        for s in lit_sources:
             if isinstance(s, Source):
                 sources_raw.append(s)
 
     sources: list[Source] = [s for s in sources_raw if isinstance(s, Source)]
+    evidence_iter: Any = state.get("evidence_links") or []
     evidence_links: list[EvidenceLink] = [
-        l for l in (state.get("evidence_links") or []) if isinstance(l, EvidenceLink)
+        l for l in evidence_iter if isinstance(l, EvidenceLink)
     ]
+    claims_iter: Any = state.get("claims") or []
     claims: list[Claim] = [
-        c for c in (state.get("claims") or []) if isinstance(c, Claim)
+        c for c in claims_iter if isinstance(c, Claim)
     ]
 
     haystacks = _source_haystacks(sources)

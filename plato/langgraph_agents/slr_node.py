@@ -39,7 +39,7 @@ from langchain_core.runnables import RunnableConfig
 from ..paper_agents.tools import LLM_call_stream, json_parser3
 from ..safety import wrap_external
 from .parameters import GraphState
-from .prompts import slr_screening_prompt
+from .prompts import slr_screening_prompt  # type: ignore[attr-defined]  # pending impl in prompts.py
 
 
 logger = logging.getLogger(__name__)

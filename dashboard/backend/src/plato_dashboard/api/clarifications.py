@@ -49,7 +49,11 @@ class ClarificationsAnswerRequest(BaseModel):
     answers: list[Any] = Field(max_length=50)
 
 
-router = APIRouter()
+router = APIRouter(tags=["clarifications"])
+
+_RUN_NOT_FOUND: dict[int | str, dict] = {
+    404: {"description": "No project owns the given run id."},
+}
 
 
 # --------------------------------------------------------------------------- #
@@ -147,12 +151,21 @@ def _load_clarifications(run_dir: Path) -> tuple[list[str], bool]:
 # --------------------------------------------------------------------------- #
 # Routes
 # --------------------------------------------------------------------------- #
-@router.get("/runs/{run_id}/clarifications", response_model=JsonObjectResponse)
+@router.get(
+    "/runs/{run_id}/clarifications",
+    response_model=JsonObjectResponse,
+    summary="Read clarifying questions for a run",
+    responses={
+        **_RUN_NOT_FOUND,
+        403: {"description": "Run belongs to a different tenant."},
+    },
+)
 def get_clarifications(
     run_id: str,
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
+    """Return the clarifier's questions and whether the run is waiting on answers."""
     run_dir = _find_run_dir(run_id, settings)
     if run_dir is None:
         raise HTTPException(404, detail={"code": "run_not_found"})
@@ -168,13 +181,22 @@ def get_clarifications(
     }
 
 
-@router.post("/runs/{run_id}/clarifications")
+@router.post(
+    "/runs/{run_id}/clarifications",
+    summary="Submit clarifier answers",
+    responses={
+        **_RUN_NOT_FOUND,
+        400: {"description": "Answer count mismatch, non-string answer, or answer over 4 KiB."},
+        403: {"description": "Run belongs to a different tenant."},
+    },
+)
 def post_clarifications(
     run_id: str,
     body: ClarificationsAnswerRequest,
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
+    """Persist user answers to the clarifier's questions so the run can resume."""
     run_dir = _find_run_dir(run_id, settings)
     if run_dir is None:
         raise HTTPException(404, detail={"code": "run_not_found"})

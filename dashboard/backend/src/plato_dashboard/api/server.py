@@ -176,6 +176,7 @@ from .novelty import router as novelty_router
 from .research_signals import router as research_signals_router
 from .retrieval_summary import router as retrieval_summary_router
 from .run_presets import router as run_presets_router
+from .telemetry import router as telemetry_collector_router
 from .telemetry_view import router as telemetry_router
 from .user_preferences import router as user_preferences_router
 
@@ -285,14 +286,16 @@ def _enforce_run_tenant(
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
-    # Single source of truth for the dashboard's logging stack. This
-    # also caps LangChain / httpx / openai / langfuse loggers at
-    # WARNING so the worker process doesn't drown the operator in
-    # framework chatter, and exposes the run_id contextvar so a
-    # future per-request middleware can set it for log correlation.
+    # Two-step bootstrap: ``configure_logging`` from the plato package
+    # caps LangChain / httpx / openai / langfuse loggers and registers
+    # the run_id contextvar; ``setup_logging`` from the dashboard then
+    # layers on the structured-JSON formatter and the request_id /
+    # user_id contextvars used by the request middleware below.
     from plato.logging_config import configure_logging
+    from ..logging_config import setup_logging
 
     configure_logging()
+    setup_logging()
 
     settings = get_settings()
     logger = logging.getLogger(__name__)
@@ -306,9 +309,132 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
     yield
 
 
+_API_DESCRIPTION = """
+Backend for the Plato research dashboard. Surfaces every per-run artefact
+the LangGraph workflows write to disk (manifests, evidence matrices,
+critiques, citation graphs, retrieval/novelty/gap reports), exposes the
+project + run lifecycle (create, start, cancel, stream events), and
+provides the supporting plumbing (auth, capabilities, telemetry, license
+audit, executor catalogue, per-user preferences).
+
+All payload-bearing routes live under `/api/v1`. Two root-level routes —
+`/health` and `/ready` — exist for Kubernetes-style liveness/readiness
+probes and stay reachable without auth headers.
+
+Run-scoped reads (manifest, critiques, citation_graph, novelty,
+retrieval_summary, counter_evidence, gaps, evidence_matrix,
+validation_report) all enforce the same tenant guard: when
+`PLATO_AUTH=enabled`, the `X-Plato-User` header must match the
+`user_id` recorded in the run's `manifest.json`. Cross-tenant reads
+return `403 run_forbidden` (or `404 run_not_found` in optional-mode,
+to avoid leaking run existence to unauthenticated probes).
+
+For interactive exploration, browse [`/docs`](/docs) (Swagger UI) or
+[`/redoc`](/redoc). The raw OpenAPI document lives at
+[`/openapi.json`](/openapi.json).
+""".strip()
+
+
+_OPENAPI_TAGS: list[dict[str, str]] = [
+    {"name": "ops", "description": "Liveness and readiness probes (no auth)."},
+    {"name": "auth", "description": "Tenant-id login flow: cookie + X-Plato-User header."},
+    {"name": "projects", "description": "Project CRUD and per-project artefacts (plots, files, usage)."},
+    {"name": "runs", "description": "Run lifecycle: start a stage, cancel, list, stream SSE events, list artefacts."},
+    {"name": "manifests", "description": "Per-run manifest, evidence matrix, and validation report."},
+    {"name": "critiques", "description": "Reviewer-panel critiques and revision-loop state (alias: /reviews)."},
+    {"name": "citations", "description": "1-hop citation graph expansion produced by the retrieval pipeline."},
+    {"name": "clarifications", "description": "Clarifying questions and answers for the Workflow #1 clarifier."},
+    {"name": "novelty", "description": "Novelty scores (LLM judge + embedding similarity + composite)."},
+    {"name": "research_signals", "description": "Counter-evidence sources and research-gap detection results."},
+    {"name": "retrieval", "description": "Per-adapter retrieval breakdown across arxiv/openalex/crossref/etc."},
+    {"name": "evals", "description": "Eval-harness summary and per-task metric drill-downs."},
+    {"name": "loop", "description": "Autonomous research-loop control plane (start/stop/status/tsv)."},
+    {"name": "executors", "description": "Executor catalogue (cmbagent, local_jupyter, modal, e2b)."},
+    {"name": "preferences", "description": "Per-user dashboard preferences (domain, executor, default models)."},
+    {"name": "domains", "description": "Registered domain profiles (astro, biology, ...)."},
+    {"name": "run_presets", "description": "Saved run-config presets per user."},
+    {"name": "telemetry", "description": "Telemetry collector status, recent rows, and per-user opt-in flag."},
+    {"name": "licenses", "description": "Dependency license audit and CycloneDX SBOM."},
+    {"name": "keys", "description": "API-key store status and provider key probe."},
+    {"name": "capabilities", "description": "Stage allowlist, concurrency cap, and session budget."},
+]
+
+
 def create_app() -> FastAPI:
+    # The dashboard process may be imported before its lifespan runs
+    # (e.g. when create_app is called eagerly at module import time, as
+    # this file does at the bottom). Calling setup_logging here as well
+    # is cheap (idempotent) and means structured logging is on before
+    # the first request even if uvicorn has yet to fire the lifespan.
+    from ..logging_config import (
+        RequestLoggingMiddleware,
+        setup_logging,
+        unhandled_exception_handler,
+    )
+    setup_logging()
+
     settings = get_settings()
-    app = FastAPI(title="Plato Dashboard API", version="0.1.0", lifespan=_lifespan)
+    app = FastAPI(
+        title="Plato Dashboard API",
+        description=_API_DESCRIPTION,
+        version="1.0.1",
+        lifespan=_lifespan,
+        openapi_tags=_OPENAPI_TAGS,
+        contact={
+            "name": "Plato",
+            "url": "https://github.com/CMBAgents/plato",
+        },
+        license_info={
+            "name": "GPL-3.0",
+            "url": "https://www.gnu.org/licenses/gpl-3.0.html",
+        },
+    )
+
+    # Root-level ops endpoints. K8s/infra liveness + readiness probes hit
+    # these without auth headers and outside any tenant namespace, so they
+    # MUST stay outside ``/api/v1`` and outside the auth-dependent
+    # ``_get_store`` chain.
+    @app.get("/health", tags=["ops"], summary="Liveness probe (no auth)")
+    def health_root() -> dict:
+        """Return service identifier + version. Always 200; safe for k8s liveness."""
+        return {"status": "ok", "service": "plato-dashboard-api", "version": "1.0.1"}
+
+    @app.get(
+        "/ready",
+        tags=["ops"],
+        summary="Readiness probe (no auth)",
+        responses={503: {"description": "One or more readiness checks failed."}},
+    )
+    def ready_root() -> dict:
+        """Light smoke checks for readiness probes.
+
+        Verifies the on-disk Plato config dir is readable and that the
+        worker's langgraph bridge can import. Either failure flips the
+        whole probe to 503 so a Kubernetes readiness gate can pull this
+        replica out of the service while a transient dependency is
+        broken.
+        """
+        checks: dict[str, bool] = {}
+        plato_dir = Path.home() / ".plato"
+        try:
+            plato_dir.mkdir(parents=True, exist_ok=True)
+            list(plato_dir.iterdir())
+            checks["plato_dir"] = True
+        except OSError:
+            checks["plato_dir"] = False
+
+        try:
+            import langgraph  # noqa: F401
+            checks["langgraph_import"] = True
+        except Exception:
+            checks["langgraph_import"] = False
+
+        if not all(checks.values()):
+            raise HTTPException(
+                status_code=503,
+                detail={"status": "not_ready", "checks": checks},
+            )
+        return {"status": "ready", "checks": checks}
 
     app.add_middleware(
         CORSMiddleware,
@@ -362,6 +488,9 @@ def create_app() -> FastAPI:
     app.include_router(retrieval_summary_router, prefix="/api/v1", tags=["retrieval"])
     app.include_router(run_presets_router, prefix="/api/v1", tags=["run_presets"])
     app.include_router(telemetry_router, prefix="/api/v1", tags=["telemetry"])
+    app.include_router(
+        telemetry_collector_router, prefix="/api/v1", tags=["telemetry"]
+    )
     app.include_router(user_preferences_router, prefix="/api/v1", tags=["preferences"])
 
     @app.get("/api/v1/health")

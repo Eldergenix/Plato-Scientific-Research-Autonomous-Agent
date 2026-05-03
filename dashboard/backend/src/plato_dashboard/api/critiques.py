@@ -42,10 +42,15 @@ from ..settings import Settings, get_settings
 from .manifests import _find_run_dir, _read_json, _user_id
 
 
-router = APIRouter()
+router = APIRouter(tags=["critiques"])
 
 
 _AXES: tuple[str, ...] = ("methodology", "statistics", "novelty", "writing")
+
+_CRITIQUES_RESPONSES: dict[int | str, dict] = {
+    404: {"description": "Run dir not found under any project root."},
+    403: {"description": "Run belongs to a different tenant (auth-required mode)."},
+}
 
 
 def _normalize_axes(raw: Any) -> dict[str, Any]:
@@ -97,12 +102,18 @@ def _enforce_tenant(run_dir: Path, requester: str | None) -> None:
         raise HTTPException(403, detail={"code": "run_forbidden"})
 
 
-@router.get("/runs/{run_id}/critiques", response_model=JsonObjectResponse)
+@router.get(
+    "/runs/{run_id}/critiques",
+    response_model=JsonObjectResponse,
+    summary="Reviewer-panel critiques per axis",
+    responses=_CRITIQUES_RESPONSES,
+)
 def get_critiques(
     run_id: str,
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> dict:
+    """Return per-axis critiques and revision-loop state for a run."""
     run_dir = _find_run_dir(settings.project_root, run_id)
     if run_dir is None:
         raise HTTPException(404, detail={"code": "run_not_found", "run_id": run_id})
@@ -146,7 +157,12 @@ def get_critiques(
 # implementation lives under ``/critiques``. Rather than break clients
 # that already use ``/critiques``, expose ``/reviews`` as a sibling
 # alias that delegates to the same handler.
-@router.get("/runs/{run_id}/reviews", response_model=JsonObjectResponse)
+@router.get(
+    "/runs/{run_id}/reviews",
+    response_model=JsonObjectResponse,
+    summary="Alias for /runs/{run_id}/critiques",
+    responses=_CRITIQUES_RESPONSES,
+)
 def get_reviews(
     run_id: str,
     request: Request,

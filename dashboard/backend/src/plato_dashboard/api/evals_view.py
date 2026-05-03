@@ -21,13 +21,24 @@ from fastapi import APIRouter, HTTPException
 from ..domain.models import JsonObjectResponse
 
 
-router = APIRouter()
+router = APIRouter(tags=["evals"])
 
 
 _DEFAULT_SUMMARY_PATH = Path("evals/results/summary.json")
 
 
-@router.get("/evals/summary", response_model=JsonObjectResponse)
+_EVAL_SUMMARY_RESPONSES: dict[int | str, dict] = {
+    404: {"description": "No `evals/results/summary.json` on disk yet."},
+    500: {"description": "The summary file exists but is not valid JSON."},
+}
+
+
+@router.get(
+    "/evals/summary",
+    response_model=JsonObjectResponse,
+    summary="Latest eval-harness summary",
+    responses=_EVAL_SUMMARY_RESPONSES,
+)
 def get_eval_summary() -> dict:
     """Return the most recent ``summary.json`` produced by EvalRunner."""
     path = _DEFAULT_SUMMARY_PATH
@@ -60,7 +71,16 @@ import re
 _TASK_ID_RE = re.compile(r"\A[A-Za-z0-9._-]{1,128}\Z")
 
 
-@router.get("/evals/tasks/{task_id}/metrics", response_model=JsonObjectResponse)
+@router.get(
+    "/evals/tasks/{task_id}/metrics",
+    response_model=JsonObjectResponse,
+    summary="Per-task eval metrics",
+    responses={
+        400: {"description": "`task_id` does not match `[A-Za-z0-9._-]{1,128}`."},
+        404: {"description": "No metrics on disk for this task."},
+        500: {"description": "The metrics file exists but is not valid JSON."},
+    },
+)
 def get_eval_task_metrics(task_id: str) -> dict:
     """Return ``evals/results/<task_id>/metrics.json`` for the drill-down view."""
     if not _TASK_ID_RE.match(task_id):

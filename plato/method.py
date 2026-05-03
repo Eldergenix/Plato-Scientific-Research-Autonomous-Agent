@@ -67,7 +67,9 @@ class Method:
             task_result = get_task_result(chat_history,'researcher_response_formatter')
         except Exception as e:
             raise e
-        
+        if task_result is None:
+            raise RuntimeError("researcher_response_formatter produced no result")
+
         MD_CODE_BLOCK_PATTERN = r"```[ \t]*(?:markdown)[ \t]*\r?\n(.*)\r?\n[ \t]*```"
         extracted_methodology = re.findall(MD_CODE_BLOCK_PATTERN, task_result, flags=re.DOTALL)[0]
         clean_methodology = re.sub(r'^<!--.*?-->\s*\n', '', extracted_methodology)

@@ -78,8 +78,6 @@ def _parse_retry_after(value: str | None) -> float | None:
         when = parsedate_to_datetime(raw)
     except (TypeError, ValueError):
         return None
-    if when is None:
-        return None
     delta = when.timestamp() - time.time()
     return max(0.0, delta)
 
@@ -447,7 +445,7 @@ class RetrievalClient:
         async def do_request() -> httpx.Response:
             if self._cache is not None:
                 return await self._cache.get(
-                    self._client,  # type: ignore[arg-type]
+                    self._client,
                     url,
                     headers=headers,
                     params=params,

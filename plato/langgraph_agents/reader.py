@@ -1,4 +1,5 @@
 import os
+from typing import Any
 from langchain_core.runnables import RunnableConfig
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
@@ -79,8 +80,14 @@ def preprocess_node(state: GraphState, config: RunnableConfig):
     }
     #########################################
     # set particulars for different tasks
+    # ``idea_state`` holds the IDEA TypedDict payload we'll thread back
+    # into the graph; the ``idea`` variable above is a plain string read
+    # off disk (or unset for non-content tasks). Mixing them tripped
+    # mypy with "dict[str, object]" vs "str".
+    idea_state: dict = {}
+    files_any: dict[str, Any] = state['files']  # type: ignore[assignment]
     if state['task']=='idea_generation':
-        idea = {**state['idea'], 'iteration':0, 'previous_ideas': "",
+        idea_state = {**state['idea'], 'iteration':0, 'previous_ideas': "",
                 'idea': "", 'criticism': ""}
         state['files'] = {**state['files'],
                           "idea":      f"{state['files']['Folder']}/{INPUT_FILES}/{IDEA_FILE}",
@@ -90,7 +97,7 @@ def preprocess_node(state: GraphState, config: RunnableConfig):
         state['files'] = {**state['files'],
                           "methods": f"{state['files']['Folder']}/{INPUT_FILES}/{METHOD_FILE}",
         }
-        idea = {**state['idea'], 'idea': idea}
+        idea_state = {**state['idea'], 'idea': idea}
     elif state['task']=='literature':
         state['literature'] = {**state['literature'], 'iteration':0, "query":"", "decision":"",
                                "papers":"", "next_agent":"", "messages":"", "num_papers": 0}
@@ -99,11 +106,16 @@ def preprocess_node(state: GraphState, config: RunnableConfig):
                           "literature_log": f"{state['files']['Folder']}/{state['files']['module_folder']}/literature.log",
                           "papers": f"{state['files']['Folder']}/{state['files']['module_folder']}/papers_processed.log",
         }
-        idea = {**state['idea'], 'idea': idea}
+        idea_state = {**state['idea'], 'idea': idea}
 
     elif state['task']=='referee':
         state['referee'] = {**state['referee'], 'paper_version':2, 'report':'', 'images':[]}
-        state['files'] = {**state['files'],
+        # ``Paper_folder`` is intentionally extra here — the referee
+        # task reuses paper_agents output, so the FILES TypedDict in
+        # langgraph_agents/parameters.py doesn't declare it. mypy
+        # flags "Extra key" until that schema is unified across
+        # graphs (TODO: see ADR on cross-graph state).
+        state['files'] = {**state['files'],  # type: ignore[typeddict-unknown-key]
                           "Paper_folder": f"{state['files']['Folder']}/{PAPER_FOLDER}",
                           "referee_report": f"{state['files']['Folder']}/{INPUT_FILES}/{REFEREE_FILE}",
                           "referee_log":  f"{state['files']['Folder']}/{state['files']['module_folder']}/referee.log",
@@ -115,37 +127,38 @@ def preprocess_node(state: GraphState, config: RunnableConfig):
     os.makedirs(f"{state['files']['Folder']}/{INPUT_FILES}", exist_ok=True)
 
     #########################################
-    # clean existing files
-    for f in ["LLM_calls", "Error"]:
-        file_path = state['files'][f]
+    # clean existing files. ``files_any`` lets us index by a runtime
+    # string without the TypedDict literal-key check screaming.
+    for fkey in ["LLM_calls", "Error"]:
+        file_path = files_any[fkey]
         if os.path.exists(file_path):
             os.remove(file_path)
 
     # remove idea.md and idea.log if they exist
-    if state['task']=='idea_generation': 
-        for f in ["idea", "idea_log"]:
-            file_path = state['files'][f]
+    if state['task']=='idea_generation':
+        for fkey in ["idea", "idea_log"]:
+            file_path = files_any[fkey]
             if os.path.exists(file_path):
                 os.remove(file_path)
 
     # remove methods.md if it exists
     if state['task']=='methods_generation':
-        for f in ["methods"]:
-            file_path = state['files'][f]
+        for fkey in ["methods"]:
+            file_path = files_any[fkey]
             if os.path.exists(file_path):
                 os.remove(file_path)
 
     # remove literature.md if it exists
     if state['task']=="literature":
-        for f in ['literature', 'literature_log', 'papers']:
-            file_path = state['files'][f]
+        for fkey in ['literature', 'literature_log', 'papers']:
+            file_path = files_any[fkey]
             if os.path.exists(file_path):
                 os.remove(file_path)
 
     # remove referee.md if it exists
     if state['task']=='referee':
-        for f in ['referee_report', 'referee_log']:
-            file_path = state['files'][f]
+        for fkey in ['referee_report', 'referee_log']:
+            file_path = files_any[fkey]
             if os.path.exists(file_path):
                 os.remove(file_path)
 
@@ -170,6 +183,6 @@ def preprocess_node(state: GraphState, config: RunnableConfig):
         "llm":              state['llm'],
         "tokens":           state['tokens'],
         "data_description": description,
-        "idea":             idea,
+        "idea":             idea_state,
     }
 

@@ -35,7 +35,10 @@ def revision_router(state: GraphState):
     Either condition failing terminates the loop.
     """
     digest = state.get("critique_digest") or {}
-    revision_state = state.get("revision_state") or {}
+    # mypy treats revision_state as non-Optional (REVISION_STATE is a
+    # required field on GraphState) but partial state updates can ship
+    # without it. Keep the runtime fallback.
+    revision_state = state.get("revision_state") or {}  # type: ignore[unreachable]
 
     try:
         max_severity = int(digest.get("max_severity", 0) or 0)

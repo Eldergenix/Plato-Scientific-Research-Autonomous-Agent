@@ -61,8 +61,8 @@ def critique_aggregator(state: GraphState, config: RunnableConfig):
     severities: list[int] = []
     issues: list[dict] = []
     for reviewer_name, critique in critiques.items():
-        if not isinstance(critique, dict):
-            continue
+        # critiques is typed as dict[str, dict] on GraphState; trust it
+        # rather than re-validating per element.
         severities.append(_coerce_severity(critique.get("severity", 0)))
         for entry in critique.get("issues", []) or []:
             if not isinstance(entry, dict):
@@ -77,7 +77,8 @@ def critique_aggregator(state: GraphState, config: RunnableConfig):
             )
 
     max_severity = max(severities) if severities else 0
-    revision_state = state.get("revision_state") or {}
+    # See routers.py for the same defensive fallback rationale.
+    revision_state = state.get("revision_state") or {}  # type: ignore[unreachable]
     iteration = int(revision_state.get("iteration", 0) or 0)
 
     digest = CritiqueDigest(

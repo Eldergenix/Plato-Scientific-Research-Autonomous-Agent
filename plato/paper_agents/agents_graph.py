@@ -41,7 +41,9 @@ def _reviewer_panel_fanout(state: GraphState):
     Initialises ``revision_state`` on first entry so downstream routing has
     sensible defaults even if the caller did not preset it.
     """
-    revision_state = dict(state.get("revision_state") or {})
+    # ``state.get(...) or {}`` survives partial state updates that drop
+    # ``revision_state``; mypy thinks the field is non-Optional.
+    revision_state = dict(state.get("revision_state") or {})  # type: ignore[unreachable]
     revision_state.setdefault("iteration", 0)
     revision_state.setdefault("max_iterations", 2)
     return {
@@ -65,11 +67,13 @@ def _claim_evidence_fanout(state: GraphState):
     if not state.get("evidence_links"):
         update["evidence_links"] = []
 
-    files = dict(state.get("files") or {})
+    # FILES is a required TypedDict field; the runtime fallback is for
+    # partial updates that omit it.
+    files = dict(state.get("files") or {})  # type: ignore[unreachable]
     if not files.get("f_stream"):
         folder = files.get("Folder") or files.get("Paper_folder")
         if folder:
-            stream_path = Path(folder) / "claim_extraction.log"
+            stream_path = Path(str(folder)) / "claim_extraction.log"
             stream_path.parent.mkdir(parents=True, exist_ok=True)
             files["f_stream"] = str(stream_path)
             update["files"] = files

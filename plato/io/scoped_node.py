@@ -15,7 +15,7 @@ in their checkpoint.
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Awaitable, Callable, Union
+from typing import Any, Awaitable, Callable, Union, cast
 
 from .scoped_writer import FileScope, ScopedWriter
 
@@ -49,7 +49,7 @@ def scoped_node(fn: NodeFn, scope: FileScope) -> NodeFn:
         folder = state["files"]["Folder"]
         writer = ScopedWriter(folder, scope)
         scoped_state = {**state, "_writer": writer}
-        return fn(scoped_state, *args, **kwargs)
+        return cast(dict, fn(scoped_state, *args, **kwargs))
 
     _sync_wrapper.__name__ = fn.__name__
     _sync_wrapper.__qualname__ = fn.__qualname__

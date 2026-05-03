@@ -3,6 +3,7 @@ import time
 import hashlib
 import shutil
 from pathlib import Path
+from typing import Any
 from langchain_core.runnables import RunnableConfig
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
@@ -66,32 +67,38 @@ def preprocess_node(state: GraphState, config: RunnableConfig):
                       "AAS_keywords": str( LaTeX_DIR / "AAS_keywords.txt" )}
 
     # set the Latex class
-    state['latex'] = {'section': ''}
-    
+    state['latex'] = {'section_to_fix': ''}
+
+    # ``files_any`` opens the FILES TypedDict to runtime-string keys
+    # ("Idea"/"Methods"/...). mypy disallows variable-key reads on
+    # TypedDicts; the cast keeps the existing dynamic-lookup behavior
+    # without sprinkling literal-key boilerplate at every site.
+    files_any: dict[str, Any] = state['files']  # type: ignore[assignment]
+
     # read input files
-    idea = {}
+    idea: dict[str, str | None] = {}
     for key in ["Idea", "Methods", "Results"]:
-        path = Path(f"{state['files']['Folder']}/{INPUT_FILES}/{state['files'][key]}")
+        path = Path(f"{state['files']['Folder']}/{INPUT_FILES}/{files_any[key]}")
         if path.exists():
-            with path.open("r", encoding="utf-8") as f:
-                idea[key] = f.read()
+            with path.open("r", encoding="utf-8") as fh:
+                idea[key] = fh.read()
         else:
             idea[key] = None
 
     # remove these files if they already exist
-    for f in ['Paper_v1', 'Paper_v2', 'Paper_v3', 'Paper_v4']:
-        f_in = f"{state['files']['Paper_folder']}/{state['files'][f]}"
+    for paper_key in ['Paper_v1', 'Paper_v2', 'Paper_v3', 'Paper_v4']:
+        f_in = f"{state['files']['Paper_folder']}/{files_any[paper_key]}"
         if os.path.exists(f_in):
             os.remove(f"{f_in}")
 
         # get the root of the paper file (if paper.tex, root=paper)
-        root = Path(state['files'][f]).stem
-        
-        for f_in in [f'{root}.pdf', f'{root}.aux', f'{root}.log', f'{root}.out',
+        root = Path(files_any[paper_key]).stem
+
+        for f_aux in [f'{root}.pdf', f'{root}.aux', f'{root}.log', f'{root}.out',
                      f'{root}.bbl', f'{root}.blg', f'{root}.synctex.gz',
                      f'{root}.synctex(busy)', 'bibliography.bib',
                      'bibliography_temp.bib',]:
-            fin = f"{state['files']['Paper_folder']}/{f_in}"
+            fin = f"{state['files']['Paper_folder']}/{f_aux}"
             if os.path.exists(fin):
                 os.remove(f"{fin}")
 
@@ -115,26 +122,26 @@ def preprocess_node(state: GraphState, config: RunnableConfig):
     journal_files = journal_dict[state["paper"]["journal"]].files
 
     # copy LaTeX journal files to project folder
-    for f in journal_files:
-        f_in = f"{state['files']['Paper_folder']}/{f}"
+    for jfile in journal_files:
+        f_in = f"{state['files']['Paper_folder']}/{jfile}"
         if not(os.path.exists(f_in)):
-            os.system(f"cp {LaTeX_DIR}/{f} {state['files']['Paper_folder']}")
-        f_in = f"{state['files']['Temp']}/{f}"
+            os.system(f"cp {LaTeX_DIR}/{jfile} {state['files']['Paper_folder']}")
+        f_in = f"{state['files']['Temp']}/{jfile}"
         if not(os.path.exists(f_in)):
-            os.system(f"cp {LaTeX_DIR}/{f} {state['files']['Temp']}")
+            os.system(f"cp {LaTeX_DIR}/{jfile} {state['files']['Temp']}")
 
     # deal with repeated plots
     plots_dir    = Path(f"{state['files']['Folder']}/{INPUT_FILES}/{state['files']['Plots']}")
     repeated_dir = Path(f"{plots_dir}_repeated")
 
     # Walk through all plot files
-    hash_dict = {}  # create hash dictionary
+    hash_dict: dict[str, Path] = {}  # create hash dictionary
     for file in plots_dir.iterdir():
         if file.is_file():
 
             # Compute hash
-            with open(file, "rb") as f:
-                file_hash = hashlib.md5(f.read()).hexdigest()
+            with open(file, "rb") as fbin:
+                file_hash = hashlib.md5(fbin.read()).hexdigest()
     
             if file_hash in hash_dict:
                 repeated_dir.mkdir(exist_ok=True)

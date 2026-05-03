@@ -4,8 +4,9 @@ import * as React from "react";
 import { ChevronRight, PlayCircle, Plus, Signal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn, formatRelativeTime, formatTokens } from "@/lib/utils";
-import { MODELS_BY_ID } from "@/lib/models";
+import { getCachedModelsCatalog, loadModelsCatalog } from "@/lib/models-async";
 import type {
+  ModelDef,
   Project,
   Provider,
   Stage,
@@ -13,6 +14,28 @@ import type {
   StageStatus,
 } from "@/lib/types";
 import { StatusIcon } from "./status-icon";
+
+// Lookup table for model->provider, sourced from the catalog. The home
+// shell renders WorkspaceList synchronously, so we eagerly trigger the
+// catalog load on mount; until it resolves we fall back to a stage's
+// raw model id (no provider color), which beats blocking First Load JS
+// on the catalog or showing a spinner inside every row.
+function useModelsById(): Record<string, ModelDef> | null {
+  const [byId, setById] = React.useState<Record<string, ModelDef> | null>(
+    () => getCachedModelsCatalog()?.MODELS_BY_ID ?? null,
+  );
+  React.useEffect(() => {
+    if (byId) return;
+    let alive = true;
+    loadModelsCatalog().then((c) => {
+      if (alive) setById(c.MODELS_BY_ID);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [byId]);
+  return byId;
+}
 
 type GroupKey = "in-progress" | "backlog" | "done" | "failed";
 
@@ -171,10 +194,17 @@ interface IssueRowProps {
   onRun: () => void;
 }
 
-function IssueRow({ stage, project, onSelect }: IssueRowProps) {
+function IssueRow({
+  stage,
+  project,
+  onSelect,
+  modelsById,
+}: IssueRowProps & {
+  modelsById: Record<string, ModelDef> | null;
+}) {
   const idx = STAGE_INDEX[stage.id];
   const issueId = `PLATO-${idx}`;
-  const model = stage.model ? MODELS_BY_ID[stage.model] : undefined;
+  const model = stage.model && modelsById ? modelsById[stage.model] : undefined;
   const provider = (model?.provider ?? null) as Provider | null;
   const showJournal = stage.id === "paper" && project.journal !== "NONE";
   const tokens =
@@ -294,6 +324,7 @@ interface GroupSectionProps {
   project: Project;
   onSelectStage: (id: StageId) => void;
   onRunStage: (id: StageId) => void;
+  modelsById: Record<string, ModelDef> | null;
 }
 
 function GroupSection({
@@ -308,6 +339,7 @@ function GroupSection({
   project,
   onSelectStage,
   onRunStage,
+  modelsById,
 }: GroupSectionProps) {
   if (stages.length === 0) return null;
 
@@ -378,6 +410,7 @@ function GroupSection({
               project={project}
               onSelect={() => onSelectStage(stage.id)}
               onRun={() => onRunStage(stage.id)}
+              modelsById={modelsById}
             />
           ))}
         </div>
@@ -392,6 +425,7 @@ export function WorkspaceList({
   onRunStage,
 }: WorkspaceListProps) {
   const groups = React.useMemo(() => groupStages(project), [project]);
+  const modelsById = useModelsById();
   const [collapsed, setCollapsed] = React.useState<Record<GroupKey, boolean>>({
     failed: false,
     "in-progress": false,
@@ -461,6 +495,7 @@ export function WorkspaceList({
           project={project}
           onSelectStage={onSelectStage}
           onRunStage={onRunStage}
+          modelsById={modelsById}
         />
       ))}
     </div>

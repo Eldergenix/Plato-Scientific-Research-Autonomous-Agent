@@ -27,7 +27,7 @@ import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Mapping
 
 from langchain_core.runnables import RunnableConfig
 
@@ -48,13 +48,13 @@ def _load_retraction_db(state: "GraphState") -> RetractionDB:
     Missing or unreadable files log a warning and return an empty DB so the
     graph never crashes on a misconfigured path.
     """
-    if isinstance(state, dict):
-        existing = state.get("retraction_db")
-        if isinstance(existing, RetractionDB):
-            return existing
-        path = state.get("retraction_db_path")
-    else:
-        path = None
+    # ``state`` is the GraphState TypedDict (always a dict at runtime);
+    # the previous ``isinstance(state, dict)`` was defensive scaffolding
+    # mypy correctly flags as dead.
+    existing = state.get("retraction_db")
+    if isinstance(existing, RetractionDB):
+        return existing
+    path: Any = state.get("retraction_db_path")
 
     if not path:
         path = os.environ.get("PLATO_RETRACTION_DB_PATH")
@@ -63,7 +63,7 @@ def _load_retraction_db(state: "GraphState") -> RetractionDB:
         return RetractionDB.empty()
 
     try:
-        return RetractionDB.from_csv(path)
+        return RetractionDB.from_csv(str(path))
     except (FileNotFoundError, OSError, ValueError) as exc:
         logger.warning(
             "RetractionDB load failed for %s (%s); continuing with empty DB.",
@@ -286,11 +286,8 @@ def _entry_to_source(entry: Any, idx: int) -> Source | None:
     )
 
 
-def _collect_sources(state: dict) -> list[Source]:
+def _collect_sources(state: Mapping[str, Any]) -> list[Source]:
     """Pick the most informative reference list available on the state."""
-    if not isinstance(state, dict):
-        return []
-
     # Priority 1: explicit Source objects from the retrieval pipeline.
     sources = state.get("sources")
     if sources:
@@ -329,7 +326,7 @@ def _collect_sources(state: dict) -> list[Source]:
     return []
 
 
-def _resolve_run_dir(state: dict) -> tuple[str, Path | None]:
+def _resolve_run_dir(state: Mapping[str, Any]) -> tuple[str, Path | None]:
     """Return ``(run_id, run_dir)`` — directory is None if no project folder."""
     run_id = state.get("run_id") if isinstance(state, dict) else None
     if not run_id:

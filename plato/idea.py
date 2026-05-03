@@ -78,6 +78,8 @@ class Idea:
             task_result = get_task_result(chat_history,'idea_maker_nest')
         except Exception as e:
             raise e
+        if task_result is None:
+            raise RuntimeError("idea_maker_nest produced no result")
 
         pattern = r'\*\*Ideas\*\*\s*\n- Idea 1:'
         replacement = "Project Idea:"

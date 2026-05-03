@@ -4,6 +4,7 @@ import sys
 import json
 import json5
 from pathlib import Path
+from typing import Any, Mapping
 
 from .prompts import fixer_prompt, LaTeX_prompt
 from .parameters import GraphState
@@ -252,7 +253,7 @@ def json_parser3(text: str):
     return data
 
 
-def extract_latex_block(state: GraphState, text: str, block: str) -> str:
+def extract_latex_block(state: Mapping[str, Any], text: str | list[Any], block: str) -> str:
     r"""
     This function takes some text and extracts the TEXT located between
     \begin{block}
@@ -284,7 +285,7 @@ def extract_latex_block(state: GraphState, text: str, block: str) -> str:
 
     
 
-def fixer(state: GraphState, section_name):
+def fixer(state: Mapping[str, Any], section_name):
     """
     This function will try to fix the errors with automatic parsing
     """

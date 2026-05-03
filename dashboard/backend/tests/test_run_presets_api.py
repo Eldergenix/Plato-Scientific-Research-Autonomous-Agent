@@ -207,3 +207,66 @@ def test_corrupt_file_returns_empty_list(
     resp = client.get("/api/v1/run-presets")
     assert resp.status_code == 200
     assert resp.json() == []
+
+
+def test_alice_preset_invisible_to_bob(client) -> None:
+    """Cross-tenant read: bob's GET must not surface alice's row."""
+    create = client.post(
+        "/api/v1/run-presets",
+        json={"name": "alice-secret", "config": SAMPLE_CONFIG},
+        headers={"X-Plato-User": "alice"},
+    )
+    assert create.status_code == 201
+
+    bob_list = client.get(
+        "/api/v1/run-presets",
+        headers={"X-Plato-User": "bob"},
+    )
+    assert bob_list.status_code == 200
+    assert bob_list.json() == []
+
+    pid = create.json()["id"]
+    bob_get = client.get(
+        f"/api/v1/run-presets/{pid}",
+        headers={"X-Plato-User": "bob"},
+    )
+    assert bob_get.status_code == 404
+
+
+def test_concurrent_puts_settle_on_a_single_winning_state(
+    client, tmp_project_root: Path
+) -> None:
+    """Two PUTs back-to-back: last writer wins, no on-disk corruption.
+
+    The endpoint isn't lock-protected (last-writer-wins is documented),
+    so we just verify the post-condition: after both writes return 200,
+    the persisted file is parseable and matches one of the two payloads.
+    """
+    created = client.post(
+        "/api/v1/run-presets",
+        json={"name": "race", "config": {"idea_iters": 1}},
+    ).json()
+    pid = created["id"]
+
+    a = client.put(
+        f"/api/v1/run-presets/{pid}",
+        json={"config": {"idea_iters": 7, "domain": "astro"}},
+    )
+    b = client.put(
+        f"/api/v1/run-presets/{pid}",
+        json={"config": {"idea_iters": 9, "domain": "biology"}},
+    )
+    assert a.status_code == 200
+    assert b.status_code == 200
+
+    legacy = tmp_project_root / "run_presets.json"
+    payload = json.loads(legacy.read_text())
+    assert len(payload["presets"]) == 1
+    config = payload["presets"][0]["config"]
+    assert config in (
+        {"idea_iters": 7, "domain": "astro"},
+        {"idea_iters": 9, "domain": "biology"},
+    )
+
+    final = client.get(f"/api/v1/run-presets/{pid}").json()
+    assert final["config"] == config

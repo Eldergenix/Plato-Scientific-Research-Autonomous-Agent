@@ -20,7 +20,7 @@ from plato.state.telemetry import read_recent
 from ..settings import Settings, get_settings
 from .user_preferences import _resolve_user_id
 
-router = APIRouter()
+router = APIRouter(tags=["telemetry"])
 
 
 class TelemetrySummary(BaseModel):
@@ -82,11 +82,19 @@ def _aggregate(entries: list[dict[str, Any]]) -> TelemetrySummary:
     )
 
 
-@router.get("/telemetry/preferences", response_model=TelemetryPreferencesResponse)
+@router.get(
+    "/telemetry/preferences",
+    response_model=TelemetryPreferencesResponse,
+    summary="Read telemetry opt-in + last-N summary",
+    responses={
+        401: {"description": "Auth required and `X-Plato-User` header is missing/invalid."},
+    },
+)
 def get_telemetry_preferences(
     settings: Settings = Depends(get_settings),
     x_plato_user: str | None = Header(default=None, alias="X-Plato-User"),
 ) -> TelemetryPreferencesResponse:
+    """Return the user's telemetry preference and the last 30 run summaries."""
     user_id = _resolve_user_id(settings, x_plato_user)
     data = _load(_prefs_path(settings, user_id))
     enabled = bool(data.get("telemetry_enabled", True))
@@ -98,12 +106,21 @@ def get_telemetry_preferences(
     )
 
 
-@router.put("/telemetry/preferences", response_model=TelemetryPreferencesResponse)
+@router.put(
+    "/telemetry/preferences",
+    response_model=TelemetryPreferencesResponse,
+    summary="Update telemetry opt-in flag",
+    responses={
+        400: {"description": "`telemetry_enabled` is not a boolean."},
+        401: {"description": "Auth required and `X-Plato-User` header is missing/invalid."},
+    },
+)
 def put_telemetry_preferences(
     body: TelemetryPreferencesUpdate,
     settings: Settings = Depends(get_settings),
     x_plato_user: str | None = Header(default=None, alias="X-Plato-User"),
 ) -> TelemetryPreferencesResponse:
+    """Persist the user's telemetry opt-in/out and return the refreshed payload."""
     if not isinstance(body.telemetry_enabled, bool):  # pydantic guards but be explicit
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

@@ -109,6 +109,24 @@ def _write_status(run: Run) -> None:
         pass
 
 
+async def _publish_lifecycle(bus: EventBus, run: Run, kind: str) -> None:
+    """Fan-out a `run.started` / `run.finished` lifecycle event to the
+    project channel. Listeners on `project:{pid}` get a compact summary so
+    a runs-list page can refetch (or apply a delta) without subscribing
+    to every per-run channel."""
+    await bus.publish(
+        f"project:{run.project_id}",
+        {
+            "kind": kind,
+            "run_id": run.id,
+            "project_id": run.project_id,
+            "stage": run.stage,
+            "status": run.status,
+            "ts": utcnow().isoformat(),
+        },
+    )
+
+
 def _resolve_keys() -> dict[str, str]:
     """Pull API keys from KeyStore + env, mapped to env-var names Plato reads."""
     settings = get_settings()
@@ -424,6 +442,7 @@ async def _tail_events(run: Run, bus: EventBus, events_file: Path) -> None:
                             run.status = evt.get("status", "failed")
                             run.finished_at = utcnow()
                             _write_status(run)
+                            await _publish_lifecycle(bus, run, "run.finished")
                             # Reconcile the live ledger with the canonical
                             # on-disk LLM_calls.txt for this stage.
                             try:
@@ -469,6 +488,7 @@ async def _tail_events(run: Run, bus: EventBus, events_file: Path) -> None:
                 run.status = new_status
                 run.finished_at = utcnow()
                 _write_status(run)
+                await _publish_lifecycle(bus, run, "run.finished")
             finished_seen = True
             break
 
@@ -501,6 +521,7 @@ async def _supervise(run: Run, bus: EventBus, events_file: Path) -> None:
                     "ts": utcnow().isoformat(),
                 },
             )
+            await _publish_lifecycle(bus, run, "run.finished")
             raise
         except BaseException as exc:
             # _tail_events crashed unexpectedly. Kill the subprocess, mark
@@ -533,6 +554,7 @@ async def _supervise(run: Run, bus: EventBus, events_file: Path) -> None:
                             "ts": utcnow().isoformat(),
                         },
                     )
+                    await _publish_lifecycle(bus, run, "run.finished")
                 except BaseException:  # noqa: BLE001
                     _logger.exception(
                         "failed to publish terminal event for run %s",
@@ -624,6 +646,8 @@ async def start_run(
     _active_runs[run.id] = run
     _subprocesses[run.id] = proc
     _write_status(run)
+
+    await _publish_lifecycle(bus, run, "run.started")
 
     task = asyncio.create_task(_supervise(run, bus, events_file))
     _run_tasks[run.id] = task

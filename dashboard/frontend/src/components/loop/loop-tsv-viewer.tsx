@@ -1,18 +1,31 @@
 "use client";
 
 import * as React from "react";
+import dynamic from "next/dynamic";
 import { Activity, AlertCircle, CheckCircle2, OctagonX, StopCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Pill } from "@/components/ui/pill";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
-import { LoopHistory } from "./loop-history";
 import {
   loopApi,
   type LoopStatus,
   type LoopStatusValue,
   type LoopTsvRow,
 } from "./loop-api";
+
+// Defer the iteration table until rows are fetched — keeps it out of the
+// initial page chunk for the empty-loop case.
+const LoopHistory = dynamic(
+  () => import("./loop-history").then((m) => ({ default: m.LoopHistory })),
+  { ssr: false },
+);
+
+// Stop dialog pulls in @radix-ui/react-dialog. Mount only when the user
+// actually opens it so first paint stays light.
+const ConfirmDialog = dynamic(
+  () => import("@/components/ui/confirm-dialog").then((m) => ({ default: m.ConfirmDialog })),
+  { ssr: false },
+);
 
 export interface LoopTsvViewerProps {
   loopId: string;
@@ -198,16 +211,18 @@ export function LoopTsvViewer({
 
       <LoopHistory rows={rows} />
 
-      <ConfirmDialog
-        open={confirmOpen}
-        onOpenChange={setConfirmOpen}
-        title="Stop autonomous loop?"
-        description="The current iteration will be cancelled and any uncommitted git state from this iteration discarded. Loops cannot be resumed."
-        confirmLabel="Stop loop"
-        cancelLabel="Keep running"
-        variant="danger"
-        onConfirm={handleStop}
-      />
+      {confirmOpen ? (
+        <ConfirmDialog
+          open={confirmOpen}
+          onOpenChange={setConfirmOpen}
+          title="Stop autonomous loop?"
+          description="The current iteration will be cancelled and any uncommitted git state from this iteration discarded. Loops cannot be resumed."
+          confirmLabel="Stop loop"
+          cancelLabel="Keep running"
+          variant="danger"
+          onConfirm={handleStop}
+        />
+      ) : null}
     </div>
   );
 }

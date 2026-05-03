@@ -29,7 +29,7 @@ from plato.domain import list_domains
 
 from ..settings import Settings, get_settings
 
-router = APIRouter()
+router = APIRouter(tags=["preferences"])
 
 _ANON_USER = "__anon__"
 # Conservative slug — matches the alphabet ProjectStore already uses for IDs
@@ -124,11 +124,19 @@ def _coerce_default_models(raw: Any) -> dict[str, str]:
     return out
 
 
-@router.get("/user/preferences", response_model=PreferencesResponse)
+@router.get(
+    "/user/preferences",
+    response_model=PreferencesResponse,
+    summary="Read per-user dashboard preferences",
+    responses={
+        401: {"description": "Auth required and `X-Plato-User` header is missing or invalid."},
+    },
+)
 def get_preferences(
     settings: Settings = Depends(get_settings),
     x_plato_user: str | None = Header(default=None, alias="X-Plato-User"),
 ) -> PreferencesResponse:
+    """Return default domain, executor, and per-stage model picks."""
     user_id = _resolve_user_id(settings, x_plato_user)
     data = _load(_prefs_path(settings, user_id))
     return PreferencesResponse(
@@ -138,12 +146,21 @@ def get_preferences(
     )
 
 
-@router.put("/user/preferences", response_model=PreferencesResponse)
+@router.put(
+    "/user/preferences",
+    response_model=PreferencesResponse,
+    summary="Update per-user dashboard preferences",
+    responses={
+        400: {"description": "Empty update, unknown domain, or unknown stage id."},
+        401: {"description": "Auth required and `X-Plato-User` header is missing or invalid."},
+    },
+)
 def put_preferences(
     body: PreferencesUpdate,
     settings: Settings = Depends(get_settings),
     x_plato_user: str | None = Header(default=None, alias="X-Plato-User"),
 ) -> PreferencesResponse:
+    """Patch the user's preferences (`default_domain` and/or `default_models`)."""
     user_id = _resolve_user_id(settings, x_plato_user)
 
     if body.default_domain is None and body.default_models is None:

@@ -26,7 +26,12 @@ from ..settings import Settings, get_settings
 from .manifests import _find_run_dir, _read_json, _user_id
 
 
-router = APIRouter()
+router = APIRouter(tags=["research_signals"])
+
+_RUN_GUARDS: dict[int | str, dict] = {
+    404: {"description": "Run dir not found under any project root."},
+    403: {"description": "Run belongs to a different tenant (auth-required mode)."},
+}
 
 
 # Steering phrases the counter-evidence node appends to the seed query.
@@ -113,12 +118,18 @@ def _check_tenant(run_dir: Path, request: Request, settings: Settings) -> None:
         )
 
 
-@router.get("/runs/{run_id}/counter_evidence", response_model=JsonObjectResponse)
+@router.get(
+    "/runs/{run_id}/counter_evidence",
+    response_model=JsonObjectResponse,
+    summary="Disconfirming sources for a run",
+    responses=_RUN_GUARDS,
+)
 def get_counter_evidence(
     run_id: str,
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> dict:
+    """Return counter-evidence sources and the queries that surfaced them."""
     run_dir = _find_run_dir(settings.project_root, run_id)
     if run_dir is None:
         raise HTTPException(404, detail={"code": "run_not_found", "run_id": run_id})
@@ -159,12 +170,18 @@ def get_counter_evidence(
     return {"sources": sources, "queries_used": queries_used}
 
 
-@router.get("/runs/{run_id}/gaps", response_model=JsonObjectResponse)
+@router.get(
+    "/runs/{run_id}/gaps",
+    response_model=JsonObjectResponse,
+    summary="Detected research gaps for a run",
+    responses=_RUN_GUARDS,
+)
 def get_gaps(
     run_id: str,
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> dict:
+    """Return the gap-detector's `{kind, description, severity, evidence}` rows."""
     run_dir = _find_run_dir(settings.project_root, run_id)
     if run_dir is None:
         raise HTTPException(404, detail={"code": "run_not_found", "run_id": run_id})

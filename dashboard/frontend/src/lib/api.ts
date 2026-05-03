@@ -46,6 +46,19 @@ export type RunEvent =
   | RunEventPlotCreated
   | RunEventUnknown;
 
+// Project-scoped lifecycle event emitted on `project:{pid}` SSE channel.
+// Backend publishes a compact summary on run.started / run.finished so the
+// runs-list page can refetch (or apply a delta) without subscribing to
+// every per-run channel.
+export interface ProjectLifecycleEvent {
+  kind: "run.started" | "run.finished";
+  run_id: string;
+  project_id: string;
+  stage: StageId;
+  status: RunStatus;
+  ts: string;
+}
+
 // One file under a run dir, advertised by the artifacts listing.
 // Mirrors ``Artifact`` in dashboard/backend/.../api/server.py — keep
 // the union of ``kind`` values in lockstep with the backend Literal so
@@ -418,6 +431,74 @@ export const api = {
     };
   },
 
+  /**
+   * Subscribe to project-scoped lifecycle SSE for run.started /
+   * run.finished events. Same supervisor shape as subscribeRunEvents
+   * (5 retries, exp backoff, reset on open) so the runs-list page can
+   * stay live across server restarts.
+   *
+   * `onState` fires with "open" on a successful connection and "closed"
+   * on every onerror so the caller can drive a Live indicator without
+   * threading multiple callbacks.
+   */
+  subscribeProjectEvents(
+    pid: string,
+    onEvent: (evt: ProjectLifecycleEvent) => void,
+    onState?: (state: "open" | "closed") => void,
+  ): () => void {
+    const url = `${API_BASE}/projects/${pid}/events`;
+    const MAX_ATTEMPTS = 5;
+    let attempts = 0;
+    let stopped = false;
+    let current: EventSource | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const connect = (): void => {
+      if (stopped) return;
+      const es = new EventSource(url);
+      current = es;
+      es.onopen = () => {
+        attempts = 0;
+        onState?.("open");
+      };
+      es.onmessage = (e) => {
+        try {
+          const raw = JSON.parse(e.data) as Record<string, unknown>;
+          const kind = raw.kind;
+          if (kind === "run.started" || kind === "run.finished") {
+            onEvent(raw as unknown as ProjectLifecycleEvent);
+          }
+        } catch {
+          // Malformed payload — ignore. Live indicator stays open.
+        }
+      };
+      es.onerror = () => {
+        onState?.("closed");
+        if (stopped) return;
+        es.close();
+        current = null;
+        if (attempts >= MAX_ATTEMPTS) return;
+        const delay = Math.min(1000 * 2 ** attempts, 16000);
+        attempts += 1;
+        retryTimer = setTimeout(connect, delay);
+      };
+    };
+
+    connect();
+
+    return () => {
+      stopped = true;
+      if (retryTimer !== null) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+      if (current) {
+        current.close();
+        current = null;
+      }
+    };
+  },
+
   // ------------------------------------------------------------ telemetry
   async getTelemetryPreferences(): Promise<TelemetryPreferences> {
     return fetchJson<TelemetryPreferences>("/telemetry/preferences");
@@ -428,6 +509,22 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ telemetry_enabled: enabled }),
     });
+  },
+
+  async getTelemetryStatus(): Promise<TelemetryStatus> {
+    return fetchJson<TelemetryStatus>("/telemetry/status");
+  },
+
+  async getRecentTelemetry(
+    opts: { limit?: number; projectId?: string } = {},
+  ): Promise<TelemetryRecent> {
+    const params = new URLSearchParams();
+    if (opts.limit !== undefined) params.set("limit", String(opts.limit));
+    if (opts.projectId !== undefined) params.set("project_id", opts.projectId);
+    const qs = params.toString();
+    return fetchJson<TelemetryRecent>(
+      `/telemetry/recent${qs ? `?${qs}` : ""}`,
+    );
   },
 
   // ------------------------------------------------------------ run presets
@@ -552,6 +649,13 @@ export interface TelemetryEntry {
   tokens_out?: number;
   cost_usd?: number;
   status?: string;
+  // Optional fields populated when ManifestRecorder.start() received them.
+  project_id?: string;
+  user_id?: string;
+  model?: string;
+  started_at?: string;
+  finished_at?: string;
+  error?: string;
 }
 
 export interface TelemetryAggregates {
@@ -565,6 +669,18 @@ export interface TelemetryPreferences {
   telemetry_enabled: boolean;
   last_n_summary: TelemetryEntry[];
   aggregates: TelemetryAggregates;
+}
+
+export interface TelemetryStatus {
+  enabled: boolean;
+  record_count: number;
+  storage_path: string;
+}
+
+export interface TelemetryRecent {
+  items: TelemetryEntry[];
+  total: number;
+  enabled: boolean;
 }
 
 // ---------------------------------------------------------------- run preset types

@@ -181,7 +181,7 @@ def _extract_paragraphs_from_tex_content(tex_content: str) -> dict:
 
     return paragraph_lines
 
-def _arxiv_url_to_bib(citations: List[str]) -> Tuple[List[str], List[str]]:
+def _arxiv_url_to_bib(citations: List[str]) -> Tuple[List[str | None], List[str]]:
     """
     Given a list of arXiv URLs, returns BibTeX keys and entries.
 
@@ -193,8 +193,11 @@ def _arxiv_url_to_bib(citations: List[str]) -> Tuple[List[str], List[str]]:
             - A list of BibTeX keys (as strings).
             - A list of full BibTeX entries (as strings) suitable for inclusion in a .bib file.
     """
-    bib_keys = []
-    bib_strs = []
+    # ``None`` markers are appended for failed lookups so the index
+    # alignment with ``citations`` is preserved; consumers filter
+    # ``None`` out before forming \citep{} groups.
+    bib_keys: list[str | None] = []
+    bib_strs: list[str] = []
 
     for url in citations:
 
@@ -239,7 +242,7 @@ def _arxiv_url_to_bib(citations: List[str]) -> Tuple[List[str], List[str]]:
 
     return bib_keys, bib_strs
 
-def _replace_grouped_citations(content: str, bib_keys: List[str]) -> str:
+def _replace_grouped_citations(content: str, bib_keys: List[str | None]) -> str:
     """
     Replaces runs like [1][2][3] with a single sorted `\\citep{key1,key2,key3}`, sorted by year.
     Works for single refs like [1] too.
@@ -255,7 +258,7 @@ def _replace_grouped_citations(content: str, bib_keys: List[str]) -> str:
     def extract_year(key: str) -> int:
         """Extracts a 4-digit year from a BibTeX key (or returns a large number if missing)."""
         match = re.search(r'\d{4}', key)
-        return int(match.group()) if match else float('inf')
+        return int(match.group()) if match else 9999
 
     def replacer(match):
         # numbers = re.findall(r'\[(\d+)\]', match.group())  # ['1', '2', '3']

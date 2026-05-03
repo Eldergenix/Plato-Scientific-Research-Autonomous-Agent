@@ -2,29 +2,126 @@
 
 import * as React from "react";
 import { use as usePromise } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { Ban, RotateCcw } from "lucide-react";
 import {
   ManifestPanel,
   type RunManifest,
 } from "@/components/manifest/manifest-panel";
-import { NodeBreakdown } from "@/components/manifest/node-breakdown";
-import {
-  EvidenceMatrixTable,
-  type EvidenceMatrixData,
-} from "@/components/manifest/evidence-matrix-table";
-import {
-  ValidationReportCard,
-  type ValidationReport,
-} from "@/components/manifest/validation-report-card";
-import { ArtifactsPanel } from "@/components/manifest/artifacts-panel";
+import type { EvidenceMatrixData } from "@/components/manifest/evidence-matrix-table";
+import type { ValidationReport } from "@/components/manifest/validation-report-card";
 import { RunDetailNav } from "@/components/manifest/run-detail-nav";
 import { AgentLogStream } from "@/components/shell/agent-log-stream";
+import { TableSkeleton } from "@/components/shell/route-loading";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { api, ApiError, setActiveRunId } from "@/lib/api";
 import type { LogLine, Run, StageId } from "@/lib/types";
 import { cn } from "@/lib/utils";
+
+// Code-split the four panels that render below-the-fold or only after
+// async data lands. ManifestPanel stays static because it's the
+// first-paint critical path; the live SSE log stream stays static so we
+// don't defer the tail connection this page exists to surface. ssr:false
+// because each panel is gated on a client-side fetch and would otherwise
+// pay a hydration round-trip for a placeholder it can't render anyway.
+const NodeBreakdown = dynamic(
+  () =>
+    import("@/components/manifest/node-breakdown").then((m) => ({
+      default: m.NodeBreakdown,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <PanelSkeleton
+        label="Node breakdown"
+        columnWidths={["28%", "16%", "16%", "16%", "16%"]}
+      />
+    ),
+  },
+);
+const EvidenceMatrixTable = dynamic(
+  () =>
+    import("@/components/manifest/evidence-matrix-table").then((m) => ({
+      default: m.EvidenceMatrixTable,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <PanelSkeleton
+        label="Evidence matrix"
+        columnWidths={["32%", "20%", "16%", "16%", "12%"]}
+      />
+    ),
+  },
+);
+const ValidationReportCard = dynamic(
+  () =>
+    import("@/components/manifest/validation-report-card").then((m) => ({
+      default: m.ValidationReportCard,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <PanelSkeleton
+        label="Validation report"
+        columnWidths={["40%", "20%", "20%", "16%"]}
+        rows={4}
+      />
+    ),
+  },
+);
+const ArtifactsPanel = dynamic(
+  () =>
+    import("@/components/manifest/artifacts-panel").then((m) => ({
+      default: m.ArtifactsPanel,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <PanelSkeleton
+        label="Artifacts"
+        columnWidths={["44%", "16%", "20%", "16%"]}
+      />
+    ),
+  },
+);
+
+function PanelSkeleton({
+  label,
+  columnWidths,
+  rows = 6,
+}: {
+  label: string;
+  columnWidths: ReadonlyArray<string>;
+  rows?: number;
+}) {
+  const slug = label.toLowerCase().replace(/\s+/g, "-");
+  const headingId = `panel-skeleton-${slug}-heading`;
+  return (
+    <section
+      className="surface-linear-card overflow-hidden"
+      data-testid={`panel-skeleton-${slug}`}
+      style={{ border: "1px solid var(--color-border-card)" }}
+      aria-labelledby={headingId}
+    >
+      <header
+        className="flex items-center justify-between gap-3 px-4 py-2"
+        style={{ borderBottom: "1px solid var(--color-border-standard)" }}
+      >
+        <h2 id={headingId} className="font-label">
+          {label}
+        </h2>
+      </header>
+      <TableSkeleton
+        rows={rows}
+        columnWidths={columnWidths}
+        caption={`Loading ${label.toLowerCase()}`}
+      />
+    </section>
+  );
+}
 
 // Cancel is meaningful only while the worker is alive; retry is the
 // inverse — only a terminal failed/cancelled run can be re-launched. We

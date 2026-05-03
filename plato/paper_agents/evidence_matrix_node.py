@@ -23,7 +23,7 @@ import re
 import time
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Mapping
 
 from langchain_core.runnables import RunnableConfig
 
@@ -88,7 +88,7 @@ def _classify_prompt(drafted_claim_text: str, source_claim_text: str) -> str:
     )
 
 
-def _drafted_claims(state: dict) -> list[Claim]:
+def _drafted_claims(state: Mapping[str, Any]) -> list[Claim]:
     """Pick claims with no source provenance — those drafted by Plato itself."""
     raw = state.get("claims") if isinstance(state, dict) else None
     if not raw:
@@ -104,7 +104,7 @@ def _drafted_claims(state: dict) -> list[Claim]:
     return out
 
 
-def _source_claims(state: dict) -> list[Claim]:
+def _source_claims(state: Mapping[str, Any]) -> list[Claim]:
     """Pick claims that *do* have a source — extracted from retrieved papers."""
     raw = state.get("claims") if isinstance(state, dict) else None
     if not raw:
@@ -118,7 +118,7 @@ def _source_claims(state: dict) -> list[Claim]:
     return out
 
 
-def _resolve_run_dir(state: dict) -> tuple[str, Path | None]:
+def _resolve_run_dir(state: Mapping[str, Any]) -> tuple[str, Path | None]:
     run_id = state.get("run_id") if isinstance(state, dict) else None
     if not run_id:
         run_id = uuid.uuid4().hex[:12]
@@ -209,8 +209,8 @@ def evidence_matrix_node(
             link = EvidenceLink(
                 claim_id=drafted_claim.id,
                 source_id=source_claim.source_id or "unknown",
-                support=support,  # type: ignore[arg-type]
-                strength=strength,  # type: ignore[arg-type]
+                support=support,
+                strength=strength,
                 quote_span=source_claim.quote_span,
             )
             new_links.append(link)

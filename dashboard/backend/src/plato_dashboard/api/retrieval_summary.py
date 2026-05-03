@@ -25,7 +25,7 @@ from ..settings import Settings, get_settings
 from .manifests import _find_run_dir, _read_json
 
 
-router = APIRouter()
+router = APIRouter(tags=["retrieval"])
 
 
 _EMPTY_PAYLOAD: dict[str, Any] = {
@@ -170,12 +170,21 @@ def _from_manifest_extra(manifest: dict) -> dict[str, Any] | None:
     return _build_payload(log)
 
 
-@router.get("/runs/{run_id}/retrieval_summary", response_model=JsonObjectResponse)
+@router.get(
+    "/runs/{run_id}/retrieval_summary",
+    response_model=JsonObjectResponse,
+    summary="Per-adapter retrieval breakdown",
+    responses={
+        404: {"description": "Run dir not found under any project root."},
+        403: {"description": "Run belongs to a different tenant (auth-required mode)."},
+    },
+)
 def get_retrieval_summary(
     run_id: str,
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> dict:
+    """Return per-adapter (arxiv/openalex/...) source counts plus dedup deltas."""
     requester = extract_user_id(request)
     run_dir = _find_run_dir(settings.project_root, run_id)
     if run_dir is None:

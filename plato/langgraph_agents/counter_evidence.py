@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Iterable, Optional
+from typing import Any, Iterable, Optional
 
 from langchain_core.runnables import RunnableConfig
 
@@ -93,12 +93,17 @@ def _seed_query(state: GraphState) -> str | None:
 def _existing_sources(state: GraphState) -> list[Source]:
     """Pull the already-retrieved sources from either of the two state slots."""
     out: list[Source] = []
-    literature = state.get("literature") if isinstance(state, dict) else None
+    literature = state.get("literature")
     if isinstance(literature, dict):
-        for s in literature.get("sources") or []:
+        # ``literature`` is a TypedDict but the dynamic ``sources`` key
+        # isn't declared on it (counter-evidence queries stash extras
+        # there). Read via .get() and treat as Any-iterable.
+        lit_sources: Any = literature.get("sources") or []
+        for s in lit_sources:
             if isinstance(s, Source):
                 out.append(s)
-    for s in state.get("sources") or []:
+    state_sources: Any = state.get("sources") or []
+    for s in state_sources:
         if isinstance(s, Source):
             out.append(s)
     return out
@@ -146,8 +151,6 @@ async def counter_evidence_search(
             )
             continue
         for src in result:
-            if not isinstance(src, Source):
-                continue
             key = src.doi or src.arxiv_id or src.openalex_id or src.title.lower()
             if key in seen_keys:
                 continue

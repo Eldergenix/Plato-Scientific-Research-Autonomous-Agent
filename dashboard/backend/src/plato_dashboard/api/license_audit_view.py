@@ -34,7 +34,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
 
-router = APIRouter()
+router = APIRouter(tags=["licenses"])
 
 
 # Five minutes is long enough that an unchanging environment doesn't pay
@@ -151,8 +151,15 @@ def _get_cached_audit() -> dict:
         return _cache_payload
 
 
-@router.get("/license_audit")
+@router.get(
+    "/license_audit",
+    summary="Dependency license audit",
+    responses={
+        500: {"description": "license_audit script could not be imported."},
+    },
+)
 def license_audit() -> dict:
+    """Return summary counts and per-distribution license rows (5-min cache)."""
     return _get_cached_audit()
 
 
@@ -250,7 +257,14 @@ def _generate_sbom_via_subprocess() -> dict:
         ) from exc
 
 
-@router.get("/sbom")
+@router.get(
+    "/sbom",
+    summary="CycloneDX SBOM",
+    responses={
+        500: {"description": "sbom.json or generator output is corrupt."},
+        503: {"description": "No prebuilt sbom.json and the generator is unavailable."},
+    },
+)
 def sbom() -> JSONResponse:
     """Return the CycloneDX SBOM as JSON.
 

@@ -4,6 +4,7 @@ import base64
 import json
 import time
 from pathlib import Path
+from typing import Any
 from tqdm import tqdm
 import asyncio
 from functools import partial
@@ -81,8 +82,13 @@ def keywords_node(state: GraphState, config: RunnableConfig):
             #   3. ``"cmbagent"`` — preserves the legacy behaviour.
             from ..keyword_extractor import get_keyword_extractor
 
-            extractor_name = (
-                (state.get("paper") or {}).get("keyword_extractor")
+            # mypy treats ``state.get("paper")`` as non-Optional because
+            # PAPER is a required TypedDict field, so ``or {}`` reads as
+            # unreachable. The runtime can still be missing on partial
+            # state updates — keep the defensive ``or`` chain.
+            paper_state = state.get("paper") or {}  # type: ignore[unreachable]
+            extractor_name: str = str(
+                paper_state.get("keyword_extractor")
                 or getattr(state.get("domain_profile"), "keyword_extractor", None)
                 or "cmbagent"
             )
@@ -116,24 +122,27 @@ def keywords_node(state: GraphState, config: RunnableConfig):
             
                 # Check which choosen keywords are actually AAS keywords
                 matched_keywords = [kw for kw in input_keywords if kw in keywords_list]
-                matched_keywords = ', '.join(matched_keywords)
-                keywords = matched_keywords
+                keywords_str = ', '.join(matched_keywords)
 
                 # get the number of keywords
-                keywords = [item.strip() for item in keywords.split(',') if item.strip()]
-                
-                if len(keywords)>=state['params']['num_keywords']:
+                keywords_final: list[str] = [
+                    item.strip() for item in keywords_str.split(',') if item.strip()
+                ]
+
+                if len(keywords_final) >= state['params']['num_keywords']:
                     break
             else:
                 print("Failed to get the keywords ",end="",flush=True)
-                keywords = [""]
+                keywords_final = [""]
                 state['params']['num_keywords'] = 0
 
             # take a random subset
-            keywords = random.sample(keywords, min(len(keywords), state['params']['num_keywords']))
+            keywords_final = random.sample(
+                keywords_final, min(len(keywords_final), state['params']['num_keywords'])
+            )
 
             # join all keywords into a string with comma separated
-            keywords = ", ".join(keywords)
+            keywords = ", ".join(keywords_final)
             ###################################################
 
         # R11: route the keyword write through ScopedWriter so the
@@ -246,9 +255,15 @@ def section_node(state: GraphState, config: RunnableConfig, section_name: str,
     print(f'Writing {section_name}'.ljust(33, '.'), end="", flush=True)
     f_temp = Path(f"{state['files']['Temp']}/{section_name}.tex")
 
+    # PAPER is a TypedDict with literal keys (Title/Abstract/Methods/...);
+    # ``section_name`` is a runtime string, so mypy refuses the dynamic
+    # subscript. ``paper_any`` is the same object viewed as a dict so we
+    # can index by a variable. Same trick the reader.py nodes use for FILES.
+    paper_any: dict[str, Any] = state['paper']  # type: ignore[assignment]
+
     # check if abstract already exists
     if f_temp.exists():
-        state['paper'][section_name] = temp_file(state, f_temp, 'read')
+        paper_any[section_name] = temp_file(state, f_temp, 'read')
         print(f'Found on {section_name}.tex', end="", flush=True)
 
     else:
@@ -268,7 +283,7 @@ def section_node(state: GraphState, config: RunnableConfig, section_name: str,
             PROMPT = prompt_fn(state)
             state, result = LLM_call(PROMPT, state, node_name=_node_name)
             section_text = extract_latex_block(state, result, section_name)
-            state['paper'][section_name] = section_text
+            paper_any[section_name] = section_text
 
             # --- Step 2: Optional self-reflection ---
             if reflection_fn:
@@ -280,17 +295,17 @@ def section_node(state: GraphState, config: RunnableConfig, section_name: str,
             section_text = LaTeX_checker(state, section_text)
 
             # --- Step 4: Remove unwanted LaTeX wrappers ---
-            state['paper'][section_name] = clean_section(section_text, section_name)
+            paper_any[section_name] = clean_section(section_text, section_name)
 
             # --- Step 5: save file to file ---
             if scope is not None:
                 writer = ScopedWriter(state['files']['Paper_folder'], scope)
                 writer.write(
                     f"temp/{section_name}.tex",
-                    _wrap_latex_section(state, state['paper'][section_name]),
+                    _wrap_latex_section(state, paper_any[section_name]),
                 )
             else:
-                temp_file(state, f_temp, 'write', state['paper'][section_name])
+                temp_file(state, f_temp, 'write', paper_any[section_name])
 
             # --- Step 6: Compile and try to fix LaTeX errors ---
             if compile_tex_document(state, f_temp, state['files']['Temp']): #returns True if compiled properly
@@ -310,7 +325,7 @@ def section_node(state: GraphState, config: RunnableConfig, section_name: str,
     print(f"{state['tokens']['ti']} {state['tokens']['to']} [{int(minutes)}m {int(seconds)}s]")
 
     # return updated state
-    return {"paper": {**state["paper"], section_name: state['paper'][section_name]},
+    return {"paper": {**state["paper"], section_name: paper_any[section_name]},
             'tokens': state['tokens']}
 
 
@@ -590,18 +605,21 @@ async def citations_node(state: GraphState, config: RunnableConfig):
 
     print("Adding citations...")
 
+    # See ``section_node`` — same dynamic-key pattern via ``paper_any``.
+    paper_any: dict[str, Any] = state['paper']  # type: ignore[assignment]
+
     #sections = ['Introduction', 'Methods', 'Results', 'Conclusions']
     sections = ['Introduction', 'Methods']
-    tasks = [add_citations_async(state, state['paper'][section], section) for section in sections]
+    tasks = [add_citations_async(state, paper_any[section], section) for section in sections]
     results = await asyncio.gather(*tasks)
 
     # Deduplicate full BibTeX entries
-    bib_entries_set = set()
-    bib_entries_list = []
+    bib_entries_set: set[str] = set()
+    bib_entries_list: list[str] = []
 
     for section_name, updated_text, references in results:
 
-        state['paper'][section_name] = updated_text
+        paper_any[section_name] = updated_text
 
         # Break the full .bib string into entries by \n\n
         entries = references.strip().split('\n\n')
@@ -635,14 +653,14 @@ async def citations_node(state: GraphState, config: RunnableConfig):
         if f_temp.exists():
             section_text = temp_file(state, f_temp, 'read')
         else:
-            PROMPT = clean_section_prompt(state, state['paper'][section_name])
+            PROMPT = clean_section_prompt(state, paper_any[section_name])
             state, result = LLM_call(PROMPT, state, node_name="citations_cleanup")
             section_text = extract_latex_block(state, result, "Text")
             section_text = LaTeX_checker(state, section_text)          #check LaTeX
             section_text = clean_section(section_text, section_name)   #remove unwanted LaTeX text
             temp_file(state, f_temp, 'write', section_text)
-            
-        state['paper'][section_name] = section_text
+
+        paper_any[section_name] = section_text
     save_paper(state, state['files']['Paper_v4'])
     compile_latex(state, state['files']['Paper_v4'])
 

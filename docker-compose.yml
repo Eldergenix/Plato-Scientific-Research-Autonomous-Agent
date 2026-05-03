@@ -1,0 +1,96 @@
+# Plato — production compose stack.
+#
+# Three services on one internal network. Caddy is the only thing
+# bound to a host port; backend + frontend stay on the private
+# `plato_internal` network and are only reachable through the proxy.
+#
+#   cp .env.example .env  # then edit
+#   docker compose up -d --build
+#
+# Volumes:
+#   plato_data       → /data  on the backend (project tree, run dirs).
+#   plato_telemetry  → /home/plato/.plato on the backend
+#                      (telemetry, key store, retraction db).
+#
+# Auth: enable PLATO_DASHBOARD_AUTH_REQUIRED=1 in .env to require the
+# X-Plato-User header on every request. The Caddyfile shows how to set
+# that header from a forward_auth result.
+
+name: plato
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: dashboard/backend/Dockerfile
+    image: plato-backend:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Pin the listen address regardless of what's in .env — the
+      # container must bind 0.0.0.0 so the frontend container can
+      # reach it on the internal network.
+      PLATO_HOST: "0.0.0.0"
+      PLATO_PORT: "7878"
+      PLATO_PROJECT_ROOT: "/data/projects"
+      PLATO_RETRACTION_DB_PATH: "/data/retractions.sqlite"
+      HOME: "/home/plato"
+    volumes:
+      - plato_data:/data
+      - plato_telemetry:/home/plato/.plato
+    networks:
+      - plato_internal
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7878/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  frontend:
+    build:
+      context: dashboard/frontend
+      dockerfile: Dockerfile
+      args:
+        # Baked into the JS bundle at build time — must match the URL
+        # the browser will use to reach the API. When everything is
+        # behind one Caddy origin, "/api" or the public hostname works
+        # better than the in-cluster service name.
+        NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-/api}
+    image: plato-frontend:latest
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    env_file:
+      - .env
+    networks:
+      - plato_internal
+
+  caddy:
+    image: caddy:2.8.4-alpine
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - plato_internal
+
+networks:
+  plato_internal:
+    driver: bridge
+    internal: false  # Caddy needs egress for ACME / TLS provisioning.
+
+volumes:
+  plato_data:
+  plato_telemetry:
+  caddy_data:
+  caddy_config:

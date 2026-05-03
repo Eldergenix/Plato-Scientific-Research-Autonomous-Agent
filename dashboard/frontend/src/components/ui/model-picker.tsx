@@ -2,10 +2,18 @@
 
 import * as React from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { Check, ChevronDown, Search } from "lucide-react";
+import { Check, ChevronDown, Loader2, Search } from "lucide-react";
 import type { ModelDef, Provider } from "@/lib/types";
-import { MODELS, MODEL_GROUPS, MODELS_BY_ID } from "@/lib/models";
+import { getCachedModelsCatalog, loadModelsCatalog } from "@/lib/models-async";
 import { cn } from "@/lib/utils";
+
+// Resolved at first dropdown open so the catalog ships in its own chunk
+// and never lands in any page that only renders the trigger button.
+type LoadedCatalog = {
+  models: ModelDef[];
+  byId: Record<string, ModelDef>;
+  groups: Array<{ provider: Provider; label: string }>;
+};
 
 type AvailableProvider = "openai" | "gemini" | "anthropic" | "perplexity" | "semantic_scholar";
 
@@ -91,12 +99,13 @@ function ModelBadge({ kind }: { kind: "Recommended" | "Cheap" | "Strong" }) {
 
 interface TriggerProps {
   selected: ModelDef | undefined;
+  fallbackLabel: string;
   size: "sm" | "md";
   open: boolean;
 }
 
 const PickerTrigger = React.forwardRef<HTMLButtonElement, TriggerProps>(function PickerTrigger(
-  { selected, size, open },
+  { selected, fallbackLabel, size, open },
   ref,
 ) {
   return (
@@ -115,6 +124,10 @@ const PickerTrigger = React.forwardRef<HTMLButtonElement, TriggerProps>(function
           <ProviderDot provider={selected.provider} />
           <span className="text-(--color-text-primary) truncate max-w-[160px]">{selected.label}</span>
         </>
+      ) : fallbackLabel ? (
+        // Catalog hasn't loaded yet — show the bare id so the trigger
+        // never flashes "Select model…" for an already-selected value.
+        <span className="text-(--color-text-secondary) truncate max-w-[160px]">{fallbackLabel}</span>
       ) : (
         <span className="text-(--color-text-tertiary)">Select model…</span>
       )}
@@ -127,11 +140,31 @@ const PickerTrigger = React.forwardRef<HTMLButtonElement, TriggerProps>(function
   );
 });
 
+function useLoadedCatalog(): LoadedCatalog | null {
+  const [cat, setCat] = React.useState<LoadedCatalog | null>(() => {
+    const c = getCachedModelsCatalog();
+    if (!c) return null;
+    return { models: c.MODELS, byId: c.MODELS_BY_ID, groups: c.MODEL_GROUPS };
+  });
+  React.useEffect(() => {
+    if (cat) return;
+    let alive = true;
+    loadModelsCatalog().then((c) => {
+      if (!alive) return;
+      setCat({ models: c.MODELS, byId: c.MODELS_BY_ID, groups: c.MODEL_GROUPS });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [cat]);
+  return cat;
+}
+
 export function ModelPicker(props: ModelPickerProps) {
   const {
     value,
     onChange,
-    models = MODELS,
+    models: modelsOverride,
     availableProviders,
     recommendedFor,
     size = "md",
@@ -140,8 +173,10 @@ export function ModelPicker(props: ModelPickerProps) {
   } = props;
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
+  const catalog = useLoadedCatalog();
 
-  const selected = MODELS_BY_ID[value] as ModelDef | undefined;
+  const models = modelsOverride ?? catalog?.models ?? null;
+  const selected = catalog?.byId[value];
   const recommendedId = recommendedFor ? RECOMMENDED_BY_STAGE[recommendedFor] : null;
 
   const isProviderAvailable = (p: Provider): boolean => {
@@ -150,6 +185,7 @@ export function ModelPicker(props: ModelPickerProps) {
   };
 
   const filtered = React.useMemo(() => {
+    if (!models) return null;
     const q = query.trim().toLowerCase();
     if (!q) return models;
     return models.filter(
@@ -161,11 +197,14 @@ export function ModelPicker(props: ModelPickerProps) {
   }, [models, query]);
 
   const grouped = React.useMemo(() => {
-    return MODEL_GROUPS.map((g) => ({
-      ...g,
-      items: filtered.filter((m) => m.provider === g.provider),
-    })).filter((g) => g.items.length > 0);
-  }, [filtered]);
+    if (!filtered || !catalog) return null;
+    return catalog.groups
+      .map((g) => ({
+        ...g,
+        items: filtered.filter((m) => m.provider === g.provider),
+      }))
+      .filter((g) => g.items.length > 0);
+  }, [filtered, catalog]);
 
   return (
     <div className={cn("flex flex-col gap-1", size === "sm" && "gap-0.5")}>
@@ -181,7 +220,12 @@ export function ModelPicker(props: ModelPickerProps) {
       )}
       <DropdownMenu.Root open={open} onOpenChange={setOpen}>
         <DropdownMenu.Trigger asChild>
-          <PickerTrigger selected={selected} size={size} open={open} />
+          <PickerTrigger
+            selected={selected}
+            fallbackLabel={!selected && value ? value : ""}
+            size={size}
+            open={open}
+          />
         </DropdownMenu.Trigger>
         <DropdownMenu.Portal>
           <DropdownMenu.Content
@@ -215,7 +259,16 @@ export function ModelPicker(props: ModelPickerProps) {
             </div>
 
             <div className="max-h-[340px] overflow-y-auto py-1">
-              {grouped.length === 0 ? (
+              {!grouped ? (
+                <div
+                  className="flex items-center justify-center gap-2 px-3 py-6 text-[12px] text-(--color-text-tertiary)"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <Loader2 size={12} className="animate-spin" strokeWidth={1.6} />
+                  Loading models…
+                </div>
+              ) : grouped.length === 0 ? (
                 <div className="px-3 py-6 text-center text-[12px] text-(--color-text-tertiary)">
                   No models match &ldquo;{query}&rdquo;
                 </div>

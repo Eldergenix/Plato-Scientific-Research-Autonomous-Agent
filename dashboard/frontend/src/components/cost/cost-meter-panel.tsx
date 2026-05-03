@@ -13,9 +13,30 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusIcon } from "@/components/views/status-icon";
-import { MODELS_BY_ID } from "@/lib/models";
-import type { Project, Provider, Stage, StageId } from "@/lib/types";
+import { getCachedModelsCatalog, loadModelsCatalog } from "@/lib/models-async";
+import type { ModelDef, Project, Provider, Stage, StageId } from "@/lib/types";
 import { cn, formatCost, formatTokens } from "@/lib/utils";
+
+// Async catalog hook. The panel renders synchronously and resolves model
+// labels when paint, but we don't want the catalog in the home shell's
+// First Load JS — so we read from the runtime cache and trigger a load
+// on mount. Until it resolves, we fall back to the raw model id.
+function useModelsByIdMap(): Record<string, ModelDef> {
+  const [byId, setById] = React.useState<Record<string, ModelDef>>(
+    () => getCachedModelsCatalog()?.MODELS_BY_ID ?? {},
+  );
+  React.useEffect(() => {
+    if (Object.keys(byId).length > 0) return;
+    let alive = true;
+    loadModelsCatalog().then((c) => {
+      if (alive) setById(c.MODELS_BY_ID);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [byId]);
+  return byId;
+}
 
 /* -----------------------------------------------------------------------------
  * Types
@@ -187,16 +208,18 @@ function StageRow({
   costCents,
   tokens,
   totalCostCents,
+  modelsById,
 }: {
   stage: Stage;
   costCents: number;
   tokens: number;
   totalCostCents: number;
+  modelsById: Record<string, ModelDef>;
 }) {
   const pct =
     totalCostCents > 0 ? Math.min(100, (costCents / totalCostCents) * 100) : 0;
   const modelLabel = stage.model
-    ? MODELS_BY_ID[stage.model]?.label ?? stage.model
+    ? modelsById[stage.model]?.label ?? stage.model
     : "—";
 
   return (
@@ -462,6 +485,7 @@ function BudgetCard({
 export function CostMeterPanel({ open, onOpenChange, project }: CostMeterPanelProps) {
   const stageCosts = React.useMemo(() => deriveStageCosts(project), [project]);
   const sparkline = React.useMemo(() => buildSparklineSeries(project), [project]);
+  const modelsById = useModelsByIdMap();
 
   const stages = STAGE_ORDER.map((id) => project.stages[id]).filter(
     (s): s is Stage => Boolean(s),
@@ -485,7 +509,7 @@ export function CostMeterPanel({ open, onOpenChange, project }: CostMeterPanelPr
     });
     return Array.from(totals.entries())
       .map(([id, costCents]) => {
-        const def = MODELS_BY_ID[id];
+        const def = modelsById[id];
         return {
           id,
           label: def?.label ?? id,
@@ -494,7 +518,7 @@ export function CostMeterPanel({ open, onOpenChange, project }: CostMeterPanelPr
         };
       })
       .sort((a, b) => b.costCents - a.costCents);
-  }, [project.stages, stageCosts]);
+  }, [project.stages, stageCosts, modelsById]);
 
   const handleExport = () => {
     if (typeof window === "undefined") return;
@@ -619,7 +643,7 @@ export function CostMeterPanel({ open, onOpenChange, project }: CostMeterPanelPr
                             color: "var(--color-text-row-meta)",
                             border: "1px solid var(--color-border-pill)",
                           }}
-                          title={MODELS_BY_ID[id]?.label ?? id}
+                          title={modelsById[id]?.label ?? id}
                         >
                           {id}
                         </span>
@@ -653,6 +677,7 @@ export function CostMeterPanel({ open, onOpenChange, project }: CostMeterPanelPr
                     costCents={stageCosts[stage.id]?.costCents ?? 0}
                     tokens={stageCosts[stage.id]?.tokens ?? 0}
                     totalCostCents={project.totalCostCents}
+                    modelsById={modelsById}
                   />
                 ))}
               </div>
@@ -698,16 +723,8 @@ export function CostMeterPanel({ open, onOpenChange, project }: CostMeterPanelPr
   );
 }
 
-/* -----------------------------------------------------------------------------
- * Hook
- * ---------------------------------------------------------------------------*/
-
-export function useCostMeter() {
-  const [open, setOpen] = React.useState(false);
-  return {
-    open,
-    openMeter: () => setOpen(true),
-    closeMeter: () => setOpen(false),
-    onOpenChange: setOpen,
-  };
-}
+// `useCostMeter` lives in `./use-cost-meter` so the home shell can import
+// the open/close hook without dragging this whole file (and the model
+// catalog it references) into its First Load JS. Re-exported here for
+// callers that already pull from this module.
+export { useCostMeter } from "./use-cost-meter";
