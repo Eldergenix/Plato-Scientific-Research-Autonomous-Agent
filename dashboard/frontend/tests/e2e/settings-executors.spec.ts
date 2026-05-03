@@ -7,6 +7,12 @@ import { test, expect, type Page } from "./fixtures";
  * the spec runs without the backend.
  */
 
+// Iter-21 update: after iter-18/20 made local_jupyter / modal / e2b
+// real implementations, the backend probes their SDKs and reports
+// kind="real" when available or kind="lazy" when missing — never
+// "stub" for shipped backends. The fixture mirrors that. We retain
+// one synthetic "stub" entry in a separate test to exercise the
+// stub-warning render path without hard-coding modal/e2b as fakes.
 const FIXTURE_EXECUTORS = {
   default: "cmbagent",
   executors: [
@@ -15,7 +21,7 @@ const FIXTURE_EXECUTORS = {
       available: true,
       kind: "real" as const,
       description:
-        "Default backend. Wraps cmbagent's planning + control loop.",
+        "Historical default. Wraps cmbagent's planning + control loop.",
     },
     {
       name: "local_jupyter",
@@ -26,14 +32,14 @@ const FIXTURE_EXECUTORS = {
     {
       name: "modal",
       available: false,
-      kind: "stub" as const,
-      description: "Modal Labs sandbox executor. Stub.",
+      kind: "lazy" as const,
+      description: "Modal Labs sandbox executor.",
     },
     {
       name: "e2b",
       available: false,
-      kind: "stub" as const,
-      description: "E2B sandbox executor. Stub.",
+      kind: "lazy" as const,
+      description: "E2B Code Interpreter sandbox executor.",
     },
   ],
 };
@@ -97,36 +103,32 @@ test.describe("/settings/executors", () => {
     ).toBeVisible();
   });
 
-  test("selecting e2b surfaces the stub warning callout", async ({ page }) => {
-    await mockExecutorApis(page);
-    await page.goto("/settings/executors");
-
-    // Stub items aren't selectable from the radix menu, so we fall back to
-    // matching the underlying state through a programmatic click on the
-    // cmbagent option first to confirm the menu is interactive, then we
-    // verify the stub-warning callout never appears for cmbagent.
-    let card = page.getByTestId("executor-card");
-    await expect(card).toBeVisible();
-    await expect(
-      card.getByTestId("executor-stub-warning"),
-    ).toHaveCount(0);
-
-    // Switch to local_jupyter via the menu — that's a non-stub picker
-    // exercise — and confirm no stub warning shows.
-    await page.getByTestId("executor-selector-trigger").click();
-    await page.getByTestId("executor-option-local_jupyter").click();
-    card = page.getByTestId("executor-card");
-    await expect(
-      card.getByRole("heading", { name: "local_jupyter" }),
-    ).toBeVisible();
-    await expect(card.getByTestId("executor-stub-warning")).toHaveCount(0);
-
-    // Stubs (modal, e2b) are disabled in the radix menu — programmatically
-    // surface them via the React state hatch by intercepting the click on
-    // a disabled item: instead, drive the same code path by re-routing
-    // the API to make e2b the persisted default and reload — that hits
-    // the stub-warning render path without needing the user to pick it.
-    await page.unroute("**/api/v1/user/executor_preferences");
+  test("kind=stub backend surfaces the stub warning callout", async ({ page }) => {
+    // Iter-21 update: modal/e2b are no longer stubs (backend probes the
+    // SDK at request time), so the stub warning render path is now only
+    // exercised by an explicitly-stub backend. We add a synthetic
+    // "future_backend" entry with kind="stub" so the test still pins
+    // the warning's render contract without hard-coding modal/e2b as
+    // stubs in the fixture.
+    const stubFixture = {
+      ...FIXTURE_EXECUTORS,
+      executors: [
+        ...FIXTURE_EXECUTORS.executors,
+        {
+          name: "future_backend",
+          available: false,
+          kind: "stub" as const,
+          description: "Synthetic stub backend used to exercise the warning UI.",
+        },
+      ],
+    };
+    await page.route("**/api/v1/executors", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(stubFixture),
+      });
+    });
     await page.route(
       "**/api/v1/user/executor_preferences",
       async (route) => {
@@ -134,24 +136,37 @@ test.describe("/settings/executors", () => {
           await route.fulfill({
             status: 200,
             contentType: "application/json",
-            body: JSON.stringify({ default_executor: "e2b" }),
+            body: JSON.stringify({ default_executor: "future_backend" }),
           });
           return;
         }
         await route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify({ default_executor: "e2b" }),
+          body: JSON.stringify({ default_executor: "future_backend" }),
         });
       },
     );
-    await page.reload();
-    card = page.getByTestId("executor-card");
+    await page.goto("/settings/executors");
+
+    const card = page.getByTestId("executor-card");
     await expect(card).toBeVisible();
-    await expect(card.getByRole("heading", { name: "e2b" })).toBeVisible();
+    await expect(
+      card.getByRole("heading", { name: "future_backend" }),
+    ).toBeVisible();
     await expect(card.getByTestId("executor-stub-warning")).toBeVisible();
     await expect(
-      card.getByText(/Modal\/E2B require their respective SDKs/),
+      card.getByText(/registered as a stub/i),
     ).toBeVisible();
+
+    // Real backends (modal/e2b are now kind="lazy" not "stub") must NOT
+    // show the stub warning even when selected as default.
+    await page.unroute("**/api/v1/executors");
+    await page.unroute("**/api/v1/user/executor_preferences");
+    await mockExecutorApis(page);
+    await page.reload();
+    const realCard = page.getByTestId("executor-card");
+    await expect(realCard).toBeVisible();
+    await expect(realCard.getByTestId("executor-stub-warning")).toHaveCount(0);
   });
 });

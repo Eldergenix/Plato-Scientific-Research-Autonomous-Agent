@@ -90,7 +90,12 @@ register_domain(
         retrieval_sources=["pubmed", "openalex", "semantic_scholar"],
         keyword_extractor="mesh",
         journal_presets=["NATURE", "CELL", "SCIENCE", "PLOS_BIO", "ELIFE", "NONE"],
-        executor="cmbagent",  # placeholder until biology-specific executor lands
+        # Iter-21: biology defaults to ``local_jupyter`` — a domain-neutral
+        # executor that runs arbitrary Python in a kernel without dragging
+        # in astro-specific tooling. Users who want a sandboxed alternative
+        # can pass ``executor="modal"`` / ``executor="e2b"`` per-call to
+        # ``Plato.get_results`` (or override the profile entirely).
+        executor="local_jupyter",
         novelty_corpus="pubmed",
     )
 )
