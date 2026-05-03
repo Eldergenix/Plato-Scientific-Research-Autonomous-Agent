@@ -513,8 +513,24 @@ class Plato:
 
         answer = task_response[0].formatted_answer # type: ignore
 
-        ## process the answer to remove everything above </DESIRED_RESPONSE_FORMAT> 
+        ## process the answer to remove everything above </DESIRED_RESPONSE_FORMAT>
         answer = answer.split("</DESIRED_RESPONSE_FORMAT>")[1]
+
+        # R12 — FutureHouse responses concatenate paper abstracts that
+        # could carry injection payloads. Detect signals (logged) and
+        # wrap the body so any downstream prompt assembly knows the
+        # text is untrusted data, not instructions. The disk write
+        # below stores the wrapped form so reload paths stay safe.
+        from .safety import detect_injection_signals, wrap_external
+
+        signals = detect_injection_signals(answer)
+        if signals:
+            print(
+                f"[plato] WARNING: injection signals {signals} in FutureHouse "
+                f"response; wrapping in <external> markers.",
+                flush=True,
+            )
+        answer = wrap_external(answer, "futurehouse_response")
 
         # prepend " Has anyone worked on or explored the following idea?" to the answer
         answer = "Has anyone worked on or explored the following idea?\n" + answer
@@ -872,6 +888,7 @@ class Plato:
                   writer: str = 'scientist',
                   cmbagent_keywords: bool = False,
                   add_citations=True,
+                  max_revision_iters: int = 2,
                   ) -> None:
         """
         Generate a full paper based on the files in input_files:
@@ -897,6 +914,12 @@ class Plato:
             writer: set the style and tone to write. E.g. astrophysicist, biologist, chemist
             cmbagent_keywords: whether to use CMBAgent to select the keywords
             add_citations: whether to add citations to the paper or not
+            max_revision_iters: hard cap on the reviewer-panel → redraft
+                loop. Each iteration runs the four reviewer axes, the
+                aggregator, and at most one redraft pass; the loop stops
+                early once all critiques fall below the severity floor.
+                ``0`` disables revision entirely; the default of ``2``
+                mirrors what the architectural plan recommends.
         """
         
         # Start timer
@@ -928,6 +951,10 @@ class Plato:
                      "cmbagent_keywords": cmbagent_keywords},
             "keys": self.keys,
             "writer": writer,
+            # R6 — seed the revision loop's bookkeeping so the router
+            # never sees an undefined ``max_iterations`` and can stop
+            # exactly at the caller-supplied cap.
+            "revision_state": {"iteration": 0, "max_iterations": max_revision_iters},
         }
 
         try:

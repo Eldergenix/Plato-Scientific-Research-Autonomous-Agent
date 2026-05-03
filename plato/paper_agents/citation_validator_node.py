@@ -365,6 +365,11 @@ async def citation_validator_node(state: dict, config: RunnableConfig = None) ->
         "validation_rate": rate,
         "total": total,
         "passed": passed_count,
+        # ``unverified_count`` mirrors the architectural-plan acceptance
+        # criterion ("unverified_count must equal 0" in the Phase-2
+        # gate). It is total minus passed so a failure_url-only entry
+        # still counts as unverified.
+        "unverified_count": total - passed_count,
         "failures": failures,
     }
 

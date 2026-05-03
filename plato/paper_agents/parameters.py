@@ -97,3 +97,12 @@ class GraphState(TypedDict):
     critiques: dict[str, dict]            # e.g. {"methodology": {"severity": 3, "issues": [...]}, ...}
     critique_digest: Optional[dict]        # CritiqueDigest payload (max_severity, issues, iteration)
     revision_state: REVISION_STATE         # iteration counter and max_iterations cap
+    # Phase 2 — R3 citation validation pipeline
+    run_id: Optional[str]                  # unique id for the current run (used for run-dir + manifest)
+    sources: list[Any]                     # Source objects threaded through the validator
+    references: list[Any]                  # Reference rows extracted by ``citations_node``
+    validation_report: Optional[dict]      # populated by ``citation_validator_node``
+    store: Optional[Any]                   # SQLite store handle when persistence is wired
+    # Phase 2 — R5 claim/evidence matrix
+    claims: list[Any]                      # Claim objects produced by ``claim_extractor``
+    evidence_links: list[Any]              # EvidenceLink rows produced by ``evidence_matrix_node``
