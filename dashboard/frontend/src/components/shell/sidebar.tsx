@@ -24,6 +24,7 @@ import {
   Newspaper,
   Activity,
   KeyRound,
+  LineChart,
   Moon,
   Sun,
   Monitor,
@@ -61,6 +62,7 @@ const WORKSPACE_LINKS: NavLink[] = [
   { href: "/costs", label: "Costs", icon: Eye },
   { href: "/activity", label: "Activity", icon: Activity },
   { href: "/loop", label: "Autonomous loop", icon: Repeat },
+  { href: "/evals", label: "Evals", icon: LineChart },
   { href: "/keys", label: "Keys", icon: KeyRound },
   // Settings is also reachable via the bottom-bar gear, but keeping a
   // labelled nav entry here ensures /settings can be a destination
