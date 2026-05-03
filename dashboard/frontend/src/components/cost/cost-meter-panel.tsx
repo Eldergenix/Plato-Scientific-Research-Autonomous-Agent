@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusIcon } from "@/components/views/status-icon";
+import { api } from "@/lib/api";
 import { MODELS_BY_ID } from "@/lib/models";
 import type { Project, Provider, Stage, StageId } from "@/lib/types";
 import { cn, formatCost, formatTokens } from "@/lib/utils";
@@ -48,8 +49,15 @@ const PROVIDER_DOT: Record<Provider, string> = {
   semantic_scholar: "var(--color-status-teal)",
 };
 
-const BUDGET_KEY_PREFIX = "plato:budget:";
-const STOP_KEY_PREFIX = "plato:budget-stop:";
+// Iter-26: cost cap state moved server-side. The two ``localStorage``
+// constants below survive only as fallback keys for one-time migration:
+// when the new ``api.getCostCaps`` returns the default no-cap shape we
+// check the legacy localStorage entries and, if present, push them to
+// the server via ``api.setCostCaps`` then clear the local copy. After
+// that, every read/write goes through the API and clients on different
+// browsers / devices see the same cap.
+const LEGACY_BUDGET_KEY_PREFIX = "plato:budget:";
+const LEGACY_STOP_KEY_PREFIX = "plato:budget-stop:";
 
 /* -----------------------------------------------------------------------------
  * Cost derivation helpers
@@ -318,43 +326,116 @@ function BudgetCard({
 }) {
   const [capCents, setCapCents] = React.useState<number | null>(null);
   const [stopOnOverrun, setStopOnOverrun] = React.useState(false);
+  const [persistError, setPersistError] = React.useState<string | null>(null);
 
-  // Hydrate from localStorage on mount / project change.
+  // Iter-26: hydrate from the backend, with a one-time migration from
+  // any legacy ``localStorage`` keys. The migration path keeps users
+  // who configured a cap in iter-25 from losing their setting on the
+  // first iter-26 page load.
   React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = window.localStorage.getItem(`${BUDGET_KEY_PREFIX}${projectId}`);
-      setCapCents(raw ? Number.parseInt(raw, 10) || null : null);
-      const stop = window.localStorage.getItem(`${STOP_KEY_PREFIX}${projectId}`);
-      setStopOnOverrun(stop === "1");
-    } catch {
-      /* ignore quota / SSR */
-    }
+    if (!projectId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await api.getCostCaps(projectId);
+        if (cancelled) return;
+        if (r.budget_cents != null) {
+          setCapCents(r.budget_cents);
+          setStopOnOverrun(r.stop_on_exceed);
+          return;
+        }
+      } catch {
+        // Fall through to legacy migration; the GET should be cheap so
+        // a network blip won't typically land here, but we don't want
+        // the panel to throw.
+      }
+
+      // No server-side cap. Try one-time migration from localStorage.
+      if (typeof window === "undefined") return;
+      try {
+        const legacyBudget = window.localStorage.getItem(
+          `${LEGACY_BUDGET_KEY_PREFIX}${projectId}`,
+        );
+        const legacyStop = window.localStorage.getItem(
+          `${LEGACY_STOP_KEY_PREFIX}${projectId}`,
+        );
+        const legacyCents = legacyBudget
+          ? Number.parseInt(legacyBudget, 10) || null
+          : null;
+        if (legacyCents == null && legacyStop !== "1") {
+          // Nothing local to migrate.
+          return;
+        }
+        // Push to server then clear localStorage so future reads hit
+        // the API path.
+        try {
+          await api.setCostCaps(projectId, {
+            budget_cents: legacyCents,
+            stop_on_exceed: legacyStop === "1",
+          });
+          window.localStorage.removeItem(
+            `${LEGACY_BUDGET_KEY_PREFIX}${projectId}`,
+          );
+          window.localStorage.removeItem(
+            `${LEGACY_STOP_KEY_PREFIX}${projectId}`,
+          );
+          if (!cancelled) {
+            setCapCents(legacyCents);
+            setStopOnOverrun(legacyStop === "1");
+          }
+        } catch {
+          // Couldn't migrate — leave the localStorage values in place
+          // so a subsequent attempt can retry. The panel still
+          // surfaces the legacy values locally.
+          if (!cancelled) {
+            setCapCents(legacyCents);
+            setStopOnOverrun(legacyStop === "1");
+          }
+        }
+      } catch {
+        /* ignore quota / SSR */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [projectId]);
 
-  const persistCap = (next: number | null) => {
-    setCapCents(next);
-    if (typeof window === "undefined") return;
-    try {
-      const key = `${BUDGET_KEY_PREFIX}${projectId}`;
-      if (next == null) window.localStorage.removeItem(key);
-      else window.localStorage.setItem(key, String(next));
-    } catch {
-      /* ignore */
-    }
-  };
+  const persistCap = React.useCallback(
+    async (next: number | null) => {
+      setCapCents(next);
+      setPersistError(null);
+      try {
+        await api.setCostCaps(projectId, {
+          budget_cents: next,
+          stop_on_exceed: stopOnOverrun,
+        });
+      } catch (e: unknown) {
+        setPersistError(
+          e instanceof Error ? e.message : "Failed to save cost cap",
+        );
+      }
+    },
+    [projectId, stopOnOverrun],
+  );
 
-  const persistStop = (next: boolean) => {
-    setStopOnOverrun(next);
-    if (typeof window === "undefined") return;
-    try {
-      const key = `${STOP_KEY_PREFIX}${projectId}`;
-      if (next) window.localStorage.setItem(key, "1");
-      else window.localStorage.removeItem(key);
-    } catch {
-      /* ignore */
-    }
-  };
+  const persistStop = React.useCallback(
+    async (next: boolean) => {
+      setStopOnOverrun(next);
+      setPersistError(null);
+      try {
+        await api.setCostCaps(projectId, {
+          budget_cents: capCents,
+          stop_on_exceed: next,
+        });
+      } catch (e: unknown) {
+        setPersistError(
+          e instanceof Error ? e.message : "Failed to save cost cap",
+        );
+      }
+    },
+    [projectId, capCents],
+  );
 
   const handleSetCap = () => {
     if (typeof window === "undefined") return;
@@ -455,6 +536,15 @@ function BudgetCard({
           />
           Stop on overrun
         </label>
+      ) : null}
+      {persistError ? (
+        <p
+          className="text-[11px] text-(--color-status-red)"
+          style={{ marginTop: 6 }}
+          data-testid="cost-cap-error"
+        >
+          {persistError}
+        </p>
       ) : null}
     </div>
   );

@@ -192,6 +192,12 @@ export interface IdeaHistoryResponse {
   entries: IdeaHistoryEntry[];
 }
 
+// Iter-26 — mirror of ``plato_dashboard.domain.models.CostCapState``.
+export interface CostCapState {
+  budget_cents: number | null;
+  stop_on_exceed: boolean;
+}
+
 // ---------------------------------------------------------------- API
 export const api = {
   async health(): Promise<{ ok: boolean; demo_mode: boolean }> {
@@ -263,6 +269,29 @@ export const api = {
    */
   async listIdeaHistory(pid: string): Promise<IdeaHistoryResponse> {
     return fetchJson(`/projects/${pid}/idea_history`);
+  },
+
+  /**
+   * Iter-26: read the per-project cost cap.
+   *
+   * Replaces the localStorage-only ``plato:budget:`` /
+   * ``plato:budget-stop:`` keys the cost-meter-panel used to persist
+   * client-side. Backend persists in ``meta.json`` and the iter-26
+   * ``run_stage`` gate consults it before launching new runs.
+   *
+   * Returns the no-cap default shape (``budget_cents=null``,
+   * ``stop_on_exceed=false``) when no cap is configured for ``pid``.
+   */
+  async getCostCaps(pid: string): Promise<CostCapState> {
+    return fetchJson(`/projects/${pid}/cost_caps`);
+  },
+
+  /** Iter-26: persist the per-project cost cap (see ``getCostCaps``). */
+  async setCostCaps(pid: string, body: CostCapState): Promise<CostCapState> {
+    return fetchJson(`/projects/${pid}/cost_caps`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
   },
 
   /** Subscribe to SSE for a run. Returns an unsubscribe fn. */

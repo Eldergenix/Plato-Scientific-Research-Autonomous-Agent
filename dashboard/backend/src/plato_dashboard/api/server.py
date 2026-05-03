@@ -60,6 +60,7 @@ from .research_signals import router as research_signals_router
 from .retrieval_summary import router as retrieval_summary_router
 from .user_preferences import router as user_preferences_router
 from .idea_history import router as idea_history_router
+from .cost_caps import router as cost_caps_router
 
 
 def _resolve_project_root(settings: Settings, user_id: str | None) -> Path:
@@ -308,6 +309,7 @@ def create_app() -> FastAPI:
     app.include_router(retrieval_summary_router, prefix="/api/v1", tags=["retrieval"])
     app.include_router(user_preferences_router, prefix="/api/v1", tags=["preferences"])
     app.include_router(idea_history_router, prefix="/api/v1", tags=["idea_history"])
+    app.include_router(cost_caps_router, prefix="/api/v1", tags=["cost_caps"])
 
     @app.get("/api/v1/health")
     def health() -> dict:
@@ -400,6 +402,39 @@ def create_app() -> FastAPI:
         # cross-tenant pid never lands a queued/running entry in the
         # in-memory registry (which is shared across all tenants).
         _enforce_project_tenant(store, pid, _get_user_id(request))
+        # Iter-26: per-project cost cap gate. The cost-meter-panel UI
+        # used to enforce this client-side via a localStorage flag,
+        # which a malicious client could trivially bypass by editing
+        # localStorage. Now the backend reads ``project.cost_caps``
+        # (persisted on meta.json by the ``/cost_caps`` endpoint) and
+        # refuses to launch new runs when the project's accumulated
+        # spend has reached the configured ceiling.
+        try:
+            proj = store.load(pid)
+        except FileNotFoundError as exc:
+            raise HTTPException(
+                404, detail={"code": "project_not_found"}
+            ) from exc
+        cap = proj.cost_caps
+        if (
+            cap is not None
+            and cap.stop_on_exceed
+            and cap.budget_cents is not None
+            and proj.total_cost_cents >= cap.budget_cents
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "budget_exceeded",
+                    "message": (
+                        "Project budget exceeded — increase the cap or "
+                        "disable the hard-stop in /cost_caps before "
+                        "launching new runs."
+                    ),
+                    "spent_cents": proj.total_cost_cents,
+                    "budget_cents": cap.budget_cents,
+                },
+            )
         require_stage_allowed(stage, caps)
         require_under_budget(caps)
         if count_active_runs() >= caps.max_concurrent_runs:
