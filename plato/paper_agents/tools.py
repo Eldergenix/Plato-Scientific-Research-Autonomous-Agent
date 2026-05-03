@@ -257,7 +257,7 @@ def fixer(state: GraphState, section_name):
         Text = f.read()
     
     PROMPT = fixer_prompt(Text, section_name)
-    state, result = LLM_call(PROMPT, state)
+    state, result = LLM_call(PROMPT, state, node_name="fixer")
     #result = llm.invoke(PROMPT).content
     
     # Extract caption
@@ -276,7 +276,7 @@ def fixer(state: GraphState, section_name):
 def LaTeX_checker(state, text):
 
     PROMPT = LaTeX_prompt(text)
-    state, result = LLM_call(PROMPT, state)
+    state, result = LLM_call(PROMPT, state, node_name="latex_checker")
     #result = llm.invoke(PROMPT).content
     text = extract_latex_block(state, result, "Text")
     return text
