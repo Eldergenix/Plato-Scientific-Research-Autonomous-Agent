@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Pill } from "@/components/ui/pill";
 import { StatusDot } from "@/components/ui/status-dot";
 import { PlotGrid, type PlotItem } from "@/components/stages/plot-grid";
+import { api } from "@/lib/api";
 import { cn, formatDuration, formatRelativeTime } from "@/lib/utils";
 import type { Project } from "@/lib/types";
 
@@ -306,21 +307,92 @@ function PlotsPane({ initial }: { initial: PlotItem[] }) {
 }
 
 function SummaryPane({ project }: { project: Project }) {
-  // Iter-25: deleted the hardcoded GW231123 ringdown narrative
-  // ("f ≈ 270 Hz / τ ≈ 4.1 ms / M_f ≈ 110 M_⊙") that used to render
-  // for every project regardless of domain or run state. Until a real
-  // results-summary endpoint is wired (planned: read
-  // ``input_files/results.md`` via ``store.read_stage(pid, 'results')``),
-  // we render either a "no summary yet" empty state or — when the
-  // active run is past step 1 — a status line with the actual project
-  // name so users see SOMETHING grounded in their own data.
+  // Iter-29: SummaryPane reads the real ``input_files/results.md`` via
+  // the existing ``GET /api/v1/projects/{pid}/state/results`` endpoint
+  // (no new endpoint needed — this one has been here since iter-6).
+  // When the file exists we render the markdown body verbatim inside
+  // a <pre> so the worker's formatting (which is already markdown) is
+  // preserved without pulling in a markdown renderer dep. When it
+  // doesn't exist yet, fall back to the iter-25 honest empty state.
   const run = project.activeRun;
+  const [summary, setSummary] = React.useState<string | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  // Refetch on:
+  //   - project change (switching projects)
+  //   - active-run id change (a new run started → previous summary is stale)
+  //   - active run finishes (run.stage transitions on stage.finished)
+  // The startedAt key includes runId so the same run staying mid-flight
+  // doesn't trigger a refetch on every parent render.
+  const refetchKey = `${project.id}|${run?.runId ?? "idle"}|${run?.startedAt ?? ""}`;
+  React.useEffect(() => {
+    if (!project.id) {
+      setSummary(null);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    void (async () => {
+      try {
+        const r = await api.readStage(project.id, "results");
+        if (cancelled) return;
+        setSummary(r?.markdown?.trim() ? r.markdown : null);
+      } catch (e: unknown) {
+        if (cancelled) return;
+        // 404 = file not on disk yet (worker hasn't finished). Treat
+        // as "no summary" so we render the empty state, not an error.
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.includes("404")) {
+          setSummary(null);
+        } else {
+          setError(msg);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [refetchKey, project.id]);
+
   return (
     <article
       className="prose prose-invert max-w-none text-[13.5px] leading-[1.7] text-(--color-text-primary)"
       data-testid="results-summary-pane"
     >
-      {run ? (
+      {loading && summary === null ? (
+        <p
+          className="text-(--color-text-tertiary)"
+          data-testid="results-summary-loading"
+        >
+          Loading <code className="font-mono">input_files/results.md</code>…
+        </p>
+      ) : error ? (
+        <div data-testid="results-summary-error">
+          <h3 className="text-[15px] font-medium tracking-[-0.01em] text-(--color-status-red)">
+            Failed to load results summary
+          </h3>
+          <p className="text-(--color-text-tertiary)">{error}</p>
+        </div>
+      ) : summary !== null ? (
+        <>
+          <pre
+            className="whitespace-pre-wrap font-sans text-[13.5px] leading-[1.7] text-(--color-text-primary)"
+            data-testid="results-summary-content"
+          >
+            {summary}
+          </pre>
+          {run ? (
+            <p className="text-[11.5px] text-(--color-text-quaternary) mt-3">
+              Auto-refreshes when the active run finishes (run id{" "}
+              <code className="font-mono">{run.runId}</code>).
+            </p>
+          ) : null}
+        </>
+      ) : run ? (
         <>
           <h3 className="text-[15px] font-medium tracking-[-0.01em]">
             Run in progress — step {run.step ?? "—"} of {run.totalSteps ?? "—"}
@@ -350,11 +422,21 @@ function SummaryPane({ project }: { project: Project }) {
 }
 
 function CodePane({ project }: { project: Project }) {
-  // Iter-25: deleted the hardcoded scipy.signal spectrogram + h1_strain.h5
-  // snippet that posed as "step 3 · attempt 1" for every run. The real
-  // code+execution surface should read from
-  // ``runs/<run_id>/events.jsonl`` (where the worker emits ``code.execute``
-  // events) — that's a follow-up. For now render an honest empty state.
+  // Iter-29: removed the misleading ``code.execute`` reference — that
+  // event is not emitted by langgraph_bridge.py or any current
+  // executor. The pane now points users at the real surfaces that
+  // already exist:
+  //   - per-step LLM call telemetry → ``log.line`` events streamed to
+  //     the agent transcript above (already rendered)
+  //   - per-node lifecycle → AgentSwimlane bars (iter-28)
+  //   - executor result markdown → SummaryPane (iter-29)
+  //   - generated plots → PlotsPane
+  //
+  // A dedicated "code & execution" panel that reads
+  // ``runs/<run_id>/events.jsonl`` for engineer-emitted code blocks
+  // is iter-30+ work; until then this pane is honest about being a
+  // placeholder rather than promising an event the worker doesn't
+  // publish.
   const run = project.activeRun;
   return (
     <div className="space-y-3" data-testid="results-code-pane">
@@ -370,22 +452,15 @@ function CodePane({ project }: { project: Project }) {
           </Pill>
         </div>
         <div className="px-3 py-6 text-[12px] text-(--color-text-tertiary) leading-[1.55] text-center">
-          {run ? (
-            <p>
-              Live code execution will appear here once the worker emits{" "}
-              <code className="font-mono">code.execute</code> events. Streaming
-              wire-up is a follow-up.
-            </p>
-          ) : (
-            <p>
-              No code executions yet. Start a run to populate this view —
-              every <code className="font-mono">cmbagent</code> /{" "}
-              <code className="font-mono">local_jupyter</code> /{" "}
-              <code className="font-mono">modal</code> /{" "}
-              <code className="font-mono">e2b</code> step writes a record that
-              shows up here.
-            </p>
-          )}
+          <p>
+            Per-step code execution isn't surfaced here yet. For live
+            agent reasoning see the transcript above; for the run's
+            markdown summary switch to the <strong>Summary</strong> tab;
+            for generated figures the <strong>Plots</strong> tab. A
+            dedicated code-block view (reading{" "}
+            <code className="font-mono">runs/&lt;run_id&gt;/events.jsonl</code>)
+            ships in a follow-up.
+          </p>
         </div>
       </div>
     </div>
