@@ -25,7 +25,8 @@ RUN apt-get update && \
     build-essential \
     git \
     curl \
-    ca-certificates && \
+    ca-certificates \
+    tini && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -44,4 +45,8 @@ EXPOSE 8501
 # Touch a .env so it can be shared as a volume (being a single file instead of a folder requires this)
 RUN touch .env
 
+# tini as PID 1 so SIGTERM propagates to plato/streamlit and zombie
+# child processes get reaped on shutdown — without it, Streamlit (which
+# spawns subprocesses) leaves orphans across container restarts.
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["plato", "run"]

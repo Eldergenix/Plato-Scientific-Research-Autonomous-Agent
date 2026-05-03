@@ -56,8 +56,21 @@ class KeyStore:
 
     def _fernet(self) -> Fernet:
         if not self.salt_path.exists():
-            self.salt_path.write_bytes(os.urandom(16))
-            self.salt_path.chmod(stat.S_IRUSR | stat.S_IWUSR)
+            # Atomic salt creation via O_CREAT|O_EXCL: two concurrent
+            # callers can't both decide to write a fresh salt and have
+            # the second overwrite the first. If two processes race,
+            # one wins the create and the other gets FileExistsError;
+            # we then re-read the canonical salt.
+            try:
+                fd = os.open(
+                    self.salt_path,
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                    0o600,
+                )
+                with os.fdopen(fd, "wb") as f:
+                    f.write(os.urandom(16))
+            except FileExistsError:
+                pass
         return Fernet(_derive_key(self.salt_path.read_bytes()))
 
     def load(self) -> KeysPayload:
@@ -75,8 +88,13 @@ class KeyStore:
         existing = self.load()
         merged = existing.model_copy(update={k: v for k, v in payload.model_dump().items() if v is not None})
         encrypted = self._fernet().encrypt(merged.model_dump_json().encode())
-        self.path.write_bytes(encrypted)
-        self.path.chmod(stat.S_IRUSR | stat.S_IWUSR)
+        # Atomic write: a crash mid-flush previously left a 0-byte
+        # ``keys.json`` that subsequently load()'d as ``InvalidToken``,
+        # silently wiping every stored key.
+        tmp = self.path.with_suffix(self.path.suffix + ".tmp")
+        tmp.write_bytes(encrypted)
+        os.chmod(tmp, stat.S_IRUSR | stat.S_IWUSR)
+        os.replace(tmp, self.path)
 
     def status(self) -> KeysStatus:
         stored = self.load()

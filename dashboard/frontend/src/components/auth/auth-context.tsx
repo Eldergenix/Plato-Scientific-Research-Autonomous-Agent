@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { usePathname, useRouter } from "next/navigation";
 
 /**
  * Auth context for the dashboard's tenant-id login flow.
@@ -144,6 +145,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Client-side guard: when the backend reports auth_required and no
+  // user is signed in, send the user to /login. We intentionally
+  // skip this when we're already on /login (avoids a redirect loop)
+  // and while the initial /me probe is still in flight (avoids a
+  // flash-redirect from the localStorage-seeded null state).
+  const router = useRouter();
+  const pathname = usePathname() ?? "";
+  React.useEffect(() => {
+    if (loading) return;
+    if (!authRequired) return;
+    if (user_id) return;
+    if (pathname.startsWith("/login")) return;
+    router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+  }, [authRequired, loading, pathname, router, user_id]);
 
   const value: AuthContextValue = React.useMemo(
     () => ({ user_id, authRequired, loading, login, logout, refresh }),

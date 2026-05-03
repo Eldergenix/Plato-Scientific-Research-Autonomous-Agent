@@ -407,8 +407,6 @@ class Plato:
 
         # Start timer
         start_time = time.time()
-        config = {"configurable": {"thread_id": "1"}, "recursion_limit":100}
-
         # Get LLM instance
         llm = llm_parser(llm)
 
@@ -416,6 +414,7 @@ class Plato:
             "get_idea_fast",
             models={"idea_maker": llm.name, "idea_hater": llm.name},
         )
+        config = {"configurable": {"thread_id": recorder.manifest.run_id}, "recursion_limit": 100}
         config["callbacks"] = callbacks_for(recorder.manifest.run_id, recorder.manifest.workflow, recorder=recorder)
 
         # Build graph
@@ -557,8 +556,6 @@ class Plato:
 
         # Start timer
         start_time = time.time()
-        config = {"configurable": {"thread_id": "1"}, "recursion_limit":100}
-
         # Get LLM instance
         llm = llm_parser(llm)
 
@@ -573,6 +570,7 @@ class Plato:
             "check_idea_semantic_scholar",
             models={"novelty": llm.name, "literature_summary": llm.name},
         )
+        config = {"configurable": {"thread_id": recorder.manifest.run_id}, "recursion_limit": 100}
         config["callbacks"] = callbacks_for(recorder.manifest.run_id, recorder.manifest.workflow, recorder=recorder)
 
         # Phase 2 wiring: domain drives multi-source retrieval (arxiv+openalex+ads+semantic_scholar for astro)
@@ -723,8 +721,6 @@ class Plato:
 
         # Start timer
         start_time = time.time()
-        config = {"configurable": {"thread_id": "1"}, "recursion_limit":100}
-
         # Get LLM instance
         llm = llm_parser(llm)
 
@@ -739,6 +735,7 @@ class Plato:
             "get_method_fast",
             models={"methods": llm.name},
         )
+        config = {"configurable": {"thread_id": recorder.manifest.run_id}, "recursion_limit": 100}
         config["callbacks"] = callbacks_for(recorder.manifest.run_id, recorder.manifest.workflow, recorder=recorder)
 
         # Initialize the state
@@ -924,8 +921,6 @@ class Plato:
         
         # Start timer
         start_time = time.time()
-        config = {"configurable": {"thread_id": "1"}, "recursion_limit":100}
-
         # Get LLM instance
         llm = llm_parser(llm)
 
@@ -939,6 +934,7 @@ class Plato:
                    "add_citations": add_citations,
                    "cmbagent_keywords": cmbagent_keywords},
         )
+        config = {"configurable": {"thread_id": recorder.manifest.run_id}, "recursion_limit": 100}
         config["callbacks"] = callbacks_for(recorder.manifest.run_id, recorder.manifest.workflow, recorder=recorder)
 
         # Initialize the state
@@ -985,8 +981,6 @@ class Plato:
 
         # Start timer
         start_time = time.time()
-        config = {"configurable": {"thread_id": "1"}, "recursion_limit":100}
-
         # Get LLM instance
         llm = llm_parser(llm)
 
@@ -997,6 +991,7 @@ class Plato:
         f_data_description = os.path.join(self.project_dir, INPUT_FILES, DESCRIPTION_FILE)
 
         recorder = self._start_manifest("referee", models={"referee": llm.name})
+        config = {"configurable": {"thread_id": recorder.manifest.run_id}, "recursion_limit": 100}
         config["callbacks"] = callbacks_for(recorder.manifest.run_id, recorder.manifest.workflow, recorder=recorder)
 
         # Initialize the state

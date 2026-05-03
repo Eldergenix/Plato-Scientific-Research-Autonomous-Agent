@@ -25,6 +25,8 @@ project_dir works whether driven by the Python class or the dashboard.
 
 from __future__ import annotations
 import json
+import os
+import re
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,6 +35,33 @@ from typing import Optional
 import aiofiles
 
 from ..domain.models import Project, Stage, StageId, StageContent, utcnow
+
+# Project IDs flow into filesystem paths verbatim. Restrict to the same
+# safe charset we use for X-Plato-User to block path traversal (`..`,
+# `/`) and other shenanigans. This length cap also bounds storage
+# layout depth.
+_PID_RE = re.compile(r"\A[A-Za-z0-9_-]{1,64}\Z")
+
+
+def _validate_pid(pid: str) -> str:
+    """Reject project IDs that would escape ``self.root`` or land in a hidden dir."""
+    if not isinstance(pid, str) or not _PID_RE.match(pid):
+        raise ValueError(
+            f"Invalid project id {pid!r}: must match [A-Za-z0-9_-]{{1,64}}"
+        )
+    return pid
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Write ``text`` to ``path`` atomically (temp file + rename).
+
+    Avoids the torn-read window that ``open('w')`` exposes — readers
+    that hit the file mid-write would otherwise see a truncated JSON
+    and treat the project as missing.
+    """
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(text)
+    os.replace(tmp, path)
 
 # Map StageId → canonical filename in input_files/
 STAGE_FILES: dict[StageId, str] = {
@@ -54,7 +83,7 @@ class ProjectStore:
 
     # ------------------------------------------------------------ paths
     def project_dir(self, pid: str) -> Path:
-        return self.root / pid
+        return self.root / _validate_pid(pid)
 
     def meta_path(self, pid: str) -> Path:
         return self.project_dir(pid) / "meta.json"
@@ -105,8 +134,13 @@ class ProjectStore:
         (self.plots_dir(project.id)).mkdir(exist_ok=True)
         (self.history_dir(project.id)).mkdir(exist_ok=True)
         (self.runs_dir(project.id)).mkdir(exist_ok=True)
-        with self.meta_path(project.id).open("w") as f:
-            json.dump(project.model_dump(mode="json"), f, indent=2, default=str)
+        # Atomic write — temp + os.replace — so concurrent readers
+        # never see a half-written meta.json (which would JSONDecodeError
+        # in load() and silently drop the project from list_projects()).
+        _atomic_write_text(
+            self.meta_path(project.id),
+            json.dumps(project.model_dump(mode="json"), indent=2, default=str),
+        )
         return project
 
     def create(self, name: str = "Untitled project", initial_data_description: str | None = None) -> Project:
