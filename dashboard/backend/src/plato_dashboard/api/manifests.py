@@ -18,11 +18,42 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
 
 from ..settings import Settings, get_settings
 
 
 router = APIRouter()
+
+
+# ---------------------------------------------------------------------------
+# Response shapes
+#
+# These three endpoints return free-form JSON blobs (the manifest /
+# evidence-matrix / validation-report files written by the agent
+# graphs). We don't constrain the inner shape — those payloads evolve
+# with the LLM workflow — but declaring an envelope object on each
+# route gives FastAPI's OpenAPI generator something concrete to emit
+# instead of an empty schema (``{}``), which made the backend's spec
+# useless for codegen and contract tests.
+# ---------------------------------------------------------------------------
+class ManifestResponse(BaseModel):
+    """Free-form manifest payload (validated structurally upstream)."""
+
+    model_config = {"extra": "allow"}
+
+
+class EvidenceMatrixResponse(BaseModel):
+    """Aggregated claims + evidence_links across every JSONL sidecar."""
+
+    claims: list[dict[str, Any]] = Field(default_factory=list)
+    evidence_links: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class ValidationReportResponse(BaseModel):
+    """Free-form validation_report.json payload."""
+
+    model_config = {"extra": "allow"}
 
 
 def _user_id(req: Request) -> str | None:
@@ -116,7 +147,7 @@ def _read_json(path: Path) -> Any:
         ) from exc
 
 
-@router.get("/runs/{run_id}/manifest")
+@router.get("/runs/{run_id}/manifest", response_model=ManifestResponse)
 def get_manifest(
     run_id: str,
     request: Request,
@@ -133,7 +164,7 @@ def get_manifest(
     return _read_json(manifest_path)
 
 
-@router.get("/runs/{run_id}/evidence_matrix")
+@router.get("/runs/{run_id}/evidence_matrix", response_model=EvidenceMatrixResponse)
 def get_evidence_matrix(
     run_id: str,
     request: Request,
@@ -176,7 +207,9 @@ def get_evidence_matrix(
     return {"claims": claims, "evidence_links": links}
 
 
-@router.get("/runs/{run_id}/validation_report")
+@router.get(
+    "/runs/{run_id}/validation_report", response_model=ValidationReportResponse
+)
 def get_validation_report(
     run_id: str,
     request: Request,
