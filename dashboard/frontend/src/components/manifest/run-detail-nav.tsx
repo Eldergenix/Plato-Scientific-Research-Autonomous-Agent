@@ -69,7 +69,7 @@ export function RunDetailNav({ runId }: RunDetailNavProps) {
     <nav
       aria-label="Run detail sections"
       data-testid="run-detail-nav"
-      className="surface-linear-card flex flex-wrap gap-1 px-2 py-1.5"
+      className="surface-linear-card flex flex-nowrap items-center gap-1 overflow-x-auto whitespace-nowrap px-2 py-1.5"
       style={{ border: "1px solid var(--color-border-card)" }}
     >
       {NAV_ITEMS.map((item) => {
