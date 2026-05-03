@@ -64,11 +64,19 @@ class Project(BaseModel):
     active_run: Optional[ActiveRun] = None
     total_tokens: int = 0
     total_cost_cents: int = 0
+    # Iter-24: per-project tenant binding. Set on creation from the
+    # request's ``X-Plato-User`` header so every project-level endpoint
+    # can refuse cross-tenant reads/writes/launches without depending on
+    # a per-run manifest.json (which doesn't exist yet at create time).
+    # ``None`` means "legacy un-namespaced project" — accessible only
+    # when ``PLATO_DASHBOARD_AUTH_REQUIRED=1`` is unset.
+    user_id: Optional[str] = None
 
     @classmethod
-    def empty(cls, name: str = "Untitled project") -> "Project":
+    def empty(cls, name: str = "Untitled project", user_id: str | None = None) -> "Project":
         return cls(
             name=name,
+            user_id=user_id,
             stages={
                 "data": Stage(id="data", label="Data"),
                 "idea": Stage(id="idea", label="Idea"),
