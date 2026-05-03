@@ -10,7 +10,7 @@ def methods_fast(state: GraphState, config: RunnableConfig):
     print('Generating methods...', end="", flush=True)
 
     PROMPT = methods_fast_prompt(state)
-    state, result = LLM_call_stream(PROMPT, state)
+    state, result = LLM_call_stream(PROMPT, state, node_name="methods_fast")
     text = extract_latex_block(state, result, "METHODS")
 
     # remove LLM added lines

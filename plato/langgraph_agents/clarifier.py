@@ -71,7 +71,7 @@ async def research_question_clarifier(
 
     questions: list[str] = []
     for _ in range(_CLARIFIER_RETRIES):
-        state, raw = LLM_call_stream(prompt, state)
+        state, raw = LLM_call_stream(prompt, state, node_name="clarifier")
         try:
             questions = _parse_questions(raw)
             break
