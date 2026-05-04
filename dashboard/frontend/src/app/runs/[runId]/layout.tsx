@@ -4,6 +4,12 @@ interface Params {
   runId: string;
 }
 
+export function generateStaticParams(): Params[] {
+  return [];
+}
+
+export const dynamicParams = false;
+
 // Server-side metadata so the browser tab + history entry name the
 // run instead of the generic "Plato — Scientific Research Dashboard"
 // title set by the root layout. Runs through Next.js's metadata

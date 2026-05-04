@@ -1,0 +1,91 @@
+name: Dashboard GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/dashboard-pages.yml"
+      - "dashboard/frontend/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: dashboard-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: dashboard/frontend
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: dashboard/frontend/package-lock.json
+
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Resolve Pages base path
+        id: base-path
+        env:
+          PAGES_BASE_PATH: ${{ vars.PAGES_BASE_PATH }}
+        run: |
+          repo="${GITHUB_REPOSITORY#*/}"
+          if [[ "$repo" == *.github.io ]]; then
+            base_path=""
+          else
+            base_path="/$repo"
+          fi
+          if [[ -n "${PAGES_BASE_PATH}" ]]; then
+            base_path="${PAGES_BASE_PATH}"
+          fi
+          echo "base_path=${base_path}" >> "$GITHUB_OUTPUT"
+
+      - run: npm ci
+
+      - name: Prune runtime-only dynamic routes
+        run: |
+          rm -rf 'src/app/runs/[runId]'
+          rm -rf 'src/app/loop/[loopId]'
+
+      - name: Build dashboard static export
+        env:
+          NEXT_PUBLIC_API_BASE: ${{ vars.NEXT_PUBLIC_API_BASE || '/api/v1' }}
+          NEXT_PUBLIC_BASE_PATH: ${{ steps.base-path.outputs.base_path }}
+          NEXT_TELEMETRY_DISABLED: "1"
+          PLATO_STATIC_EXPORT: "true"
+        run: npx next build
+
+      - name: Prepare Pages artifact
+        run: |
+          touch out/.nojekyll
+          cp out/index.html out/404.html
+
+      - name: Upload dashboard artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dashboard/frontend/out
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy dashboard to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
