@@ -19,10 +19,21 @@ const SECURITY_HEADERS = [
   { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
 ];
 
+const staticExport = process.env.PLATO_STATIC_EXPORT === "true";
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH?.trim() || undefined;
+
 // Anchor turbopack to this dashboard/frontend folder so Next stops
 // inferring the workspace root from a sibling pnpm-lock.yaml in the
 // user's home directory.
 const nextConfig: NextConfig = {
+  ...(staticExport
+    ? {
+        output: "export" as const,
+        images: { unoptimized: true },
+        trailingSlash: true,
+        ...(basePath ? { basePath, assetPrefix: basePath } : {}),
+      }
+    : {}),
   turbopack: {
     root: path.resolve(__dirname),
   },
