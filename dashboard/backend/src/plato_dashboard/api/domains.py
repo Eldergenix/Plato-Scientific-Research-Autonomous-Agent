@@ -17,6 +17,8 @@ from fastapi import APIRouter
 
 from plato.domain import get_domain, list_domains
 
+from ..domain.models import JsonObjectResponse
+
 router = APIRouter()
 
 # The default domain is currently hard-coded to astro: it's the only
