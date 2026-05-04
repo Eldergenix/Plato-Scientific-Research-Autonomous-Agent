@@ -31,6 +31,23 @@ export interface NodeActivityEvent {
   durationMs?: number;
 }
 
+// Iter-30: per-cell code.execute event the dashboard worker emits after
+// the results-stage executor returns. CodePane renders one card per
+// entry with the executor's source / stdout / error. Parent supplies
+// the array; component stays presentational.
+export interface CodeExecuteEvent {
+  index?: number;
+  source?: string;
+  stdout?: string | null;
+  stderr?: string | null;
+  executor?: string | null;
+  ts: number;
+  error?: {
+    ename?: string;
+    evalue?: string;
+  } | null;
+}
+
 // Iter-22: dropped the SAMPLE_PLOTS fallback (4 hardcoded astro plots —
 // ringdown_spectrogram / qnm_fit_2_2_0 / qnm_fit_3_3_0 / psd_band). The
 // fallback fired whenever the live ``plots`` prop was empty, which meant
@@ -46,6 +63,8 @@ export interface ResultsStageProps {
   plots?: { name: string; url: string }[];
   /** Iter-28: live agent-activity events streamed from useProject().nodeEvents. */
   nodeEvents?: NodeActivityEvent[];
+  /** Iter-30: per-cell code-execute events streamed from useProject().codeEvents. */
+  codeEvents?: CodeExecuteEvent[];
   /** Iter-28: parent's cancel-run callback. When omitted, the cancel button stays disabled. */
   onCancelRun?: () => void | Promise<void>;
 }
@@ -54,6 +73,7 @@ export function ResultsStage({
   project,
   plots,
   nodeEvents,
+  codeEvents,
   onCancelRun,
 }: ResultsStageProps) {
   const [tab, setTab] = React.useState<Tab>("Plots");
@@ -115,7 +135,9 @@ export function ResultsStage({
         <div className="px-6 py-4">
           {tab === "Plots" && <PlotsPane initial={liveItems} />}
           {tab === "Summary" && <SummaryPane project={project} />}
-          {tab === "Code & execution" && <CodePane project={project} />}
+          {tab === "Code & execution" && (
+            <CodePane project={project} codeEvents={codeEvents} />
+          )}
         </div>
       </main>
       <ResultsSidePanel project={project} onCancelRun={onCancelRun} />
@@ -421,23 +443,31 @@ function SummaryPane({ project }: { project: Project }) {
   );
 }
 
-function CodePane({ project }: { project: Project }) {
-  // Iter-29: removed the misleading ``code.execute`` reference — that
-  // event is not emitted by langgraph_bridge.py or any current
-  // executor. The pane now points users at the real surfaces that
-  // already exist:
-  //   - per-step LLM call telemetry → ``log.line`` events streamed to
-  //     the agent transcript above (already rendered)
-  //   - per-node lifecycle → AgentSwimlane bars (iter-28)
-  //   - executor result markdown → SummaryPane (iter-29)
-  //   - generated plots → PlotsPane
+function CodePane({
+  project,
+  codeEvents,
+}: {
+  project: Project;
+  codeEvents?: CodeExecuteEvent[];
+}) {
+  // Iter-30: real per-cell render. The dashboard worker emits one
+  // ``code.execute`` event per cell after the results-stage executor
+  // returns (using ExecutorResult.artifacts.cells which iter-18
+  // LocalJupyterExecutor + iter-20 Modal/E2B all populate). Parent
+  // collects them in useProject().codeEvents and passes here.
   //
-  // A dedicated "code & execution" panel that reads
-  // ``runs/<run_id>/events.jsonl`` for engineer-emitted code blocks
-  // is iter-30+ work; until then this pane is honest about being a
-  // placeholder rather than promising an event the worker doesn't
-  // publish.
+  // When no events have arrived (idle project, or results stage
+  // running but pre-executor), fall back to the iter-29 honest
+  // empty state pointing at the other surfaces. This preserves the
+  // iter-29 contract for fresh projects.
   const run = project.activeRun;
+  const events = codeEvents ?? [];
+  const sorted = React.useMemo(() => {
+    return [...events].sort(
+      (a, b) => (a.index ?? a.ts) - (b.index ?? b.ts),
+    );
+  }, [events]);
+
   return (
     <div className="space-y-3" data-testid="results-code-pane">
       <div className="surface-card">
@@ -451,19 +481,101 @@ function CodePane({ project }: { project: Project }) {
             {run ? "running" : "idle"}
           </Pill>
         </div>
-        <div className="px-3 py-6 text-[12px] text-(--color-text-tertiary) leading-[1.55] text-center">
-          <p>
-            Per-step code execution isn't surfaced here yet. For live
-            agent reasoning see the transcript above; for the run's
-            markdown summary switch to the <strong>Summary</strong> tab;
-            for generated figures the <strong>Plots</strong> tab. A
-            dedicated code-block view (reading{" "}
-            <code className="font-mono">runs/&lt;run_id&gt;/events.jsonl</code>)
-            ships in a follow-up.
-          </p>
-        </div>
+        {sorted.length > 0 ? (
+          <ul
+            className="divide-y divide-(--color-border-standard)"
+            data-testid="results-code-list"
+            data-cell-count={sorted.length}
+          >
+            {sorted.map((cell, i) => (
+              <CodeCell key={cell.index ?? i} cell={cell} />
+            ))}
+          </ul>
+        ) : (
+          <div className="px-3 py-6 text-[12px] text-(--color-text-tertiary) leading-[1.55] text-center">
+            <p>
+              No code executions yet. The Results stage emits one card
+              here per cell after the executor returns. For live agent
+              reasoning see the transcript above; for the run's markdown
+              summary switch to the <strong>Summary</strong> tab; for
+              generated figures the <strong>Plots</strong> tab.
+            </p>
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Iter-30 — single cell card. Shows the executor source as a
+ * monospace code block, then optional stdout / stderr / error. Indexed
+ * by ``cell.index`` for stable keys across re-renders.
+ */
+function CodeCell({ cell }: { cell: CodeExecuteEvent }) {
+  const hasError = cell.error != null && cell.error.ename != null;
+  const indexLabel =
+    cell.index != null ? `cell ${cell.index + 1}` : "cell";
+  return (
+    <li
+      className="px-3 py-3"
+      data-testid={
+        cell.index != null
+          ? `results-code-cell-${cell.index}`
+          : "results-code-cell"
+      }
+      data-cell-error={hasError ? "true" : "false"}
+    >
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-[11px] font-mono text-(--color-text-tertiary)">
+          {indexLabel}
+        </span>
+        {cell.executor ? (
+          <Pill tone="neutral" className="text-[10.5px]">
+            {cell.executor}
+          </Pill>
+        ) : null}
+        {hasError ? (
+          <Pill tone="red" className="ml-auto text-[10.5px]">
+            error
+          </Pill>
+        ) : (
+          <Pill tone="green" className="ml-auto text-[10.5px]">
+            ran
+          </Pill>
+        )}
+      </div>
+      {cell.source ? (
+        <pre className="font-mono text-[12px] leading-[1.55] text-(--color-text-secondary) bg-(--color-bg-pill-inactive) rounded-[4px] px-2.5 py-2 overflow-x-auto whitespace-pre">
+          {cell.source}
+        </pre>
+      ) : null}
+      {cell.stdout ? (
+        <details className="mt-2 text-[11.5px]">
+          <summary className="cursor-pointer text-(--color-text-tertiary) hover:text-(--color-text-secondary)">
+            stdout ({cell.stdout.split("\n").length} lines)
+          </summary>
+          <pre className="mt-1 font-mono text-(--color-text-tertiary) bg-(--color-bg-pill-inactive) rounded-[4px] px-2.5 py-2 overflow-x-auto whitespace-pre">
+            {cell.stdout}
+          </pre>
+        </details>
+      ) : null}
+      {cell.stderr ? (
+        <details className="mt-2 text-[11.5px]">
+          <summary className="cursor-pointer text-(--color-status-amber) hover:text-(--color-text-primary)">
+            stderr ({cell.stderr.split("\n").length} lines)
+          </summary>
+          <pre className="mt-1 font-mono text-(--color-status-amber) bg-(--color-bg-pill-inactive) rounded-[4px] px-2.5 py-2 overflow-x-auto whitespace-pre">
+            {cell.stderr}
+          </pre>
+        </details>
+      ) : null}
+      {hasError ? (
+        <p className="mt-2 text-[11.5px] text-(--color-status-red) font-mono">
+          {cell.error?.ename}: {cell.error?.evalue}
+        </p>
+      ) : null}
+    </li>
   );
 }
 

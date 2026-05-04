@@ -21,6 +21,22 @@ export interface NodeEventEntry {
   durationMs?: number;
 }
 
+// Iter-30 — per-cell code-execute event entry consumed by CodePane.
+// One entry per cell in the executor's artifacts.cells list (for the
+// real iter-18 LocalJupyter / iter-20 Modal+E2B / cmbagent backends).
+export interface CodeEventEntry {
+  index?: number;
+  source?: string;
+  stdout?: string | null;
+  stderr?: string | null;
+  executor?: string | null;
+  ts: number;
+  error?: {
+    ename?: string;
+    evalue?: string;
+  } | null;
+}
+
 interface ProjectState {
   project: Project;
   log: LogLine[];
@@ -32,6 +48,13 @@ interface ProjectState {
    * latest window.
    */
   nodeEvents: NodeEventEntry[];
+  /**
+   * Iter-30: per-cell code-execute events from the active run.
+   * Consumed by CodePane to render the actual source / stdout / error
+   * the executor produced. Capped at CODE_EVENTS_MAX since each entry
+   * carries the cell's full source string.
+   */
+  codeEvents: CodeEventEntry[];
   isLive: boolean; // true when fetched from API; false when offline / pre-bootstrap
   loading: boolean; // true until the first ``getProject`` resolves (or fails)
   capabilities: {
@@ -90,12 +113,17 @@ export const EMPTY_PROJECT: Project = {
 // needs the recent window; long runs would otherwise grow the array
 // without bound.
 const NODE_EVENTS_MAX = 500;
+// Iter-30: per-cell code.execute events. Lower cap because each entry
+// can be sizable (full source + stdout). 200 covers typical results
+// runs; older cells fall off the front when exceeded.
+const CODE_EVENTS_MAX = 200;
 
 export function useProject(): ProjectState {
   const [project, setProject] = React.useState<Project>(EMPTY_PROJECT);
   const [log, setLog] = React.useState<LogLine[]>([]);
   const [plots, setPlots] = React.useState<PlotEntry[]>([]);
   const [nodeEvents, setNodeEvents] = React.useState<NodeEventEntry[]>([]);
+  const [codeEvents, setCodeEvents] = React.useState<CodeEventEntry[]>([]);
   const [isLive, setIsLive] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [caps, setCaps] = React.useState<ProjectState["capabilities"]>(null);
@@ -194,6 +222,8 @@ export function useProject(): ProjectState {
         // Iter-28: clear any node events from the previous run so the
         // swimlane doesn't show stale lanes from a different run.
         setNodeEvents([]);
+        // Iter-30: same logic for code events.
+        setCodeEvents([]);
         sseUnsubRef.current?.();
         sseUnsubRef.current = api.subscribeRunEvents(
           projectIdRef.current,
@@ -223,6 +253,43 @@ export function useProject(): ProjectState {
             } else if (evt.kind === "plot.created") {
               // Live plot file watcher: a new plot file appeared on disk.
               void refreshPlots();
+            } else if (evt.kind === "code.execute") {
+              // Iter-30: fan out to CodePane via codeEvents. Same ring-
+              // buffer treatment as nodeEvents — bounded so a long run
+              // can't accumulate unbounded source-string allocations.
+              const tsMs = (() => {
+                const raw = evt.ts;
+                if (typeof raw === "number") return raw;
+                const parsed = Date.parse(String(raw));
+                return Number.isFinite(parsed) ? parsed : Date.now();
+              })();
+              const entry: CodeEventEntry = {
+                index: typeof evt.index === "number" ? evt.index : undefined,
+                source: typeof evt.source === "string" ? evt.source : undefined,
+                stdout:
+                  evt.stdout === null || typeof evt.stdout === "string"
+                    ? evt.stdout
+                    : undefined,
+                stderr:
+                  evt.stderr === null || typeof evt.stderr === "string"
+                    ? evt.stderr
+                    : undefined,
+                executor:
+                  evt.executor === null || typeof evt.executor === "string"
+                    ? evt.executor
+                    : undefined,
+                ts: tsMs,
+                error:
+                  evt.error === null || typeof evt.error === "object"
+                    ? (evt.error as CodeEventEntry["error"])
+                    : undefined,
+              };
+              setCodeEvents((prev) => {
+                const next = [...prev, entry];
+                return next.length > CODE_EVENTS_MAX
+                  ? next.slice(-CODE_EVENTS_MAX)
+                  : next;
+              });
             } else if (
               evt.kind === "node.entered" || evt.kind === "node.exited"
             ) {
@@ -278,6 +345,7 @@ export function useProject(): ProjectState {
     log,
     plots,
     nodeEvents,
+    codeEvents,
     isLive,
     loading,
     capabilities: caps,
