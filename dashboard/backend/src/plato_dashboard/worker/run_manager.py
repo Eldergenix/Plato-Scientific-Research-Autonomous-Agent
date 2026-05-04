@@ -359,6 +359,38 @@ def _child_main(
                 hardware_constraints=hardware,
                 **kwargs,
             )
+            # Iter-30: fan executor cell records out as code.execute
+            # events so the frontend CodePane can render the actual
+            # per-cell source / stdout / error. Plato.get_results
+            # stashes the executor's ``cells`` artifacts list on the
+            # instance for exactly this purpose. Synthesised after the
+            # executor returns rather than during execution because the
+            # executor.run protocol doesn't currently take an
+            # event-emitter callback (and adding one would be a much
+            # heavier refactor across cmbagent/local_jupyter/modal/e2b).
+            artifacts = getattr(plato, "executor_artifacts", None) or {}
+            cells = artifacts.get("cells") if isinstance(artifacts, dict) else None
+            if isinstance(cells, list):
+                for cell in cells:
+                    if not isinstance(cell, dict):
+                        continue
+                    payload: dict[str, Any] = {
+                        "run_id": run_id,
+                        "project_id": project_id,
+                        "stage": stage,
+                        "index": cell.get("index"),
+                        "source": cell.get("source"),
+                        "stdout": cell.get("stdout"),
+                        "stderr": cell.get("stderr"),
+                        "executor": artifacts.get("executor"),
+                    }
+                    err = cell.get("error")
+                    if isinstance(err, dict):
+                        payload["error"] = {
+                            "ename": err.get("ename"),
+                            "evalue": err.get("evalue"),
+                        }
+                    writer.emit("code.execute", **payload)
 
         elif stage == "paper":
             journal_name = config.get("journal") or "NONE"

@@ -55,6 +55,30 @@ export interface RunEventNodeExited {
   duration_ms?: number;
 }
 
+// Iter-30 — code.execute events emitted by ``_child_main`` after the
+// results-stage executor returns. One event per cell in
+// ``ExecutorResult.artifacts.cells``. Powers the ResultsStage CodePane
+// which used to be an honest placeholder pointing elsewhere.
+export interface RunEventCodeExecute {
+  kind: "code.execute";
+  ts: number | string;
+  /** Zero-based cell index in the executor run. */
+  index?: number;
+  /** Python source the executor evaluated. */
+  source?: string;
+  /** Captured stdout from the cell. */
+  stdout?: string | null;
+  /** Captured stderr from the cell. */
+  stderr?: string | null;
+  /** Executor name (cmbagent / local_jupyter / modal / e2b). */
+  executor?: string | null;
+  /** Error metadata when the cell raised, otherwise undefined. */
+  error?: {
+    ename?: string;
+    evalue?: string;
+  } | null;
+}
+
 export interface RunEventUnknown {
   kind: string;
   [key: string]: unknown;
@@ -66,6 +90,7 @@ export type RunEvent =
   | RunEventPlotCreated
   | RunEventNodeEntered
   | RunEventNodeExited
+  | RunEventCodeExecute
   | RunEventUnknown;
 
 // Module-level run-id store. Components that know they're inside an
