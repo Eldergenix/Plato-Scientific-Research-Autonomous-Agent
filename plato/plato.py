@@ -874,6 +874,14 @@ class Plato:
 
         self.research.results = result.results
         self.research.plot_paths = list(result.plot_paths)
+        # Iter-30: stash the executor's structured artifacts (cell
+        # records with index/source/stdout/error) on the Plato instance
+        # so the dashboard worker (_child_main) can fan them out as
+        # ``code.execute`` SSE events without re-parsing the markdown.
+        # Keep this on the instance, not in research.* — the artifacts
+        # dict can carry executor-specific extras (kernel name, modal
+        # app id, ...) that don't belong in the research model.
+        self.executor_artifacts = dict(result.artifacts) if result.artifacts else {}
 
         # move plots to the plots folder in input_files/plots
         ## Clearing the folder
