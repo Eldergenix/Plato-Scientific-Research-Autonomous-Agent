@@ -230,7 +230,10 @@ def _detect_homogeneity(
     ]
 
 
-async def gap_detector(state: GraphState, config: Optional[RunnableConfig] = None):
+def gap_detector(state: GraphState, config: Optional[RunnableConfig] = None):
+    # Sync, not async: pure analysis with no awaits. ``async def`` would
+    # force ``graph.invoke`` to refuse the node; see clarifier.py for
+    # the same fix and rationale.
     """LangGraph node: pure-analysis gap detection over retrieved evidence."""
 
     if not isinstance(state, dict):

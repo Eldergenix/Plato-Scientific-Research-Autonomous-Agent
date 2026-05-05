@@ -123,17 +123,20 @@ def _iter_inputs(state: GraphState) -> list[Source | str]:
 # Node
 # ---------------------------------------------------------------------------
 
-async def claim_extractor(state: GraphState, config: Optional[RunnableConfig] = None):
+def claim_extractor(state: GraphState, config: Optional[RunnableConfig] = None):
     # Note: ``Optional[RunnableConfig]`` (not ``RunnableConfig | None``)
     # because LangGraph's annotation introspection only whitelists the
     # ``Optional[...]`` and bare-``RunnableConfig`` forms; the PEP-604
     # union form trips a UserWarning on every ``add_node`` call.
+    #
+    # Sync, not async: ``LLM_call_stream`` is synchronous and this body
+    # has no awaits. ``async def`` would force callers into LangGraph's
+    # async path (``ainvoke``); the ``Plato.get_*`` entry points use
+    # sync ``graph.invoke`` so the spuriously-async signature broke the
+    # whole stage.
     """LangGraph node: extract claims from each source/abstract in ``state``.
 
-    Returns a partial state update with the appended ``claims`` list. The
-    function is async to match the LangGraph convention for I/O-bound nodes,
-    even though ``LLM_call_stream`` is synchronous — this keeps the signature
-    compatible with the rest of the Phase 2 graph.
+    Returns a partial state update with the appended ``claims`` list.
     """
 
     inputs = _iter_inputs(state)
