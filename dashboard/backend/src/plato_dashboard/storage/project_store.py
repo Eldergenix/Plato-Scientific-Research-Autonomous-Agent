@@ -257,7 +257,15 @@ class ProjectStore:
         return StageContent(stage=stage, markdown=markdown, updated_at=utcnow(), origin=origin)  # type: ignore[arg-type]
 
     def write_stage_sync(self, pid: str, stage: StageId, markdown: str, origin: str = "edited") -> None:
-        """Synchronous version used during project creation / migration."""
+        """Synchronous version used during project creation / migration.
+
+        Tenant-checked: load() raises FileNotFoundError on cross-tenant
+        access. Skipped during initial create() because the project meta
+        hasn't been saved yet — create() builds the project bound to the
+        requester so there's no tenant ambiguity at that moment.
+        """
+        if self.meta_path(pid).exists():
+            self.load(pid)  # tenant guard
         path = self.stage_path(pid, stage)
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w") as f:
