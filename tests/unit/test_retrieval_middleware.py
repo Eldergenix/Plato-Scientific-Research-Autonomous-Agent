@@ -445,6 +445,114 @@ class TestRetrievalClient:
             await client.get("https://example.test/oops")
 
     @pytest.mark.asyncio
+    async def test_shared_breaker_across_clients_per_host(
+        self, tmp_path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Adapters build a fresh RetrievalClient per call. The shared
+        # per-host registry must remember failures across instances so a
+        # dead host actually trips the breaker on subsequent fan-outs.
+        mw._reset_breakers_for_tests()
+
+        async def fake_sleep(_: float) -> None:
+            return None
+
+        monkeypatch.setattr(mw.asyncio, "sleep", fake_sleep)
+
+        # Tighten the registry default so the test is deterministic.
+        monkeypatch.setitem(
+            mw._BREAKERS,
+            "dead.example.test",
+            CircuitBreaker(failure_threshold=2, cooldown_seconds=60.0),
+        )
+        monkeypatch.setitem(
+            mw._BREAKERS,
+            "live.example.test",
+            CircuitBreaker(failure_threshold=2, cooldown_seconds=60.0),
+        )
+
+        class _FakeAsyncClient:
+            def __init__(self, **_: Any) -> None:
+                pass
+
+            async def __aenter__(self) -> "_FakeAsyncClient":
+                return self
+
+            async def __aexit__(self, *_: Any) -> None:
+                return None
+
+            async def get(self, url: str, **_: Any) -> httpx.Response:
+                return _resp(500)
+
+        monkeypatch.setattr(mw.httpx, "AsyncClient", _FakeAsyncClient)
+
+        # Two separate RetrievalClient instances against the same host —
+        # each records one failure, together they trip the breaker.
+        async with RetrievalClient(cache=False, cache_dir=tmp_path) as c1:
+            await c1.get("https://dead.example.test/a")
+        async with RetrievalClient(cache=False, cache_dir=tmp_path) as c2:
+            await c2.get("https://dead.example.test/b")
+
+        dead = mw._BREAKERS["dead.example.test"]
+        assert dead.is_open is True
+
+        # A third client against the same host short-circuits.
+        async with RetrievalClient(cache=False, cache_dir=tmp_path) as c3:
+            with pytest.raises(CircuitOpenError):
+                await c3.get("https://dead.example.test/c")
+
+        # A different host is unaffected — its breaker is still closed.
+        live = mw._BREAKERS["live.example.test"]
+        assert live.is_open is False
+        async with RetrievalClient(cache=False, cache_dir=tmp_path) as c4:
+            response = await c4.get("https://live.example.test/ok")
+        # Still 500 from our fake, but the call wasn't short-circuited and
+        # the live host's breaker only saw one failure (still closed).
+        assert response.status_code == 500
+        assert live.is_open is False
+
+        mw._reset_breakers_for_tests()
+
+    @pytest.mark.asyncio
+    async def test_explicit_breaker_overrides_registry(
+        self, tmp_path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # When the constructor receives an explicit CircuitBreaker, it must
+        # be used in place of the per-host registry entry — the existing
+        # tests rely on this opt-in override.
+        mw._reset_breakers_for_tests()
+
+        async def fake_sleep(_: float) -> None:
+            return None
+
+        monkeypatch.setattr(mw.asyncio, "sleep", fake_sleep)
+
+        class _FakeAsyncClient:
+            def __init__(self, **_: Any) -> None:
+                pass
+
+            async def __aenter__(self) -> "_FakeAsyncClient":
+                return self
+
+            async def __aexit__(self, *_: Any) -> None:
+                return None
+
+            async def get(self, url: str, **_: Any) -> httpx.Response:
+                return _resp(500)
+
+        monkeypatch.setattr(mw.httpx, "AsyncClient", _FakeAsyncClient)
+
+        custom = CircuitBreaker(failure_threshold=1, cooldown_seconds=60.0)
+        async with RetrievalClient(
+            breaker=custom, cache=False, cache_dir=tmp_path
+        ) as client:
+            await client.get("https://override.example.test/x")
+        assert custom.is_open is True
+        # The registry entry for the same host must NOT have been touched.
+        assert "override.example.test" not in mw._BREAKERS
+
+        mw._reset_breakers_for_tests()
+
+    @pytest.mark.asyncio
     async def test_5xx_records_breaker_failure(
         self, tmp_path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

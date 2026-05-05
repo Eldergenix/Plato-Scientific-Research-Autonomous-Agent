@@ -266,6 +266,82 @@ export interface ApprovalsState {
   auto_skip: boolean;
 }
 
+// ---------------------------------------------------------------- usage
+// Mirror of ``plato_dashboard.worker.token_tracker.StageTokens`` /
+// ``ProjectUsage``. The backend serialises both as plain dicts
+// (StageTokens via ``__dict__``, ProjectUsage assembled inline at
+// ``api/server.py``). Field names are snake_case to match the wire.
+export interface StageTokens {
+  model: string | null;
+  input_tokens: number;
+  output_tokens: number;
+  cost_cents: number;
+}
+
+export interface ProjectUsage {
+  total_input: number;
+  total_output: number;
+  total_cost_cents: number;
+  by_stage: Record<string, StageTokens>;
+  by_model: Record<string, StageTokens>;
+  /**
+   * Per-run records. Currently unpopulated by
+   * ``aggregate_project_usage`` (always ``[]``); kept as a typed slot
+   * for forward compatibility once the backend records run-level
+   * timestamps. Items are intentionally loose — we only consume known
+   * keys when present.
+   */
+  by_run: Array<Record<string, unknown>>;
+}
+
+export interface RunUsage {
+  model: string | null;
+  input_tokens: number;
+  output_tokens: number;
+  cost_cents: number;
+}
+
+// Iter-31 — paper artifact shape returned by api.getPaperArtifacts.
+// PaperPreview consumes sections directly; pdfUrl is wired into the
+// PDF tab when the worker has produced paper/main.pdf.
+export interface PaperSectionArtifact {
+  id: string;
+  name: string;
+  status: "compiled" | "warning" | "failed" | "pending";
+  tex?: string;
+}
+
+export interface PaperArtifacts {
+  pdfUrl?: string;
+  sections: PaperSectionArtifact[];
+}
+
+// Parse top-level section commands out of a LaTeX source so the Sections
+// gutter has something honest to render. We only look at the document
+// body; anything before begin{document} is preamble and section refs
+// inside macros aren't real sections.
+function parseTexSections(tex: string): PaperSectionArtifact[] {
+  const begin = tex.indexOf("\\begin{document}");
+  const body = begin >= 0 ? tex.slice(begin) : tex;
+  const re = /\\section\*?\{([^}]+)\}/g;
+  const out: PaperSectionArtifact[] = [];
+  const seen = new Set<string>();
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(body)) !== null) {
+    const name = m[1].trim();
+    if (!name) continue;
+    const id = name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      || `section-${out.length + 1}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, name, status: "compiled" });
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------- API
 export const api = {
   async health(): Promise<{ ok: boolean; demo_mode: boolean }> {
@@ -420,7 +496,42 @@ export const api = {
     });
   },
 
-  /** Subscribe to SSE for a run. Returns an unsubscribe fn. */
+  /**
+   * Aggregate token + cost usage for ``pid``, broken down by stage
+   * and model. Backend route: ``GET /api/v1/projects/{pid}/usage``.
+   * Mirrors ``aggregate_project_usage`` in token_tracker.py — totals
+   * across every stage's ``LLM_calls.txt``.
+   */
+  async getProjectUsage(pid: string): Promise<ProjectUsage> {
+    return fetchJson<ProjectUsage>(`/projects/${pid}/usage`);
+  },
+
+  /**
+   * Live in-memory token usage for an active run. 404s once the run
+   * is no longer in the ledger; callers should treat that as "not
+   * tracked" rather than an error. Backend route:
+   * ``GET /api/v1/runs/{run_id}/usage``.
+   */
+  async getRunUsage(runId: string): Promise<RunUsage> {
+    return fetchJson<RunUsage>(`/runs/${runId}/usage`);
+  },
+
+  /**
+   * Subscribe to SSE for a run with auto-reconnect.
+   *
+   * The browser's EventSource auto-reconnects on a dropped TCP
+   * connection but bails permanently on an HTTP error (e.g. backend
+   * restart returning 502 briefly). We wrap it so:
+   *
+   *   - ``onerror`` closes the source and schedules a reconnect with
+   *     exponential backoff (500ms -> 30s, ±20% jitter).
+   *   - We stop reconnecting once a ``stage.finished`` event arrives
+   *     (the run is done) or the consumer calls the returned ``close``.
+   *   - Replayed events across reconnects are de-duplicated by a
+   *     ``${ts}:${kind}:${stage|name}`` key, capped at 200 entries.
+   *
+   * Returns an unsubscribe fn matching the original signature.
+   */
   subscribeRunEvents(
     pid: string,
     runId: string,
@@ -428,20 +539,81 @@ export const api = {
     onError?: (e: unknown) => void,
   ): () => void {
     const url = `${API_BASE}/projects/${pid}/runs/${runId}/events`;
-    const es = new EventSource(url);
-    es.onmessage = (e) => {
-      try {
-        // The backend bus emits Record<string, unknown> shapes; we
-        // narrow at the boundary so consumers can discriminate on
-        // ``kind`` instead of doing String(evt.kind) inline.
-        const raw = JSON.parse(e.data) as Record<string, unknown>;
-        onEvent(raw as RunEvent);
-      } catch (err) {
-        onError?.(err);
-      }
+    let es: EventSource | null = null;
+    let stopped = false;
+    let finished = false;
+    let attempt = 0;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    const seen = new Set<string>();
+    const seenOrder: string[] = [];
+    const SEEN_CAP = 200;
+
+    const dedupKey = (raw: Record<string, unknown>): string => {
+      const ts = String(raw.ts ?? "");
+      const kind = String(raw.kind ?? "");
+      const tag = String(raw.stage ?? raw.name ?? raw.path ?? raw.index ?? "");
+      return `${ts}:${kind}:${tag}`;
     };
-    es.onerror = (e) => onError?.(e);
-    return () => es.close();
+
+    const remember = (key: string): boolean => {
+      if (seen.has(key)) return false;
+      seen.add(key);
+      seenOrder.push(key);
+      if (seenOrder.length > SEEN_CAP) {
+        const evicted = seenOrder.shift();
+        if (evicted !== undefined) seen.delete(evicted);
+      }
+      return true;
+    };
+
+    const scheduleReconnect = () => {
+      if (stopped || finished) return;
+      const base = Math.min(30_000, 500 * 2 ** attempt);
+      const jitter = base * (0.8 + Math.random() * 0.4);
+      attempt += 1;
+      reconnectTimer = setTimeout(connect, jitter);
+    };
+
+    const connect = () => {
+      if (stopped || finished) return;
+      reconnectTimer = null;
+      es = new EventSource(url);
+      es.onopen = () => {
+        attempt = 0;
+      };
+      es.onmessage = (e) => {
+        try {
+          const raw = JSON.parse(e.data) as Record<string, unknown>;
+          const key = dedupKey(raw);
+          if (!remember(key)) return;
+          if (raw.kind === "stage.finished") {
+            finished = true;
+            onEvent(raw as RunEvent);
+            es?.close();
+            es = null;
+            return;
+          }
+          onEvent(raw as RunEvent);
+        } catch (err) {
+          onError?.(err);
+        }
+      };
+      es.onerror = (e) => {
+        onError?.(e);
+        es?.close();
+        es = null;
+        scheduleReconnect();
+      };
+    };
+
+    connect();
+
+    return () => {
+      stopped = true;
+      if (reconnectTimer !== null) clearTimeout(reconnectTimer);
+      es?.close();
+      es = null;
+    };
   },
 
   // ------------------------------------------------------------ keys
@@ -470,6 +642,44 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(payload),
     });
+  },
+
+  // Iter-31: read paper artifacts produced by the Paper stage.
+  // The worker writes paper/main.pdf and paper/main.tex into the project
+  // directory. Both are exposed by GET /api/v1/projects/{pid}/files/{relpath}.
+  // We probe the PDF with HEAD (FastAPI auto-registers HEAD for GET routes),
+  // then fetch the .tex source so we can derive a sections outline from
+  // top-level section commands. Returns empty arrays when neither artifact
+  // exists; PaperPreview renders its own honest empty state in that case.
+  async getPaperArtifacts(pid: string): Promise<PaperArtifacts> {
+    const pdfPath = `/projects/${pid}/files/paper/main.pdf`;
+    const texPath = `/projects/${pid}/files/paper/main.tex`;
+    const pdfUrl = `${API_BASE}${pdfPath}`;
+    const texUrl = `${API_BASE}${texPath}`;
+
+    let pdfExists = false;
+    try {
+      const head = await fetch(pdfUrl, { method: "HEAD" });
+      pdfExists = head.ok;
+    } catch {
+      pdfExists = false;
+    }
+
+    let sections: PaperSectionArtifact[] = [];
+    try {
+      const r = await fetch(texUrl);
+      if (r.ok) {
+        const tex = await r.text();
+        sections = parseTexSections(tex);
+      }
+    } catch {
+      /* tex absent is fine */
+    }
+
+    return {
+      pdfUrl: pdfExists ? pdfUrl : undefined,
+      sections,
+    };
   },
 
   async testKey(

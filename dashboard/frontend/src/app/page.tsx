@@ -15,30 +15,11 @@ import { EmptyStage } from "@/components/stages/empty-stage";
 import { ApprovalCheckpoints, getBlockingApproval } from "@/components/stages/approval-checkpoints";
 import { CostMeterPanel, useCostMeter } from "@/components/cost/cost-meter-panel";
 import { CreateProjectModal } from "@/components/projects/create-project-modal";
-import { PaperPreview, type PaperSection } from "@/components/stages/paper-preview";
+import { PaperPreview } from "@/components/stages/paper-preview";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useProject } from "@/lib/use-project";
 import { api } from "@/lib/api";
 
-// Hoisted to module scope so PaperPreview's `versions` prop has a stable
-// identity across renders — re-rendering StagePane (which fires every
-// second during an active run via the elapsed-timer interval) no longer
-// allocates a fresh array. Pairs with the section list below.
-const DEFAULT_PAPER_VERSIONS = [
-  { id: "v1", label: "v1" },
-  { id: "v2", label: "v2" },
-  { id: "v3", label: "v3" },
-  { id: "v4", label: "v4", current: true },
-];
-
-const DEFAULT_PAPER_SECTIONS: PaperSection[] = [
-  { id: "abstract", name: "Abstract", status: "compiled", markdown: "## Abstract\n\nWe present a hierarchical Bayesian pipeline for joint extraction of (2,2,0) and (3,3,0) ringdown modes from GW231123…" },
-  { id: "introduction", name: "Introduction", status: "compiled" },
-  { id: "methods", name: "Methods", status: "warning", errorMessage: "Citation key 'Cornish2023' not found in references.bib" },
-  { id: "results", name: "Results", status: "compiled" },
-  { id: "conclusions", name: "Conclusions", status: "pending" },
-  { id: "references", name: "References", status: "compiled" },
-];
 import {
   ArrowLeft,
   BookMarked,
@@ -487,9 +468,10 @@ function StagePane({
       );
     case "paper":
       return project.stages.paper.status === "done" ? (
-        <PaperPreview
-          sections={DEFAULT_PAPER_SECTIONS}
-          versions={DEFAULT_PAPER_VERSIONS}
+        <PaperStagePane
+          projectId={project.id}
+          lastRunAt={project.stages.paper.lastRunAt}
+          updatedAt={project.updatedAt}
         />
       ) : (
         <EmptyStage
@@ -511,6 +493,58 @@ function StagePane({
     default:
       return null;
   }
+}
+
+function PaperStagePane({
+  projectId,
+  lastRunAt,
+  updatedAt,
+}: {
+  projectId: string;
+  lastRunAt?: string;
+  updatedAt: string;
+}) {
+  const [artifacts, setArtifacts] = React.useState<{
+    pdfUrl?: string;
+    sections: import("@/components/stages/paper-preview").PaperSection[];
+  }>({ sections: [] });
+
+  // Re-fetch when the paper stage's lastRunAt changes — the worker writes
+  // paper/main.{tex,pdf} as the last step of the run, so the new artifacts
+  // appear shortly after the run completes.
+  React.useEffect(() => {
+    let cancelled = false;
+    api
+      .getPaperArtifacts(projectId)
+      .then((r) => {
+        if (cancelled) return;
+        setArtifacts({
+          pdfUrl: r.pdfUrl,
+          sections: r.sections.map((s) => ({
+            id: s.id,
+            name: s.name,
+            status: s.status,
+            tex: s.tex,
+          })),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setArtifacts({ sections: [] });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, lastRunAt]);
+
+  // Single synthesized version pill — the file route doesn't expose git
+  // history and parsing it would be overkill for this view. Keyed on
+  // updatedAt so the pill identity changes when the project changes.
+  const versions = React.useMemo(
+    () => [{ id: `latest-${updatedAt}`, label: "Latest", current: true }],
+    [updatedAt],
+  );
+
+  return <PaperPreview pdfUrl={artifacts.pdfUrl} sections={artifacts.sections} versions={versions} />;
 }
 
 function OfflineBanner() {
