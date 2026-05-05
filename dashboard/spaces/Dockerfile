@@ -22,7 +22,17 @@ FROM node:22-alpine AS frontend-builder
 WORKDIR /build
 
 COPY dashboard/frontend/package.json dashboard/frontend/package-lock.json ./
-RUN npm ci
+
+# Network-resilient npm install. Build-VM CDN egress is flaky enough that
+# the default 5 min fetch-timeout / 2 retries occasionally trips ETIMEDOUT
+# (exit 146). Stretch the budget to 10 min × 5 retries and drop the audit/
+# fund lookups — those add a registry round-trip per package and do not
+# influence the build artifact.
+RUN npm config set fetch-timeout 600000 \
+ && npm config set fetch-retries 5 \
+ && npm config set fetch-retry-mintimeout 20000 \
+ && npm config set fetch-retry-maxtimeout 120000 \
+ && npm ci --prefer-offline --no-audit --no-fund
 
 COPY dashboard/frontend/ ./
 ENV NEXT_PUBLIC_API_BASE=/api/v1
