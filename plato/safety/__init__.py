@@ -14,9 +14,17 @@ public helpers are:
 from __future__ import annotations
 
 from .sanitize import (
+    PromptInjectionDetected,
+    assert_safe,
     detect_injection_signals,
     is_suspicious,
     wrap_external,
 )
 
-__all__ = ["wrap_external", "detect_injection_signals", "is_suspicious"]
+__all__ = [
+    "wrap_external",
+    "detect_injection_signals",
+    "is_suspicious",
+    "assert_safe",
+    "PromptInjectionDetected",
+]

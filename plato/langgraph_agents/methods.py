@@ -6,6 +6,14 @@ from .parameters import GraphState
 
 
 def methods_fast(state: GraphState, config: RunnableConfig):
+    """Generate the methods section in fast (single-shot) mode.
+
+    Returns the token / message deltas so LangGraph's reducer captures
+    them in the next checkpoint. Previously this returned ``None``, which
+    meant resume-from-checkpoint had no record of the LLM call — the
+    methods file was on disk but the in-graph state had no token usage,
+    no message history, and would re-run the LLM on resume.
+    """
 
     print('Generating methods...', end="", flush=True)
 
@@ -20,3 +28,7 @@ def methods_fast(state: GraphState, config: RunnableConfig):
         f.write(text)
 
     print(f"done {state['tokens']['ti']} {state['tokens']['to']}")
+    return {
+        "messages": state.get("messages", []),
+        "tokens": state["tokens"],
+    }

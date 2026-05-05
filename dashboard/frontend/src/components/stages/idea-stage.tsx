@@ -379,7 +379,10 @@ function IdeaSidePanel({
       };
       try {
         setSubmitting(true);
-        await api.startRun(projectId, "idea", { mode, models });
+        // Iter-3: forward the iteration budget the user picked. Backend
+        // StageRunRequest accepts the field; previously it was collected
+        // and dropped, making the +/- control decorative.
+        await api.startRun(projectId, "idea", { mode, models, iterations });
         // Fire the legacy callback too for parents that listen for
         // post-submit refreshes (e.g. switching panes).
         onRun?.();
@@ -407,6 +410,7 @@ function IdeaSidePanel({
     reviewer,
     orchestration,
     formatter,
+    iterations,
     onRun,
     refreshHistory,
   ]);

@@ -11,6 +11,39 @@ _ALLOWED_KEYS = frozenset({
     "LANGFUSE_PUBLIC", "LANGFUSE_SECRET", "LANGFUSE_HOST",
 })
 
+# Backwards-compatible aliases. Pre-iter-2 callers indexed via the env-var
+# spelling ("OPENAI_API_KEY", "GOOGLE_API_KEY", etc.). Translating those
+# silently keeps the legacy contract working without re-introducing the
+# typo-swallowing footgun: arbitrary attribute names still raise.
+_KEY_ALIASES = {
+    "OPENAI_API_KEY": "OPENAI",
+    "GOOGLE_API_KEY": "GEMINI",
+    "GEMINI_API_KEY": "GEMINI",
+    "ANTHROPIC_API_KEY": "ANTHROPIC",
+    "PERPLEXITY_API_KEY": "PERPLEXITY",
+    "SEMANTIC_SCHOLAR_KEY": "SEMANTIC_SCHOLAR",
+    "SEMANTIC_SCHOLAR_API_KEY": "SEMANTIC_SCHOLAR",
+    "LANGFUSE_PUBLIC_KEY": "LANGFUSE_PUBLIC",
+    "LANGFUSE_SECRET_KEY": "LANGFUSE_SECRET",
+}
+
+
+def _resolve_key(key: str) -> str:
+    """Translate aliased env-style names back to canonical attribute names.
+
+    Returns the canonical name for any name in either ``_ALLOWED_KEYS`` or
+    ``_KEY_ALIASES``. Raises ``KeyError`` for everything else, preserving
+    the typo-rejection guarantee for unknown names.
+    """
+    if key in _ALLOWED_KEYS:
+        return key
+    if key in _KEY_ALIASES:
+        return _KEY_ALIASES[key]
+    raise KeyError(
+        f"Unknown key {key!r}. Valid keys: {sorted(_ALLOWED_KEYS)} "
+        f"(legacy aliases also accepted: {sorted(_KEY_ALIASES)})"
+    )
+
 
 class KeyManager(BaseModel):
     ANTHROPIC: str | None = ""
@@ -54,18 +87,10 @@ class KeyManager(BaseModel):
         # env var is set, so the honest return type is ``str | None``.
         # Previously declared ``-> str``, which lied to type-checkers
         # and let callers chain string ops on a value that could be
-        # ``None`` at runtime. We also reject unknown keys explicitly so a
-        # typo (``keys["OPENAI_API_KEY"]`` instead of ``keys["OPENAI"]``)
-        # raises instead of silently returning None.
-        if key not in _ALLOWED_KEYS:
-            raise KeyError(
-                f"Unknown key {key!r}. Valid keys: {sorted(_ALLOWED_KEYS)}"
-            )
-        return getattr(self, key)
+        # ``None`` at runtime. Unknown attribute names raise (typo
+        # rejection); legacy env-style aliases like "OPENAI_API_KEY"
+        # are transparently translated to canonical attribute names.
+        return getattr(self, _resolve_key(key))
 
     def __setitem__(self, key: str, value: str | None) -> None:
-        if key not in _ALLOWED_KEYS:
-            raise KeyError(
-                f"Unknown key {key!r}. Valid keys: {sorted(_ALLOWED_KEYS)}"
-            )
-        setattr(self, key, value)
+        setattr(self, _resolve_key(key), value)

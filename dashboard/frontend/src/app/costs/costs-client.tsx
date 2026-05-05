@@ -371,7 +371,7 @@ export default function CostsPage() {
             <div>
               <h2 className="text-[15px] font-[510] text-(--color-text-primary-strong)">Project budget caps</h2>
               <p className="mt-0.5 text-[12px] text-(--color-text-tertiary-spec)">
-                Stored locally in your browser. Server-side enforcement ships in Phase 4.
+                Caps are persisted server-side per project; the dashboard worker stops a stage that would exceed the cap.
               </p>
             </div>
 
