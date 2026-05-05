@@ -12,7 +12,8 @@ nav:
       - Vertex AI Setup: llm_api_keys/vertex-ai-setup.md
       - Storing API Keys: llm_api_keys/storing-api-keys.md
   - Get started: get_started.md
-  - App: app.md
+  - Dashboard: dashboard.md
+  - App (legacy Streamlit): app.md
   - Docker: docker.md
   - Prompts: prompts.md
   - Features:

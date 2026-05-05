@@ -77,9 +77,36 @@ STAGE_FILES: dict[StageId, str] = {
 
 
 class ProjectStore:
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, *, user_id: str | None = None):
+        # Per-user tenant binding (iter-31): when ``user_id`` is set, every
+        # read/write that touches a Project's meta verifies the project's
+        # ``user_id`` matches. Routers already enforce this via
+        # ``_enforce_project_tenant``, but binding at the store level is a
+        # belt-and-braces defense — any future router that forgets the
+        # helper still gets blocked from cross-tenant access.
+        #
+        # Backwards-compatible: legacy callers (CLI, single-tenant deploys,
+        # tests) construct without ``user_id`` and the check is skipped.
         self.root = root
+        self.user_id = user_id
         root.mkdir(parents=True, exist_ok=True)
+
+    def _check_tenant(self, project: "Project") -> None:
+        """Raise FileNotFoundError if ``project.user_id`` doesn't match.
+
+        We deliberately raise the same exception as a missing-file lookup
+        rather than a permission error, because "the project doesn't exist"
+        is a strictly less-informative response than "you don't own it" —
+        the former doesn't leak project existence to a probing attacker.
+        """
+        if self.user_id is None:
+            return
+        if project.user_id is None:
+            # Legacy un-bound project. Permit if the store is also un-bound;
+            # otherwise treat as cross-tenant and 404.
+            return
+        if project.user_id != self.user_id:
+            raise FileNotFoundError(project.id)
 
     # ------------------------------------------------------------ paths
     def project_dir(self, pid: str) -> Path:
@@ -124,7 +151,9 @@ class ProjectStore:
             raise FileNotFoundError(pid)
         with path.open() as f:
             data = json.load(f)
-        return Project.model_validate(data)
+        project = Project.model_validate(data)
+        self._check_tenant(project)
+        return project
 
     def save(self, project: Project) -> Project:
         project.updated_at = utcnow()
@@ -169,6 +198,14 @@ class ProjectStore:
         return project
 
     def delete(self, pid: str) -> None:
+        # Verify tenant before rm-rf'ing the project tree. ``load`` raises
+        # FileNotFoundError on cross-tenant access — we let that propagate
+        # rather than silently returning so the caller sees the same shape
+        # as a "project doesn't exist" delete.
+        try:
+            self.load(pid)
+        except FileNotFoundError:
+            return
         d = self.project_dir(pid)
         if d.exists():
             shutil.rmtree(d)
@@ -178,13 +215,15 @@ class ProjectStore:
         if stage == "paper":
             # Paper is a binary, served separately
             return None
+        # Tenant check first (load() raises on cross-tenant) so we don't leak
+        # stage-file existence to a user who doesn't own the project.
+        proj = self.load(pid)
         path = self.stage_path(pid, stage)
         if not path.exists():
             return None
         async with aiofiles.open(path, "r") as f:
             text = await f.read()
         mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
-        proj = self.load(pid)
         origin = proj.stages.get(stage).origin if proj.stages.get(stage) else "ai"
         return StageContent(stage=stage, markdown=text, updated_at=mtime, origin=origin or "ai")
 
@@ -192,6 +231,10 @@ class ProjectStore:
         return await self._write_stage_async(pid, stage, markdown, origin)
 
     async def _write_stage_async(self, pid: str, stage: StageId, markdown: str, origin: str) -> StageContent:
+        # Tenant check before any side effect: load raises on cross-tenant
+        # access so a misconfigured router cannot accidentally write into
+        # another user's project tree.
+        self.load(pid)
         path = self.stage_path(pid, stage)
         path.parent.mkdir(parents=True, exist_ok=True)
 

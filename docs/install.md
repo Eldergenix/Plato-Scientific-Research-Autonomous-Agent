@@ -2,7 +2,7 @@
 
 ## Requirements
 
-For running Plato you will need different API keys for the LLMs. The supported ones are OpenAI, Gemini, Anthropic and Perplexity. [Read here](apikeys.md) more details on the LLMs required for each modules and how to get the different API keys.
+For running Plato you will need different API keys for the LLMs. The supported ones are OpenAI, Gemini, Anthropic and Perplexity. [Read here](llm_api_keys/apikeys.md) for more details on which LLMs each module needs and how to obtain the keys.
 
 Also, you will need [LaTeX](https://www.latex-project.org/) installed for the write paper module. This is not required for the other modules.
 
@@ -52,7 +52,7 @@ To install Plato, just run
 pip install "plato[app]"
 ```
 
-The `[app]` allow us to run the [GUI](docs/app.md). If we do not need that, we can also install just `pip install plato`.
+The `[app]` extra installs the legacy Streamlit [GUI](app.md). For the new self-hosted FastAPI + Next.js dashboard use `pip install "plato[dashboard]"` (see [dashboard.md](dashboard.md)). If you only need the Python API, plain `pip install plato` is enough.
 
 ### uv
 
