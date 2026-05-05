@@ -16,7 +16,6 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { useTheme } from "@/components/shell/theme-provider";
 import { Button } from "@/components/ui/button";
-import { Pill } from "@/components/ui/pill";
 import { cn } from "@/lib/utils";
 
 // Mirror of RECOMMENDED_BY_STAGE in src/app/models/page.tsx — kept in sync
@@ -321,22 +320,6 @@ export default function SettingsPage() {
               </span>
             </span>
           </label>
-        </section>
-
-        {/* Telemetry */}
-        <section className="surface-linear-card p-5">
-          <SectionTitle title="Telemetry" subtitle="Help improve Plato with anonymous usage data." />
-          <div className="mt-3 flex items-center justify-between gap-3 rounded-[8px] border border-(--color-border-card) bg-(--color-bg-card) px-3 py-2.5">
-            <div>
-              <div className="text-[13px] text-(--color-text-primary)">
-                Telemetry: not yet implemented
-              </div>
-              <div className="text-[12px] text-(--color-text-tertiary)">
-                This setting will become active once the backend collector ships.
-              </div>
-            </div>
-            <Pill tone="neutral">disabled</Pill>
-          </div>
         </section>
 
         {/* Reset (danger) */}

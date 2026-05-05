@@ -518,7 +518,7 @@ function OfflineBanner() {
     <div className="hairline-b bg-(--color-status-amber)/10 px-4 py-1.5 flex items-center gap-3 text-[12px]">
       <Lightbulb size={13} strokeWidth={1.5} className="text-(--color-status-amber)" />
       <span className="font-medium text-(--color-text-primary)">
-        API offline · showing sample data
+        API offline
       </span>
       <span className="text-(--color-text-tertiary)">
         Start the backend with{" "}

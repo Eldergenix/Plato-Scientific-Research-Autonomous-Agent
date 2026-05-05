@@ -116,10 +116,9 @@ def process_tex_file_with_references(text, keys: KeyManager, nparagraphs=None):
         
         para = para_dict[kpara]
         
-        # Try to process the paragraph using perplexity function (placeholder shown here)
+        # Process the paragraph through Perplexity to surface citation-able
+        # claims; one retry on transient None responses, then we skip.
         for attempt in range(2):
-            # Replace the following line with your actual perplexity call if needed.
-            # new_para, citations = para, []  # e.g., new_para, citations = perplexity(para)
             new_para, citations = perplexity(para, keys)
             if new_para is not None:
                 break  # exit the retry loop if successful

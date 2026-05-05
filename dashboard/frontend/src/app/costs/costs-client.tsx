@@ -111,8 +111,9 @@ function formatDate(iso: string): string {
   }
 }
 
-// Mock 7-point sparkline for the "this week" card. Real time-series
-// aggregation lands in Phase 4 via /api/v1/projects/{pid}/usage.
+// 7-point sparkline path builder used by the "This week" metric card.
+// Iter-6: now driven by the real ``by_run`` timeline from /usage instead
+// of a fake gradient.
 function buildSparklinePath(points: number[], w = 60, h = 16): string {
   if (points.length === 0) return "";
   const max = Math.max(...points, 1);
@@ -124,6 +125,28 @@ function buildSparklinePath(points: number[], w = 60, h = 16): string {
       return `${i === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
     })
     .join(" ");
+}
+
+// Build a 7-bucket [oldest..today] cost-cents array from ``by_run`` rows.
+// Buckets are UTC-day; runs without started_at are dropped. Used by both
+// the sparkline and the "This week" total.
+function buildLast7Days(
+  buckets: { day: string; cost: number }[],
+): { perDay: number[]; weekCents: number; monthCents: number } {
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const dayKey = (offset: number): string => {
+    const d = new Date(today.getTime() - offset * 86400000);
+    return d.toISOString().slice(0, 10);
+  };
+  const map = new Map(buckets.map((b) => [b.day, b.cost]));
+  const perDay = Array.from({ length: 7 }, (_, i) => map.get(dayKey(6 - i)) ?? 0);
+  const weekCents = perDay.reduce((s, v) => s + v, 0);
+  let monthCents = 0;
+  for (let i = 0; i < 30; i++) {
+    monthCents += map.get(dayKey(i)) ?? 0;
+  }
+  return { perDay, weekCents, monthCents };
 }
 
 export default function CostsPage() {
@@ -162,14 +185,10 @@ export default function CostsPage() {
   }, []);
 
   const totalCents = (projects ?? []).reduce((s, p) => s + p.totalCostCents, 0);
-  const totalTokensThisMonth = (projects ?? []).reduce((s, p) => s + p.totalTokens, 0);
-  // Mock weekly/monthly slices — backend usage aggregation is Phase 4.
-  const monthCents = Math.round(totalCents * 0.6);
-  const weekCents = Math.round(totalCents * 0.2);
-  const sparklinePoints = React.useMemo(() => {
-    const seed = Math.max(weekCents, 1);
-    return [0.4, 0.7, 0.55, 0.85, 0.6, 0.95, 1.0].map((f) => f * seed);
-  }, [weekCents]);
+  const totalTokensThisMonth = (projects ?? []).reduce(
+    (s, p) => s + p.totalTokens,
+    0,
+  );
 
   const sorted = React.useMemo(() => {
     if (!projects) return null;
@@ -257,24 +276,21 @@ export default function CostsPage() {
   const isLoading = projects === null;
   const isEmpty = !isLoading && (projects?.length ?? 0) === 0;
 
-  // Iter-6: real per-model + per-day aggregations. Only fetch when the
-  // user actually opens one of the non-project tabs to avoid an N+1 burst
-  // of /usage calls on first page load.
+  // Iter-6: per-project /usage drives both the non-project tabs and the
+  // real weekly/monthly metric cards. Fetched once on mount (not gated on
+  // tab) because the metric cards are visible regardless of tab.
   const [usageMap, setUsageMap] = React.useState<Map<string, ProjectUsageView>>(
     new Map(),
   );
   const [usageLoading, setUsageLoading] = React.useState(false);
 
   React.useEffect(() => {
-    if (tab === "project") return;
     if (!projects || projects.length === 0) return;
     if (usageMap.size === projects.length) return; // already fetched
     let cancelled = false;
     setUsageLoading(true);
     Promise.all(
-      projects.map((p) =>
-        api.getProjectUsage(p.id).catch(() => null),
-      ),
+      projects.map((p) => api.getProjectUsage(p.id).catch(() => null)),
     )
       .then((results) => {
         if (cancelled) return;
@@ -291,7 +307,7 @@ export default function CostsPage() {
     return () => {
       cancelled = true;
     };
-  }, [tab, projects, usageMap.size]);
+  }, [projects, usageMap.size]);
 
   const byModelRows = React.useMemo(() => {
     const acc = new Map<
@@ -336,6 +352,17 @@ export default function CostsPage() {
       .map(([day, v]) => ({ day, ...v }))
       .sort((a, b) => b.day.localeCompare(a.day));
   }, [usageMap]);
+
+  // Real "This week" / "This month" / sparkline derived from the same
+  // by_run timeline that drives the By-day tab. Falls back to zeros while
+  // /usage hasn't responded yet — better than a fake gradient.
+  const { perDay, weekCents, monthCents } = React.useMemo(() => {
+    if (byDayRows.length === 0) {
+      return { perDay: [0, 0, 0, 0, 0, 0, 0], weekCents: 0, monthCents: 0 };
+    }
+    return buildLast7Days(byDayRows.map(({ day, cost }) => ({ day, cost })));
+  }, [byDayRows]);
+  const sparklinePoints = perDay;
 
   return (
     <div className="min-h-screen bg-(--color-bg-page) px-6 py-8">
