@@ -263,6 +263,15 @@ def main(argv: list[str] | None = None) -> int:
         f"{report['passed']} passed, {len(report['failures'])} failed "
         f"(rate={report['validation_rate']:.3f})"
     )
+    # Iter-8: an empty corpus (no citations to validate) is a different
+    # condition from "validations failed". The previous logic computed
+    # validation_rate=0.0 in that case and exited 1, which made every
+    # freshly-initialised project appear to fail validation. Treat
+    # zero-total as a benign warning + exit 0 — there are no citations
+    # to invalidate.
+    if report["total"] == 0:
+        print("warning: no citations found to validate (exit 0)")
+        return 0
     if report["validation_rate"] < args.threshold:
         return 1
     return 0

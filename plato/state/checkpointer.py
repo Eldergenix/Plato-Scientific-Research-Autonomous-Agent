@@ -122,15 +122,17 @@ def make_checkpointer(
     if backend == "sqlite":
         try:
             from langgraph.checkpoint.sqlite import SqliteSaver
-        except ImportError:
-            warnings.warn(
-                "langgraph-checkpoint-sqlite is not installed; "
-                "falling back to MemorySaver. Install with "
-                "`pip install langgraph-checkpoint-sqlite` for crash-resumable runs.",
-                RuntimeWarning,
-                stacklevel=2,
-            )
-            return _memory_saver()
+        except ImportError as exc:
+            # Iter-8: callers who pass ``backend="sqlite"`` have explicitly
+            # opted into durable storage. Silently falling back to an
+            # in-memory saver here was a data-loss hazard — a crash mid-run
+            # produced an unresumable manifest with no warning visible to
+            # the operator. Raise instead so the deploy fails loud.
+            raise ImportError(
+                "langgraph-checkpoint-sqlite is required for "
+                "backend='sqlite'. Install with "
+                "`pip install langgraph-checkpoint-sqlite`."
+            ) from exc
 
         resolved = _resolve_sqlite_path(path or _DEFAULT_SQLITE_PATH)
         conn = sqlite3.connect(str(resolved), check_same_thread=False)
@@ -140,17 +142,24 @@ def make_checkpointer(
     if backend == "postgres":
         if not dsn:
             raise ValueError("postgres backend requires a `dsn` keyword argument")
+        # Iter-8: cheap shape check so a typo'd DSN fails with a clear
+        # error here instead of an opaque psycopg connection error deep
+        # inside LangGraph.
+        if not (dsn.startswith("postgres://") or dsn.startswith("postgresql://")):
+            raise ValueError(
+                f"postgres dsn must start with 'postgres://' or "
+                f"'postgresql://'; got {dsn!r}"
+            )
         try:
             from langgraph.checkpoint.postgres import PostgresSaver
-        except ImportError:
-            warnings.warn(
-                "langgraph-checkpoint-postgres is not installed; "
-                "falling back to MemorySaver. Install with "
-                "`pip install langgraph-checkpoint-postgres`.",
-                RuntimeWarning,
-                stacklevel=2,
-            )
-            return _memory_saver()
+        except ImportError as exc:
+            # Iter-8: same data-loss reasoning as the sqlite branch above —
+            # raise instead of silent MemorySaver fallback.
+            raise ImportError(
+                "langgraph-checkpoint-postgres is required for "
+                "backend='postgres'. Install with "
+                "`pip install langgraph-checkpoint-postgres`."
+            ) from exc
 
         return PostgresSaver.from_conn_string(dsn)
 

@@ -874,24 +874,54 @@ class Plato:
             executor_name = self.domain.executor
         executor_obj = get_executor(executor_name)
 
-        result = asyncio.run(executor_obj.run(
-            research_idea=self.research.idea,
-            methodology=self.research.methodology,
-            data_description=self.research.data_description,
-            project_dir=self.project_dir,
-            keys=self.keys,
-            involved_agents=involved_agents,
-            engineer_model=engineer_model.name,
-            researcher_model=researcher_model.name,
-            planner_model=planner_model.name,
-            plan_reviewer_model=plan_reviewer_model.name,
-            restart_at_step=restart_at_step,
-            hardware_constraints=hardware_constraints,
-            max_n_attempts=max_n_attempts,
-            max_n_steps=max_n_steps,
-            orchestration_model=orchestration_model.name,
-            formatter_model=formatter_model.name,
-        ))
+        # Iter-8: open a manifest record for the get_results workflow.
+        # Every other Plato workflow (idea / method / paper / referee)
+        # already does this; ``get_results`` was the longest and most
+        # expensive workflow but had no manifest, so the run was
+        # invisible to the cost / observability layer (no token totals
+        # showed up in /usage's by_run for executor-driven runs).
+        recorder = self._start_manifest(
+            "get_results",
+            models={
+                "engineer":     engineer_model.name,
+                "researcher":   researcher_model.name,
+                "planner":      planner_model.name,
+                "plan_reviewer": plan_reviewer_model.name,
+                "orchestration": orchestration_model.name,
+                "formatter":    formatter_model.name,
+            },
+        )
+        try:
+            result = asyncio.run(executor_obj.run(
+                research_idea=self.research.idea,
+                methodology=self.research.methodology,
+                data_description=self.research.data_description,
+                project_dir=self.project_dir,
+                keys=self.keys,
+                involved_agents=involved_agents,
+                engineer_model=engineer_model.name,
+                researcher_model=researcher_model.name,
+                planner_model=planner_model.name,
+                plan_reviewer_model=plan_reviewer_model.name,
+                restart_at_step=restart_at_step,
+                hardware_constraints=hardware_constraints,
+                max_n_attempts=max_n_attempts,
+                max_n_steps=max_n_steps,
+                orchestration_model=orchestration_model.name,
+                formatter_model=formatter_model.name,
+            ))
+            # Roll the executor's reported tokens / cost into the manifest
+            # so the dashboard's by_run timeline + per-stage breakdown see
+            # this run.
+            recorder.add_tokens(
+                input_tokens=int(getattr(result, "tokens_in", 0) or 0),
+                output_tokens=int(getattr(result, "tokens_out", 0) or 0),
+                cost_usd=float(getattr(result, "cost_usd", 0.0) or 0.0),
+            )
+            recorder.finish("success")
+        except Exception as e:
+            recorder.finish("error", error=str(e))
+            raise
 
         self.research.results = result.results
         self.research.plot_paths = list(result.plot_paths)
@@ -1051,6 +1081,26 @@ class Plato:
         # get name of data description file and referee
         f_data_description = os.path.join(self.project_dir, INPUT_FILES, DESCRIPTION_FILE)
 
+        # Iter-8: validate the paper PDF exists BEFORE creating the
+        # manifest + invoking the graph. Previously the referee node
+        # opened the PDF lazily via pdf_to_images deep in the graph,
+        # which raised an opaque OSError that the broad ``except
+        # FileNotFoundError`` below caught and printed truncated. The
+        # explicit check produces a clear actionable error before any
+        # work happens.
+        paper_version = 2
+        paper_pdf = os.path.join(
+            self.project_dir,
+            "paper",
+            f"paper_v{paper_version}_no_citations.pdf",
+        )
+        if not os.path.isfile(paper_pdf):
+            raise FileNotFoundError(
+                f"Referee requires a rendered paper PDF at "
+                f"{paper_pdf!r}. Run ``plato.get_paper()`` first or "
+                f"place an existing PDF at that path."
+            )
+
         recorder = self._start_manifest("referee", models={"referee": llm.name})
         config = {"configurable": {"thread_id": recorder.manifest.run_id}, "recursion_limit": 100}
         config["callbacks"] = callbacks_for(recorder.manifest.run_id, recorder.manifest.workflow, recorder=recorder)
@@ -1065,7 +1115,7 @@ class Plato:
                     "max_output_tokens": llm.max_output_tokens,
                     "stream_verbose": verbose},
             "keys": self.keys,
-            "referee": {"paper_version": 2},
+            "referee": {"paper_version": paper_version},
         }
 
         # Run the graph

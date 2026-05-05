@@ -19,19 +19,29 @@ if TYPE_CHECKING:
 _log = logging.getLogger(__name__)
 
 
-# Per-million-token prices (input, output) snapshotted 2026-04. Only models
-# Plato actually wires today are listed; unknown models silently fall through.
+# Per-million-token prices (input, output). Iter-8: re-aligned to match
+# the canonical table in ``dashboard/frontend/src/lib/models.ts`` —
+# previously diverged on gpt-4.1, gpt-5, gemini-2.5-flash, gemini-2.5-pro
+# (output), and listed an orphan ``claude-sonnet-4-5`` whose model id no
+# wired client produces (the real id is ``claude-3.7-sonnet``).
+# Mismatches caused silent under-/over-charging in the manifest cost
+# field. The frontend pricing table is the source of truth — when adding
+# a new model, update both this dict and ``lib/models.ts`` together.
 _PRICE_PER_M: dict[str, tuple[float, float]] = {
-    "gpt-4o-mini":          (0.15,  0.60),
-    "gpt-4o":               (2.50, 10.00),
-    "gpt-4.1":              (3.00, 12.00),
-    "gpt-4.1-mini":         (0.40,  1.60),
-    "gpt-5":                (5.00, 25.00),
-    "o3-mini":              (1.10,  4.40),
-    "claude-sonnet-4-5":    (3.00, 15.00),
-    "claude-4.1-opus":      (15.00, 75.00),
-    "gemini-2.5-flash":     (0.075, 0.30),
-    "gemini-2.5-pro":       (1.25,  5.00),
+    "gemini-2.0-flash":     (0.10,    0.40),
+    "gemini-2.5-flash":     (0.30,    2.50),
+    "gemini-2.5-pro":       (1.25,   10.00),
+    "o3-mini":              (1.10,    4.40),
+    "gpt-4o":               (2.50,   10.00),
+    "gpt-4.1":              (2.00,    8.00),
+    "gpt-4.1-mini":         (0.40,    1.60),
+    "gpt-4o-mini":          (0.15,    0.60),
+    "gpt-4.5":              (75.00, 150.00),
+    "gpt-5":                (12.50,  50.00),
+    "gpt-5-mini":           (0.25,    2.00),
+    "claude-3.7-sonnet":    (3.00,   15.00),
+    "claude-4-opus":        (15.00,  75.00),
+    "claude-4.1-opus":      (15.00,  75.00),
 }
 
 

@@ -217,10 +217,27 @@ def _run_dashboard(args) -> None:
 
     if not args.no_browser:
         url = f"http://{args.host}:{args.port}"
-        try:
-            webbrowser.open_new_tab(url)
-        except Exception:  # noqa: BLE001
-            pass
+        # Iter-8: defer the browser open until after the server has had a
+        # moment to bind. Previously ``webbrowser.open_new_tab`` fired
+        # synchronously before ``run_api()`` started uvicorn, racing the
+        # listen socket and producing a connection-refused on the first
+        # request. A short timer in a daemon thread is the simplest fix
+        # that doesn't require a startup-event hook into the dashboard
+        # app (which lives in a different package).
+        import threading
+
+        def _open_after_listen() -> None:
+            # 0.6 s is enough for uvicorn to bind on local-dev paths
+            # without making the user wait noticeably.
+            import time as _time
+
+            _time.sleep(0.6)
+            try:
+                webbrowser.open_new_tab(url)
+            except Exception:  # noqa: BLE001
+                pass
+
+        threading.Thread(target=_open_after_listen, daemon=True).start()
         print(f"→ {url}")
 
     run_api()
@@ -256,9 +273,14 @@ def _run_loop(args) -> None:
         plato_obj = Plato(project_dir=args.project_dir, domain=domain)
         executor_override = getattr(args, "executor", None)
         if executor_override:
-            # Stash on the instance so a custom score/run loop can consume
-            # it. ResearchLoop forwards kwargs into get_results in a future
-            # commit; for now this lives on the instance for inspection.
+            # Iter-8: ``Plato.get_results`` reads ``_cli_executor_override``
+            # (see plato.py:871) and dispatches through the registered
+            # executor instead of the domain default. The user-supplied
+            # ``score_fn`` typically calls ``plato.get_results(...)``
+            # internally — when it does, the override takes effect there.
+            # The default CLI ``_score_fn`` below just reads the latest
+            # manifest score and never invokes a workflow, so for that
+            # path the override is harmless but unused.
             plato_obj._cli_executor_override = executor_override  # type: ignore[attr-defined]
         return plato_obj
 

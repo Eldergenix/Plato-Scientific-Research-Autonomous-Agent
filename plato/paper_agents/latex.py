@@ -148,9 +148,12 @@ def compile_tex_document(state: dict, doc_name: str, doc_folder: str) -> None:
     else:
         total_passes = 2
 
-    # Additional passes
+    # Additional passes — Iter-8: a False return here used to be ignored,
+    # so a broken second/third XeLaTeX pass printed ✅ regardless. Bail
+    # out on the first failing pass so the error surfaces.
     for i in range(2, total_passes + 1):
-        run_xelatex(pass_num=i)
+        if not run_xelatex(pass_num=i):
+            return False
 
     print("✅", end="", flush=True)
     clean_files(doc_name, doc_folder)
@@ -175,9 +178,26 @@ def compile_latex(state: GraphState, paper_name: str) -> None:
                               text=True, check=True)
 
     def run_bibtex():
-        subprocess.run(["bibtex", paper_stem],
-                       cwd=state['files']['Paper_folder'],
-                       capture_output=True, text=True)
+        # Iter-8: surface BibTeX failures instead of silently swallowing
+        # them. Previously this called subprocess.run with no return-code
+        # check, so missing .bst files / unresolved citation keys silently
+        # produced an empty references section in the final paper.
+        result = subprocess.run(
+            ["bibtex", paper_stem],
+            cwd=state['files']['Paper_folder'],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            with open(state['files']['LaTeX_log'], 'a') as f:
+                f.write("\n==== BibTeX FAILED ====\n")
+                f.write(result.stdout or "")
+                f.write("\n---- STDERR ----\n")
+                f.write(result.stderr or "")
+            raise RuntimeError(
+                f"BibTeX failed for {paper_stem!r}: see LaTeX log for "
+                f"details. {result.stderr.splitlines()[0] if result.stderr else ''}"
+            )
 
     def log_output(i, result_or_error, is_error=False):
         with open(state['files']['LaTeX_log'], 'a') as f:
