@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import { NextIntlClientProvider } from "next-intl";
+import { getLocale, getMessages } from "next-intl/server";
 import { AuthProvider } from "@/components/auth/auth-context";
 import { ErrorBoundary } from "@/components/shell/error-boundary";
 import { ThemeProvider } from "@/components/shell/theme-provider";
@@ -31,7 +33,7 @@ export const metadata: Metadata = {
 // would set, avoiding a flash of un-themed content.
 const themeBootstrap = `(function(){try{var t=localStorage.getItem("plato:theme")||"dark";var d=t==="system"?(window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"):t;document.documentElement.className=d;}catch(e){document.documentElement.className="dark";}})();`;
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
@@ -39,8 +41,15 @@ export default function RootLayout({
   // suppressHydrationWarning on <html> is required because the inline
   // themeBootstrap script writes documentElement.className before React
   // reconciles. Without it, React logs a hydration mismatch.
+  // next-intl wiring: resolve the request's locale + message bundle on the
+  // server, then pass them through NextIntlClientProvider so client
+  // components (sidebar, topbar, etc.) can call useTranslations() without
+  // hitting the MISSING_CONTEXT runtime error. See src/i18n/request.ts for
+  // the resolver.
+  const locale = await getLocale();
+  const messages = await getMessages();
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang={locale} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
       </head>
@@ -53,11 +62,13 @@ export default function RootLayout({
         >
           Skip to main content
         </a>
-        <ThemeProvider>
-          <AuthProvider>
-            <ErrorBoundary>{children}</ErrorBoundary>
-          </AuthProvider>
-        </ThemeProvider>
+        <NextIntlClientProvider locale={locale} messages={messages}>
+          <ThemeProvider>
+            <AuthProvider>
+              <ErrorBoundary>{children}</ErrorBoundary>
+            </AuthProvider>
+          </ThemeProvider>
+        </NextIntlClientProvider>
       </body>
     </html>
   );

@@ -1,5 +1,16 @@
 import path from "node:path";
 import type { NextConfig } from "next";
+import withBundleAnalyzer from "@next/bundle-analyzer";
+import createNextIntlPlugin from "next-intl/plugin";
+
+const bundleAnalyzer = withBundleAnalyzer({
+  enabled: process.env.ANALYZE === "true",
+});
+
+// Tell next-intl where the request-config resolver lives. Default location
+// is src/i18n/request.ts; we pass it explicitly so the wiring stays
+// discoverable from the config file itself.
+const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
 // Baseline security headers applied to every response. CSP is
 // intentionally permissive on `'unsafe-inline'` for now — the
@@ -50,4 +61,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default bundleAnalyzer(withNextIntl(nextConfig));

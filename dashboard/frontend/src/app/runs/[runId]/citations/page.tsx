@@ -59,6 +59,7 @@ const EMPTY_PAYLOAD: CitationGraphPayload = {
   },
 };
 
+// TODO(i18n+seo): convert to server-wrapper pattern (see ./literature/page.tsx).
 export default function CitationsPage({
   params,
 }: {

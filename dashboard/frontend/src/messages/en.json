@@ -1,0 +1,70 @@
+{
+  "_about": "i18n message catalog for Plato. Add new strings here under a namespace, then read them in components via useTranslations('namespace'). Server components: import {getTranslations} from 'next-intl/server'. Keys use snake_case; values are user-facing English copy. To add a new locale, copy this file to messages/<code>.json, add the code to src/i18n/config.ts locales tuple, and update getRequestConfig in src/i18n/request.ts to resolve the requested locale. Migrated components (read strings via useTranslations): components/shell/sidebar.tsx (nav), components/shell/topbar.tsx (topbar — ARIA labels only so far; project name, cost/token counters, run-control labels and Row 2 filter buttons remain hardcoded pending follow-up). Pending migration: components/shell/tab-pills.tsx (filter labels), components/ui/confirm-dialog.tsx (defaults still use hardcoded 'Confirm'/'Cancel' fallbacks — callers should pass i18n strings via the dialogs.* / common.* keys), and any per-page strings under app/. New components should reach for the actions.* and dialogs.* namespaces before hardcoding.",
+  "common": {
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "save": "Save",
+    "delete": "Delete",
+    "loading": "Loading...",
+    "error": "Error",
+    "retry": "Retry"
+  },
+  "nav": {
+    "workspace": "Workspace",
+    "projects": "Projects",
+    "models": "Models",
+    "costs": "Costs",
+    "activity": "Activity",
+    "settings": "Settings",
+    "evals": "Evals",
+    "loop": "Loop",
+    "keys": "API keys"
+  },
+  "stages": {
+    "data": "Data",
+    "idea": "Idea",
+    "method": "Method",
+    "results": "Results",
+    "paper": "Paper",
+    "literature": "Literature",
+    "referee": "Referee"
+  },
+  "errors": {
+    "connection_lost": "Connection lost — events may be incomplete",
+    "reconnecting": "Reconnecting…",
+    "page_not_found": "Page not found",
+    "something_went_wrong": "Something went wrong"
+  },
+  "topbar": {
+    "open_navigation": "Open navigation",
+    "command_palette": "Open command palette",
+    "search_placeholder": "Search…",
+    "notifications": "Notifications",
+    "user_menu": "User menu"
+  },
+  "actions": {
+    "create_project": "Create project",
+    "rename": "Rename",
+    "delete": "Delete",
+    "duplicate": "Duplicate",
+    "open": "Open",
+    "close": "Close",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "submit": "Submit",
+    "approve": "Approve",
+    "reject": "Reject",
+    "view": "View",
+    "download": "Download",
+    "upload": "Upload",
+    "edit": "Edit"
+  },
+  "dialogs": {
+    "are_you_sure": "Are you sure?",
+    "this_cannot_be_undone": "This action cannot be undone.",
+    "yes": "Yes",
+    "no": "No",
+    "ok": "OK"
+  }
+}

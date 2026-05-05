@@ -50,6 +50,7 @@ interface RunReviewsParams {
   runId: string;
 }
 
+// TODO(i18n+seo): convert to server-wrapper pattern (see ./literature/page.tsx).
 export default function RunReviewsPage({
   params,
 }: {

@@ -31,12 +31,14 @@ const RECOMMENDED_BY_STAGE: Record<NonNullable<ModelPickerProps["recommendedFor"
   literature: "gpt-4.1-mini",
 };
 
-const PROVIDER_DOT: Record<Provider, string> = {
-  anthropic: "#f0bf00",
-  openai: "#27a644",
-  gemini: "#4ea7fc",
-  perplexity: "#bb87fc",
-  semantic_scholar: "#ff7236",
+// Provider dot color → status token. Anthropic uses the brand amber, the
+// others mirror their Linear-style data-color tokens.
+const PROVIDER_DOT_CLASS: Record<Provider, string> = {
+  anthropic: "bg-(--color-status-amber-spec)",
+  openai: "bg-(--color-status-green-spec)",
+  gemini: "bg-(--color-status-blue)",
+  perplexity: "bg-(--color-status-purple)",
+  semantic_scholar: "bg-(--color-status-orange)",
 };
 
 const PROVIDER_ADD_KEY_LABEL: Record<Provider, string> = {
@@ -66,23 +68,27 @@ function ProviderDot({ provider }: { provider: Provider }) {
   return (
     <span
       aria-hidden
-      className="inline-block shrink-0 rounded-full"
-      style={{ width: 7, height: 7, backgroundColor: PROVIDER_DOT[provider] }}
+      className={cn("inline-block size-[7px] shrink-0 rounded-full", PROVIDER_DOT_CLASS[provider])}
     />
   );
 }
 
+// Badge tone classes mirror the Pill component's tone palette: tinted bg
+// at /15-/12 alpha plus fg in the same brand/status token. Tailwind v4's
+// arbitrary-property syntax pulls the alpha from the token directly.
+const BADGE_TONE_CLASS: Record<"Recommended" | "Cheap" | "Strong", string> = {
+  Recommended: "bg-(--color-brand-indigo)/15 text-(--color-brand-hover)",
+  Cheap: "bg-(--color-status-green-spec)/12 text-(--color-status-green-spec)",
+  Strong: "bg-(--color-status-purple)/12 text-(--color-status-purple)",
+};
+
 function ModelBadge({ kind }: { kind: "Recommended" | "Cheap" | "Strong" }) {
-  const style: Record<typeof kind, { bg: string; fg: string }> = {
-    Recommended: { bg: "rgba(94,106,210,0.15)", fg: "#828fff" },
-    Cheap: { bg: "rgba(39,166,68,0.12)", fg: "#27a644" },
-    Strong: { bg: "rgba(187,135,252,0.12)", fg: "#bb87fc" },
-  };
-  const s = style[kind];
   return (
     <span
-      className="inline-flex items-center rounded-[4px] px-1.5 text-[10px] font-medium leading-[16px]"
-      style={{ backgroundColor: s.bg, color: s.fg }}
+      className={cn(
+        "inline-flex items-center rounded-[4px] px-1.5 text-[10px] font-medium leading-[16px]",
+        BADGE_TONE_CLASS[kind],
+      )}
     >
       {kind}
     </span>

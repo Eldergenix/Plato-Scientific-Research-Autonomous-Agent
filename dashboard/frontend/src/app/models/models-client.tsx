@@ -310,7 +310,7 @@ export default function ModelsPage() {
         <div className="flex h-8 items-center gap-1.5 px-4">
           <Filter size={12} strokeWidth={1.6} className="text-(--color-text-quaternary-spec) shrink-0" />
           <TabPills
-            tabs={FILTER_TABS as unknown as ReadonlyArray<{ id: string; label: string }>}
+            tabs={FILTER_TABS}
             activeId={filter}
             onSelect={(id) => setFilter(id as FilterTabId)}
             ariaLabel="Filter models by tier"

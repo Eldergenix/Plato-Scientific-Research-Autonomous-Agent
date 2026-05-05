@@ -14,6 +14,7 @@ import {
   Star,
   Wallet,
 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { TabPills } from "@/components/shell/tab-pills";
 import { cn, formatCost, formatTokens } from "@/lib/utils";
@@ -264,6 +265,7 @@ export function TopBar({
   elapsedMs: _elapsedMs,
 }: TopBarProps) {
   const running = project.activeRun;
+  const t = useTranslations("topbar");
 
   const truncatedName =
     project.name.length > PROJECT_NAME_MAX
@@ -314,7 +316,7 @@ export function TopBar({
           />
 
           <Row1IconButton
-            aria-label="Notifications"
+            aria-label={t("notifications")}
             onClick={onOpenNotifications}
             icon={<Bell size={14} strokeWidth={1.5} />}
           />

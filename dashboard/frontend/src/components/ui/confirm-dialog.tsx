@@ -6,6 +6,11 @@ import { AlertTriangle, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
+// NOTE: `confirmLabel` and `cancelLabel` keep hardcoded English defaults so
+// existing callers don't break. New callers SHOULD pass localized strings —
+// e.g. `confirmLabel={t("confirm")}` from the `common` namespace, or one of
+// the `dialogs.*` / `actions.*` keys (see messages/en.json). The defaults
+// will eventually be removed once all callers are migrated.
 export interface ConfirmDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;

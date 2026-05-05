@@ -35,6 +35,7 @@ async function fetchOptional<T>(url: string): Promise<T | null> {
  * Page
  * ---------------------------------------------------------------------------*/
 
+// TODO(i18n+seo): convert to server-wrapper pattern (see ./literature/page.tsx).
 export default function ClarifyPage() {
   const params = useParams<{ runId: string }>();
   const runId = params?.runId ?? "";
