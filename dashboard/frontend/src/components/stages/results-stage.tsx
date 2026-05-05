@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { FlaskConical, AlertTriangle, Square, RefreshCw, Loader2 } from "lucide-react";
+import { FlaskConical, AlertTriangle, Square, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Pill } from "@/components/ui/pill";
 import { StatusDot } from "@/components/ui/status-dot";
@@ -232,9 +232,11 @@ function AgentSwimlane({
   }, [events, startMs]);
 
   if (lanes.length === 0) {
-    // Empty state: same shape as iter-25 placeholder so first-event
-    // arrival doesn't pop the layout.
-    const placeholders = ["engineer", "researcher", "planner"];
+    // Empty state: shape mirrors the real lanes so first-event arrival
+    // doesn't pop the layout. Names match AGENT_NODE_NAMES emitted by the
+    // worker (idea_maker → idea_hater → methods_node → results_node) so a
+    // user reading the placeholder sees the actual agents that will appear.
+    const placeholders = ["idea_maker", "methods_node", "results_node"];
     return (
       <div
         className="space-y-1.5"
@@ -640,19 +642,16 @@ function ResultsSidePanel({
             </div>
           </div>
 
-          <div className="mt-3 grid grid-cols-2 gap-1.5">
-            <Button
-              variant="ghost"
-              size="md"
-              disabled
-              title="Resume requires a /runs/{id}/resume endpoint that doesn't exist yet"
-            >
-              <RefreshCw size={12} strokeWidth={1.5} />
-              Resume
-            </Button>
+          {/* Resume was previously rendered as a permanently-disabled affordance,
+              which read as a UI lie ("the system can do this, but right now it
+              can't"). Backend has no /runs/{id}/resume endpoint and won't until
+              the loop_control work lands a pause-aware lifecycle, so we hide the
+              button entirely until that exists. */}
+          <div className="mt-3">
             <Button
               variant="danger"
               size="md"
+              className="w-full"
               disabled={!onCancelRun || cancelling}
               onClick={handleCancel}
               data-testid="results-side-cancel"

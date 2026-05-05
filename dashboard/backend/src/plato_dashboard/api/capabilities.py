@@ -10,10 +10,17 @@ deployments depend on it.
 """
 
 from __future__ import annotations
+
+import logging
+
 from fastapi import Depends, HTTPException, Request, status
 
+from ..auth import extract_user_id
 from ..domain.models import Capabilities, StageId
 from ..settings import Settings, get_settings
+from ..storage.project_store import ProjectStore
+
+_log = logging.getLogger(__name__)
 
 
 def get_capabilities(request: Request, settings: Settings = Depends(get_settings)) -> Capabilities:
@@ -23,7 +30,7 @@ def get_capabilities(request: Request, settings: Settings = Depends(get_settings
             allowed_stages=list(settings.demo_allowed_stages),  # type: ignore[arg-type]
             max_concurrent_runs=settings.demo_max_concurrent_runs,
             session_budget_cents=settings.demo_session_budget_cents,
-            session_used_cents=_session_used_cents(request),
+            session_used_cents=_session_used_cents(request, settings),
             notes=[
                 "Demo mode: cmbagent and code-execution stages are disabled.",
                 f"Hard cap of ${settings.demo_session_budget_cents / 100:.2f} per session.",
@@ -38,10 +45,33 @@ def get_capabilities(request: Request, settings: Settings = Depends(get_settings
     )
 
 
-def _session_used_cents(request: Request) -> int:
-    # Wired up by SessionStore in Phase 1.5 — for now zero so the meter
-    # renders without blocking demo runs.
-    return 0
+def _session_used_cents(request: Request, settings: Settings) -> int:
+    """Sum the dollar spend across the current user's projects.
+
+    Reads ``project.totalCostCents`` from each project's meta.json — the same
+    value the frontend already shows on the costs page. We deliberately do not
+    sum live ledger entries from token_tracker here: the meta.json totals are
+    durable across worker restarts and reconciled at every stage boundary
+    (run_manager._reconcile_run), whereas the live ledger is process-local
+    and would lie if the user has a multi-worker deployment.
+
+    Returns 0 on any error (missing user_id, missing root, malformed meta) so
+    a misconfigured environment doesn't lock every user out of the demo.
+    """
+    try:
+        user_id = extract_user_id(request) or ""
+        if not user_id:
+            return 0
+        # Per-user project root mirrors the layout enforced by
+        # ProjectStore.__init__ (settings.project_root / "users" / <uid>).
+        user_root = settings.project_root / "users" / user_id
+        if not user_root.exists():
+            return 0
+        store = ProjectStore(root=user_root)
+        return sum(p.total_cost_cents for p in store.list_projects())
+    except Exception:  # noqa: BLE001 — never let budget read crash the request
+        _log.exception("session_used_cents lookup failed; defaulting to 0")
+        return 0
 
 
 def require_stage_allowed(stage: StageId, caps: Capabilities) -> None:

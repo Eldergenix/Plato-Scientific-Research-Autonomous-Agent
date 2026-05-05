@@ -57,3 +57,12 @@ def get_adapter(name: str) -> SourceAdapter:
 
 def list_adapters() -> list[str]:
     return sorted(ADAPTER_REGISTRY)
+
+
+# Side-effect import: ensures every concrete adapter (arxiv, openalex,
+# crossref, ads, pubmed, semantic_scholar) calls register_adapter() at
+# package import time. Done at the bottom so register_adapter / Source /
+# ADAPTER_REGISTRY are all defined before the adapter modules reference
+# them. Without this, ADAPTER_REGISTRY stays empty and orchestrator.retrieve()
+# silently returns no papers.
+from . import sources as _sources  # noqa: E402, F401
