@@ -64,11 +64,16 @@ const LEGACY_STOP_KEY_PREFIX = "plato:budget-stop:";
  * ---------------------------------------------------------------------------*/
 
 /**
- * Estimate per-stage tokens and cost from the project. Real per-stage telemetry
- * is a Phase 4 deliverable; for now we deterministically distribute the
+ * Estimate per-stage tokens and cost from the project. The /usage endpoint
+ * (iter-6) does return real per-stage totals via ``aggregate_project_usage``,
+ * but this panel doesn't fetch /usage today — it works off the project list
+ * that's already in scope. As a deterministic estimate we distribute the
  * project's `totalTokens` and `totalCostCents` across stages in proportion to
  * each stage's `durationMs`. Stages with no duration get zero. If every stage
  * lacks a duration we fall back to even distribution across done stages.
+ *
+ * A future refactor can plumb a ProjectUsageView through the panel and
+ * replace this estimate with ``usage.by_stage`` directly.
  */
 function deriveStageCosts(project: Project): Record<StageId, { tokens: number; costCents: number }> {
   const stages = project.stages;
@@ -103,8 +108,9 @@ function deriveStageCosts(project: Project): Record<StageId, { tokens: number; c
 
 /**
  * Build a 12-point sparkline series from stage durations, scaled into the
- * project's totalTokens. Stages with no duration contribute zero. Real
- * time-series aggregation is Phase 4.
+ * project's totalTokens. Stages with no duration contribute zero. The
+ * costs page renders a real per-day timeline from /usage; this panel
+ * stays on the duration-weighted estimate to avoid an extra fetch.
  */
 function buildSparklineSeries(project: Project): number[] {
   const series = new Array<number>(12).fill(0);
