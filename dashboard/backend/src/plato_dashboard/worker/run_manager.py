@@ -113,6 +113,25 @@ def _resolve_project_dir(project_id: str) -> Path:
     return get_settings().project_root / project_id
 
 
+def _read_project_user_id(project_dir: Path) -> Optional[str]:
+    """Best-effort lookup of ``Project.user_id`` from ``meta.json``.
+
+    Returns ``None`` (single-user / unknown) on any I/O or parse error
+    so the budget meter degrades to the ``__local__`` bucket rather
+    than blowing up the run finalizer.
+    """
+    meta_path = project_dir / "meta.json"
+    try:
+        with meta_path.open() as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return None
+    uid = data.get("user_id")
+    if isinstance(uid, str) and uid:
+        return uid
+    return None
+
+
 def _run_dir(
     project_id: str, run_id: str, project_dir: Optional[Path] = None
 ) -> Path:
@@ -516,7 +535,24 @@ async def _tail_events(run: Run, bus: EventBus, events_file: Path) -> None:
                                 project_dir = _run_dirs.get(
                                     run.id
                                 ) or (get_settings().project_root / run.project_id)
-                                reconcile_run(run.id, project_dir, run.stage)
+                                reconciled = reconcile_run(
+                                    run.id, project_dir, run.stage
+                                )
+                                # Feed the per-user budget meter so
+                                # ``require_under_budget`` actually
+                                # bites in demo mode. user_id lives in
+                                # the project's meta.json next to the
+                                # run dir; missing/unreadable meta
+                                # falls back to the single-user
+                                # ``__local__`` bucket.
+                                try:
+                                    from .session_costs import add_session_cost
+                                    user_id = _read_project_user_id(project_dir)
+                                    add_session_cost(
+                                        user_id, reconciled.cost_cents
+                                    )
+                                except Exception:  # noqa: BLE001
+                                    pass
                             except Exception:  # noqa: BLE001
                                 pass
                             finished_seen = True

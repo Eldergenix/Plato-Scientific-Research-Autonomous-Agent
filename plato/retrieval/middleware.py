@@ -33,11 +33,13 @@ import json
 import logging
 import os
 import random
+import threading
 import time
 from collections.abc import Awaitable, Callable
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -348,6 +350,50 @@ class CircuitBreaker:
 
 
 # ---------------------------------------------------------------------------
+# Per-host breaker registry
+# ---------------------------------------------------------------------------
+#
+# Adapters in ``plato.retrieval.sources`` build a fresh ``RetrievalClient``
+# per ``adapter.search`` call, so an instance-scoped breaker would forget
+# every failure between calls and never actually open. The registry below
+# keeps one breaker per netloc shared across every ``RetrievalClient``, so
+# a dead host trips the breaker once and short-circuits subsequent fan-out
+# calls until cooldown elapses.
+
+_BREAKERS: dict[str, CircuitBreaker] = {}
+_BREAKERS_LOCK = threading.Lock()
+
+
+def _host_key(url: str) -> str | None:
+    try:
+        netloc = urlparse(url).netloc
+    except (ValueError, AttributeError):
+        return None
+    if not netloc:
+        return None
+    return netloc.lower()
+
+
+def _get_breaker_for(url: str) -> CircuitBreaker | None:
+    """Return the shared breaker for ``url``'s host, or None if unkeyable."""
+    key = _host_key(url)
+    if key is None:
+        return None
+    with _BREAKERS_LOCK:
+        breaker = _BREAKERS.get(key)
+        if breaker is None:
+            breaker = CircuitBreaker()
+            _BREAKERS[key] = breaker
+        return breaker
+
+
+def _reset_breakers_for_tests() -> None:
+    """Clear the shared registry. Tests use this to avoid cross-test bleed."""
+    with _BREAKERS_LOCK:
+        _BREAKERS.clear()
+
+
+# ---------------------------------------------------------------------------
 # Composed client
 # ---------------------------------------------------------------------------
 
@@ -392,10 +438,14 @@ class RetrievalClient:
         else:
             self._cache = None
 
+        # ``breaker`` is an opt-in override: when a CircuitBreaker is passed
+        # explicitly (tests, custom policies) it wins. ``True`` (the default)
+        # means "consult the shared per-host registry" — the breaker is
+        # picked at request time based on the URL's netloc. ``False``
+        # disables breaking entirely for this client.
+        self._breaker_enabled = bool(breaker) or isinstance(breaker, CircuitBreaker)
         if isinstance(breaker, CircuitBreaker):
             self._breaker: CircuitBreaker | None = breaker
-        elif breaker:
-            self._breaker = CircuitBreaker()
         else:
             self._breaker = None
 
@@ -441,7 +491,18 @@ class RetrievalClient:
             raise RuntimeError(
                 "RetrievalClient must be used as an async context manager"
             )
-        if self._breaker is not None and self._breaker.is_open:
+
+        # Resolve the breaker for this request. Explicit override wins;
+        # otherwise consult the shared per-host registry so adapters that
+        # rebuild a RetrievalClient per call still share breaker state.
+        if self._breaker is not None:
+            breaker = self._breaker
+        elif self._breaker_enabled:
+            breaker = _get_breaker_for(url)
+        else:
+            breaker = None
+
+        if breaker is not None and breaker.is_open:
             raise CircuitOpenError(f"circuit open for {url}")
 
         async def do_request() -> httpx.Response:
@@ -465,15 +526,15 @@ class RetrievalClient:
             else:
                 response = await do_request()
         except (httpx.HTTPError, asyncio.TimeoutError):
-            if self._breaker is not None:
-                self._breaker.record_failure()
+            if breaker is not None:
+                breaker.record_failure()
             raise
 
-        if self._breaker is not None:
+        if breaker is not None:
             status = response.status_code
             if isinstance(status, int) and status >= 500:
-                self._breaker.record_failure()
+                breaker.record_failure()
             else:
                 # Unknown / non-integer (e.g. test mocks) is treated as success.
-                self._breaker.record_success()
+                breaker.record_success()
         return response
