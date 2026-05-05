@@ -3,7 +3,30 @@ import re
 import sys
 import json
 import json5
+from datetime import datetime, timezone
 from pathlib import Path
+
+
+def _llm_model_name(state) -> str:
+    """Best-effort model identifier for LLM_calls.txt entries.
+
+    Plato's LLM wrappers expose the canonical model name on
+    ``state['llm']['model']``, but the field has gone by several names
+    across iterations (``llm_name``, ``llm_id``). Try the common keys and
+    fall back to ``unknown`` so the LLM_calls.txt parser still has
+    something to group by.
+    """
+    llm = state.get('llm') or {}
+    for key in ("model", "llm_name", "llm_id", "model_name"):
+        v = llm.get(key) if isinstance(llm, dict) else None
+        if isinstance(v, str) and v:
+            return v
+    inner = llm.get('llm') if isinstance(llm, dict) else None
+    for attr in ("model", "model_name"):
+        v = getattr(inner, attr, None)
+        if isinstance(v, str) and v:
+            return v
+    return "unknown"
 
 from .prompts import fixer_prompt, LaTeX_prompt
 from .parameters import GraphState
@@ -53,9 +76,19 @@ def LLM_call(prompt, state, *, node_name: str | None = None):
     state['tokens']['to'] += output_tokens
     state['tokens']['i'] = input_tokens
     state['tokens']['o'] = output_tokens
+    # Iter-7: emit kv-line format with model + timestamp so the
+    # dashboard's token_tracker can populate ``by_model`` for legacy
+    # paper-agent stages. The previous bare-numbers format was unparseable
+    # by ``_parse_kv_line`` (it requires ``key=value``), so by_model was
+    # blind to every paper-agent run.
+    _model_name = _llm_model_name(state)
+    _ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     with open(state['files']['LLM_calls'], 'a') as f:
-        f.write(f"{state['tokens']['i']} {state['tokens']['o']} {state['tokens']['ti']} {state['tokens']['to']}\n")
-    
+        f.write(
+            f"{_ts} input_tokens={input_tokens} output_tokens={output_tokens} "
+            f"model={_model_name}\n"
+        )
+
     return state, message.content
 
 
@@ -96,8 +129,14 @@ def LLM_call_stream(prompt, state, *, node_name: str | None = None):
                 state['tokens']['i'] += input_tokens
                 state['tokens']['o'] += output_tokens
         f.write('\n\n')
+    # Iter-7: kv-line format with model + timestamp; see LLM_call above.
+    _model_name = _llm_model_name(state)
+    _ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     with open(state['files']['LLM_calls'], 'a') as f:
-        f.write(f"{state['tokens']['i']} {state['tokens']['o']} {state['tokens']['ti']} {state['tokens']['to']}\n")
+        f.write(
+            f"{_ts} input_tokens={state['tokens']['i']} "
+            f"output_tokens={state['tokens']['o']} model={_model_name}\n"
+        )
 
     return state, full_content
 

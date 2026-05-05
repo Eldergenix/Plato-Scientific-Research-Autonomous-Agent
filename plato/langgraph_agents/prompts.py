@@ -131,23 +131,29 @@ Papers found this round:
 
 
 def novelty_reflection(round, reason, decision, previous_reasons):
-    return [HumanMessage(content="""An AI agent was asked to reason whether an idea was novel or not. Below, you can find its reason and its decision. You can also see previous reasonings. Given this, determine whether the idea is novel or not. There are only three possible decisions:
+    # Iter-7: this used to be a plain triple-quoted string with ``{var}``
+    # placeholders that the runtime never substituted — the LLM saw the
+    # literal text "{reason}", "{decision}", etc. instead of the values.
+    # Now an f-string interpolates them, with the JSON schema escaped via
+    # ``{{`` / ``}}``. The ``round`` value is rendered too (was hard-coded
+    # to the literal word "round" in the broken version).
+    return [HumanMessage(content=f"""An AI agent was asked to reason whether an idea was novel or not. Below, you can find its reason and its decision. You can also see previous reasonings. Given this, determine whether the idea is novel or not. There are only three possible decisions:
 1) novel: if there is enough justification in the reasoning to believe the idea is novel
 2) not novel: if there is enough justification for the idea being explored in a previous work
 3) query: if you need to search for more papers to make the decision
 Check if the decision taken made sense given the reason. If not, you can change it. Note that an idea cant be classified as novel in the first round
 
-**Round**: round
+**Round**: {round}
 **Previous reasons**: {previous_reasons}
 **Reason**: {reason}
 **Decision**: {decision}
-    
+
 Respond in the following format:
-    
+
 ```json
-{{
+{{{{
     "Decision": "The decision made; either novel, not novel, or query"
-}}
+}}}}
 ```
     """)]
 

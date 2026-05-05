@@ -61,11 +61,21 @@ class REFEREE(TypedDict):
     images: list[str]
 
 # Literature class
-class LITERATURE(TypedDict):
+class LITERATURE(TypedDict, total=False):
     iteration: int
     query: str
     decision: str
-    papers: str
+    # Iter-7: ``papers`` was annotated as ``str`` but ``literature.py``
+    # writes a ``list[str]`` (one entry per paper) and ``claim_extractor``
+    # iterates it as a list. The TypedDict mismatch caused the LangGraph
+    # checkpointer to silently drop or coerce the value on resume; switch
+    # to the actual runtime type.
+    papers: list[str]
+    # Iter-7: ``literature.py`` returns ``{**state['literature'], 'summary': text}``
+    # but ``summary`` was missing from the TypedDict, so the checkpointer
+    # dropped the key on every resume and any downstream node reading
+    # ``state['literature']['summary']`` saw it as absent. Add the key.
+    summary: str
     next_agent: str
     messages: str #this keeps tracks of all previous messages
     # Was annotated as ``Literal[7]`` because the value ``7`` after the

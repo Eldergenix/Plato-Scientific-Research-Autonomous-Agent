@@ -67,6 +67,7 @@ async def retrieve(
     *,
     profile: "DomainProfile | None" = None,
     adapter_names: list[str] | None = None,
+    run_dir: "Path | str | None" = None,
 ) -> list[Source]:
     """Search every selected adapter for ``query`` and return up to ``limit`` deduped Sources.
 
@@ -115,7 +116,28 @@ async def retrieve(
     # R4 — relevance-rerank deduplicated candidates. Backends are
     # opt-in (``plato[rerank]``); without them the call falls through
     # to a first-seen-wins slice with a one-time warning.
-    return rerank(query, deduped, top_k=limit)
+    final = rerank(query, deduped, top_k=limit)
+
+    # Iter-7: persist retrieval_summary.json so the dashboard's
+    # source-breakdown panel has real per-adapter data instead of
+    # an empty payload. The previous pipeline never wrote this file,
+    # so the panel always rendered zeros.
+    if run_dir is not None:
+        try:
+            _persist_retrieval_summary(
+                run_dir,
+                query=query,
+                adapters=adapters,
+                results=results,
+                deduped=deduped,
+                final=final,
+            )
+        except Exception:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).exception(
+                "retrieval_summary.json persistence failed; continuing"
+            )
+    return final
 
 
 async def retrieve_with_expansion(
@@ -145,7 +167,8 @@ async def retrieve_with_expansion(
     most workflows never populate.
     """
     seeds = await retrieve(
-        query, limit, profile=profile, adapter_names=adapter_names
+        query, limit, profile=profile, adapter_names=adapter_names,
+        run_dir=run_dir,
     )
     if not expand or not seeds:
         return seeds
@@ -175,6 +198,75 @@ async def retrieve_with_expansion(
             )
 
     return merged
+
+
+def _persist_retrieval_summary(
+    run_dir: "Path | str",
+    *,
+    query: str,
+    adapters: list,
+    results: list,
+    deduped: list[Source],
+    final: list[Source],
+) -> None:
+    """Write ``<run_dir>/retrieval_summary.json`` in the dashboard view shape.
+
+    The shape mirrors what
+    ``dashboard.../retrieval_summary._build_payload`` consumes — keep the
+    two in sync. We persist:
+
+    * ``by_adapter``: list of ``{name, count}`` per adapter (zero on a
+      raised exception).
+    * ``total_returned``: sum of every adapter's pre-dedup count.
+    * ``total_unique``: post-dedup count.
+    * ``queries`` / ``samples`` / ``deduped_total``: breadcrumbs the
+      panel renders alongside the bar chart.
+    """
+    import json
+    from pathlib import Path as _Path
+
+    target = _Path(run_dir) / "retrieval_summary.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    by_adapter = []
+    total_returned = 0
+    for adapter, result in zip(adapters, results, strict=True):
+        if isinstance(result, BaseException):
+            count = 0
+            error = str(result)[:200]
+        else:
+            count = len(result)
+            error = None
+        total_returned += count
+        entry = {"name": getattr(adapter, "name", str(adapter)), "count": count}
+        if error:
+            entry["error"] = error
+        by_adapter.append(entry)
+
+    samples = []
+    for s in final[:10]:
+        samples.append(
+            {
+                "title": getattr(s, "title", None) or "",
+                "doi": getattr(s, "doi", None),
+                "year": getattr(s, "year", None),
+                "url": getattr(s, "url", None),
+            }
+        )
+
+    payload = {
+        "by_adapter": by_adapter,
+        "total_returned": total_returned,
+        "total_unique": len(deduped),
+        "deduped_total": max(0, total_returned - len(deduped)),
+        "queries": [query],
+        "samples": samples,
+    }
+
+    tmp = target.with_suffix(target.suffix + ".tmp")
+    tmp.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
+    import os as _os
+    _os.replace(tmp, target)
 
 
 def _persist_citation_graph(

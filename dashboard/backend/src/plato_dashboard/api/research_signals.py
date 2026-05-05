@@ -151,11 +151,11 @@ def get_counter_evidence(
 
     raw_queries = payload.get("queries_used") or []
     queries_used = [q for q in raw_queries if isinstance(q, str)]
-    if not queries_used:
-        # Backfill the trigger phrases so the dashboard can still render
-        # the per-source "supporting query" badge.
-        queries_used = list(_TRIGGER_PHRASES[:3])
-
+    # Iter-7: do NOT backfill with ``_TRIGGER_PHRASES[:3]``. The previous
+    # backfill manufactured fake provenance — three constants the engine
+    # never actually queried with, displayed to the user as "supporting
+    # query" attribution. Honest empty list is better; the frontend
+    # renders an "unknown queries" badge when this is empty.
     return {"sources": sources, "queries_used": queries_used}
 
 
