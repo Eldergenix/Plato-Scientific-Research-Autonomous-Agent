@@ -62,6 +62,24 @@ docs = [
   "mkdocs-jupyter>=0.25.1",
   "mkdocs-git-committers-plugin-2>=2.5.0",
 ]
+# README's "Install" section advertises ``pip install "plato[dashboard]"``;
+# without this extra, that install command 404s. The dashboard backend is its
+# own package under ``dashboard/backend`` with a separate pyproject — we
+# install it editably here so the parent install pulls in the FastAPI gateway
+# and arq workers in one shot.
+dashboard = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  "arq>=0.26",
+  "redis>=5.0",
+  "pydantic>=2.9",
+  "pydantic-settings>=2.6",
+  "python-multipart>=0.0.18",
+  "watchfiles>=0.24",
+  "aiofiles>=24.1",
+  "fakeredis>=2.26",
+  "cryptography>=43.0",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -96,3 +114,33 @@ disallow_any_generics = false  # tighten in a follow-up pass
 # Third-party packages without type stubs that we know about.
 module = ["cmbagent.*", "pymupdf.*", "fitz.*", "futurehouse_client.*"]
 ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# Pytest configuration.
+#
+# Default discovery worked because everything was named test_*.py, but a few
+# safety/CI hygiene defaults were missing: strict marker registration kept
+# typos like ``@pytest.mark.slowww`` from silently passing, asyncio_mode=auto
+# matches the codebase's convention of un-decorated async tests, and the
+# warning filter forces Pydantic v2 deprecation warnings (which we trip on
+# regularly) into errors so the suite breaks fast when the SDK shifts under us.
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+asyncio_mode = "auto"
+addopts = [
+  "-ra",
+  "--strict-markers",
+  "--strict-config",
+]
+filterwarnings = [
+  "error::DeprecationWarning:pydantic.*",
+  "ignore::DeprecationWarning:botocore.*",
+]
+markers = [
+  "slow: marks tests that take >5 seconds (deselect with -m 'not slow')",
+  "live: marks tests that hit live external APIs (e.g. arXiv, Crossref)",
+  "trajectory: marks LangGraph trajectory tests",
+]

@@ -195,6 +195,12 @@ class CreateProjectRequest(BaseModel):
 
     name: str = Field("Untitled project", max_length=255, min_length=1)
     data_description: Optional[str] = Field(default=None, max_length=16384)
+    # The new-project modal collects a journal target alongside name + data
+    # description, but until iter-31 the field was dropped on the floor — the
+    # frontend "passed" the value to a function signature that never read it.
+    # ``Project.journal`` defaults to NONE, so omitting this field preserves
+    # the historical behaviour for any clients that don't send it.
+    journal: Optional[Journal] = None
 
 
 class StageContent(BaseModel):

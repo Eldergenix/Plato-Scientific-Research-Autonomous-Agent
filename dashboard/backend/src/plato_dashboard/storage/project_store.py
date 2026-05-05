@@ -34,7 +34,7 @@ from typing import Optional
 
 import aiofiles
 
-from ..domain.models import Project, Stage, StageId, StageContent, utcnow
+from ..domain.models import Journal, Project, Stage, StageId, StageContent, utcnow
 
 # Project IDs flow into filesystem paths verbatim. Restrict to the same
 # safe charset we use for X-Plato-User to block path traversal (`..`,
@@ -149,6 +149,7 @@ class ProjectStore:
         initial_data_description: str | None = None,
         *,
         user_id: str | None = None,
+        journal: "Journal | None" = None,
     ) -> Project:
         # Iter-24: bind the new project to ``user_id`` from the request's
         # X-Plato-User header. Subsequent project-level endpoints
@@ -156,6 +157,8 @@ class ProjectStore:
         # tenant reads/writes are 403'd in required-mode and 404'd in
         # not-required-mode (matching ``_enforce_run_tenant``).
         project = Project.empty(name=name, user_id=user_id)
+        if journal is not None:
+            project.journal = journal
         self.save(project)
         if initial_data_description is not None:
             self.write_stage_sync(project.id, "data", initial_data_description)

@@ -92,7 +92,14 @@ def compile_tex_document(state: dict, doc_name: str, doc_folder: str) -> None:
     file_path = Path(doc_name)
     doc_name = file_path.name
     doc_stem = file_path.stem
-    bib_path = os.path.join(state['files']['Temp'], "bibliography.bib")
+    # Bibliography is written to Paper_folder by paper_node (see lines 270/183),
+    # NOT Temp. Reading from Temp here meant per-section temp compiles never
+    # found a bib file and silently skipped BibTeX, so citations rendered as
+    # the literal "[?]" markers in section-level PDFs. Source the bib from
+    # Paper_folder (where it actually lives) so the BibTeX trigger fires; if
+    # the section is being compiled inside Temp/ we copy the bib in below so
+    # bibtex can resolve refs from the section's own working directory.
+    bib_path = os.path.join(state['files']['Paper_folder'], "bibliography.bib")
 
     def run_xelatex(pass_num=None):
         result = subprocess.run(["xelatex", doc_name], cwd=doc_folder,
@@ -107,8 +114,19 @@ def compile_tex_document(state: dict, doc_name: str, doc_folder: str) -> None:
         return True
 
     def run_bibtex():
+        # Per-section compiles run with cwd=Temp but the bib lives in
+        # Paper_folder. BIBINPUTS is bibtex's search-path env var (semicolon
+        # separator on Windows, colon elsewhere; bibtex tolerates either).
+        # Trailing colon means "also search the default kpathsea tree", so
+        # built-in styles like plain.bst still resolve.
+        env = os.environ.copy()
+        prior = env.get("BIBINPUTS", "")
+        env["BIBINPUTS"] = (
+            f"{state['files']['Paper_folder']}:{prior}" if prior
+            else f"{state['files']['Paper_folder']}:"
+        )
         result = subprocess.run(["bibtex", doc_stem], cwd=doc_folder,
-                                capture_output=True, text=True)
+                                capture_output=True, text=True, env=env)
         if result.returncode != 0:
             raise RuntimeError(f"BibTeX failed:\n{result.stderr}")
 

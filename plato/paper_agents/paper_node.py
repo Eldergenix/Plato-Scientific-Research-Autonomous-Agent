@@ -601,8 +601,12 @@ async def citations_node(state: GraphState, config: RunnableConfig):
 
     print("Adding citations...")
 
-    #sections = ['Introduction', 'Methods', 'Results', 'Conclusions']
-    sections = ['Introduction', 'Methods']
+    # All four prose sections get citation enrichment. The earlier two-section
+    # variant was a debug stopgap that left the second half of the paper with
+    # zero retrieved references even when add_citations=True — the model
+    # would either drop refs entirely or hallucinate new ones during the
+    # cleanup pass.
+    sections = ['Introduction', 'Methods', 'Results', 'Conclusions']
     tasks = [add_citations_async(state, state['paper'][section], section) for section in sections]
     results = await asyncio.gather(*tasks)
 
