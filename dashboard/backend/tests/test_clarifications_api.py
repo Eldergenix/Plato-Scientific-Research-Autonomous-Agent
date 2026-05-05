@@ -173,24 +173,39 @@ def test_post_unknown_run_returns_404(client: TestClient) -> None:
     assert resp.status_code == 404
 
 
-def test_cross_tenant_returns_403(
+def test_cross_tenant_returns_404_in_per_user_layout(
     client: TestClient, tmp_project_root: Path
 ) -> None:
-    """When meta.json carries a different owner, callers get 403."""
-    run_dir = _make_run(tmp_project_root, "run_tenant")
+    """Iter-8: rewrite the iter-5 cross-tenant test against the real
+    contract. The previous version wrote ``{"owner": "alice"}`` to
+    ``meta.json`` and sent ``X-User-Id``, but neither field nor header
+    matches what the router consults — the ownership check reads
+    ``manifest.json#user_id`` and the auth header is ``X-Plato-User``,
+    so the test was vacuously passing on a 404 produced by an unrelated
+    code path. Rewritten to exercise the per-user namespace lookup
+    that ``manifests._find_run_dir`` actually performs.
+    """
+    # Place the run under the per-user namespace for ``alice``.
+    run_dir = (
+        tmp_project_root / "users" / "alice" / "prj_a" / "runs" / "run_tenant"
+    )
+    run_dir.mkdir(parents=True, exist_ok=True)
     _write_clarifications(run_dir, ["Q1"])
-    (run_dir / "meta.json").write_text(json.dumps({"owner": "alice"}))
-
-    resp = client.get(
-        "/api/v1/runs/run_tenant/clarifications",
-        headers={"X-User-Id": "bob"},
+    (run_dir / "manifest.json").write_text(
+        json.dumps({"run_id": "run_tenant", "user_id": "alice"})
     )
-    assert resp.status_code == 403
-    assert resp.json()["detail"]["code"] == "cross_tenant_forbidden"
 
-    # Same owner → 200
-    ok = client.get(
+    # Bob looks for the run inside his own namespace and never sees
+    # alice's run dir — 404 not 200.
+    bob = client.get(
         "/api/v1/runs/run_tenant/clarifications",
-        headers={"X-User-Id": "alice"},
+        headers={"X-Plato-User": "bob"},
     )
-    assert ok.status_code == 200
+    assert bob.status_code == 404
+
+    # Alice resolves it.
+    alice = client.get(
+        "/api/v1/runs/run_tenant/clarifications",
+        headers={"X-Plato-User": "alice"},
+    )
+    assert alice.status_code == 200

@@ -75,6 +75,12 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PLATO_AUTH=disabled \
     PLATO_USE_FAKEREDIS=true \
     HOME=/home/plato
+# Iter-8: see dashboard/Dockerfile for the full operator-tunable env list
+# (PLATO_DASHBOARD_AUTH_REQUIRED, PLATO_REDIS_URL, PLATO_PROJECT_ROOT,
+# PLATO_COST_CAP_USD, PLATO_SAFETY_BLOCK, PLATO_INSECURE_COOKIES,
+# PLATO_ALLOW_LOCAL_EXEC). The Spaces image hardcodes demo + fakeredis
+# defaults that are appropriate for the public sandbox; deployers
+# pinning their own Spaces should override via runtime env.
 
 # <<< Slimmer apt set than the self-hosted image:
 # only texlive-latex-recommended (no -extra, no -bibtex-extra, no -xetex).

@@ -44,7 +44,11 @@ Repository = "https://github.com/AstroPilot-AI/Plato"
 plato = "plato.cli:main"
 
 [project.optional-dependencies]
-app = ["plato_app>=1.0.0"]
+# Iter-8: removed the ``app = ["plato_app>=1.0.0"]`` extra. ``plato_app``
+# is not published on PyPI, so ``pip install "plato[app]"`` failed
+# every time with PackageNotFoundError. If a private wrapper ships
+# in the future, pin it via the package's own pyproject + a private
+# index, not via a public extras name that misleads README readers.
 obs = ["langfuse>=2.0"]
 postgres = [
   "langgraph-checkpoint-postgres>=2.0.0",

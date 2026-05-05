@@ -87,6 +87,26 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PLATO_HOST=0.0.0.0 \
     PLATO_PORT=7878
+# Iter-8: document operator-tunable env vars used at runtime. These are
+# read directly via os.environ in the Python code and have no setting
+# default in pydantic Settings; without listing them here, deployers
+# have no signal that they exist.
+#
+#   PLATO_DASHBOARD_AUTH_REQUIRED  Require X-Plato-User header on every
+#                                  request (default: 0 / disabled).
+#   PLATO_USE_FAKEREDIS            Use in-process fakeredis instead of a
+#                                  real broker (default: true).
+#   PLATO_REDIS_URL                Redis URL for multi-worker Pub/Sub
+#                                  (only meaningful with PLATO_USE_FAKEREDIS=false).
+#   PLATO_PROJECT_ROOT             Override the per-user project root
+#                                  (default: ~/.plato).
+#   PLATO_COST_CAP_USD             Per-run cost ceiling enforced by the
+#                                  manifest callback (default: unset).
+#   PLATO_SAFETY_BLOCK             Refuse to ingest external text whose
+#                                  injection signals trip a threshold.
+#   PLATO_INSECURE_COOKIES         Disable Secure flag on auth cookies
+#                                  for local-dev HTTP (default: false).
+#   PLATO_ALLOW_LOCAL_EXEC         Permit LocalJupyterExecutor (default: 0).
 
 # <<< System dependencies.
 # We mirror the parent docker/Dockerfile.prod LaTeX stack so paper-stage
@@ -154,7 +174,12 @@ exec uvicorn plato_dashboard.api.server:app \
     --proxy-headers \
     --forwarded-allow-ips='*'
 EOF
-RUN chmod +x /usr/local/bin/plato-entrypoint.sh
+RUN chmod +x /usr/local/bin/plato-entrypoint.sh && \
+    # Iter-8: Railway / docker-compose configs (railway.json:8) reference
+    # ``/usr/local/bin/start.sh`` as the canonical entrypoint name. The
+    # Spaces Dockerfile already ships that name; symlink here so the
+    # standalone image matches the same contract.
+    ln -sf /usr/local/bin/plato-entrypoint.sh /usr/local/bin/start.sh
 
 EXPOSE 7878
 
