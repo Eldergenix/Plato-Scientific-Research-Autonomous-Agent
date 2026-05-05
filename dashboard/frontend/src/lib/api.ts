@@ -1,4 +1,5 @@
 import type {
+  Journal,
   Project,
   StageId,
 } from "./types";
@@ -291,10 +292,21 @@ export const api = {
     return adaptProject(raw);
   },
 
-  async createProject(name: string, dataDescription?: string): Promise<Project> {
+  async createProject(
+    name: string,
+    dataDescription?: string,
+    journal?: Journal | null,
+  ): Promise<Project> {
     const raw = await fetchJson<RawProject>("/projects", {
       method: "POST",
-      body: JSON.stringify({ name, data_description: dataDescription }),
+      body: JSON.stringify({
+        name,
+        data_description: dataDescription,
+        // Backend treats null/undefined as "no journal preference" (defaults
+        // to ``Journal.NONE`` on the model). Sending an explicit empty
+        // string would 422 — Pydantic enums reject it.
+        ...(journal ? { journal } : {}),
+      }),
     });
     return adaptProject(raw);
   },

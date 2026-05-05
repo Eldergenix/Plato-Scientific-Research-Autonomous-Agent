@@ -27,28 +27,72 @@ interface BudgetCap {
   capUsd: number;
 }
 
-const CAPS_KEY = "plato.budgetCaps.v1";
+// Legacy localStorage key. Kept only for one-time migration: any cap a user
+// wrote before the server-side caps API landed gets pushed to the backend on
+// first mount, then the localStorage entry is cleared. New writes go straight
+// through api.setCostCaps so caps are actually enforced server-side at
+// run_stage (server.py:414-463).
+const LEGACY_CAPS_KEY = "plato.budgetCaps.v1";
 const GRID_COLS = "minmax(0,2.4fr) 1fr 1fr 1fr 1fr 36px";
 
-function loadCaps(): BudgetCap[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(CAPS_KEY) ?? "[]");
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (c): c is BudgetCap =>
-        typeof c?.projectId === "string" &&
-        typeof c?.projectName === "string" &&
-        typeof c?.capUsd === "number",
-    );
-  } catch {
-    return [];
-  }
+async function fetchCapsFromBackend(projects: Project[]): Promise<BudgetCap[]> {
+  // Fan out api.getCostCaps per project; backend is one tiny meta.json read
+  // each, projects are typically <50 per user, so a single Promise.all stays
+  // well under one second.
+  const results = await Promise.all(
+    projects.map(async (p) => {
+      try {
+        const state = await api.getCostCaps(p.id);
+        if (state?.budget_cents != null && state.budget_cents > 0) {
+          return {
+            projectId: p.id,
+            projectName: p.name,
+            capUsd: state.budget_cents / 100,
+          } satisfies BudgetCap;
+        }
+      } catch {
+        // 404 / not configured — treat as no cap.
+      }
+      return null;
+    }),
+  );
+  return results.filter((c): c is BudgetCap => c !== null);
 }
 
-function saveCaps(caps: BudgetCap[]): void {
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem(CAPS_KEY, JSON.stringify(caps));
+async function migrateLegacyCaps(): Promise<void> {
+  if (typeof window === "undefined") return;
+  const raw = window.localStorage.getItem(LEGACY_CAPS_KEY);
+  if (!raw) return;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      window.localStorage.removeItem(LEGACY_CAPS_KEY);
+      return;
+    }
+    await Promise.all(
+      parsed
+        .filter(
+          (c: unknown): c is BudgetCap =>
+            typeof (c as BudgetCap)?.projectId === "string" &&
+            typeof (c as BudgetCap)?.capUsd === "number" &&
+            (c as BudgetCap).capUsd > 0,
+        )
+        .map((c) =>
+          api
+            .setCostCaps(c.projectId, {
+              budget_cents: Math.round(c.capUsd * 100),
+              stop_on_exceed: true,
+            })
+            .catch(() => {
+              // Best-effort migration; surface failures via console for debug
+              // but don't block the page load.
+            }),
+        ),
+    );
+  } catch {
+    // Malformed cache — drop it.
+  } finally {
+    window.localStorage.removeItem(LEGACY_CAPS_KEY);
   }
 }
 
@@ -94,14 +138,28 @@ export default function CostsPage() {
   const [capValue, setCapValue] = React.useState("");
 
   React.useEffect(() => {
-    api.listProjects()
-      .then(setProjects)
-      .catch((e: unknown) => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await api.listProjects();
+        if (cancelled) return;
+        setProjects(list);
+        // One-time migration of any pre-iter-26 localStorage caps to the
+        // server, then load the canonical state from the backend.
+        await migrateLegacyCaps();
+        if (cancelled) return;
+        const serverCaps = await fetchCapsFromBackend(list);
+        if (!cancelled) setCaps(serverCaps);
+      } catch (e: unknown) {
+        if (cancelled) return;
         console.error("listProjects failed", e);
         setError(e instanceof Error ? e.message : "Failed to load projects");
         setProjects([]);
-      });
-    setCaps(loadCaps());
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const totalCents = (projects ?? []).reduce((s, p) => s + p.totalCostCents, 0);
@@ -142,26 +200,46 @@ export default function CostsPage() {
     }
   };
 
-  const onAddCap = (e: React.SyntheticEvent<HTMLFormElement>) => {
+  const onAddCap = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
     const dollars = parseFloat(capValue);
     if (!capProjectId || !Number.isFinite(dollars) || dollars <= 0) return;
     const proj = (projects ?? []).find((p) => p.id === capProjectId);
     if (!proj) return;
+    // Optimistic update; server-side persistence is the source of truth.
     const next = [
       ...caps.filter((c) => c.projectId !== capProjectId),
       { projectId: proj.id, projectName: proj.name, capUsd: dollars },
     ];
     setCaps(next);
-    saveCaps(next);
     setCapValue("");
     setCapProjectId("");
+    try {
+      await api.setCostCaps(proj.id, {
+        budget_cents: Math.round(dollars * 100),
+        stop_on_exceed: true,
+      });
+    } catch (err) {
+      console.error("setCostCaps failed", err);
+      // Roll back on failure so the UI doesn't lie.
+      setCaps((prev) => prev.filter((c) => c.projectId !== proj.id));
+      setError(err instanceof Error ? err.message : "Failed to save cap");
+    }
   };
 
-  const onRemoveCap = (projectId: string) => {
-    const next = caps.filter((c) => c.projectId !== projectId);
-    setCaps(next);
-    saveCaps(next);
+  const onRemoveCap = async (projectId: string) => {
+    const before = caps;
+    setCaps(caps.filter((c) => c.projectId !== projectId));
+    try {
+      await api.setCostCaps(projectId, {
+        budget_cents: null,
+        stop_on_exceed: false,
+      });
+    } catch (err) {
+      console.error("setCostCaps remove failed", err);
+      setCaps(before);
+      setError(err instanceof Error ? err.message : "Failed to remove cap");
+    }
   };
 
   const onExport = (p: Project) => {

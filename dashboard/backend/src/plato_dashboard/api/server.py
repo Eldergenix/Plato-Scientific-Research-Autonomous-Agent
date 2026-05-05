@@ -341,6 +341,7 @@ def create_app() -> FastAPI:
             name=body.name,
             initial_data_description=body.data_description,
             user_id=_get_user_id(request),
+            journal=body.journal,
         )
 
     @app.get("/api/v1/projects/{pid}", response_model=Project)

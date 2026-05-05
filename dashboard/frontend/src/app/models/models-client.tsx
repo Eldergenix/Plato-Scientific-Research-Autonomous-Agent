@@ -32,12 +32,19 @@ const PROVIDER_LABEL: Record<Provider, string> = {
   semantic_scholar: "Semantic Scholar",
 };
 
-// Per-stage default mapping. Mirrors RECOMMENDED_BY_STAGE in model-picker.tsx
-// but tuned per the dashboard product brief for the Models settings page.
-const RECOMMENDED_BY_STAGE: Record<
-  "idea" | "literature" | "method" | "results" | "paper" | "referee",
-  string
-> = {
+// Per-stage default mapping. The product brief calls these "recommended"; the
+// user can override any stage and the override persists to localStorage until
+// the backend gains a /api/v1/users/<uid>/model_preferences endpoint analogous
+// to executor_preferences.py — at which point this falls back gracefully.
+type StageId =
+  | "idea"
+  | "literature"
+  | "method"
+  | "results"
+  | "paper"
+  | "referee";
+
+const RECOMMENDED_BY_STAGE: Record<StageId, string> = {
   idea: "gpt-4.1",
   literature: "gpt-4.1-mini",
   method: "claude-4.1-opus",
@@ -45,6 +52,34 @@ const RECOMMENDED_BY_STAGE: Record<
   paper: "claude-4.1-opus",
   referee: "o3-mini",
 };
+
+const STAGE_MODEL_OVERRIDES_KEY = "plato.stageModelOverrides.v1";
+
+function loadStageOverrides(): Partial<Record<StageId, string>> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(STAGE_MODEL_OVERRIDES_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) return {};
+    return parsed as Partial<Record<StageId, string>>;
+  } catch {
+    return {};
+  }
+}
+
+function saveStageOverrides(overrides: Partial<Record<StageId, string>>) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      STAGE_MODEL_OVERRIDES_KEY,
+      JSON.stringify(overrides),
+    );
+  } catch {
+    // localStorage full or disabled — silent fail is acceptable here since
+    // the next render will fall back to recommended defaults.
+  }
+}
 
 // Provider colors per spec (anthropic teal, openai green, google blue).
 const PROVIDER_COLOR: Record<Provider, string> = {
@@ -202,6 +237,29 @@ export default function ModelsPage() {
   const [query, setQuery] = React.useState("");
   const [sortKey, setSortKey] = React.useState<SortKey>("provider");
   const [sortDir, setSortDir] = React.useState<"asc" | "desc">("asc");
+  const [stageOverrides, setStageOverrides] = React.useState<
+    Partial<Record<StageId, string>>
+  >({});
+
+  React.useEffect(() => {
+    setStageOverrides(loadStageOverrides());
+  }, []);
+
+  const setStageModel = React.useCallback((stage: StageId, model: string) => {
+    setStageOverrides((prev) => {
+      const next: Partial<Record<StageId, string>> =
+        model === RECOMMENDED_BY_STAGE[stage]
+          ? // Reverting to the recommended default — clear the override entry
+            // so the user's preference structure stays minimal.
+            (() => {
+              const { [stage]: _drop, ...rest } = prev;
+              return rest;
+            })()
+          : { ...prev, [stage]: model };
+      saveStageOverrides(next);
+      return next;
+    });
+  }, []);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -448,7 +506,8 @@ export default function ModelsPage() {
           </div>
           <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
             {STAGE_ROWS.map(({ id, label, icon: Icon }) => {
-              const modelId = RECOMMENDED_BY_STAGE[id];
+              const modelId =
+                stageOverrides[id] ?? RECOMMENDED_BY_STAGE[id];
               return (
                 <div
                   key={id}
@@ -463,7 +522,10 @@ export default function ModelsPage() {
                     {label}
                   </span>
                   <span className="text-[12px] text-(--color-text-quaternary-spec)">→</span>
-                  <ModelPickerCompact value={modelId} onChange={() => {}} />
+                  <ModelPickerCompact
+                    value={modelId}
+                    onChange={(next) => setStageModel(id, next)}
+                  />
                 </div>
               );
             })}

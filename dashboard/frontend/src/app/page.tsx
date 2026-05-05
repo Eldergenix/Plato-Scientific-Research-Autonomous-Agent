@@ -61,7 +61,7 @@ export default function Home() {
     "active",
   );
 
-  const { project, log, plots, nodeEvents, isLive, capabilities, startRun, cancelRun, refresh } = useProject();
+  const { project, log, plots, nodeEvents, codeEvents, loading, isLive, capabilities, startRun, cancelRun, refresh } = useProject();
   const cost = useCostMeter();
   const [createOpen, setCreateOpen] = React.useState(false);
   const [cancelConfirmOpen, setCancelConfirmOpen] = React.useState(false);
@@ -157,7 +157,7 @@ export default function Home() {
         onToggle={() => setCollapsed((c) => !c)}
         onOpenCommand={() => setCmdOpen(true)}
         onCreateProject={() => setCreateOpen(true)}
-        projectName={project.name}
+        projectName={loading ? "" : project.name}
         activeStage={openStage ?? undefined}
         onSelectStage={(stage) => {
           // Sidebar TEAM_LINKS uses pseudo-ids: "stages" → idea (jump to first stage),
@@ -224,6 +224,7 @@ export default function Home() {
                   project={project}
                   plots={plots}
                   nodeEvents={nodeEvents}
+                  codeEvents={codeEvents}
                   onBack={() => setOpenStage(null)}
                   onRun={() => guardedStartRun(openStage)}
                   onRefresh={refresh}
@@ -337,6 +338,7 @@ function StageDetail({
   project,
   plots,
   nodeEvents,
+  codeEvents,
   onBack,
   onRun,
   onRefresh,
@@ -346,6 +348,7 @@ function StageDetail({
   project: ReturnType<typeof useProject>["project"];
   plots: ReturnType<typeof useProject>["plots"];
   nodeEvents: ReturnType<typeof useProject>["nodeEvents"];
+  codeEvents: ReturnType<typeof useProject>["codeEvents"];
   onBack: () => void;
   onRun: () => void | Promise<void>;
   onRefresh: () => Promise<void>;
@@ -385,6 +388,7 @@ function StageDetail({
           project={project}
           plots={plots}
           nodeEvents={nodeEvents}
+          codeEvents={codeEvents}
           onRun={onRun}
           onRefresh={onRefresh}
           onCancelRun={onCancelRun}
@@ -399,6 +403,7 @@ function StagePane({
   project,
   plots,
   nodeEvents,
+  codeEvents,
   onRun,
   onRefresh,
   onCancelRun,
@@ -407,6 +412,7 @@ function StagePane({
   project: ReturnType<typeof useProject>["project"];
   plots: ReturnType<typeof useProject>["plots"];
   nodeEvents: ReturnType<typeof useProject>["nodeEvents"];
+  codeEvents: ReturnType<typeof useProject>["codeEvents"];
   onRun: () => void | Promise<void>;
   onRefresh: () => Promise<void>;
   onCancelRun: () => void | Promise<void>;
@@ -439,6 +445,7 @@ function StagePane({
           project={project}
           plots={plots}
           nodeEvents={nodeEvents}
+          codeEvents={codeEvents}
           onCancelRun={onCancelRun}
         />
       ) : (
