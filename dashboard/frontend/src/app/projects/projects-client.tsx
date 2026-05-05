@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { FolderPlus, Plus, Search, Sparkles } from "lucide-react";
+import { FolderPlus, Plus, Search, Sparkles, Trash2 } from "lucide-react";
 import { TabPills } from "@/components/shell/tab-pills";
 import { StatusIcon } from "@/components/views/status-icon";
 import { CreateProjectModal } from "@/components/projects/create-project-modal";
@@ -114,9 +114,11 @@ function MetaPill({ children }: { children: React.ReactNode }) {
 function ProjectRow({
   project,
   onSelect,
+  onDelete,
 }: {
   project: Project;
   onSelect: () => void;
+  onDelete?: (projectId: string) => void | Promise<void>;
 }) {
   const status = rollupStatus(project);
   const done = doneCount(project);
@@ -167,6 +169,30 @@ function ProjectRow({
         >
           {formatRelativeTime(project.updatedAt)}
         </span>
+        {onDelete ? (
+          <button
+            type="button"
+            aria-label={`Delete project ${project.name}`}
+            // Stop propagation: clicking the trash must not also trigger
+            // the row's onSelect / "navigate to workspace" handler.
+            onClick={(e) => {
+              e.stopPropagation();
+              if (
+                typeof window !== "undefined" &&
+                !window.confirm(
+                  `Delete project "${project.name}"? This removes its data on disk.`,
+                )
+              ) {
+                return;
+              }
+              void onDelete(project.id);
+            }}
+            onKeyDown={(e) => e.stopPropagation()}
+            className="ml-1 inline-flex h-6 w-6 flex-none items-center justify-center rounded text-(--color-text-quaternary) opacity-0 transition-opacity hover:bg-[rgba(255,255,255,0.05)] hover:text-(--color-status-red-spec) focus:opacity-100 group-hover:opacity-100"
+          >
+            <Trash2 size={12} strokeWidth={1.75} />
+          </button>
+        ) : null}
       </span>
     </div>
   );
@@ -307,6 +333,27 @@ export default function ProjectsPage() {
     router.push("/");
   }, [router]);
 
+  const handleDelete = React.useCallback(
+    async (projectId: string) => {
+      // Optimistic remove + rollback on api failure. Backend ProjectStore
+      // tenant-checks before rm-rf'ing the dir, so a 403 here means the
+      // user doesn't own the project and the row should reappear.
+      const before = projects ?? [];
+      setProjects((prev) =>
+        prev ? prev.filter((p) => p.id !== projectId) : prev,
+      );
+      try {
+        await api.deleteProject(projectId);
+      } catch (e: unknown) {
+        setProjects(before);
+        // We surface this in the page-level error pill rather than a
+        // toast because the project card itself just disappeared.
+        console.error("deleteProject failed", e);
+      }
+    },
+    [projects],
+  );
+
   const isEmpty = projects != null && projects.length === 0;
 
   return (
@@ -373,7 +420,7 @@ export default function ProjectsPage() {
                 <GroupHeader label="Active" count={groups.active.length} />
                 <div className="flex flex-col">
                   {groups.active.map((p) => (
-                    <ProjectRow key={p.id} project={p} onSelect={handleSelect} />
+                    <ProjectRow key={p.id} project={p} onSelect={handleSelect} onDelete={handleDelete} />
                   ))}
                 </div>
               </section>
@@ -384,7 +431,7 @@ export default function ProjectsPage() {
                 <GroupHeader label="All projects" count={groups.all.length} />
                 <div className="flex flex-col">
                   {groups.all.map((p) => (
-                    <ProjectRow key={p.id} project={p} onSelect={handleSelect} />
+                    <ProjectRow key={p.id} project={p} onSelect={handleSelect} onDelete={handleDelete} />
                   ))}
                 </div>
               </section>

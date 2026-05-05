@@ -67,7 +67,9 @@ def _session_used_cents(request: Request, settings: Settings) -> int:
         user_root = settings.project_root / "users" / user_id
         if not user_root.exists():
             return 0
-        store = ProjectStore(root=user_root)
+        # Bind the store to user_id so list_projects + load apply the
+        # iter-2 tenant guard. Without this argument the guard is a no-op.
+        store = ProjectStore(root=user_root, user_id=user_id)
         return sum(p.total_cost_cents for p in store.list_projects())
     except Exception:  # noqa: BLE001 — never let budget read crash the request
         _log.exception("session_used_cents lookup failed; defaulting to 0")

@@ -17,6 +17,7 @@ import hashlib
 import json
 import os
 import subprocess
+import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -120,6 +121,14 @@ class ManifestRecorder:
         self._dir = self.project_dir / "runs" / manifest.run_id
         self._dir.mkdir(parents=True, exist_ok=True)
         self._path = self._dir / "manifest.json"
+        # Iter-3: serialise add_tokens / update / flush. LangGraph fans
+        # out parallel chains (literature_summary + counter_evidence
+        # search) whose on_llm_end callbacks each call ``add_tokens``;
+        # without this lock the tokens_in/tokens_out/cost_usd
+        # read-modify-writes race and lose deltas. The lock also covers
+        # ``flush()`` so two concurrent atomic-rename writes can't clobber
+        # each other's tmp file.
+        self._lock = threading.RLock()
         self.flush()
 
     @classmethod
@@ -163,10 +172,11 @@ class ManifestRecorder:
         self.flush()
 
     def add_tokens(self, *, input_tokens: int = 0, output_tokens: int = 0, cost_usd: float = 0.0) -> None:
-        self.manifest.tokens_in += input_tokens
-        self.manifest.tokens_out += output_tokens
-        self.manifest.cost_usd += cost_usd
-        self.flush()
+        with self._lock:
+            self.manifest.tokens_in += input_tokens
+            self.manifest.tokens_out += output_tokens
+            self.manifest.cost_usd += cost_usd
+            self.flush()
 
     def finish(self, status: str = "success", error: str | None = None) -> None:
         self.manifest.status = status
@@ -176,11 +186,18 @@ class ManifestRecorder:
         self.flush()
 
     def flush(self) -> None:
-        """Atomic write via temp-file rename so partial writes never leave junk."""
-        payload = self.manifest.model_dump(mode="json")
-        tmp = self._path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(payload, indent=2, sort_keys=True))
-        os.replace(tmp, self._path)
+        """Atomic write via temp-file rename so partial writes never leave junk.
+
+        Locked because two concurrent flush()es can both write the same
+        tmp path and one's os.replace can race with the other's write,
+        producing a torn JSON file. ``threading.RLock`` so add_tokens /
+        update can call into flush() without deadlocking.
+        """
+        with self._lock:
+            payload = self.manifest.model_dump(mode="json")
+            tmp = self._path.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(payload, indent=2, sort_keys=True))
+            os.replace(tmp, self._path)
 
 
 __all__ = ["RunManifest", "ManifestRecorder"]

@@ -96,7 +96,12 @@ def _get_store(
             },
         )
     root = _resolve_project_root(settings, user_id)
-    return ProjectStore(root)
+    # Bind the store to the resolved tenant so ProjectStore._check_tenant
+    # actually fires inside load/delete/read_stage/_write_stage_async.
+    # Without this, the iter-2 tenant guard short-circuits at the
+    # ``self.user_id is None`` early-return and routers stay solely
+    # responsible for cross-tenant isolation. See storage/project_store.py.
+    return ProjectStore(root, user_id=user_id)
 
 
 def _get_keys(settings: Settings = Depends(get_settings)) -> KeyStore:

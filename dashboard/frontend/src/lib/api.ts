@@ -311,6 +311,16 @@ export const api = {
     return adaptProject(raw);
   },
 
+  /**
+   * Iter-3: delete a project. Backend route is
+   * ``DELETE /api/v1/projects/{pid}``; ProjectStore.delete already runs
+   * the tenant guard. The list-projects page is the only consumer
+   * today — once a project is gone, the listing reload removes the row.
+   */
+  async deleteProject(pid: string): Promise<void> {
+    await fetchJson(`/projects/${pid}`, { method: "DELETE" });
+  },
+
   async readStage(pid: string, stage: StageId): Promise<{ markdown: string; origin: string } | null> {
     const r = await fetchJson<{ markdown: string; origin: string } | null>(
       `/projects/${pid}/state/${stage}`,
@@ -328,7 +338,22 @@ export const api = {
   async startRun(
     pid: string,
     stage: StageId,
-    body: { mode?: "fast" | "cmbagent"; models?: Record<string, string> } = {},
+    body: {
+      mode?: "fast" | "cmbagent";
+      models?: Record<string, string>;
+      // Iter-3: backend StageRunRequest (models.py:169) accepts an
+      // optional `iterations` budget. The idea-stage UI exposes a
+      // numeric input for this; previously the value was collected and
+      // dropped on the floor by this client. Forwarding it lets the
+      // user-set iteration budget actually reach the worker.
+      iterations?: number | null;
+      // Iter-3: same story for `journal` and `add_citations` — backend
+      // accepts both, frontend never sent either through the start-run
+      // body. Adding them here makes the picker controls in the new
+      // run-config drawer wire-able without further client changes.
+      journal?: Journal | null;
+      add_citations?: boolean;
+    } = {},
   ): Promise<{ id: string; project_id: string; stage: StageId; status: string }> {
     return fetchJson(`/projects/${pid}/stages/${stage}/run`, {
       method: "POST",
@@ -431,6 +456,14 @@ export const api = {
       ANTHROPIC: string;
       PERPLEXITY: string;
       SEMANTIC_SCHOLAR: string;
+      // Iter-3: Langfuse triplet was missing from this Partial despite the
+      // backend KeyStore accepting them and the keys-client UI offering
+      // input fields. Strict-mode TypeScript would reject the new
+      // ``api.updateKeys({ LANGFUSE_PUBLIC: "" })`` call from keys-client
+      // without these.
+      LANGFUSE_PUBLIC: string;
+      LANGFUSE_SECRET: string;
+      LANGFUSE_HOST: string;
     }>,
   ): Promise<KeysStatus> {
     return fetchJson<KeysStatus>("/keys", {
