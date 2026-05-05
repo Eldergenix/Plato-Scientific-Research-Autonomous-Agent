@@ -86,6 +86,43 @@ def critique_aggregator(state: GraphState, config: RunnableConfig):
         iteration=iteration,
     )
 
+    # Iter-10: persist a ``critiques.json`` sidecar next to the run's
+    # other artefacts. The dashboard's
+    # ``GET /api/v1/runs/{run_id}/critiques`` endpoint reads this file
+    # via ``manifests._find_run_dir`` and expects three top-level keys:
+    # ``critiques`` (raw per-reviewer dict), ``digest`` (the model dump
+    # of CritiqueDigest), and ``revision_state``. Until iter-10 the
+    # endpoint always fell through to the manifest-extras fallback
+    # because no node wrote this file — the dashboard's CritiquePanel
+    # rendered an empty state on every run regardless of what the
+    # reviewers produced.
+    try:
+        import json
+        import os
+        from pathlib import Path as _Path
+
+        files = state.get("files") or {}
+        folder = files.get("Folder") or files.get("Paper_folder")
+        if folder:
+            target = _Path(folder) / "critiques.json"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "critiques": critiques,
+                "digest": digest.model_dump(),
+                "revision_state": revision_state,
+            }
+            tmp = target.with_suffix(target.suffix + ".tmp")
+            tmp.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
+            os.replace(tmp, target)
+    except Exception:
+        # Persistence is best-effort — a write failure must never break
+        # the redraft loop. The dashboard falls back to manifest extras
+        # when the file is absent.
+        import logging as _logging
+        _logging.getLogger(__name__).exception(
+            "critiques.json persistence failed; continuing"
+        )
+
     return {"critique_digest": digest.model_dump()}
 
 

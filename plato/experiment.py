@@ -1,10 +1,23 @@
 import re
 from pathlib import Path
-import cmbagent
 
+# Iter-10: lazy cmbagent import — see plato/idea.py for rationale. The
+# top-level ``import cmbagent`` failed at import time on every install
+# without the heavy optional dep, blocking dashboard / tests / CI.
 from .key_manager import KeyManager
 from .prompts.experiment import experiment_planner_prompt, experiment_engineer_prompt, experiment_researcher_prompt
 from .utils import create_work_dir, get_task_result
+
+
+def _require_cmbagent():
+    try:
+        import cmbagent  # noqa: F401
+        return cmbagent
+    except ImportError as exc:
+        raise ImportError(
+            "cmbagent is required for plato.experiment workflows. "
+            "Install with: pip install cmbagent"
+        ) from exc
 
 class Experiment:
     """Drive a cmbagent ``planning_and_control_context_carryover`` run.
@@ -100,6 +113,7 @@ class Experiment:
         print(f"Restart at step: {self.restart_at_step}")
         print(f"Hardware constraints: {self.hardware_constraints}")
 
+        cmbagent = _require_cmbagent()
         results = cmbagent.planning_and_control_context_carryover(data_description,
                             n_plan_reviews = 1,
                             max_n_attempts = self.max_n_attempts,

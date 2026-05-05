@@ -67,6 +67,19 @@ async def research_question_clarifier(
     if isinstance(state, dict) and state.get("skip_clarification"):
         return {"clarifying_questions": [], "needs_clarification": False}
 
+    # Iter-10: also respect ``PLATO_SKIP_CLARIFICATION=1`` so the
+    # dashboard worker can signal "user already answered, skip the
+    # clarifier on this run" without having to thread an extra kwarg
+    # through every Plato.get_idea_* method signature. Closes the
+    # dead-letter where POST /clarifications wrote answers to disk
+    # but the next graph run re-asked the same questions.
+    import os as _os
+
+    if _os.environ.get("PLATO_SKIP_CLARIFICATION", "").lower() in {
+        "1", "true", "yes", "on",
+    }:
+        return {"clarifying_questions": [], "needs_clarification": False}
+
     prompt = clarifier_prompt(state)
 
     questions: list[str] = []

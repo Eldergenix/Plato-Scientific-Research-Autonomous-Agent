@@ -333,6 +333,18 @@ def _child_main(
                 "orchestration_model",
                 "formatter_model",
             )
+            # Iter-10: when the user has already submitted clarification
+            # answers (via POST /clarifications), set the env var the
+            # clarifier reads. This is the simplest way to thread the
+            # signal without changing every Plato.get_idea_* signature.
+            # The clarifier's ``state.get("skip_clarification")`` check
+            # already provides the escape hatch for opting-out callers.
+            answers_path = (
+                Path(project_dir)
+                / "runs" / run_id / "clarifications_answers.json"
+            )
+            if answers_path.is_file():
+                os.environ["PLATO_SKIP_CLARIFICATION"] = "1"
             plato.get_idea(mode=mode, **kwargs)
 
         elif stage == "method":

@@ -76,6 +76,18 @@ class LITERATURE(TypedDict, total=False):
     # dropped the key on every resume and any downstream node reading
     # ``state['literature']['summary']`` saw it as absent. Add the key.
     summary: str
+    # Iter-10: ``literature.semantic_scholar`` writes ``sources: list[Source]``
+    # into the literature sub-dict; ``gap_detector`` and ``counter_evidence``
+    # both read ``literature.get("sources")``. Without the field declared,
+    # the checkpointer silently drops it on resume — same drop-shape as the
+    # iter-7 ``summary`` fix. Type kept as ``Any`` since ``Source`` is a
+    # Pydantic model from ``plato.state.models`` and importing it here
+    # would create a state ↔ langgraph_agents cycle.
+    sources: list[Any]
+    # Iter-10: ``novelty_decider`` writes ``reason`` into the literature
+    # sub-dict on every branch (``literature.py:83/90/98``). Same checkpointer
+    # drop shape — declare so it survives resume.
+    reason: str
     next_agent: str
     messages: str #this keeps tracks of all previous messages
     # Was annotated as ``Literal[7]`` because the value ``7`` after the

@@ -1,10 +1,25 @@
 import re
 from pathlib import Path
-import cmbagent
+
+# Iter-10: cmbagent is an optional dep. Importing it at module top level
+# crashed every dashboard install / CI test environment that doesn't
+# pin the heavy cmbagent transitive graph. Defer to call time and raise
+# a clear ImportError if a workflow actually invokes the cmbagent path.
 
 from .key_manager import KeyManager
 from .prompts.idea import idea_planner_prompt
 from .utils import create_work_dir, get_task_result
+
+
+def _require_cmbagent():
+    try:
+        import cmbagent  # noqa: F401  — re-exported for the call site
+        return cmbagent
+    except ImportError as exc:
+        raise ImportError(
+            "cmbagent is required for plato.idea workflows. "
+            "Install with: pip install cmbagent"
+        ) from exc
 
 class Idea:
     """
@@ -58,6 +73,7 @@ class Idea:
             data_description: description of the data and tools to be used.
         """
         
+        cmbagent = _require_cmbagent()
         results = cmbagent.planning_and_control_context_carryover(data_description,
                               n_plan_reviews = 1,
                               max_plan_steps = 6,

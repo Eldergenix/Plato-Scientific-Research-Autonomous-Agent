@@ -1,10 +1,21 @@
 import re
 from pathlib import Path
-import cmbagent
 
+# Iter-10: lazy cmbagent import — see plato/idea.py for the rationale.
 from .key_manager import KeyManager
 from .prompts.method import method_planner_prompt, method_researcher_prompt
 from .utils import create_work_dir, get_task_result
+
+
+def _require_cmbagent():
+    try:
+        import cmbagent  # noqa: F401
+        return cmbagent
+    except ImportError as exc:
+        raise ImportError(
+            "cmbagent is required for plato.method workflows. "
+            "Install with: pip install cmbagent"
+        ) from exc
 
 class Method:
     """
@@ -46,6 +57,7 @@ class Method:
             data_description: description of the data and tools to be used.
         """
 
+        cmbagent = _require_cmbagent()
         results = cmbagent.planning_and_control_context_carryover(data_description,
                               n_plan_reviews = 1,
                               max_n_attempts = 4,
