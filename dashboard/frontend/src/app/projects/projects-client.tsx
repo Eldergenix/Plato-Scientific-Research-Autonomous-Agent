@@ -321,10 +321,14 @@ export default function ProjectsPage() {
 
   const handleCreated = React.useCallback(
     (project: Project) => {
+      // Iter-7: stay on /projects so the user actually sees the new row
+      // they just created. The previous router.push("/") navigated away
+      // and unmounted the optimistic update, leaving the list looking
+      // like nothing happened. Selection of the new project is still
+      // explicit via handleSelect when the user clicks it.
       setProjects((prev) => (prev ? [project, ...prev] : [project]));
-      router.push("/");
     },
-    [router],
+    [],
   );
 
   const handleSelect = React.useCallback(() => {

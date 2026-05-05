@@ -6,6 +6,13 @@ import { Check, MessageCircleQuestion, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+// Iter-7: respect NEXT_PUBLIC_API_BASE so production deploys (different
+// origin than the static frontend) reach the FastAPI dashboard. The
+// previous hardcoded ``/api/v1`` was a relative path that 404'd on any
+// deploy where the API isn't on the same origin as the SPA shell.
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:7878/api/v1";
+
 export interface ClarificationsPayload {
   questions: string[];
   needs_clarification: boolean;
@@ -112,7 +119,7 @@ export function ClarifyingQuestionsModal({
     setSubmitting(true);
     setError(null);
     try {
-      const resp = await fetch(`/api/v1/runs/${runId}/clarifications`, {
+      const resp = await fetch(`${API_BASE}/runs/${runId}/clarifications`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ answers: answers.map((a) => a.trim()) }),

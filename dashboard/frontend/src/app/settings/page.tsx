@@ -30,7 +30,6 @@ const DEFAULT_MODELS: Array<{ id: string; label: string; model: string }> = [
   { id: "referee", label: "Referee", model: "o3-mini" },
 ];
 
-const APPROVALS_AUTO_SKIP_KEY = "plato:approvals:auto-skip";
 const PLATO_KEY_PREFIX = "plato:";
 
 type ThemeChoice = "dark" | "light" | "system";
@@ -97,30 +96,7 @@ const THEME_OPTIONS: Array<{
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
 
-  const [autoSkip, setAutoSkip] = React.useState<boolean>(false);
-  const [hydrated, setHydrated] = React.useState(false);
   const [resetMsg, setResetMsg] = React.useState<string | null>(null);
-
-  // Hydrate localStorage-backed state on mount.
-  React.useEffect(() => {
-    try {
-      const v = window.localStorage.getItem(APPROVALS_AUTO_SKIP_KEY);
-      setAutoSkip(v === "1" || v === "true");
-    } catch {
-      /* ignore */
-    }
-    setHydrated(true);
-  }, []);
-
-  const onAutoSkipChange = (next: boolean) => {
-    setAutoSkip(next);
-    try {
-      if (next) window.localStorage.setItem(APPROVALS_AUTO_SKIP_KEY, "1");
-      else window.localStorage.removeItem(APPROVALS_AUTO_SKIP_KEY);
-    } catch {
-      /* ignore */
-    }
-  };
 
   const onResetLocalData = () => {
     if (typeof window === "undefined") return;
@@ -136,8 +112,6 @@ export default function SettingsPage() {
       }
       keys.forEach((k) => window.localStorage.removeItem(k));
       setResetMsg(`Cleared ${keys.length} ${keys.length === 1 ? "entry" : "entries"}.`);
-      // Reset local state that mirrors storage.
-      setAutoSkip(false);
     } catch (err) {
       setResetMsg(`Failed to clear: ${(err as Error).message}`);
     }
@@ -302,24 +276,14 @@ export default function SettingsPage() {
             title="Approvals"
             subtitle="Control when Plato pauses for your approval between stages."
           />
-          <label className="mt-3 flex cursor-pointer items-start gap-3">
-            <input
-              type="checkbox"
-              checked={autoSkip}
-              disabled={!hydrated}
-              onChange={(e) => onAutoSkipChange(e.target.checked)}
-              className="mt-0.5 h-4 w-4 cursor-pointer disabled:cursor-not-allowed"
-            />
-            <span>
-              <span className="block text-[13px] font-[510] text-(--color-text-primary)">
-                Skip all approval gates
-              </span>
-              <span className="block text-[12px] text-(--color-text-tertiary)">
-                Auto-approve every checkpoint. Reads/writes{" "}
-                <code className="font-mono text-[11px]">{APPROVALS_AUTO_SKIP_KEY}</code>.
-              </span>
-            </span>
-          </label>
+          <p className="mt-3 text-[13px] text-(--color-text-tertiary)">
+            Approval gates are configured <strong>per project</strong>. Open a
+            project, click a stage to enter its detail view, and use the
+            checkpoint controls to approve, skip, or auto-skip each gate. The
+            ``auto_skip`` flag is persisted server-side per project — a global
+            override here would silently change every project, so we don't
+            offer one.
+          </p>
         </section>
 
         {/* Reset (danger) */}

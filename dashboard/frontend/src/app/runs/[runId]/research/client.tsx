@@ -64,7 +64,16 @@ export default function RunResearchClient() {
   const [gaps, setGaps] = React.useState<Loadable<GapsPayload>>({ kind: "loading" });
 
   React.useEffect(() => {
-    if (!ready) return;
+    if (!ready) {
+      // Iter-7: when the placeholder runId is active we never fetch, so
+      // the initial "loading" state would stick forever and the
+      // sub-section panels would render permanent spinners. Drop into
+      // the same "missing" branch as a real 404 so the empty state
+      // renders instead.
+      setCounter({ kind: "missing" });
+      setGaps({ kind: "missing" });
+      return;
+    }
     let cancelled = false;
     setCounter({ kind: "loading" });
     setGaps({ kind: "loading" });

@@ -68,7 +68,13 @@ export default function CitationsClient() {
   });
 
   React.useEffect(() => {
-    if (!ready) return;
+    if (!ready) {
+      // Iter-7: drop to "missing" instead of permanent "loading" while
+      // the placeholder runId is active. CitationGraphView's missing
+      // branch already renders the empty payload card.
+      setState({ kind: "missing" });
+      return;
+    }
     let cancelled = false;
     setState({ kind: "loading" });
     void fetchOptional<CitationGraphPayload>(

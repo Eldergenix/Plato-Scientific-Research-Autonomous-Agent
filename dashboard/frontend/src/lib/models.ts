@@ -155,6 +155,24 @@ export function modelsForProvider(provider: ModelDef["provider"]): ModelDef[] {
   return MODELS.filter((m) => m.provider === provider);
 }
 
+// Iter-7: single source of truth for per-stage recommended-model defaults.
+// model-picker.tsx and models-client.tsx used to declare independent copies
+// that drifted on ``paper`` and ``referee`` (different defaults in each
+// place), so the localStorage override layer saved one model while the
+// run-config dropdown showed a different "Recommended" badge. Both
+// consumers now import this table.
+export const RECOMMENDED_MODEL_BY_STAGE = {
+  idea: "gpt-4.1",
+  literature: "gpt-4.1-mini",
+  method: "claude-4.1-opus",
+  results: "gpt-5",
+  paper: "claude-4.1-opus",
+  referee: "o3-mini",
+} as const satisfies Record<string, string>;
+
+export type RecommendedStageId = keyof typeof RECOMMENDED_MODEL_BY_STAGE;
+
+
 export function estimateCost(model: ModelDef, inputTokens: number, outputTokens: number): number {
   const inputCost = ((model.costInputPer1k ?? 0) * inputTokens) / 1000;
   const outputCost = ((model.costOutputPer1k ?? 0) * outputTokens) / 1000;

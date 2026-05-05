@@ -125,6 +125,12 @@ export function LoopTsvViewer({
       const next = await loopApi.stop(loopId);
       setStatus(next);
       setError(null);
+      // Iter-7: pull the final TSV rows immediately after stop. The
+      // status change ends the polling effect, so without this manual
+      // refresh the iteration history would stay frozen at whatever the
+      // last poll picked up — which is typically one iteration before
+      // the actual stop.
+      await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to stop loop");
     } finally {

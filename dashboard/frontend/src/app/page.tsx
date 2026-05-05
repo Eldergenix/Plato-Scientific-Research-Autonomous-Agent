@@ -20,25 +20,14 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useProject } from "@/lib/use-project";
 import { api } from "@/lib/api";
 
-// Hoisted to module scope so PaperPreview's `versions` prop has a stable
-// identity across renders — re-rendering StagePane (which fires every
-// second during an active run via the elapsed-timer interval) no longer
-// allocates a fresh array. Pairs with the section list below.
-const DEFAULT_PAPER_VERSIONS = [
-  { id: "v1", label: "v1" },
-  { id: "v2", label: "v2" },
-  { id: "v3", label: "v3" },
-  { id: "v4", label: "v4", current: true },
-];
-
-const DEFAULT_PAPER_SECTIONS: PaperSection[] = [
-  { id: "abstract", name: "Abstract", status: "compiled", markdown: "## Abstract\n\nWe present a hierarchical Bayesian pipeline for joint extraction of (2,2,0) and (3,3,0) ringdown modes from GW231123…" },
-  { id: "introduction", name: "Introduction", status: "compiled" },
-  { id: "methods", name: "Methods", status: "warning", errorMessage: "Citation key 'Cornish2023' not found in references.bib" },
-  { id: "results", name: "Results", status: "compiled" },
-  { id: "conclusions", name: "Conclusions", status: "pending" },
-  { id: "references", name: "References", status: "compiled" },
-];
+// Iter-7: deleted DEFAULT_PAPER_SECTIONS (a hardcoded GW231123 ringdown
+// narrative with a fabricated "Citation key 'Cornish2023' not found"
+// warning) and DEFAULT_PAPER_VERSIONS (four phantom v1–v4 pills). Both
+// were rendered for every completed paper project regardless of domain.
+// Until the backend exposes real per-section status via a /paper/sections
+// endpoint, pass empty arrays — PaperPreview already handles ``sections=[]``
+// with an honest empty state, and the version pills are optional.
+const EMPTY_PAPER_SECTIONS: PaperSection[] = [];
 import {
   ArrowLeft,
   BookMarked,
@@ -61,7 +50,21 @@ export default function Home() {
     "active",
   );
 
-  const { project, log, plots, nodeEvents, codeEvents, loading, isLive, capabilities, startRun, cancelRun, refresh } = useProject();
+  const {
+    project,
+    log,
+    plots,
+    nodeEvents,
+    codeEvents,
+    loading,
+    isLive,
+    capabilities,
+    startRun,
+    cancelRun,
+    refresh,
+    runStartError,
+    clearRunStartError,
+  } = useProject();
   const cost = useCostMeter();
   const [createOpen, setCreateOpen] = React.useState(false);
   const [cancelConfirmOpen, setCancelConfirmOpen] = React.useState(false);
@@ -318,6 +321,57 @@ export default function Home() {
         </div>
       )}
 
+      {/* Iter-7: surface ``startRun`` rejections (cost cap, approval, 5xx)
+          as a real toast. Previously useProject() exposed runStartError but
+          page.tsx never consumed it, so the user got no feedback when a
+          run was refused. */}
+      {runStartError && (
+        <div
+          role="alert"
+          data-testid="run-start-error-toast"
+          className="fixed bottom-24 right-4 z-50 max-w-sm surface-linear-card px-4 py-3"
+          style={{
+            background: "var(--color-bg-card)",
+            border:
+              runStartError.kind === "budget_exceeded"
+                ? "1px solid var(--color-status-red-spec)"
+                : "1px solid var(--color-status-amber-spec)",
+          }}
+        >
+          <div className="flex items-start gap-3">
+            <Lightbulb
+              size={14}
+              strokeWidth={1.75}
+              className={
+                runStartError.kind === "budget_exceeded"
+                  ? "text-(--color-status-red-spec) mt-0.5"
+                  : "text-(--color-status-amber-spec) mt-0.5"
+              }
+            />
+            <div className="flex-1 text-[12.5px] leading-[1.5]">
+              <div className="font-medium text-(--color-text-primary)">
+                {runStartError.kind === "budget_exceeded"
+                  ? "Cost cap exceeded"
+                  : runStartError.kind === "approval_required"
+                    ? "Approval required"
+                    : "Could not start run"}
+              </div>
+              <div className="mt-0.5 text-(--color-text-tertiary)">
+                {runStartError.message}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={clearRunStartError}
+              className="text-(--color-text-tertiary) hover:text-(--color-text-primary) text-[16px] leading-none"
+              aria-label="Dismiss"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+
       <ConfirmDialog
         open={cancelConfirmOpen}
         onOpenChange={setCancelConfirmOpen}
@@ -481,10 +535,7 @@ function StagePane({
       );
     case "paper":
       return project.stages.paper.status === "done" ? (
-        <PaperPreview
-          sections={DEFAULT_PAPER_SECTIONS}
-          versions={DEFAULT_PAPER_VERSIONS}
-        />
+        <PaperPreview sections={EMPTY_PAPER_SECTIONS} />
       ) : (
         <EmptyStage
           icon={Newspaper}

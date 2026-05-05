@@ -63,7 +63,13 @@ export default function LiteratureClient() {
     React.useState<Loadable<RetrievalSummaryPayload>>({ kind: "loading" });
 
   React.useEffect(() => {
-    if (!ready) return;
+    if (!ready) {
+      // Iter-7: see research/client.tsx — drop to "missing" instead of
+      // sticking on "loading" forever when the placeholder runId is up.
+      setNovelty({ kind: "missing" });
+      setRetrieval({ kind: "missing" });
+      return;
+    }
     let cancelled = false;
     setNovelty({ kind: "loading" });
     setRetrieval({ kind: "loading" });

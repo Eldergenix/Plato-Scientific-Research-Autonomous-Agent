@@ -15,7 +15,7 @@ import {
   Stamp,
 } from "lucide-react";
 import { api, type KeysStatus } from "@/lib/api";
-import { MODELS, MODEL_GROUPS } from "@/lib/models";
+import { MODELS, MODEL_GROUPS, RECOMMENDED_MODEL_BY_STAGE } from "@/lib/models";
 import type { ModelDef, Provider } from "@/lib/types";
 import { Pill } from "@/components/ui/pill";
 import { TabPills } from "@/components/shell/tab-pills";
@@ -44,14 +44,10 @@ type StageId =
   | "paper"
   | "referee";
 
-const RECOMMENDED_BY_STAGE: Record<StageId, string> = {
-  idea: "gpt-4.1",
-  literature: "gpt-4.1-mini",
-  method: "claude-4.1-opus",
-  results: "gpt-5",
-  paper: "claude-4.1-opus",
-  referee: "o3-mini",
-};
+// Iter-7: this used to be a local copy of the recommendation table that
+// drifted from model-picker.tsx on ``paper`` and ``referee``. Now both
+// consumers read from the same source in lib/models.ts.
+const RECOMMENDED_BY_STAGE: Record<StageId, string> = RECOMMENDED_MODEL_BY_STAGE;
 
 const STAGE_MODEL_OVERRIDES_KEY = "plato.stageModelOverrides.v1";
 

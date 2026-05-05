@@ -46,7 +46,13 @@ export default function ClarifyClient() {
   const [modalOpen, setModalOpen] = React.useState(true);
 
   const refresh = React.useCallback(async () => {
-    if (!ready) return;
+    if (!ready) {
+      // Iter-7: surface a friendly "Loading…" → "Run not found" instead of
+      // a permanent loading spinner when the placeholder runId is active.
+      // Real fetches set state through the try/catch path below.
+      setLoadable({ state: "error", error: "Run not found." });
+      return;
+    }
     try {
       const data = await fetchOptional<ClarificationsPayload>(
         `${API_BASE}/runs/${runId}/clarifications`,

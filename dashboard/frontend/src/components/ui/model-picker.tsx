@@ -20,16 +20,14 @@ export interface ModelPickerProps {
   hint?: string;
 }
 
-// Per-stage recommendations. Hand-tuned defaults that map cmbagent best-fit
-// models to each Plato stage.
-const RECOMMENDED_BY_STAGE: Record<NonNullable<ModelPickerProps["recommendedFor"]>, string> = {
-  idea: "gpt-4.1",
-  method: "claude-4.1-opus",
-  results: "gpt-5",
-  paper: "gpt-4.1",
-  referee: "claude-4.1-opus",
-  literature: "gpt-4.1-mini",
-};
+// Per-stage recommendations come from the canonical table in lib/models.ts.
+// Iter-7: deleted a local copy of this map that drifted from models-client.tsx
+// on ``paper`` (gpt-4.1 vs claude-4.1-opus) and ``referee`` (claude-4.1-opus
+// vs o3-mini); the override layer + dropdown badge now read the same source.
+import { RECOMMENDED_MODEL_BY_STAGE } from "@/lib/models";
+
+const RECOMMENDED_BY_STAGE: Record<NonNullable<ModelPickerProps["recommendedFor"]>, string> =
+  RECOMMENDED_MODEL_BY_STAGE;
 
 const PROVIDER_DOT: Record<Provider, string> = {
   anthropic: "#f0bf00",

@@ -59,7 +59,13 @@ export default function RunReviewsClient() {
   });
 
   React.useEffect(() => {
-    if (!ready) return;
+    if (!ready) {
+      // Iter-7: same fix as research/literature/citations — drop into
+      // "missing" so the empty-state placeholder shows instead of a
+      // permanent loading spinner.
+      setReviews({ kind: "missing" });
+      return;
+    }
     let cancelled = false;
     setReviews({ kind: "loading" });
     void fetchOptional<ReviewsPayload>(`/runs/${runId}/critiques`).then((r) => {
@@ -112,11 +118,17 @@ function ReviewsSection({ state }: { state: Loadable<ReviewsPayload> }) {
     );
   }
   if (state.kind === "missing") {
+    // Iter-7: render the RevisionCounter with state=null (it has its
+    // own "No revision in progress" empty state) so the user still sees
+    // both panels — the previous version omitted the counter entirely.
     return (
-      <PlaceholderCard
-        label="Reviewer panel"
-        message="No critiques written for this run yet."
-      />
+      <>
+        <RevisionCounter state={null} />
+        <PlaceholderCard
+          label="Reviewer panel"
+          message="No critiques written for this run yet."
+        />
+      </>
     );
   }
   if (state.kind === "error") {

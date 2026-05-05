@@ -76,7 +76,15 @@ export default function RunDetailClient() {
     React.useState<Loadable<ValidationReport>>({ kind: "loading" });
 
   React.useEffect(() => {
-    if (!ready) return;
+    if (!ready) {
+      // Iter-7: drop to "missing" instead of permanent "loading" while
+      // the placeholder runId is active so the empty-state cards render
+      // instead of three spinners stuck forever.
+      setManifest({ kind: "missing" });
+      setEvidence({ kind: "missing" });
+      setValidation({ kind: "missing" });
+      return;
+    }
     let cancelled = false;
     setManifest({ kind: "loading" });
     setEvidence({ kind: "loading" });
