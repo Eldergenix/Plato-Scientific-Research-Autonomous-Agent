@@ -27,13 +27,25 @@ from pydantic import BaseModel, Field
 
 
 class RunManifest(BaseModel):
-    """Per-run reproducibility metadata. Persisted as ``manifest.json``."""
+    """Per-run reproducibility metadata. Persisted as ``manifest.json``.
 
+    Iter-11: ``schema_version`` lets readers detect a manifest written
+    against an older shape and either migrate or skip. Bump on any
+    breaking field-rename / -removal. Additive changes (new optional
+    field) don't require a bump because Pydantic ignores unknown fields
+    on read in our codebase.
+
+    Schema history:
+      1 — initial shape (iter-1). No schema_version field on disk;
+          readers treat its absence as v1.
+    """
+
+    schema_version: int = Field(default=1, ge=1)
     run_id: str
     workflow: str = Field(description="e.g. 'get_idea_fast', 'get_paper'")
     started_at: datetime
     ended_at: datetime | None = None
-    status: str = "running"  # running | success | error
+    status: str = "running"  # running | success | error | cost_cap_exceeded
     domain: str = "astro"
     git_sha: str = ""
     project_sha: str = ""

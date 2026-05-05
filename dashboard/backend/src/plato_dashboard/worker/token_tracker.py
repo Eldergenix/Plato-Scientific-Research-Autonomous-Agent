@@ -320,8 +320,18 @@ def aggregate_project_usage(project_dir: Path) -> ProjectUsage:
             # spent. Fall back to estimate_cost_cents when we have a
             # known model + nonzero tokens, so the by-day timeline
             # doesn't undercount older runs.
-            tokens_in = int(data.get("tokens_in") or 0)
-            tokens_out = int(data.get("tokens_out") or 0)
+            # Iter-11: defensive int() — a legacy manifest with a
+            # non-numeric ``tokens_in`` (e.g. "N/A" from an aborted run)
+            # used to raise ValueError and crash the entire
+            # aggregate_project_usage call, blanking the whole costs
+            # page. Coerce defensively and fall back to 0.
+            def _safe_int(v: object) -> int:
+                try:
+                    return int(v) if v is not None else 0
+                except (TypeError, ValueError):
+                    return 0
+            tokens_in = _safe_int(data.get("tokens_in"))
+            tokens_out = _safe_int(data.get("tokens_out"))
             if cost_cents == 0 and primary_model and (tokens_in or tokens_out):
                 cost_cents = estimate_cost_cents(
                     primary_model, tokens_in, tokens_out

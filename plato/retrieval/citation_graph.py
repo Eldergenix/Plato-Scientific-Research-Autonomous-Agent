@@ -216,7 +216,17 @@ async def expand_citations(
         return []
 
     owns_client = http_client is None
-    client = http_client or httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT)
+    # Iter-11: route through RetrievalClient so the rate-limit backoff,
+    # ETag cache, and circuit breaker apply to citation-graph fetches
+    # too. Bare ``httpx.AsyncClient`` swallowed 429s as empty results
+    # and never retried, burning seeds during BFS bursts. The middleware
+    # client exposes a ``get(url, ...)`` shape compatible with the
+    # ``httpx.AsyncClient`` callers down the chain.
+    if http_client is None:
+        from .middleware import RetrievalClient
+        client = RetrievalClient(timeout=_DEFAULT_TIMEOUT)
+    else:
+        client = http_client
     semaphore = asyncio.Semaphore(max(1, int(concurrency)))
 
     try:
@@ -288,7 +298,11 @@ async def expand_via_doi(
         return []
 
     owns_client = http_client is None
-    client = http_client or httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT)
+    if http_client is None:
+        from .middleware import RetrievalClient
+        client = RetrievalClient(timeout=_DEFAULT_TIMEOUT)
+    else:
+        client = http_client
 
     seeds: list[Source] = []
     try:

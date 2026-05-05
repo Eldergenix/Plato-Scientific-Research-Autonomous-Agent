@@ -708,7 +708,14 @@ async def _terminate_process(run_id: str, proc: mp.Process) -> None:
             except (ProcessLookupError, OSError):
                 pass
 
-    await asyncio.to_thread(proc.join, 2.0)
+    # Iter-11: shield ``proc.join`` too. When this runs inside a
+    # cancelled task the previous unshielded await raised
+    # CancelledError immediately and skipped the join, leaving the
+    # subprocess handle un-reaped (zombie until the OS cleaned it).
+    try:
+        await asyncio.shield(asyncio.to_thread(proc.join, 2.0))
+    except asyncio.CancelledError:
+        pass
 
 
 # --------------------------------------------------------------------------- #

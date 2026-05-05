@@ -335,6 +335,106 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info(
         "  demo mode: %s · auth: %s", settings.demo_mode, settings.auth
     )
+
+    # Iter-11: orphan-run reconciliation on startup. After a hard
+    # restart (SIGKILL, OOM, k8s pod replacement) any run whose
+    # status.json says ``running`` / ``queued`` is stranded — the
+    # in-memory ``_active_runs`` registry resets to empty so the
+    # supervisor that would have written the terminal state is gone.
+    # Walk the project root once, mark stranded runs as ``failed``.
+    try:
+        import json as _json
+        import os as _os
+        from datetime import datetime, timezone
+
+        for status_file in settings.project_root.rglob("runs/*/status.json"):
+            try:
+                data = _json.loads(status_file.read_text(encoding="utf-8"))
+            except (OSError, _json.JSONDecodeError):
+                continue
+            if data.get("status") not in ("running", "queued"):
+                continue
+            pid = data.get("pid")
+            alive = False
+            if isinstance(pid, int):
+                try:
+                    _os.kill(pid, 0)
+                    alive = True
+                except ProcessLookupError:
+                    alive = False
+                except PermissionError:
+                    # Process exists but owned by a different uid — count
+                    # as alive (we shouldn't reap it).
+                    alive = True
+            if alive:
+                continue
+            data["status"] = "failed"
+            data["error"] = (
+                "orphaned: worker process not found on dashboard restart"
+            )
+            data["finished_at"] = datetime.now(timezone.utc).isoformat()
+            try:
+                status_file.write_text(
+                    _json.dumps(data, indent=2), encoding="utf-8"
+                )
+                logger.warning(
+                    "orphan run reconciled: %s", data.get("run_id") or status_file
+                )
+            except OSError:
+                pass
+    except Exception:  # noqa: BLE001
+        logger.exception("orphan-run reconciliation failed; continuing")
+
+    # Iter-11: demo idle-session cleanup loop. The capabilities banner
+    # advertises "Projects auto-clean after N minutes idle" but no code
+    # ever deleted them. Spin up a periodic task in demo mode that
+    # walks every per-user project namespace, deletes anything whose
+    # meta.json updated_at is older than the threshold.
+    cleanup_task: asyncio.Task | None = None
+    if settings.is_demo:
+        async def _idle_cleanup_loop() -> None:
+            from datetime import datetime, timezone
+            from ..storage.project_store import ProjectStore
+
+            threshold_min = max(1, int(settings.demo_session_idle_minutes))
+            poll_seconds = max(60, threshold_min * 60 // 4)
+            users_root = settings.project_root / "users"
+            while True:
+                try:
+                    await asyncio.sleep(poll_seconds)
+                except asyncio.CancelledError:
+                    return
+                try:
+                    if not users_root.exists():
+                        continue
+                    cutoff_ts = (
+                        datetime.now(tz=timezone.utc).timestamp()
+                        - threshold_min * 60
+                    )
+                    for uid_dir in users_root.iterdir():
+                        if not uid_dir.is_dir():
+                            continue
+                        store = ProjectStore(uid_dir, user_id=uid_dir.name)
+                        for proj in store.list_projects():
+                            try:
+                                if proj.updated_at.timestamp() < cutoff_ts:
+                                    logger.info(
+                                        "demo idle-cleanup: removing %s/%s",
+                                        uid_dir.name, proj.id,
+                                    )
+                                    store.delete(proj.id)
+                            except Exception:  # noqa: BLE001
+                                logger.exception(
+                                    "idle cleanup: failed to delete %s/%s",
+                                    uid_dir.name, proj.id,
+                                )
+                except Exception:  # noqa: BLE001
+                    logger.exception("idle cleanup pass failed; will retry")
+
+        cleanup_task = asyncio.create_task(
+            _idle_cleanup_loop(), name="plato-idle-cleanup"
+        )
+
     # Iter-9: signal readiness to /api/v1/ready once startup completes.
     app.state.ready = True
     try:
@@ -345,6 +445,12 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         # were still polling, leaving orphan subprocesses and abandoned
         # asyncio tasks that delayed the event-loop close.
         app.state.ready = False
+        if cleanup_task is not None:
+            cleanup_task.cancel()
+            try:
+                await asyncio.gather(cleanup_task, return_exceptions=True)
+            except Exception:  # noqa: BLE001
+                pass
         try:
             from ..worker.run_manager import _run_tasks, cancel_run, list_active_runs
 
@@ -790,6 +896,22 @@ def create_app() -> FastAPI:
 
         if not target.is_file():
             raise HTTPException(404)
+        # Iter-11: explicit Content-Type for PDFs and an attachment
+        # disposition. ``FileResponse`` defaults to mimetypes-inferred
+        # type and inline disposition — fine for in-page preview, but a
+        # "Download" link would render the PDF inline in the new tab
+        # instead of triggering a download. Set both explicitly for
+        # ``.pdf`` files; let other mime-types use FastAPI's default.
+        if target.suffix.lower() == ".pdf":
+            return FileResponse(
+                target,
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition": (
+                        f'attachment; filename="{target.name}"'
+                    )
+                },
+            )
         return FileResponse(target)
 
     # ------------------------------------------------------------ keys

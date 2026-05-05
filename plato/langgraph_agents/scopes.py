@@ -79,10 +79,18 @@ SEMANTIC_SCHOLAR_SCOPE = FileScope(
 )
 
 # Claim extraction emits Claim objects into state but does write
-# its streaming LLM log.
+# its streaming LLM log + the LLM_calls.txt accounting sidecar.
+# Iter-11: previously the scope only listed ``claim_extraction.log``
+# at project root, but every other LLM-invoking node also logs to
+# ``<stage>_output/LLM_calls.txt`` for the dashboard cost aggregator
+# (``token_tracker.aggregate_project_usage``). The missing entry would
+# trip ScopeError as soon as ``LLM_call_stream`` tried to write the
+# accounting file. Add it under a dedicated ``claim_extraction_output/``
+# subdir to match the sibling-node layout.
 CLAIM_EXTRACTOR_SCOPE = FileScope(
     write=[
         "claim_extraction.log",
+        "claim_extraction_output/LLM_calls.txt",
     ],
     read=["**/*"],
 )
