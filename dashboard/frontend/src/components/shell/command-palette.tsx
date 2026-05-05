@@ -143,6 +143,7 @@ export function CommandPalette({
         )}
       >
         <Command.Input
+          autoFocus
           placeholder="Search projects, run a stage, switch model…"
           className="w-full h-12 px-4 bg-transparent text-[14px] text-(--color-text-primary) placeholder:text-(--color-text-quaternary) focus-visible:outline-none hairline-b"
         />

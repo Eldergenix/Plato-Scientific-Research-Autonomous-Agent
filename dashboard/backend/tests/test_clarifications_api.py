@@ -20,10 +20,15 @@ from plato_dashboard.api.clarifications import router as clarifications_router
 
 
 @pytest.fixture
-def client(tmp_project_root: Path) -> TestClient:
+def client(tmp_project_root: Path):  # noqa: ARG001 — fixture sets project_root
+    """Iter-9: yield from a context manager so the ASGI lifespan startup
+    fires (matching conftest.py's ``client`` fixture). The previous
+    bare-return form skipped lifespan, leaving the app's startup
+    side-effects (logger config, settings cache, etc.) un-initialised."""
     app = FastAPI()
     app.include_router(clarifications_router, prefix="/api/v1")
-    return TestClient(app)
+    with TestClient(app) as c:
+        yield c
 
 
 def _make_run(project_root: Path, run_id: str, project_id: str = "prj_a") -> Path:

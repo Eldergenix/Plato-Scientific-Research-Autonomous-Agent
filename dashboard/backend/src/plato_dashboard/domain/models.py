@@ -70,7 +70,11 @@ class CostCapState(BaseModel):
       cancelled; the gate only applies to new launches.
     """
 
-    budget_cents: Optional[int] = Field(default=None, ge=0)
+    # Iter-9: ``gt=0`` (was ``ge=0``). budget_cents=0 with stop_on_exceed=True
+    # would block every run regardless of accumulated spend, which is
+    # never useful — the frontend already rejects 0 client-side; align
+    # the schema. ``None`` (the default) still means "no cap".
+    budget_cents: Optional[int] = Field(default=None, gt=0)
     stop_on_exceed: bool = False
 
 
