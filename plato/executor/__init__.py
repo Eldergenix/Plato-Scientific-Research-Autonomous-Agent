@@ -29,6 +29,7 @@ __all__ = [
     "register_executor",
     "get_executor",
     "list_executors",
+    "_safe_project_dir",
 ]
 
 
@@ -96,6 +97,50 @@ def list_executors() -> list[str]:
     """Return the sorted list of registered executor names."""
     _ensure_builtins_registered()
     return sorted(EXECUTOR_REGISTRY)
+
+
+def _safe_project_dir(project_dir: "str | os.PathLike[str]") -> "Path":
+    """Resolve and verify ``project_dir`` against path-traversal escape.
+
+    Iter-4: every backend (LocalJupyter / Modal / E2B / cmbagent) used
+    to write artefacts to ``Path(project_dir)/"plots"/...`` without
+    resolving symlinks or checking that the resulting path stays inside
+    a sane root. A caller passing ``project_dir="/etc"`` would write
+    under ``/etc/plots/<backend>/...`` — easy footgun for anyone who
+    plumbs an LLM-suggested path into the executor.
+
+    Returns the resolved ``Path``. Raises ``ValueError`` for paths that
+    resolve outside the user's home or the system temp dir, which are
+    the two roots the rest of Plato ever writes to.
+
+    Backends call this at the top of their ``run()`` entrypoint and
+    use the returned path for every subsequent join.
+    """
+    import os
+    import tempfile
+    from pathlib import Path
+
+    resolved = Path(project_dir).expanduser().resolve(strict=False)
+    allowed_roots = [
+        Path.home().resolve(),
+        Path(tempfile.gettempdir()).resolve(),
+    ]
+    # Also accept a PLATO_PROJECT_ROOT override so deploys (Railway/Spaces)
+    # that write under /app or /home/plato can opt in.
+    env_root = os.environ.get("PLATO_PROJECT_ROOT", "").strip()
+    if env_root:
+        allowed_roots.append(Path(env_root).expanduser().resolve())
+
+    for root in allowed_roots:
+        try:
+            resolved.relative_to(root)
+            return resolved
+        except ValueError:
+            continue
+    raise ValueError(
+        f"project_dir {resolved!s} resolves outside allowed roots "
+        f"{[str(r) for r in allowed_roots]}; refusing to write."
+    )
 
 
 # --- Lazy registration of built-in backends --------------------------------

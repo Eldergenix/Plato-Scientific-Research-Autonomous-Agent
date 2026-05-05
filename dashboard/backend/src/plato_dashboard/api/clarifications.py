@@ -63,33 +63,33 @@ def _read_json(path: Path) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
-def _user_id(request: Request) -> str:
-    """Best-effort caller id for tenant scoping.
+def _user_id(request: Request) -> str | None:
+    """Caller id via the canonical ``auth.extract_user_id`` helper.
 
-    Auth is currently disabled (single-tenant local mode). When auth
-    flips on, the middleware sets ``request.state.user_id``; if not, we
-    fall back to the ``X-User-Id`` header (used by tests) and finally
-    to a stable ``"local"`` sentinel.
+    Iter-4: previously this fell through to a "local" sentinel and to a
+    non-canonical "X-User-Id" header. That made the check bypassable
+    (no header → anyone can pose as "local" → unconditional access). We
+    now use the same allowlist-validated extractor every other router
+    uses, so the tenant chain is consistent.
     """
-    user_id = getattr(request.state, "user_id", None)
-    if user_id:
-        return str(user_id)
-    header = request.headers.get("x-user-id")
-    if header:
-        return header
-    return "local"
+    from ..auth import extract_user_id
+
+    return extract_user_id(request)
 
 
-def _find_run_dir(run_id: str, settings: Settings) -> Path | None:
-    """Locate ``<project_root>/<pid>/runs/<run_id>/``.
+def _find_run_dir(run_id: str, settings: Settings, user_id: str | None) -> Path | None:
+    """Locate ``<project_root>/<users/<uid>>/<pid>/runs/<run_id>/``.
 
-    The dashboard's filesystem layout puts every run under the project
-    that owns it. We don't carry the project id on the URL, so we walk
-    the project root looking for a matching ``runs/<run_id>`` dir.
-
-    Returns ``None`` if no project owns ``run_id``.
+    Iter-4: previously walked the legacy flat ``project_root.iterdir()``
+    layout, which (a) misses the per-user namespace deploys actually
+    use and (b) lets a search resolve another tenant's run before the
+    tenant check fires. Scoping the search to the caller's user root
+    fixes both.
     """
     root = settings.project_root
+    if user_id:
+        # Tenant-aware deploy: per-user roots live under <root>/users/<uid>/.
+        root = root / "users" / user_id
     if not root.exists():
         return None
     for project in root.iterdir():
@@ -104,16 +104,28 @@ def _find_run_dir(run_id: str, settings: Settings) -> Path | None:
 def _check_tenant(run_dir: Path, request: Request) -> None:
     """Raise 403 when the run was created by a different tenant.
 
-    A run carries its owner in ``meta.json#owner`` (when auth is
-    enabled). Local mode has no owner and this check is a no-op.
+    Iter-4: prior implementation read ``meta.json#owner`` — a field
+    that *no producer ever writes* in the codebase. Runs persist
+    ownership in ``manifest.json#user_id`` (server.py:_load_run_manifest_user).
+    We now read that file and compare against the canonical caller id.
     """
-    meta = _read_json(run_dir / "meta.json") or {}
-    owner = meta.get("owner")
-    if not owner:
+    manifest_path = run_dir / "manifest.json"
+    if not manifest_path.exists():
+        # No manifest yet — treat as legacy / un-bound, no tenant data
+        # to compare against. Defer to outer auth gate.
         return
+    try:
+        with manifest_path.open() as f:
+            manifest = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return
+    owner = manifest.get("user_id") if isinstance(manifest, dict) else None
     caller = _user_id(request)
-    if owner != caller:
-        raise HTTPException(403, detail={"code": "cross_tenant_forbidden"})
+    if owner and caller and owner != caller:
+        # 404 not 403 to avoid existence-leak (matches manifests.py).
+        raise HTTPException(
+            404, detail={"code": "run_not_found", "run_id": run_dir.name}
+        )
 
 
 def _load_clarifications(run_dir: Path) -> tuple[list[str], bool]:
@@ -149,7 +161,7 @@ def get_clarifications(
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
-    run_dir = _find_run_dir(run_id, settings)
+    run_dir = _find_run_dir(run_id, settings, _user_id(request))
     if run_dir is None:
         raise HTTPException(404, detail={"code": "run_not_found"})
 
@@ -171,7 +183,7 @@ def post_clarifications(
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
-    run_dir = _find_run_dir(run_id, settings)
+    run_dir = _find_run_dir(run_id, settings, _user_id(request))
     if run_dir is None:
         raise HTTPException(404, detail={"code": "run_not_found"})
 

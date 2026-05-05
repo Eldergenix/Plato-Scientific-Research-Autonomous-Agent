@@ -84,6 +84,29 @@ class LocalJupyterExecutor:
         keys: Any,
         **kwargs: Any,
     ) -> ExecutorResult:
+        # Iter-4: this executor runs LLM-generated code in the *host*
+        # Python interpreter — no docker, no jail, no resource caps. It
+        # is a dev-only convenience, not a multi-tenant sandbox. We
+        # require an explicit opt-in env so a misconfigured deploy
+        # cannot accidentally land here. Operators who actually want
+        # local exec set ``PLATO_ALLOW_LOCAL_EXEC=1``.
+        import os
+
+        if os.environ.get("PLATO_ALLOW_LOCAL_EXEC", "").lower() not in {
+            "1", "true", "yes", "on",
+        }:
+            raise RuntimeError(
+                "LocalJupyterExecutor refuses to start: it has no isolation. "
+                "Set PLATO_ALLOW_LOCAL_EXEC=1 to opt in (single-user dev only), "
+                "or pick a sandboxed backend (modal, e2b)."
+            )
+
+        # Iter-4: refuse path-traversal-y project_dir before any
+        # filesystem write. Without this, ``project_dir="../../etc"``
+        # would silently land artefacts under the system tree.
+        from . import _safe_project_dir
+        safe_project_dir = _safe_project_dir(project_dir)
+
         # Lazy import — keeps the module cheap when jupyter-client isn't
         # installed in the active environment. The clean error message is
         # the same one the iter-17 stub used so anyone scripting against
@@ -95,6 +118,10 @@ class LocalJupyterExecutor:
                 "LocalJupyterExecutor requires jupyter-client. "
                 "Install it with: pip install jupyter-client"
             ) from exc
+
+        # Re-bind so all downstream Path joins use the resolved+verified
+        # path instead of the raw input.
+        project_dir = safe_project_dir
 
         explicit_code = kwargs.get("code")
         if isinstance(explicit_code, str) and explicit_code.strip():

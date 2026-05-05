@@ -109,19 +109,48 @@ def _enforce_tenant(run_dir: Path, run_id: str, requester: str | None) -> None:
         raise HTTPException(status, detail={"code": code, "run_id": run_id})
 
 
-def _find_run_dir(project_root: Path, run_id: str) -> Path | None:
+def _find_run_dir(
+    project_root: Path,
+    run_id: str,
+    user_id: str | None = None,
+) -> Path | None:
     """Locate ``runs/<run_id>`` under ``project_root``.
 
-    Looks at two layouts:
-    - ``<project_root>/runs/<run_id>/`` — when the project root *is* the
-      project directory (single-project install).
-    - ``<project_root>/<project>/runs/<run_id>/`` — when the dashboard
-      manages multiple projects (the normal case).
+    Iter-4: when ``user_id`` is supplied, scope the search to the
+    caller's per-user namespace (``<root>/users/<uid>/``) before
+    falling back to the legacy flat layout. Without scoping, the
+    multi-project scan at the bottom can resolve a run that belongs
+    to *another* tenant before ``_enforce_tenant`` runs — which still
+    raises 403, but the existence-leak (response shape differs from
+    "not found") tells an attacker the run id is valid in the system.
 
-    Returns the first match or ``None``.
+    Layouts considered, in order:
+    - ``<project_root>/users/<user_id>/runs/<run_id>/`` (per-user flat)
+    - ``<project_root>/users/<user_id>/<project>/runs/<run_id>/``
+    - ``<project_root>/runs/<run_id>/`` (legacy flat)
+    - ``<project_root>/<project>/runs/<run_id>/`` (legacy multi)
     """
     if not project_root.exists():
         return None
+
+    candidates: list[Path] = []
+    if user_id:
+        user_root = project_root / "users" / user_id
+        if user_root.exists():
+            flat = user_root / "runs" / run_id
+            if flat.is_dir():
+                return flat
+            for child in user_root.iterdir():
+                if not child.is_dir():
+                    continue
+                candidate = child / "runs" / run_id
+                if candidate.is_dir():
+                    return candidate
+            # When user_id is set but the run isn't under the user
+            # tree, treat as not-found for tenant safety — refuse to
+            # fall through to the legacy flat scan that would let the
+            # caller resolve another tenant's data.
+            return None
 
     flat = project_root / "runs" / run_id
     if flat.is_dir():
@@ -134,6 +163,7 @@ def _find_run_dir(project_root: Path, run_id: str) -> Path | None:
         candidate = child / "runs" / run_id
         if candidate.is_dir():
             return candidate
+    _ = candidates  # noqa: F841 (kept for future caller-supplied paths)
     return None
 
 
@@ -154,7 +184,7 @@ def get_manifest(
     settings: Settings = Depends(get_settings),
 ) -> dict:
     requester = _user_id(request)
-    run_dir = _find_run_dir(settings.project_root, run_id)
+    run_dir = _find_run_dir(settings.project_root, run_id, requester)
     if run_dir is None:
         raise HTTPException(404, detail={"code": "run_not_found", "run_id": run_id})
     _enforce_tenant(run_dir, run_id, requester)
@@ -177,7 +207,7 @@ def get_evidence_matrix(
     writer doesn't have to commit to a single record type per file.
     """
     requester = _user_id(request)
-    run_dir = _find_run_dir(settings.project_root, run_id)
+    run_dir = _find_run_dir(settings.project_root, run_id, requester)
     if run_dir is None:
         raise HTTPException(404, detail={"code": "run_not_found", "run_id": run_id})
     _enforce_tenant(run_dir, run_id, requester)
@@ -216,7 +246,7 @@ def get_validation_report(
     settings: Settings = Depends(get_settings),
 ) -> dict:
     requester = _user_id(request)
-    run_dir = _find_run_dir(settings.project_root, run_id)
+    run_dir = _find_run_dir(settings.project_root, run_id, requester)
     if run_dir is None:
         raise HTTPException(404, detail={"code": "run_not_found", "run_id": run_id})
     _enforce_tenant(run_dir, run_id, requester)

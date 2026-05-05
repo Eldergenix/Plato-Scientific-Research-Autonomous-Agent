@@ -8,12 +8,15 @@ the manifest still records token counts).
 """
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from langchain_core.callbacks.base import BaseCallbackHandler
 
 if TYPE_CHECKING:
     from ..state.manifest import ManifestRecorder
+
+_log = logging.getLogger(__name__)
 
 
 # Per-million-token prices (input, output) snapshotted 2026-04. Only models
@@ -138,6 +141,25 @@ class ManifestCallbackHandler(BaseCallbackHandler):
         except Exception:  # noqa: BLE001
             # Recorder failures must never crash the LLM call path.
             pass
+
+        # Iter-4: cap enforcement. LangChain swallows exceptions raised
+        # from callbacks (so we can't reliably halt the chain), but we
+        # CAN log a critical-level event the moment a breach lands. The
+        # worker tails events.jsonl and can act on this signal — and
+        # operators get an observable indicator if they're paging on
+        # log severity. Once breached, every subsequent on_llm_end logs
+        # — that's intentional: the longer the breach goes uncaught, the
+        # louder the signal.
+        if self._cost_cap_usd is not None and self.is_over_cap():
+            _log.critical(
+                "PLATO COST CAP EXCEEDED: spent $%.4f of $%.4f cap "
+                "(run_id=%s, workflow=%s, model=%s)",
+                self._recorder.manifest.cost_usd,
+                self._cost_cap_usd,
+                self._recorder.manifest.run_id,
+                self._recorder.manifest.workflow,
+                model,
+            )
 
 
 class CostCapExceeded(RuntimeError):

@@ -201,6 +201,11 @@ class ModalExecutor:
                 "Install it with: pip install modal"
             ) from exc
 
+        # Iter-4: refuse path-traversal-y project_dir before writing
+        # any artefact into it.
+        from . import _safe_project_dir
+        project_dir = _safe_project_dir(project_dir)
+
         explicit_code = kwargs.get("code")
         if isinstance(explicit_code, str) and explicit_code.strip():
             cells: list[str] = [explicit_code.strip()]

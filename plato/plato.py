@@ -532,7 +532,12 @@ class Plato:
         # wrap the body so any downstream prompt assembly knows the
         # text is untrusted data, not instructions. The disk write
         # below stores the wrapped form so reload paths stay safe.
-        from .safety import detect_injection_signals, wrap_external
+        from .safety import (
+            assert_safe,
+            detect_injection_signals,
+            PromptInjectionDetected,
+            wrap_external,
+        )
 
         signals = detect_injection_signals(answer)
         if signals:
@@ -545,6 +550,22 @@ class Plato:
                 "wrapping in <external> markers.",
                 signals,
             )
+        # Iter-4: opt-in block-mode. When PLATO_SAFETY_BLOCK is truthy,
+        # refuse to feed obviously-injected text to the next prompt.
+        # Default-off preserves the iter-1 log-and-continue posture so
+        # we don't break working runs the moment someone tunes the
+        # detector. Threshold=2 requires multiple high-confidence
+        # signals before refusing, keeping the false-positive rate low.
+        if os.environ.get("PLATO_SAFETY_BLOCK", "").lower() in {"1", "true", "yes"}:
+            try:
+                assert_safe(answer, kind="futurehouse_response", threshold=2)
+            except PromptInjectionDetected:
+                logger.error(
+                    "Refusing to ingest FutureHouse response: %d signals "
+                    "(>= threshold=2). PLATO_SAFETY_BLOCK is enabled.",
+                    len(signals),
+                )
+                raise
         answer = wrap_external(answer, "futurehouse_response")
 
         # prepend " Has anyone worked on or explored the following idea?" to the answer

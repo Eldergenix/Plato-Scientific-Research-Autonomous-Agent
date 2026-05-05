@@ -158,19 +158,37 @@ def callbacks_for(
     run_id: str,
     workflow: str,
     recorder: "ManifestRecorder | None" = None,
+    *,
+    cost_cap_usd: float | None = None,
 ) -> list[Any]:
     """Helper that returns callback handlers for use in LangGraph configs.
 
     Always appends a :class:`ManifestCallbackHandler` when *recorder* is
     supplied (so token counts land in the manifest). Appends the LangFuse
     handler too when Langfuse is configured.
+
+    Iter-4: ``cost_cap_usd`` is forwarded to the manifest callback so a
+    breach is observable to the rest of the runtime — operators can call
+    ``handler.is_over_cap()`` between LLM rounds to refuse to schedule
+    the next call. Falls back to the ``PLATO_COST_CAP_USD`` env var when
+    the caller doesn't pass an explicit value, which lets the dashboard
+    worker inject a project-level cap via the subprocess environment.
     """
     handlers: list[Any] = []
     cb = get_langfuse_callback(session_id=run_id, metadata={"workflow": workflow})
     if cb is not None:
         handlers.append(cb)
     if recorder is not None:
-        handlers.append(ManifestCallbackHandler(recorder))
+        if cost_cap_usd is None:
+            raw_cap = os.environ.get("PLATO_COST_CAP_USD", "").strip()
+            if raw_cap:
+                try:
+                    cost_cap_usd = float(raw_cap)
+                except ValueError:
+                    cost_cap_usd = None
+        handlers.append(
+            ManifestCallbackHandler(recorder, cost_cap_usd=cost_cap_usd)
+        )
     return handlers
 
 

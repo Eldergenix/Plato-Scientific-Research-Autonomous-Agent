@@ -509,7 +509,10 @@ async def _tail_events(run: Run, bus: EventBus, events_file: Path) -> None:
                             # Reconcile the live ledger with the canonical
                             # on-disk LLM_calls.txt for this stage.
                             try:
-                                from .token_tracker import reconcile_run
+                                from .token_tracker import (
+                                    reconcile_run,
+                                    aggregate_project_usage,
+                                )
                                 # Iter-25: prefer the per-user override
                                 # if the API server registered one; fall
                                 # back to legacy resolution otherwise.
@@ -517,6 +520,38 @@ async def _tail_events(run: Run, bus: EventBus, events_file: Path) -> None:
                                     run.id
                                 ) or (get_settings().project_root / run.project_id)
                                 reconcile_run(run.id, project_dir, run.stage)
+                                # Iter-4: the iter-2 cost-cap gate at
+                                # server.py:run_stage reads
+                                # ``project.total_cost_cents`` but nothing
+                                # was writing that field — the cap was
+                                # enforcing against a permanently-zero
+                                # number. Aggregate the canonical
+                                # LLM_calls.txt totals across stages and
+                                # persist them on the project meta so the
+                                # next stage launch sees real spend.
+                                try:
+                                    usage = aggregate_project_usage(project_dir)
+                                    from ..storage.project_store import (
+                                        ProjectStore,
+                                    )
+                                    # Stay user-scoped: project_dir already
+                                    # nests under <root>/users/<uid>/<pid>
+                                    # for tenant deploys, so root=parent.
+                                    store = ProjectStore(
+                                        root=project_dir.parent,
+                                    )
+                                    proj = store.load(project_dir.name)
+                                    proj.total_cost_cents = (
+                                        usage.total_cost_cents
+                                    )
+                                    proj.total_tokens = (
+                                        usage.total_input + usage.total_output
+                                    )
+                                    store.save(proj)
+                                except Exception:  # noqa: BLE001
+                                    # Cost rollup must never crash the
+                                    # finish-event handler.
+                                    pass
                             except Exception:  # noqa: BLE001
                                 pass
                             finished_seen = True

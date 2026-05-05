@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from typing import Optional
 
@@ -170,6 +171,21 @@ async def semantic_scholar(state: GraphState, config: Optional[RunnableConfig] =
                     signals,
                     paper.id,
                 )
+                # Iter-4: opt-in block-mode (PLATO_SAFETY_BLOCK=1) drops
+                # the source from the corpus instead of wrapping. Default
+                # is wrap-and-continue so a single noisy abstract can't
+                # halt a literature stage. Threshold matches plato.py.
+                if (
+                    os.environ.get("PLATO_SAFETY_BLOCK", "").lower()
+                    in {"1", "true", "yes"}
+                    and len(signals) >= 2
+                ):
+                    logger.warning(
+                        "Skipping source %s: %d injection signals (>= 2) and PLATO_SAFETY_BLOCK is on.",
+                        paper.id,
+                        len(signals),
+                    )
+                    continue
 
             wrapped_abstract = wrap_external(abstract, "abstract")
             authors = ", ".join(paper.authors)
