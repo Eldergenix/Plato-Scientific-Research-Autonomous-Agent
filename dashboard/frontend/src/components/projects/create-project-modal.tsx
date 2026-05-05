@@ -219,6 +219,9 @@ export function CreateProjectModal({
       const project = await api.createProject(
         name.trim(),
         dataDescription.trim() || undefined,
+        // Skip the wire field when the user picked the default — keeps the
+        // POST body minimal and lets the backend default kick in cleanly.
+        journal === "NONE" ? null : journal,
       );
       onCreated(project);
       onOpenChange(false);

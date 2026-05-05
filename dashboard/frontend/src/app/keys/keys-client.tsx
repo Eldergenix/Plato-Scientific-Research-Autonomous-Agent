@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, X, Loader2 } from "lucide-react";
+import { Check, X, Loader2, Eye, EyeOff, Copy, Trash2 } from "lucide-react";
 import { api, type KeyState, type KeysStatus } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Pill } from "@/components/ui/pill";
@@ -47,6 +47,27 @@ const PROVIDERS: ProviderSpec[] = [
     description: "Literature novelty checks",
     testable: false,
   },
+  // Langfuse triplet (public/secret/host) — observability backend. Backend
+  // surfaces all three fields via /keys/status (see KeysStatus in lib/api.ts);
+  // omitting them here meant users could never set them from the UI.
+  {
+    id: "LANGFUSE_PUBLIC",
+    name: "Langfuse public",
+    description: "Public key for Langfuse tracing",
+    testable: false,
+  },
+  {
+    id: "LANGFUSE_SECRET",
+    name: "Langfuse secret",
+    description: "Secret key for Langfuse tracing",
+    testable: false,
+  },
+  {
+    id: "LANGFUSE_HOST",
+    name: "Langfuse host",
+    description: "e.g. https://cloud.langfuse.com",
+    testable: false,
+  },
 ];
 
 function pillToneFor(state: KeyState): "neutral" | "indigo" | "green" {
@@ -75,6 +96,45 @@ export default function KeysPage() {
   const [saving, setSaving] = React.useState<Partial<Record<ProviderId, boolean>>>({});
   const [testing, setTesting] = React.useState<Partial<Record<ProviderId, boolean>>>({});
   const [tests, setTests] = React.useState<Partial<Record<ProviderId, TestResult>>>({});
+  const [revealed, setRevealed] = React.useState<Partial<Record<ProviderId, boolean>>>({});
+  const [copied, setCopied] = React.useState<Partial<Record<ProviderId, boolean>>>({});
+
+  const onCopyDraft = React.useCallback(async (id: ProviderId, value: string) => {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied((c) => ({ ...c, [id]: true }));
+      // Reset the "Copied" affordance after 1.5s — long enough for the user
+      // to register the click landed, short enough that two consecutive
+      // copies of different fields don't blur together.
+      window.setTimeout(() => {
+        setCopied((c) => ({ ...c, [id]: false }));
+      }, 1500);
+    } catch {
+      // Fallback for browsers without clipboard permission. We don't surface
+      // an error toast since copy is a convenience action, not load-bearing.
+    }
+  }, []);
+
+  const onClearKey = React.useCallback(
+    async (id: ProviderId) => {
+      // Sending an empty string to /keys is the canonical "delete this stored
+      // key" signal in storage/key_store.py:set_key (empty value is treated
+      // as a deletion). We send a single-key body to avoid clobbering peers.
+      setSaving((s) => ({ ...s, [id]: true }));
+      try {
+        const next = await api.updateKeys({ [id]: "" });
+        setStatus(next);
+        setDrafts((d) => ({ ...d, [id]: "" }));
+        setOverrides((o) => ({ ...o, [id]: false }));
+      } catch (e) {
+        console.error(`clear key ${id} failed`, e);
+      } finally {
+        setSaving((s) => ({ ...s, [id]: false }));
+      }
+    },
+    [],
+  );
 
   const refresh = React.useCallback(async () => {
     try {
@@ -163,28 +223,76 @@ export default function KeysPage() {
                 </div>
 
                 <div className="flex flex-col gap-2">
-                  <input
-                    type="password"
-                    value={draft}
-                    disabled={inputDisabled}
-                    onChange={(e) =>
-                      setDrafts((d) => ({ ...d, [p.id]: e.target.value }))
-                    }
-                    placeholder={
-                      inputDisabled
-                        ? "Override with in-app key…"
-                        : state === "in_app"
-                          ? "Replace stored key…"
-                          : "Paste API key"
-                    }
-                    className={cn(
-                      "w-full rounded-[6px] border px-2 py-2 font-mono text-[12px]",
-                      "bg-[#141415] border-[#262628] text-(--color-text-primary)",
-                      "placeholder:text-(--color-text-quaternary-spec)",
-                      "focus:outline-none focus:border-(--color-brand-indigo)",
-                      "disabled:opacity-60 disabled:cursor-not-allowed",
-                    )}
-                  />
+                  <div className="relative flex items-center gap-1">
+                    <input
+                      type={revealed[p.id] ? "text" : "password"}
+                      value={draft}
+                      disabled={inputDisabled}
+                      onChange={(e) =>
+                        setDrafts((d) => ({ ...d, [p.id]: e.target.value }))
+                      }
+                      placeholder={
+                        inputDisabled
+                          ? "Override with in-app key…"
+                          : state === "in_app"
+                            ? "Replace stored key…"
+                            : "Paste API key"
+                      }
+                      className={cn(
+                        "w-full rounded-[6px] border px-2 py-2 pr-20 font-mono text-[12px]",
+                        "bg-[#141415] border-[#262628] text-(--color-text-primary)",
+                        "placeholder:text-(--color-text-quaternary-spec)",
+                        "focus:outline-none focus:border-(--color-brand-indigo)",
+                        "disabled:opacity-60 disabled:cursor-not-allowed",
+                      )}
+                    />
+                    <div className="absolute right-1 flex items-center gap-0.5">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setRevealed((r) => ({ ...r, [p.id]: !r[p.id] }))
+                        }
+                        disabled={!draft || inputDisabled}
+                        aria-label={
+                          revealed[p.id] ? "Hide key" : "Show key"
+                        }
+                        title={revealed[p.id] ? "Hide" : "Show"}
+                        className="inline-flex size-7 items-center justify-center rounded text-(--color-text-tertiary-spec) hover:bg-[rgba(255,255,255,0.06)] hover:text-(--color-text-primary) disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {revealed[p.id] ? (
+                          <EyeOff className="size-3.5" />
+                        ) : (
+                          <Eye className="size-3.5" />
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onCopyDraft(p.id, draft)}
+                        disabled={!draft}
+                        aria-label="Copy key"
+                        title={copied[p.id] ? "Copied" : "Copy"}
+                        className="inline-flex size-7 items-center justify-center rounded text-(--color-text-tertiary-spec) hover:bg-[rgba(255,255,255,0.06)] hover:text-(--color-text-primary) disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {copied[p.id] ? (
+                          <Check className="size-3.5 text-(--color-status-emerald)" />
+                        ) : (
+                          <Copy className="size-3.5" />
+                        )}
+                      </button>
+                      {state === "in_app" ? (
+                        <button
+                          type="button"
+                          onClick={() => onClearKey(p.id)}
+                          disabled={Boolean(saving[p.id])}
+                          aria-label="Delete stored key"
+                          title="Delete stored key"
+                          className="inline-flex size-7 items-center justify-center rounded text-(--color-text-tertiary-spec) hover:bg-[rgba(255,255,255,0.06)] hover:text-(--color-status-red-spec) disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
                   {isFromEnv && (
                     <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-(--color-text-tertiary-spec)">
                       <input

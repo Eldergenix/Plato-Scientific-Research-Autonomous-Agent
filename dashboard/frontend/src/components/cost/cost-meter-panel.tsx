@@ -437,19 +437,47 @@ function BudgetCard({
     [projectId, capCents],
   );
 
+  // Budget-cap entry uses a controlled inline editor rather than window.prompt
+  // so users get inline validation feedback. parsed === 0 is rejected because
+  // the backend's run_stage cost-cap enforcement treats 0 as "already over
+  // cap" (server.py:414-463) and would block every run when stop_on_exceed is on.
+  const [capDraft, setCapDraft] = React.useState<string>(
+    capCents != null ? (capCents / 100).toFixed(2) : "",
+  );
+  const [capEditorOpen, setCapEditorOpen] = React.useState(false);
+  const [capError, setCapError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!capEditorOpen) {
+      setCapDraft(capCents != null ? (capCents / 100).toFixed(2) : "");
+      setCapError(null);
+    }
+  }, [capCents, capEditorOpen]);
+
   const handleSetCap = () => {
-    if (typeof window === "undefined") return;
-    const current = capCents != null ? (capCents / 100).toFixed(2) : "";
-    const input = window.prompt("Budget cap in USD", current);
-    if (input == null) return;
-    const trimmed = input.trim();
+    setCapEditorOpen(true);
+  };
+
+  const submitCapDraft = () => {
+    const trimmed = capDraft.trim();
     if (trimmed === "") {
       persistCap(null);
+      setCapEditorOpen(false);
+      setCapError(null);
       return;
     }
     const parsed = Number.parseFloat(trimmed);
-    if (!Number.isFinite(parsed) || parsed < 0) return;
+    if (!Number.isFinite(parsed)) {
+      setCapError("Enter a number, e.g. 5.00");
+      return;
+    }
+    if (parsed <= 0) {
+      setCapError("Cap must be greater than $0 (0 would block every run).");
+      return;
+    }
     persistCap(Math.round(parsed * 100));
+    setCapEditorOpen(false);
+    setCapError(null);
   };
 
   const pct =
@@ -507,21 +535,75 @@ function BudgetCard({
         </div>
       ) : null}
 
-      <div className="flex items-center gap-2">
-        <Button variant="ghost" size="sm" onClick={handleSetCap}>
-          <Settings2 size={12} strokeWidth={1.5} />
-          {capCents != null ? "Edit cap" : "Set cap"}
-        </Button>
-        {capCents != null ? (
-          <Button
-            variant="subtle"
-            size="sm"
-            onClick={() => persistCap(null)}
-          >
-            Remove cap
+      {capEditorOpen ? (
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-(--color-text-row-meta)">$</span>
+            <input
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              min="0.01"
+              autoFocus
+              value={capDraft}
+              onChange={(e) => {
+                setCapDraft(e.target.value);
+                if (capError) setCapError(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") submitCapDraft();
+                if (e.key === "Escape") {
+                  setCapEditorOpen(false);
+                  setCapError(null);
+                }
+              }}
+              placeholder="5.00"
+              aria-label="Budget cap in USD"
+              aria-invalid={capError != null}
+              aria-describedby={capError ? "cap-error" : undefined}
+              className="w-24 rounded border border-(--color-border-card) bg-(--color-bg-card) px-2 py-0.5 text-xs"
+            />
+            <Button variant="primary" size="sm" onClick={submitCapDraft}>
+              Save
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setCapEditorOpen(false);
+                setCapError(null);
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
+          {capError ? (
+            <span
+              id="cap-error"
+              role="alert"
+              className="text-xs text-(--color-status-red-spec)"
+            >
+              {capError}
+            </span>
+          ) : null}
+        </div>
+      ) : (
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={handleSetCap}>
+            <Settings2 size={12} strokeWidth={1.5} />
+            {capCents != null ? "Edit cap" : "Set cap"}
           </Button>
-        ) : null}
-      </div>
+          {capCents != null ? (
+            <Button
+              variant="subtle"
+              size="sm"
+              onClick={() => persistCap(null)}
+            >
+              Remove cap
+            </Button>
+          ) : null}
+        </div>
+      )}
 
       {capCents != null ? (
         <label
