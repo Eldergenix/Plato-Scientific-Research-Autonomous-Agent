@@ -62,6 +62,7 @@ from .research_signals import router as research_signals_router
 from .retrieval_summary import router as retrieval_summary_router
 from .user_preferences import router as user_preferences_router
 from .idea_history import router as idea_history_router
+from .idea_transcript import router as idea_transcript_router
 from .cost_caps import router as cost_caps_router
 from .approvals import router as approvals_router, compute_blocking_approval
 
@@ -385,6 +386,9 @@ def create_app() -> FastAPI:
     app.include_router(retrieval_summary_router, prefix="/api/v1", tags=["retrieval"])
     app.include_router(user_preferences_router, prefix="/api/v1", tags=["preferences"])
     app.include_router(idea_history_router, prefix="/api/v1", tags=["idea_history"])
+    app.include_router(
+        idea_transcript_router, prefix="/api/v1", tags=["idea_transcript"]
+    )
     app.include_router(cost_caps_router, prefix="/api/v1", tags=["cost_caps"])
     app.include_router(approvals_router, prefix="/api/v1", tags=["approvals"])
 

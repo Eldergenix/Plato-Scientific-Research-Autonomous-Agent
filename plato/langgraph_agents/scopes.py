@@ -26,6 +26,7 @@ IDEA_SCOPE = FileScope(
     write=[
         "input_files/idea.md",
         "idea_generation_output/idea.log",
+        "idea_generation_output/idea_transcript.jsonl",
         "idea_generation_output/LLM_calls.txt",
         "idea_generation_output/Error.txt",
         ".history/idea_*.md",
@@ -35,10 +36,12 @@ IDEA_SCOPE = FileScope(
 
 # Hater node never persists a file of its own — the criticism flows
 # through state — but it does emit chunks into the shared streaming
-# log file the maker also writes to.
+# log file the maker also writes to, plus its own turn into the
+# structured transcript sidecar.
 IDEA_HATER_SCOPE = FileScope(
     write=[
         "idea_generation_output/idea.log",
+        "idea_generation_output/idea_transcript.jsonl",
         "idea_generation_output/LLM_calls.txt",
     ],
     read=["**/*"],

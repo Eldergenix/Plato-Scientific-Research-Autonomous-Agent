@@ -288,6 +288,17 @@ export interface ProjectUsageView {
   by_run: RunUsageRow[];
 }
 
+export interface IdeaTranscriptTurn {
+  agent: "idea_maker" | "idea_hater";
+  text: string;
+  ts: string | null;
+  iteration: number | null;
+}
+
+export interface IdeaTranscriptResponse {
+  turns: IdeaTranscriptTurn[];
+}
+
 // Iter-27 — mirror of ``plato_dashboard.domain.models.ApprovalsState``.
 // ``per_stage`` keys are stage ids; values are one of
 // ``"pending" | "approved" | "rejected" | "skipped"``.
@@ -418,6 +429,19 @@ export const api = {
    */
   async getProjectUsage(pid: string): Promise<ProjectUsageView> {
     return fetchJson<ProjectUsageView>(`/projects/${pid}/usage`);
+  },
+
+  /**
+   * Iter-6: read the structured idea-debate transcript for a project.
+   * Backend route: ``GET /api/v1/projects/{pid}/idea_transcript`` returns
+   * one entry per maker/hater turn from the JSONL sidecar that the
+   * langgraph_agents.idea nodes write alongside the streaming idea.log.
+   * Drives the IdeaStage TranscriptPane.
+   */
+  async getIdeaTranscript(pid: string): Promise<IdeaTranscriptResponse> {
+    return fetchJson<IdeaTranscriptResponse>(
+      `/projects/${pid}/idea_transcript`,
+    );
   },
 
   /**

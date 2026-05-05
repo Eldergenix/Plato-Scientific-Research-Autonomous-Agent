@@ -15,14 +15,11 @@ interface Turn {
 }
 
 // Iter-22: deleted the hardcoded SAMPLE_TURNS GW231123 ringdown narrative
-// that used to ship as the agent transcript for every project (regardless
-// of domain or whether anything had actually run). The transcript pane
-// now renders an honest empty state until a future iteration plumbs in
-// the real ``<stage>_generation_output/idea.log`` reader.
-//
-// When that reader lands, it should populate a ``Turn[]`` and the
-// ``TranscriptPane`` component below will render it without further
-// changes.
+// that used to ship as the agent transcript. Iter-6: wired the real reader.
+// The langgraph_agents.idea nodes write one JSON line per turn into
+// ``idea_generation_output/idea_transcript.jsonl``. The dashboard backend
+// exposes that file via ``GET /api/v1/projects/{pid}/idea_transcript``,
+// and we hydrate ``transcriptTurns`` from it on mount.
 
 export interface IdeaStageProps {
   projectId?: string;
@@ -46,6 +43,7 @@ export function IdeaStage({
   const [saving, setSaving] = React.useState<boolean>(false);
   const [liveOrigin, setLiveOrigin] = React.useState<"ai" | "edited" | undefined>(origin);
   const [liveEditedAt, setLiveEditedAt] = React.useState<string | undefined>(lastEditedAt);
+  const [transcriptTurns, setTranscriptTurns] = React.useState<Turn[]>([]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -64,6 +62,33 @@ export function IdeaStage({
         // Backend offline — show empty state.
       } finally {
         if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
+  // Iter-6: hydrate the agent transcript from the JSONL sidecar that
+  // langgraph_agents.idea writes per turn. Independent of the idea-text
+  // load above so a slow/missing transcript doesn't block the editor.
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await api.getIdeaTranscript(projectId);
+        if (cancelled) return;
+        setTranscriptTurns(
+          r.turns.map((t) => ({
+            agent: t.agent,
+            text: t.text,
+            // Pane renders ``ts`` as plain text; empty string is fine
+            // when the writer didn't capture it (e.g. legacy run).
+            ts: t.ts ?? "",
+          })),
+        );
+      } catch {
+        // No transcript yet — keep the empty state.
       }
     })();
     return () => {
@@ -167,7 +192,7 @@ export function IdeaStage({
             )}
           </section>
 
-          <TranscriptPane turns={[]} />
+          <TranscriptPane turns={transcriptTurns} />
         </div>
       </main>
 
@@ -215,13 +240,9 @@ function IdeaOriginPill({
 }
 
 function TranscriptPane({ turns }: { turns: Turn[] }) {
-  // Iter-22: shipped as an honest empty state. The original
-  // implementation hardcoded SAMPLE_TURNS — a 5-turn GW231123 ringdown
-  // narrative — and rendered it for every project. Now that the data
-  // source isn't wired up yet (see TODO above), we render an empty
-  // state instead of fake data. When ``<stage>_generation_output/idea.log``
-  // becomes available, the parent will pass a populated ``turns`` and
-  // this component renders them without further changes.
+  // Iter-6: turns come from idea_transcript.jsonl via getIdeaTranscript.
+  // Empty array still shows an honest empty state for projects that
+  // haven't run idea generation yet.
   if (turns.length === 0) {
     return (
       <section

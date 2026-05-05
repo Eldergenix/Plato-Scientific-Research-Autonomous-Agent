@@ -1,8 +1,47 @@
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
 from langchain_core.runnables import RunnableConfig
 
 from ..paper_agents.tools import extract_latex_block, LLM_call_stream, clean_section
 from .prompts import idea_maker_prompt, idea_hater_prompt
 from .parameters import GraphState
+
+
+def _append_transcript_turn(state: GraphState, agent: str, text: str) -> None:
+    """Append one JSON-line turn to ``idea_transcript.jsonl``.
+
+    The dashboard's IdeaStage TranscriptPane needs structured turn
+    boundaries (agent / iteration / ts / text) to render the maker-hater
+    debate, but ``idea.log`` is just concatenated streaming tokens with
+    no separator. This sidecar stays alongside it so a future reader can
+    replay the conversation cell-by-cell.
+
+    Best-effort: never raises. The pipeline is the source of truth; this
+    file is observability only.
+    """
+    files = state.get('files') or {}
+    folder = files.get('Folder')
+    if not folder:
+        return
+    try:
+        path = Path(folder) / 'idea_generation_output' / 'idea_transcript.jsonl'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        line = json.dumps(
+            {
+                "agent": agent,
+                "text": text,
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "iteration": state['idea'].get('iteration'),
+            },
+            ensure_ascii=False,
+        )
+        with open(path, 'a', encoding='utf-8') as f:
+            f.write(line + "\n")
+    except Exception:
+        # Observability writes never break the pipeline.
+        pass
 
 
 def idea_maker(state: GraphState, config: RunnableConfig):
@@ -15,6 +54,8 @@ def idea_maker(state: GraphState, config: RunnableConfig):
 
     # remove LLM added lines
     text = clean_section(text, "IDEA")
+
+    _append_transcript_turn(state, "idea_maker", text)
 
     # Build the new ``idea`` dict immutably. Mutating ``state['idea']``
     # in-place AND returning it as the partial update breaks the
@@ -52,6 +93,8 @@ def idea_hater(state: GraphState, config: RunnableConfig):
 
     # remove LLM added lines
     text = clean_section(text, "CRITIC")
+
+    _append_transcript_turn(state, "idea_hater", text)
 
     # Same immutable-update pattern as idea_maker — never mutate state
     # in-place when returning the value as the LangGraph state update.
