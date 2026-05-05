@@ -113,6 +113,26 @@ def login(response: Response, body: LoginRequest) -> dict[str, Any]:
             status_code=400,
             detail={"code": "invalid_user_id", "message": "user_id must be a non-empty string"},
         )
+    # Iter-9: validate against the canonical user-id regex BEFORE writing
+    # the cookie. Previously the only validation was Pydantic's
+    # max_length=128 + a strip() — values like ``../admin`` or ``a/b``
+    # passed and were stored in the cookie. ``extract_user_id`` then
+    # rejected them on read, but the cookie itself contained the unsafe
+    # value (and any direct cookie consumer in this module would see
+    # the raw string).
+    from ..auth import _is_safe_user_id
+
+    if not _is_safe_user_id(user_id):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "invalid_user_id",
+                "message": (
+                    "user_id must match [A-Za-z0-9_-]{1,64}; reserved "
+                    "characters (slash, dot, whitespace) are rejected."
+                ),
+            },
+        )
     response.set_cookie(
         key=_COOKIE_NAME,
         value=user_id,
@@ -130,11 +150,16 @@ def login(response: Response, body: LoginRequest) -> dict[str, Any]:
 @router.post("/auth/logout")
 def logout(response: Response) -> dict[str, Any]:
     """Clear the ``plato_user`` cookie."""
-    # Match the secure flag from login so the browser actually clears the
-    # cookie. delete_cookie ignores secure on Starlette but we set it
-    # explicitly for clarity + future-proofing.
+    # Iter-9: mirror every attribute from login so strict browsers
+    # (Safari ITP, Chrome SameSite=Lax) actually expire the cookie.
+    # Mismatched attribute sets cause Set-Cookie deletes to no-op
+    # silently in modern browsers.
     response.delete_cookie(
-        key=_COOKIE_NAME, path="/", secure=_cookie_secure()
+        key=_COOKIE_NAME,
+        path="/",
+        secure=_cookie_secure(),
+        httponly=True,
+        samesite="lax",
     )
     return {"ok": True}
 

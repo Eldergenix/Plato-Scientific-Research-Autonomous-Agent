@@ -667,9 +667,25 @@ async def _terminate_process(run_id: str, proc: mp.Process) -> None:
         except (ProcessLookupError, OSError):
             return
 
-    deadline = time.monotonic() + _SIGTERM_GRACE_S
-    while proc.is_alive() and time.monotonic() < deadline:
-        await asyncio.sleep(0.1)
+    # Iter-9: shield the grace-period wait from the surrounding task's
+    # cancellation. This function is often called from inside an
+    # ``except asyncio.CancelledError`` handler in ``_supervise``; if we
+    # don't shield, the very first ``await asyncio.sleep`` re-raises the
+    # CancelledError and we jump straight to SIGKILL, skipping the
+    # 5-second grace window. Wrapping the wait inside ``asyncio.shield``
+    # protects this awaiter only — the outer task still finishes its
+    # cancellation once we return.
+    async def _wait_for_exit() -> None:
+        deadline = time.monotonic() + _SIGTERM_GRACE_S
+        while proc.is_alive() and time.monotonic() < deadline:
+            await asyncio.sleep(0.1)
+
+    try:
+        await asyncio.shield(_wait_for_exit())
+    except asyncio.CancelledError:
+        # The outer task was cancelled while we were waiting. The
+        # subprocess may still be exiting cleanly; check is_alive below.
+        pass
 
     if proc.is_alive():
         try:
@@ -782,7 +798,12 @@ async def cancel_run(run_id: str) -> bool:
         except (asyncio.CancelledError, Exception):  # noqa: BLE001
             pass
 
-    if run.status not in ("succeeded", "failed", "cancelled"):
+    # Iter-9: guard against double-finalize. ``_supervise``'s CancelledError
+    # branch already sets status="cancelled" + finished_at before the
+    # ``await task`` above resolves, so re-stamping here would overwrite
+    # the canonical timestamp with a slightly later utcnow(). Only stamp
+    # when the supervisor hasn't recorded a terminal state yet.
+    if run.status not in ("succeeded", "failed", "cancelled") and run.finished_at is None:
         run.status = "cancelled"
         run.finished_at = utcnow()
         _write_status(run)

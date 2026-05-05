@@ -32,12 +32,18 @@ if str(_SRC) not in sys.path:
 
 
 @pytest.fixture
-def tmp_project_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def tmp_project_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[Path]:
     """Redirect Settings.project_root + keys_path to a temp directory.
 
-    ``Settings`` reads env vars on every ``get_settings()`` call (no
-    lru_cache), so setting ``PLATO_PROJECT_ROOT`` is enough.
+    Iter-9: ``get_settings`` is now ``@lru_cache``'d, so setting env
+    vars alone isn't enough — we have to bust the cache before AND
+    after the test so each one sees a fresh ``Settings()`` and the
+    next test starts clean.
     """
+    from plato_dashboard.settings import get_settings
+
     proj_root = tmp_path / "projects"
     keys_path = tmp_path / "keys.json"
     proj_root.mkdir(parents=True, exist_ok=True)
@@ -45,7 +51,13 @@ def tmp_project_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("PLATO_KEYS_PATH", str(keys_path))
     # Default each test to local mode — individual tests opt into demo.
     monkeypatch.delenv("PLATO_DEMO_MODE", raising=False)
-    return proj_root
+    get_settings.cache_clear()
+    try:
+        yield proj_root
+    finally:
+        # Iter-9: bust the cache after the test so the next one's
+        # monkeypatched env vars take effect on the next ``Settings()``.
+        get_settings.cache_clear()
 
 
 @pytest.fixture(autouse=True)

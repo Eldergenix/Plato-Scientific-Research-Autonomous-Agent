@@ -34,7 +34,10 @@ from ...state.models import Source
 
 logger = logging.getLogger(__name__)
 
-ARXIV_ENDPOINT = "http://export.arxiv.org/api/query"
+# Iter-9: arXiv 301-redirects bare HTTP to HTTPS, and httpx does not
+# follow cross-scheme redirects by default. The bare HTTP URL produced
+# silent zero-result returns in production. Always use HTTPS.
+ARXIV_ENDPOINT = "https://export.arxiv.org/api/query"
 
 # Atom feed namespaces used by the arXiv API.
 _NS = {

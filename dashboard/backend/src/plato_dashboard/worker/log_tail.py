@@ -277,6 +277,10 @@ class LogTailer:
         event = tail_line_to_event(line, self.stage, self.run_id)
         await self.bus.publish(self._channel, event)
 
+        # Iter-9: include ``stage`` on every heartbeat so per-stage
+        # consumers (progress bar, swimlane row) can route the event.
+        # Every other event in the bus carries it; heartbeats omitted
+        # the field, so they were invisible to any frontend filter.
         m = _STEP_RE.search(line)
         if m:
             await self.bus.publish(
@@ -284,6 +288,7 @@ class LogTailer:
                 {
                     "kind": "stage.heartbeat",
                     "run_id": self.run_id,
+                    "stage": self.stage,
                     "step": int(m.group("step")),
                     "total_steps": int(m.group("total")),
                 },
@@ -295,6 +300,7 @@ class LogTailer:
                 {
                     "kind": "stage.heartbeat",
                     "run_id": self.run_id,
+                    "stage": self.stage,
                     "attempt": int(m2.group("attempt")),
                     "total_attempts": int(m2.group("total")),
                 },

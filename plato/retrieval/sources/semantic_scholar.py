@@ -99,9 +99,24 @@ class SemanticScholarAdapter:
             headers["x-api-key"] = api_key
 
         async with RetrievalClient(timeout=15) as client:
+            # Iter-9: previously this swallowed every httpx.HTTPError —
+            # including 429 rate limits — before RetrievalClient's
+            # RateLimitBackoff layer could retry. Let HTTPStatusError
+            # bubble so the middleware applies its backoff; only catch
+            # genuine transport errors (network down, timeout) which
+            # are properly modelled as "no result this attempt".
             try:
                 response = await client.get(_BASE_URL, params=params, headers=headers)
-            except httpx.HTTPError:
+            except (httpx.TimeoutException, httpx.NetworkError):
+                return []
+            if response.status_code == 429:
+                # Backoff exhausted upstream; surface so the breaker can
+                # record + the orchestrator can drop this adapter for
+                # the rest of the query.
+                logger.warning(
+                    "semantic_scholar: rate-limited after backoff (429); "
+                    "skipping adapter for this call"
+                )
                 return []
             if response.status_code != 200:
                 return []

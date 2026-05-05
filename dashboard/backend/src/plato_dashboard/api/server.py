@@ -316,7 +316,7 @@ def _enforce_run_tenant(
 
 
 @asynccontextmanager
-async def _lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Single source of truth for the dashboard's logging stack. This
     # also caps LangChain / httpx / openai / langfuse loggers at
     # WARNING so the worker process doesn't drown the operator in
@@ -335,7 +335,32 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
     logger.info(
         "  demo mode: %s · auth: %s", settings.demo_mode, settings.auth
     )
-    yield
+    # Iter-9: signal readiness to /api/v1/ready once startup completes.
+    app.state.ready = True
+    try:
+        yield
+    finally:
+        # Iter-9: drain any active runs on shutdown. uvicorn used to send
+        # SIGTERM and exit while ``_run_tasks`` background supervisors
+        # were still polling, leaving orphan subprocesses and abandoned
+        # asyncio tasks that delayed the event-loop close.
+        app.state.ready = False
+        try:
+            from ..worker.run_manager import _run_tasks, cancel_run, list_active_runs
+
+            for run in list_active_runs():
+                try:
+                    await cancel_run(run.id)
+                except Exception:  # noqa: BLE001
+                    logger.exception("shutdown: cancel_run %s failed", run.id)
+            # Best-effort cancel any task still alive (no run record).
+            tasks = [t for t in _run_tasks.values() if t and not t.done()]
+            for t in tasks:
+                t.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+        except Exception:  # noqa: BLE001
+            logger.exception("shutdown drain failed; forcing exit")
 
 
 def create_app() -> FastAPI:
@@ -393,8 +418,42 @@ def create_app() -> FastAPI:
     app.include_router(approvals_router, prefix="/api/v1", tags=["approvals"])
 
     @app.get("/api/v1/health")
-    def health() -> dict:
+    async def health(bus: EventBus = Depends(get_bus)) -> dict:
+        # Iter-9: probe the bus so /health doesn't fail-open while SSE
+        # delivery is broken. A dead bus means run events never reach
+        # the dashboard but the load balancer would still route traffic
+        # here; surfacing the failure as 503 lets Railway/k8s rotate.
+        bus_ok = True
+        try:
+            # Snapshot a benign attribute that exists on both EventBus
+            # (in-memory) and RedisEventBus. We don't await any IO —
+            # ``health`` should return in <50ms — but a simple type
+            # presence check catches the "bus singleton was None" path.
+            bus_ok = bus is not None and (
+                hasattr(bus, "_channels") or hasattr(bus, "_client")
+            )
+        except Exception:  # noqa: BLE001
+            bus_ok = False
+        if not bus_ok:
+            raise HTTPException(
+                status_code=503,
+                detail={"ok": False, "code": "bus_unavailable"},
+            )
         return {"ok": True, "demo_mode": settings.is_demo}
+
+    @app.get("/api/v1/ready")
+    async def ready() -> dict:
+        # Iter-9: a separate readiness signal, distinct from the liveness
+        # /health probe. Container is "ready" once the lifespan startup
+        # completed (the static-files mount is ``app.state.frontend_ready``;
+        # if the flag is missing or False we 503 so the load balancer
+        # holds traffic until the LaTeX-bearing image finishes warming).
+        if getattr(app.state, "ready", False):
+            return {"ok": True}
+        raise HTTPException(
+            status_code=503,
+            detail={"ok": False, "code": "warming_up"},
+        )
 
     @app.get("/api/v1/capabilities", response_model=Capabilities)
     def capabilities(caps: Capabilities = Depends(get_capabilities)) -> Capabilities:
@@ -410,12 +469,32 @@ def create_app() -> FastAPI:
         body: CreateProjectRequest,
         request: Request,
         store: ProjectStore = Depends(_get_store),
+        caps: Capabilities = Depends(get_capabilities),
     ) -> Project:
         # Iter-24: bind the new project to the requester. Required-mode
         # forces a non-None user_id (``_get_store`` already 401s on
         # missing header, so by the time we land here ``user_id`` is
         # set). In not-required-mode the project gets ``user_id=None``
         # which keeps the legacy single-user shape on disk.
+        # Iter-9: enforce a per-user project ceiling in demo mode so a
+        # single visitor on the public Spaces install can't spam unlimited
+        # project dirs (each consumes disk + accumulates against the
+        # session budget in isolation, evading the run-level cap).
+        if caps.is_demo:
+            existing = len(store.list_projects())
+            demo_max = int(get_settings().demo_max_projects or 5)
+            if existing >= demo_max:
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "code": "demo_project_limit",
+                        "message": (
+                            f"Demo mode allows at most {demo_max} projects "
+                            f"per user; you have {existing}. Delete an "
+                            f"old project before creating another."
+                        ),
+                    },
+                )
         return store.create(
             name=body.name,
             initial_data_description=body.data_description,
@@ -629,12 +708,31 @@ def create_app() -> FastAPI:
     ) -> StreamingResponse:
         _enforce_run_tenant(store.project_dir(pid), run_id, _get_user_id(request))
 
+        # Iter-9: race a 20-second keepalive against the bus subscription
+        # so any proxy in front of us (Cloudflare, Railway, nginx) doesn't
+        # cut the connection on idle. Each yielded ``: keepalive`` comment
+        # is a valid SSE no-op the browser ignores; without it, an idle
+        # run between ``stage.started`` and ``stage.finished`` would silently
+        # disconnect after ~30s and the EventSource would re-subscribe
+        # (losing any events emitted during the gap).
         async def generator() -> AsyncIterator[bytes]:
             yield b": connected\n\n"
-            async for evt in bus.subscribe(f"run:{run_id}"):
+            sub = bus.subscribe(f"run:{run_id}").__aiter__()
+            keepalive_seconds = 20
+            while True:
+                try:
+                    evt = await asyncio.wait_for(
+                        sub.__anext__(), timeout=keepalive_seconds
+                    )
+                except asyncio.TimeoutError:
+                    yield b": keepalive\n\n"
+                    continue
+                except StopAsyncIteration:
+                    return
                 yield f"data: {json.dumps(evt)}\n\n".encode()
                 if evt.get("kind") == "stage.finished":
                     return
+
         return StreamingResponse(
             generator(),
             media_type="text/event-stream",
@@ -700,7 +798,28 @@ def create_app() -> FastAPI:
         return keys.status().model_dump()
 
     @app.put("/api/v1/keys")
-    def update_keys(payload: KeysPayload, keys: KeyStore = Depends(_get_keys)) -> dict:
+    def update_keys(
+        payload: KeysPayload,
+        keys: KeyStore = Depends(_get_keys),
+        caps: Capabilities = Depends(get_capabilities),
+    ) -> dict:
+        # Iter-9: refuse key writes in demo mode. The KeyStore is a single
+        # shared file on the public Spaces install (no per-user
+        # isolation); without this gate, any demo visitor could overwrite
+        # the keys every other concurrent visitor reads, leaking their
+        # own keys into the shared blob and disrupting other sessions.
+        if caps.is_demo:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "key_write_blocked_in_demo",
+                    "message": (
+                        "Key updates are disabled in demo mode — the key "
+                        "store is shared across visitors. Run the dashboard "
+                        "locally to set your own keys."
+                    ),
+                },
+            )
         keys.save(payload)
         return keys.status().model_dump()
 
