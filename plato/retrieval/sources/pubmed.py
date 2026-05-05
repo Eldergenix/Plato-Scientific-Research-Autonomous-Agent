@@ -204,7 +204,11 @@ class PubMedAdapter:
         the adapter still returns the metadata-only Sources rather than
         propagating the failure.
         """
-        retmax = max(1, int(limit))
+        # Iter-10: NCBI E-utilities hard-caps ``retmax`` at 9999. Passing
+        # 10_000+ produces an HTTP 400 ("retmax must be between 1 and 9999")
+        # which the caller had no way to anticipate from the public Adapter
+        # contract. Clamp here.
+        retmax = max(1, min(int(limit), 9999))
         api_key = _read_api_key()
         key_suffix = f"&api_key={quote_plus(api_key)}" if api_key else ""
 

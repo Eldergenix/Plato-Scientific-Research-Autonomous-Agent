@@ -133,9 +133,11 @@ class ADSAdapter:
                 self._warned_no_token = True
             return []
 
+        # Iter-10: ADS hard-caps ``rows`` at 2000. Passing more produces
+        # an API error rather than a clamped success.
         params = {
             "q": query,
-            "rows": str(limit),
+            "rows": str(max(1, min(int(limit), 2000))),
             "fl": _ADS_FIELDS,
         }
         url = f"{_ADS_SEARCH_URL}?{urlencode(params)}"

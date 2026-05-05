@@ -25,6 +25,23 @@ _OPENALEX_BASE_URL = "https://api.openalex.org/works"
 _OPENALEX_WORK_PREFIX = "https://openalex.org/"
 
 
+def _polite_pool_mailto() -> str:
+    """OpenAlex polite-pool contact address.
+
+    Iter-10: deployers can override via ``PLATO_OPENALEX_MAILTO``.
+    Falls back to a project-generic contact so anonymous deploys still
+    benefit from the polite pool. The value is a plain string identifier;
+    OpenAlex doesn't actually email it. ``mailto`` syntax is a historical
+    convention from CrossRef etiquette.
+    """
+    import os
+
+    return (
+        os.environ.get("PLATO_OPENALEX_MAILTO", "").strip()
+        or "plato.astropilot.ai@gmail.com"
+    )
+
+
 def _reconstruct_abstract(inverted: dict[str, list[int]] | None) -> str | None:
     """Reconstruct an abstract from OpenAlex's inverted index format.
 
@@ -102,7 +119,11 @@ def _map_work_to_source(work: dict[str, Any]) -> Source | None:
     if not w_id or not title:
         return None
 
-    doi = normalize_doi(work.get("doi"))
+    # Iter-10: also consult ``ids.doi`` — OpenAlex sometimes returns
+    # ``null`` at the top-level ``doi`` field but populates the URL
+    # form (``https://doi.org/...``) inside the ``ids`` sub-dict.
+    raw_doi = work.get("doi") or (work.get("ids") or {}).get("doi")
+    doi = normalize_doi(raw_doi)
     abstract = _reconstruct_abstract(work.get("abstract_inverted_index"))
     authors = _extract_authors(work.get("authorships"))
     year = _coerce_year(work.get("publication_year"))
@@ -137,7 +158,15 @@ class OpenAlexAdapter:
     async def search(self, query: str, limit: int) -> list[Source]:
         """Search OpenAlex for ``query`` and return up to ``limit`` Sources."""
         per_page = max(1, min(int(limit), 200))
-        url = f"{self._base_url}?search={quote_plus(query)}&per-page={per_page}"
+        # Iter-10: include ``mailto`` to land in the OpenAlex polite pool.
+        # Anonymous requests are rate-limited to ~10 req/s and deprioritised
+        # at peak load; the polite pool is free capacity for any client
+        # that identifies itself.
+        mailto = _polite_pool_mailto()
+        url = (
+            f"{self._base_url}?search={quote_plus(query)}"
+            f"&per-page={per_page}&mailto={quote_plus(mailto)}"
+        )
 
         async with RetrievalClient(timeout=self._timeout) as client:
             response = await client.get(url)
