@@ -271,9 +271,15 @@ def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(title="Plato Dashboard API", version="0.1.0", lifespan=_lifespan)
 
+    # Static allowlist covers production / explicit configurations.
+    # ``allow_origin_regex`` additionally accepts any localhost or
+    # 127.0.0.1 port so dev workflows survive port conflicts (Next.js
+    # falling through to 3001/3002/… when the default is taken) without
+    # requiring a settings edit + restart per port.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(settings.cors_origins),
+        allow_origin_regex=r"^http://(?:localhost|127\.0\.0\.1)(?::\d+)?$",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
