@@ -82,4 +82,40 @@ def is_suspicious(text: str, threshold: int = 1) -> bool:
     return len(detect_injection_signals(text)) >= threshold
 
 
-__all__ = ["wrap_external", "detect_injection_signals", "is_suspicious"]
+class PromptInjectionDetected(ValueError):
+    """Raised when external text trips a configured-to-block injection signal.
+
+    Carries the list of triggered signals so callers can log/observe what
+    pattern triggered the block — useful for tuning thresholds and writing
+    targeted regression tests.
+    """
+
+    def __init__(self, signals: list[str], kind: str = "external_text") -> None:
+        self.signals = signals
+        self.kind = kind
+        super().__init__(
+            f"Prompt-injection signals detected in {kind}: {', '.join(signals)}"
+        )
+
+
+def assert_safe(text: str, kind: str = "external_text", threshold: int = 2) -> None:
+    """Block-mode counterpart to ``is_suspicious``.
+
+    Raises :class:`PromptInjectionDetected` when the signal count meets or
+    exceeds ``threshold``. Default threshold is 2 (vs. 1 for is_suspicious)
+    to require a higher-confidence pattern before refusing to call the LLM —
+    a single base64-shaped string in a legitimate paper isn't enough on its
+    own. Callers that want strict-mode block-on-any-signal pass threshold=1.
+    """
+    signals = detect_injection_signals(text)
+    if len(signals) >= threshold:
+        raise PromptInjectionDetected(signals, kind=kind)
+
+
+__all__ = [
+    "wrap_external",
+    "detect_injection_signals",
+    "is_suspicious",
+    "assert_safe",
+    "PromptInjectionDetected",
+]
