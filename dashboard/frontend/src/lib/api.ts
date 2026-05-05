@@ -258,6 +258,36 @@ export interface CostCapState {
   stop_on_exceed: boolean;
 }
 
+// Iter-6 — mirror of ``plato_dashboard.worker.token_tracker.ProjectUsage``.
+// Fed into the costs page "By model" / "By day" tabs.
+export interface StageTokensView {
+  model: string | null;
+  input_tokens: number;
+  output_tokens: number;
+  cost_cents: number;
+}
+
+export interface RunUsageRow {
+  run_id: string;
+  workflow: string;
+  status: string;
+  started_at: string | null;
+  ended_at: string | null;
+  tokens_in: number;
+  tokens_out: number;
+  cost_cents: number;
+  model: string | null;
+}
+
+export interface ProjectUsageView {
+  total_input: number;
+  total_output: number;
+  total_cost_cents: number;
+  by_stage: Record<string, StageTokensView>;
+  by_model: Record<string, StageTokensView>;
+  by_run: RunUsageRow[];
+}
+
 // Iter-27 — mirror of ``plato_dashboard.domain.models.ApprovalsState``.
 // ``per_stage`` keys are stage ids; values are one of
 // ``"pending" | "approved" | "rejected" | "skipped"``.
@@ -378,6 +408,16 @@ export const api = {
    */
   async listIdeaHistory(pid: string): Promise<IdeaHistoryResponse> {
     return fetchJson(`/projects/${pid}/idea_history`);
+  },
+
+  /**
+   * Iter-6: read aggregate token + cost usage for a project.
+   * Backend route: ``GET /api/v1/projects/{pid}/usage`` which fans out to
+   * ``token_tracker.aggregate_project_usage``. Drives the costs page
+   * "By model" + "By day" tabs.
+   */
+  async getProjectUsage(pid: string): Promise<ProjectUsageView> {
+    return fetchJson<ProjectUsageView>(`/projects/${pid}/usage`);
   },
 
   /**

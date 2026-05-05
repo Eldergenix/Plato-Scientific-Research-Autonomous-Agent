@@ -73,6 +73,76 @@ def test_aggregate_project_usage_sums_across_stages(tmp_path: Path) -> None:
     assert usage.by_stage["method"].input_tokens == 2000
 
 
+def test_aggregate_project_usage_populates_by_run(tmp_path: Path) -> None:
+    """Iter-6: by_run was declared but never filled — costs page "By day"
+    tab depended on this list to bucket runs into UTC days. We now walk
+    ``<project>/runs/<run_id>/manifest.json`` and emit one row each.
+    """
+    import json
+
+    proj = tmp_path / "prj_with_runs"
+    runs = proj / "runs"
+    runs.mkdir(parents=True)
+    (runs / "run_a").mkdir()
+    (runs / "run_a" / "manifest.json").write_text(
+        json.dumps(
+            {
+                "run_id": "run_a",
+                "workflow": "idea",
+                "status": "success",
+                "started_at": "2026-05-04T10:00:00+00:00",
+                "ended_at": "2026-05-04T10:05:00+00:00",
+                "tokens_in": 1000,
+                "tokens_out": 200,
+                "cost_usd": 0.0125,  # 1.25c
+                "models": {"main": "gpt-5"},
+            }
+        )
+    )
+    (runs / "run_b").mkdir()
+    (runs / "run_b" / "manifest.json").write_text(
+        json.dumps(
+            {
+                "run_id": "run_b",
+                "workflow": "method",
+                "status": "running",
+                "started_at": "2026-05-05T03:00:00+00:00",
+                "ended_at": None,
+                "tokens_in": 50,
+                "tokens_out": 25,
+                "cost_usd": 0,
+                "models": {},
+            }
+        )
+    )
+    # A non-run directory under runs/ should be ignored.
+    (runs / "scratch").mkdir()
+    (runs / "scratch" / "notes.txt").write_text("not a run")
+
+    usage = aggregate_project_usage(proj)
+    assert len(usage.by_run) == 2
+
+    by_id = {r["run_id"]: r for r in usage.by_run}
+    assert by_id["run_a"]["model"] == "gpt-5"
+    assert by_id["run_a"]["cost_cents"] == 1
+    assert by_id["run_a"]["started_at"] == "2026-05-04T10:00:00+00:00"
+    assert by_id["run_b"]["model"] is None
+    assert by_id["run_b"]["status"] == "running"
+
+
+def test_aggregate_project_usage_skips_torn_manifest(tmp_path: Path) -> None:
+    """A truncated/garbage manifest.json shouldn't crash aggregation."""
+    proj = tmp_path / "prj_torn"
+    runs = proj / "runs"
+    runs.mkdir(parents=True)
+    (runs / "run_x").mkdir()
+    (runs / "run_x" / "manifest.json").write_text("{not json")
+
+    usage = aggregate_project_usage(proj)
+    # No record produced, but the call itself must succeed.
+    assert usage.by_run == []
+
+
 def test_record_tokens_delta_updates_live_ledger() -> None:
     clear_run_ledger()
     record_tokens_delta("run_a", "gpt-5", 1000, 200)

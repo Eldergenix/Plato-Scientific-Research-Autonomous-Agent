@@ -11,10 +11,9 @@ import {
   Plus,
   X,
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, type ProjectUsageView } from "@/lib/api";
 import type { Project } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Pill } from "@/components/ui/pill";
 import { formatCost, formatTokens, cn } from "@/lib/utils";
 
 type SortKey = "name" | "createdAt" | "stagesRun" | "tokens" | "cost";
@@ -258,6 +257,86 @@ export default function CostsPage() {
   const isLoading = projects === null;
   const isEmpty = !isLoading && (projects?.length ?? 0) === 0;
 
+  // Iter-6: real per-model + per-day aggregations. Only fetch when the
+  // user actually opens one of the non-project tabs to avoid an N+1 burst
+  // of /usage calls on first page load.
+  const [usageMap, setUsageMap] = React.useState<Map<string, ProjectUsageView>>(
+    new Map(),
+  );
+  const [usageLoading, setUsageLoading] = React.useState(false);
+
+  React.useEffect(() => {
+    if (tab === "project") return;
+    if (!projects || projects.length === 0) return;
+    if (usageMap.size === projects.length) return; // already fetched
+    let cancelled = false;
+    setUsageLoading(true);
+    Promise.all(
+      projects.map((p) =>
+        api.getProjectUsage(p.id).catch(() => null),
+      ),
+    )
+      .then((results) => {
+        if (cancelled) return;
+        const next = new Map<string, ProjectUsageView>();
+        projects.forEach((p, i) => {
+          const r = results[i];
+          if (r) next.set(p.id, r);
+        });
+        setUsageMap(next);
+      })
+      .finally(() => {
+        if (!cancelled) setUsageLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, projects, usageMap.size]);
+
+  const byModelRows = React.useMemo(() => {
+    const acc = new Map<
+      string,
+      { input: number; output: number; cost: number }
+    >();
+    for (const u of usageMap.values()) {
+      for (const [model, st] of Object.entries(u.by_model)) {
+        const cur = acc.get(model) ?? { input: 0, output: 0, cost: 0 };
+        cur.input += st.input_tokens;
+        cur.output += st.output_tokens;
+        cur.cost += st.cost_cents;
+        acc.set(model, cur);
+      }
+    }
+    return Array.from(acc.entries())
+      .map(([model, v]) => ({ model, ...v }))
+      .sort((a, b) => b.cost - a.cost);
+  }, [usageMap]);
+
+  const byDayRows = React.useMemo(() => {
+    const acc = new Map<
+      string,
+      { runs: number; tokens: number; cost: number }
+    >();
+    for (const u of usageMap.values()) {
+      for (const r of u.by_run) {
+        if (!r.started_at) continue;
+        // Bucket on UTC YYYY-MM-DD; the timeline ships from the start_at
+        // ISO timestamp, which is already TZ-aware (manifest writer uses
+        // datetime.now(timezone.utc)).
+        const day = r.started_at.slice(0, 10);
+        if (!day) continue;
+        const cur = acc.get(day) ?? { runs: 0, tokens: 0, cost: 0 };
+        cur.runs += 1;
+        cur.tokens += r.tokens_in + r.tokens_out;
+        cur.cost += r.cost_cents;
+        acc.set(day, cur);
+      }
+    }
+    return Array.from(acc.entries())
+      .map(([day, v]) => ({ day, ...v }))
+      .sort((a, b) => b.day.localeCompare(a.day));
+  }, [usageMap]);
+
   return (
     <div className="min-h-screen bg-(--color-bg-page) px-6 py-8">
       <div className="mx-auto flex max-w-7xl flex-col gap-6">
@@ -297,13 +376,16 @@ export default function CostsPage() {
           <div className="surface-linear-card px-4 py-3 text-[13px] text-(--color-status-red)">{error}</div>
         )}
 
-        {tab !== "project" ? (
-          <section className="surface-linear-card flex items-center justify-between gap-3 p-6">
-            <div className="text-[13px] text-(--color-text-tertiary-spec)">
-              Coming soon — {tab === "model" ? "per-model" : "per-day"} aggregation ships in Phase 4.
-            </div>
-            <Pill tone="amber">TODO</Pill>
-          </section>
+        {tab === "model" ? (
+          <ByModelSection
+            rows={byModelRows}
+            loading={usageLoading && usageMap.size === 0}
+          />
+        ) : tab === "day" ? (
+          <ByDaySection
+            rows={byDayRows}
+            loading={usageLoading && usageMap.size === 0}
+          />
         ) : isEmpty ? (
           <EmptyState />
         ) : (
@@ -538,6 +620,180 @@ function EmptyState() {
           <Plus className="size-3.5" /> Create project
         </Button>
       </a>
+    </section>
+  );
+}
+
+// Iter-6 — per-model breakdown across all visible projects. Sums each
+// project's ``by_model`` dict from /usage. Empty rows = LLM_calls.txt
+// has no model attribution yet (legacy paper-agents stages).
+const MODEL_GRID = "minmax(0,2fr) 1fr 1fr 1fr";
+
+function ByModelSection({
+  rows,
+  loading,
+}: {
+  rows: { model: string; input: number; output: number; cost: number }[];
+  loading: boolean;
+}) {
+  if (loading) {
+    return (
+      <section className="surface-linear-card overflow-hidden">
+        <div
+          className="grid items-center gap-3 border-b border-(--color-border-card) px-4"
+          style={{ height: 36, gridTemplateColumns: MODEL_GRID }}
+        >
+          <div className="text-[12px] uppercase tracking-wide text-(--color-text-quaternary-spec)">Model</div>
+          <div className="text-[12px] uppercase tracking-wide text-(--color-text-quaternary-spec)">Input</div>
+          <div className="text-[12px] uppercase tracking-wide text-(--color-text-quaternary-spec)">Output</div>
+          <div className="text-right text-[12px] uppercase tracking-wide text-(--color-text-quaternary-spec)">Cost</div>
+        </div>
+        {[0, 1, 2].map((i) => (
+          <div
+            key={i}
+            className="grid items-center gap-3 border-b border-(--color-border-card) px-4 last:border-b-0"
+            style={{ height: 48, gridTemplateColumns: MODEL_GRID }}
+          >
+            <SkeletonBar w="50%" />
+            <SkeletonBar w="35%" />
+            <SkeletonBar w="35%" />
+            <SkeletonBar w="35%" align="right" />
+          </div>
+        ))}
+      </section>
+    );
+  }
+  if (rows.length === 0) {
+    return (
+      <section
+        className="surface-linear-card flex flex-col items-center justify-center gap-2 px-6 py-12 text-center"
+        data-testid="costs-by-model-empty"
+      >
+        <p className="text-[13px] text-(--color-text-tertiary-spec)">
+          No model-attributed usage yet.
+        </p>
+        <p className="max-w-md text-[12px] text-(--color-text-quaternary-spec)">
+          Per-model totals appear once a stage emits LLM call records with a
+          ``model=`` field. Older paper-agent stages don't yet — see{" "}
+          <code className="font-mono text-[11px]">paper_agents/tools.py</code>.
+        </p>
+      </section>
+    );
+  }
+  return (
+    <section className="surface-linear-card overflow-hidden" data-testid="costs-by-model">
+      <div
+        className="grid items-center gap-3 border-b border-(--color-border-card) px-4"
+        style={{ height: 36, gridTemplateColumns: MODEL_GRID }}
+      >
+        <div className="text-[12px] uppercase tracking-wide text-(--color-text-quaternary-spec)">Model</div>
+        <div className="text-[12px] uppercase tracking-wide text-(--color-text-quaternary-spec)">Input tokens</div>
+        <div className="text-[12px] uppercase tracking-wide text-(--color-text-quaternary-spec)">Output tokens</div>
+        <div className="text-right text-[12px] uppercase tracking-wide text-(--color-text-quaternary-spec)">Cost</div>
+      </div>
+      {rows.map((r) => (
+        <div
+          key={r.model}
+          className="grid items-center gap-3 border-b border-(--color-border-card) px-4 last:border-b-0"
+          style={{ height: 48, gridTemplateColumns: MODEL_GRID }}
+        >
+          <div className="truncate font-mono text-[13px] text-(--color-text-row-title)">
+            {r.model}
+          </div>
+          <div className="text-[13px] text-(--color-text-secondary-spec)">{formatTokens(r.input)}</div>
+          <div className="text-[13px] text-(--color-text-secondary-spec)">{formatTokens(r.output)}</div>
+          <div className="text-right font-mono text-[13px] tabular-nums text-(--color-text-primary-strong)">
+            {formatCost(r.cost)}
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+// Iter-6 — per-day breakdown, bucketing each run's started_at into a
+// UTC day. Approximate (we attribute the whole run's cost to its start
+// day even though it might span midnight) but accurate enough for the
+// at-a-glance "where did the spend happen?" question.
+const DAY_GRID = "minmax(0,1.5fr) 1fr 1fr 1fr";
+
+function ByDaySection({
+  rows,
+  loading,
+}: {
+  rows: { day: string; runs: number; tokens: number; cost: number }[];
+  loading: boolean;
+}) {
+  if (loading) {
+    return (
+      <section className="surface-linear-card overflow-hidden">
+        <div
+          className="grid items-center gap-3 border-b border-(--color-border-card) px-4"
+          style={{ height: 36, gridTemplateColumns: DAY_GRID }}
+        >
+          <div className="text-[12px] uppercase tracking-wide text-(--color-text-quaternary-spec)">Day (UTC)</div>
+          <div className="text-[12px] uppercase tracking-wide text-(--color-text-quaternary-spec)">Runs</div>
+          <div className="text-[12px] uppercase tracking-wide text-(--color-text-quaternary-spec)">Tokens</div>
+          <div className="text-right text-[12px] uppercase tracking-wide text-(--color-text-quaternary-spec)">Cost</div>
+        </div>
+        {[0, 1, 2].map((i) => (
+          <div
+            key={i}
+            className="grid items-center gap-3 border-b border-(--color-border-card) px-4 last:border-b-0"
+            style={{ height: 48, gridTemplateColumns: DAY_GRID }}
+          >
+            <SkeletonBar w="40%" />
+            <SkeletonBar w="20%" />
+            <SkeletonBar w="35%" />
+            <SkeletonBar w="35%" align="right" />
+          </div>
+        ))}
+      </section>
+    );
+  }
+  if (rows.length === 0) {
+    return (
+      <section
+        className="surface-linear-card flex flex-col items-center justify-center gap-2 px-6 py-12 text-center"
+        data-testid="costs-by-day-empty"
+      >
+        <p className="text-[13px] text-(--color-text-tertiary-spec)">
+          No runs recorded yet.
+        </p>
+        <p className="max-w-md text-[12px] text-(--color-text-quaternary-spec)">
+          Per-day spend appears once any run completes and writes its
+          manifest.json with a started_at timestamp.
+        </p>
+      </section>
+    );
+  }
+  return (
+    <section className="surface-linear-card overflow-hidden" data-testid="costs-by-day">
+      <div
+        className="grid items-center gap-3 border-b border-(--color-border-card) px-4"
+        style={{ height: 36, gridTemplateColumns: DAY_GRID }}
+      >
+        <div className="text-[12px] uppercase tracking-wide text-(--color-text-quaternary-spec)">Day (UTC)</div>
+        <div className="text-[12px] uppercase tracking-wide text-(--color-text-quaternary-spec)">Runs</div>
+        <div className="text-[12px] uppercase tracking-wide text-(--color-text-quaternary-spec)">Tokens</div>
+        <div className="text-right text-[12px] uppercase tracking-wide text-(--color-text-quaternary-spec)">Cost</div>
+      </div>
+      {rows.map((r) => (
+        <div
+          key={r.day}
+          className="grid items-center gap-3 border-b border-(--color-border-card) px-4 last:border-b-0"
+          style={{ height: 48, gridTemplateColumns: DAY_GRID }}
+        >
+          <div className="font-mono text-[13px] text-(--color-text-row-title)">
+            {r.day}
+          </div>
+          <div className="text-[13px] text-(--color-text-secondary-spec)">{r.runs}</div>
+          <div className="text-[13px] text-(--color-text-secondary-spec)">{formatTokens(r.tokens)}</div>
+          <div className="text-right font-mono text-[13px] tabular-nums text-(--color-text-primary-strong)">
+            {formatCost(r.cost)}
+          </div>
+        </div>
+      ))}
     </section>
   );
 }

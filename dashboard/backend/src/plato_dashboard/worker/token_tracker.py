@@ -262,7 +262,13 @@ def _stage_log_path(project_dir: Path, stage: str) -> Path:
 
 
 def aggregate_project_usage(project_dir: Path) -> ProjectUsage:
-    """Aggregate token usage + cost across all stages of a project."""
+    """Aggregate token usage + cost across all stages of a project.
+
+    Also populates ``by_run`` by walking ``<project_dir>/runs/<run_id>/manifest.json``
+    so the dashboard ``costs`` page can build a per-day timeline. ``by_run``
+    used to be declared on the dataclass but never filled in — the API surfaced
+    an empty list and the UI showed a "Coming soon" pill on the day tab.
+    """
     usage = ProjectUsage()
     for stage in _STAGES:
         path = _stage_log_path(project_dir, stage)
@@ -281,6 +287,47 @@ def aggregate_project_usage(project_dir: Path) -> ProjectUsage:
         usage.total_input += stage_total.input_tokens
         usage.total_output += stage_total.output_tokens
         usage.total_cost_cents += stage_total.cost_cents
+
+    # Per-run records for the "By day" / "By run" timeline. Each manifest.json
+    # is the source of truth for a run's totals — we don't recompute from
+    # LLM_calls.txt because the manifest already aggregated across stages
+    # via ManifestRecorder.add_tokens.
+    runs_dir = project_dir / "runs"
+    if runs_dir.is_dir():
+        for run_sub in sorted(runs_dir.iterdir()):
+            if not run_sub.is_dir():
+                continue
+            manifest_path = run_sub / "manifest.json"
+            if not manifest_path.is_file():
+                continue
+            try:
+                data = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if not isinstance(data, dict):
+                continue
+            cost_usd = data.get("cost_usd") or 0
+            try:
+                cost_cents = int(round(float(cost_usd) * 100))
+            except (TypeError, ValueError):
+                cost_cents = 0
+            models = data.get("models") or {}
+            primary_model = (
+                next(iter(models.values()), None) if isinstance(models, dict) else None
+            )
+            usage.by_run.append(
+                {
+                    "run_id": data.get("run_id") or run_sub.name,
+                    "workflow": data.get("workflow") or "unknown",
+                    "status": data.get("status") or "unknown",
+                    "started_at": data.get("started_at"),
+                    "ended_at": data.get("ended_at"),
+                    "tokens_in": int(data.get("tokens_in") or 0),
+                    "tokens_out": int(data.get("tokens_out") or 0),
+                    "cost_cents": cost_cents,
+                    "model": primary_model,
+                }
+            )
     return usage
 
 
