@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { useParams } from "next/navigation";
+import { Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { ClarifierStep } from "@/components/clarifier/clarifier-step";
 import {
   ClarifyingQuestionsModal,
@@ -35,10 +36,9 @@ async function fetchOptional<T>(url: string): Promise<T | null> {
  * Page
  * ---------------------------------------------------------------------------*/
 
-// TODO(i18n+seo): convert to server-wrapper pattern (see ./literature/page.tsx).
-export default function ClarifyPage() {
-  const params = useParams<{ runId: string }>();
-  const runId = params?.runId ?? "";
+function ClarifyPageInner() {
+  const sp = useSearchParams();
+  const runId = sp.get("runId") ?? "";
 
   const [loadable, setLoadable] = React.useState<Loadable<ClarificationsPayload>>(
     { state: "loading" },
@@ -152,5 +152,13 @@ export default function ClarifyPage() {
       <RunDetailNav runId={runId} />
       {content}
     </main>
+  );
+}
+
+export default function ClarifyPage() {
+  return (
+    <Suspense fallback={null}>
+      <ClarifyPageInner />
+    </Suspense>
   );
 }

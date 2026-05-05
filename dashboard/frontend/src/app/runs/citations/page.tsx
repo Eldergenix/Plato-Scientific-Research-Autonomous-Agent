@@ -1,12 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { use as usePromise } from "react";
+import { Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import {
-  CritiquePanel,
-  type ReviewsPayload,
-} from "@/components/review/critique-panel";
-import { RevisionCounter } from "@/components/review/revision-counter";
+  CitationGraphView,
+  type CitationGraphPayload,
+} from "@/components/citations/citation-graph-view";
 import { RunDetailNav } from "@/components/manifest/run-detail-nav";
 
 const API_BASE =
@@ -32,9 +32,7 @@ async function fetchOptional<T>(path: string): Promise<Loadable<T>> {
     };
   }
   if (resp.status === 404) return { kind: "missing" };
-  if (!resp.ok) {
-    return { kind: "error", message: `HTTP ${resp.status}` };
-  }
+  if (!resp.ok) return { kind: "error", message: `HTTP ${resp.status}` };
   try {
     const data = (await resp.json()) as T;
     return { kind: "ready", data };
@@ -46,29 +44,33 @@ async function fetchOptional<T>(path: string): Promise<Loadable<T>> {
   }
 }
 
-interface RunReviewsParams {
-  runId: string;
-}
+const EMPTY_PAYLOAD: CitationGraphPayload = {
+  seeds: [],
+  expanded: [],
+  edges: [],
+  stats: {
+    seed_count: 0,
+    expanded_count: 0,
+    edge_count: 0,
+    duplicates_filtered: 0,
+  },
+};
 
-// TODO(i18n+seo): convert to server-wrapper pattern (see ./literature/page.tsx).
-export default function RunReviewsPage({
-  params,
-}: {
-  params: Promise<RunReviewsParams>;
-}) {
-  // Next.js 15 dynamic-route params are a Promise; unwrap with React.use.
-  const { runId } = usePromise(params);
-
-  const [reviews, setReviews] = React.useState<Loadable<ReviewsPayload>>({
+function CitationsPageInner() {
+  const sp = useSearchParams();
+  const runId = sp.get("runId") ?? "";
+  const [state, setState] = React.useState<Loadable<CitationGraphPayload>>({
     kind: "loading",
   });
 
   React.useEffect(() => {
+    if (!runId) return;
     let cancelled = false;
-    setReviews({ kind: "loading" });
-    void fetchOptional<ReviewsPayload>(`/runs/${runId}/critiques`).then((r) => {
-      if (cancelled) return;
-      setReviews(r);
+    setState({ kind: "loading" });
+    void fetchOptional<CitationGraphPayload>(
+      `/runs/${runId}/citation_graph`,
+    ).then((s) => {
+      if (!cancelled) setState(s);
     });
     return () => {
       cancelled = true;
@@ -76,11 +78,11 @@ export default function RunReviewsPage({
   }, [runId]);
 
   return (
-    <div className="min-h-screen bg-(--color-bg-page) px-6 py-8">
+    <div className="min-h-screen bg-(--color-bg-page) px-6 py-8 text-(--color-text-primary)">
       <div className="mx-auto flex max-w-5xl flex-col gap-6">
         <header
           className="surface-linear-card flex flex-col gap-1 px-4 py-3"
-          style={{ border: "1px solid var(--color-border-card)" }}
+          data-testid="citations-page-header"
         >
           <h1
             className="text-(--color-text-primary-strong)"
@@ -91,7 +93,7 @@ export default function RunReviewsPage({
               letterSpacing: "-0.5px",
             }}
           >
-            Run reviews
+            Citation graph
           </h1>
           <p className="font-mono text-[12px] text-(--color-text-row-meta)">
             {runId}
@@ -100,65 +102,57 @@ export default function RunReviewsPage({
 
         <RunDetailNav runId={runId} />
 
-        <ReviewsSection state={reviews} />
+        <Body state={state} />
       </div>
     </div>
   );
 }
 
-function ReviewsSection({ state }: { state: Loadable<ReviewsPayload> }) {
-  if (state.kind === "loading") {
-    return (
-      <>
-        <PlaceholderCard label="Revision" message="Loading revision state…" />
-        <PlaceholderCard label="Reviewer panel" message="Loading critiques…" />
-      </>
-    );
-  }
-  if (state.kind === "missing") {
-    return (
-      <PlaceholderCard
-        label="Reviewer panel"
-        message="No critiques written for this run yet."
-      />
-    );
-  }
-  if (state.kind === "error") {
-    return (
-      <PlaceholderCard
-        label="Reviewer panel"
-        message={`Failed to load critiques: ${state.message}`}
-        tone="error"
-      />
-    );
-  }
-
+export default function CitationsPage() {
   return (
-    <>
-      <RevisionCounter state={state.data.revision_state} />
-      <CritiquePanel payload={state.data} />
-    </>
+    <Suspense fallback={null}>
+      <CitationsPageInner />
+    </Suspense>
   );
 }
 
-function PlaceholderCard({
-  label,
+function Body({ state }: { state: Loadable<CitationGraphPayload> }) {
+  if (state.kind === "loading") {
+    return (
+      <Placeholder
+        message="Loading citation graph…"
+        testId="citations-loading"
+      />
+    );
+  }
+  if (state.kind === "missing") {
+    // Backend returns 404 only when the run dir is gone — fall back to the
+    // empty-state card the view itself renders for "no graph computed".
+    return <CitationGraphView payload={EMPTY_PAYLOAD} />;
+  }
+  if (state.kind === "error") {
+    return (
+      <Placeholder
+        message={`Failed to load citation graph: ${state.message}`}
+        tone="error"
+        testId="citations-error"
+      />
+    );
+  }
+  return <CitationGraphView payload={state.data} />;
+}
+
+function Placeholder({
   message,
   tone = "neutral",
+  testId,
 }: {
-  label: string;
   message: string;
   tone?: "neutral" | "error";
+  testId: string;
 }) {
   return (
-    <section
-      className="surface-linear-card px-4 py-4"
-      data-testid={`placeholder-${label.toLowerCase().replace(/\s+/g, "-")}`}
-      style={{ border: "1px solid var(--color-border-card)" }}
-    >
-      <div className="font-label" style={{ marginBottom: 6 }}>
-        {label}
-      </div>
+    <section className="surface-linear-card px-4 py-6" data-testid={testId}>
       <p
         className="text-[13px]"
         style={{

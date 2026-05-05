@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 interface RunDetailNavProps {
@@ -10,60 +10,53 @@ interface RunDetailNavProps {
 }
 
 interface NavItem {
-  href: (runId: string) => string;
+  // Path segment under /runs/, no leading slash. Empty string is the
+  // overview tab at /runs.
+  segment: "" | "reviews" | "research" | "clarify" | "literature" | "citations";
   label: string;
   testId: string;
-  matches: (pathname: string, runId: string) => boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  {
-    href: (runId) => `/runs/${runId}`,
-    label: "Overview",
-    testId: "run-nav-overview",
-    matches: (p, runId) => p === `/runs/${runId}`,
-  },
-  {
-    href: (runId) => `/runs/${runId}/reviews`,
-    label: "Reviews",
-    testId: "run-nav-reviews",
-    matches: (p, runId) => p.startsWith(`/runs/${runId}/reviews`),
-  },
-  {
-    href: (runId) => `/runs/${runId}/research`,
-    label: "Research",
-    testId: "run-nav-research",
-    matches: (p, runId) => p.startsWith(`/runs/${runId}/research`),
-  },
-  {
-    href: (runId) => `/runs/${runId}/clarify`,
-    label: "Clarify",
-    testId: "run-nav-clarify",
-    matches: (p, runId) => p.startsWith(`/runs/${runId}/clarify`),
-  },
-  {
-    href: (runId) => `/runs/${runId}/literature`,
-    label: "Literature",
-    testId: "run-nav-literature",
-    matches: (p, runId) => p.startsWith(`/runs/${runId}/literature`),
-  },
-  {
-    href: (runId) => `/runs/${runId}/citations`,
-    label: "Citations",
-    testId: "run-nav-citations",
-    matches: (p, runId) => p.startsWith(`/runs/${runId}/citations`),
-  },
+  { segment: "", label: "Overview", testId: "run-nav-overview" },
+  { segment: "reviews", label: "Reviews", testId: "run-nav-reviews" },
+  { segment: "research", label: "Research", testId: "run-nav-research" },
+  { segment: "clarify", label: "Clarify", testId: "run-nav-clarify" },
+  { segment: "literature", label: "Literature", testId: "run-nav-literature" },
+  { segment: "citations", label: "Citations", testId: "run-nav-citations" },
 ];
+
+function buildHref(segment: NavItem["segment"], runId: string): string {
+  const base = segment ? `/runs/${segment}` : "/runs";
+  return runId ? `${base}?runId=${encodeURIComponent(runId)}` : base;
+}
+
+function isActive(
+  pathname: string,
+  segment: NavItem["segment"],
+  currentRunId: string,
+  navRunId: string,
+): boolean {
+  // Only highlight the active tab when we're rendering the nav for the
+  // run id that matches the URL's ?runId=. Otherwise multiple tabs
+  // could light up if the URL changes underneath us.
+  if (currentRunId !== navRunId) return false;
+  if (segment === "") return pathname === "/runs" || pathname === "/runs/";
+  return pathname.startsWith(`/runs/${segment}`);
+}
 
 /**
  * Shared tab nav across the run-detail subroutes.
  *
- * Each tab maps to a sibling page under `src/app/runs/[runId]/<segment>/page.tsx`.
- * The active state is driven by `usePathname()` so users see which view they're on
- * regardless of which entry point they used to land here.
+ * Each tab maps to a sibling page under `src/app/runs/<segment>/page.tsx`.
+ * Run id travels in `?runId=` because static export can't enumerate
+ * dynamic IDs at build time. Active state checks the URL ?runId= so we
+ * don't highlight tabs for an unrelated run.
  */
 export function RunDetailNav({ runId }: RunDetailNavProps) {
   const pathname = usePathname() ?? "";
+  const sp = useSearchParams();
+  const currentRunId = sp?.get("runId") ?? "";
 
   return (
     <nav
@@ -73,11 +66,11 @@ export function RunDetailNav({ runId }: RunDetailNavProps) {
       style={{ border: "1px solid var(--color-border-card)" }}
     >
       {NAV_ITEMS.map((item) => {
-        const active = item.matches(pathname, runId);
+        const active = isActive(pathname, item.segment, currentRunId, runId);
         return (
           <Link
             key={item.label}
-            href={item.href(runId)}
+            href={buildHref(item.segment, runId)}
             data-testid={item.testId}
             aria-current={active ? "page" : undefined}
             className={cn(

@@ -72,7 +72,7 @@ test.describe("run reviews", () => {
     page,
   }) => {
     await mockCritiquesApi(page);
-    await page.goto(`/runs/${RUN_ID}/reviews`);
+    await page.goto(`/runs/reviews?runId=${RUN_ID}`);
 
     // Page header echoes the run id.
     await expect(
@@ -130,7 +130,7 @@ test.describe("run reviews", () => {
       }),
     );
 
-    await page.goto(`/runs/${RUN_ID}/reviews`);
+    await page.goto(`/runs/reviews?runId=${RUN_ID}`);
 
     // Counter falls back to its idle copy.
     await expect(

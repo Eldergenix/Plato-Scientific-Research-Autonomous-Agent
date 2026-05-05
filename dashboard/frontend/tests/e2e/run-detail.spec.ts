@@ -100,7 +100,7 @@ async function mockManifestApi(page: import("@playwright/test").Page) {
 test.describe("run detail", () => {
   test("renders manifest, validation report, and evidence matrix", async ({ page }) => {
     await mockManifestApi(page);
-    await page.goto(`/runs/${RUN_ID}`);
+    await page.goto(`/runs?runId=${RUN_ID}`);
 
     // Page header echoes the run id.
     await expect(page.getByRole("heading", { level: 1, name: "Run detail" })).toBeVisible();
@@ -170,7 +170,7 @@ test.describe("run detail", () => {
       route.fulfill({ status: 404, body: "" }),
     );
 
-    await page.goto(`/runs/${RUN_ID}`);
+    await page.goto(`/runs?runId=${RUN_ID}`);
     await expect(page.getByTestId("evidence-matrix-empty")).toBeVisible();
     await expect(
       page.getByText("No evidence links yet — claim extraction not run."),

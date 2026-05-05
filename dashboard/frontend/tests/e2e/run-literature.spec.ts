@@ -69,7 +69,7 @@ async function mockLiteratureApi(page: import("@playwright/test").Page) {
 test.describe("run literature signals", () => {
   test("renders novelty score and source breakdown bars", async ({ page }) => {
     await mockLiteratureApi(page);
-    await page.goto(`/runs/${RUN_ID}/literature`);
+    await page.goto(`/runs/literature?runId=${RUN_ID}`);
 
     // Page header
     await expect(
@@ -161,7 +161,7 @@ test.describe("run literature signals", () => {
         }),
     );
 
-    await page.goto(`/runs/${RUN_ID}/literature`);
+    await page.goto(`/runs/literature?runId=${RUN_ID}`);
     const scoreValue = page.getByTestId("novelty-score-value");
     await expect(scoreValue).toHaveText("50%");
     await expect(scoreValue).toHaveCSS(
@@ -199,7 +199,7 @@ test.describe("run literature signals", () => {
         }),
     );
 
-    await page.goto(`/runs/${RUN_ID}/literature`);
+    await page.goto(`/runs/literature?runId=${RUN_ID}`);
     const scoreValue = page.getByTestId("novelty-score-value");
     await expect(scoreValue).toHaveText("20%");
     await expect(scoreValue).toHaveCSS(
@@ -234,7 +234,7 @@ test.describe("run literature signals", () => {
         }),
     );
 
-    await page.goto(`/runs/${RUN_ID}/literature`);
+    await page.goto(`/runs/literature?runId=${RUN_ID}`);
     await expect(page.getByTestId("novelty-score-empty")).toBeVisible();
     await expect(page.getByText("Novelty score not computed.")).toBeVisible();
     await expect(page.getByTestId("source-breakdown-empty")).toBeVisible();

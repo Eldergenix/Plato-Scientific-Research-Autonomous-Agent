@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { use as usePromise } from "react";
 import {
   ManifestPanel,
   type RunManifest,
@@ -54,17 +53,11 @@ async function fetchOptional<T>(path: string): Promise<Loadable<T>> {
   }
 }
 
-interface RunDetailParams {
-  runId: string;
-}
-
-export default function RunDetailClient({
-  params,
-}: {
-  params: Promise<RunDetailParams>;
-}) {
-  // Next.js 15 dynamic route params arrive as a Promise; unwrap with React.use.
-  const { runId } = usePromise(params);
+export default function RunDetailClient({ runId }: { runId: string }) {
+  // runId now arrives as a plain string from the parent client wrapper
+  // that reads ?runId= via useSearchParams (see ../page.tsx). The
+  // route is no longer a [runId] segment because static export cannot
+  // pre-enumerate the run ids.
 
   // Bind this run id to the module-level store so every fetchJson
   // call from the run-detail subtree carries X-Plato-Run-Id for

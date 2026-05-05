@@ -53,7 +53,7 @@ test.describe("run clarify page", () => {
       },
     );
 
-    await page.goto(`/runs/${RUN_ID}/clarify`);
+    await page.goto(`/runs/clarify?runId=${RUN_ID}`);
 
     // Header card surfaces the run id.
     await expect(page.getByTestId("clarify-header")).toContainText(RUN_ID);

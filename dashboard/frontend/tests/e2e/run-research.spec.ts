@@ -79,7 +79,7 @@ test.describe("run research signals", () => {
       }),
     );
 
-    await page.goto("/runs/run_test/research");
+    await page.goto("/runs/research?runId=run_test");
 
     // Header carries the run id so the user can confirm context.
     await expect(page.getByTestId("research-header")).toContainText("run_test");
@@ -129,7 +129,7 @@ test.describe("run research signals", () => {
       }),
     );
 
-    await page.goto("/runs/run_empty/research");
+    await page.goto("/runs/research?runId=run_empty");
 
     await expect(page.getByTestId("counter-evidence-empty")).toContainText(
       /no counter-evidence search has run yet/i,

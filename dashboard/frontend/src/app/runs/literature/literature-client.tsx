@@ -48,17 +48,7 @@ async function fetchOptional<T>(path: string): Promise<Loadable<T>> {
   }
 }
 
-interface LiteraturePageParams {
-  runId: string;
-}
-
-export default function LiteratureClient({
-  params,
-}: {
-  params: Promise<LiteraturePageParams>;
-}) {
-  // Next.js 15 dynamic route params arrive as a Promise; unwrap with React.use.
-  const { runId } = React.use(params);
+export default function LiteratureClient({ runId }: { runId: string }) {
 
   const [novelty, setNovelty] =
     React.useState<Loadable<NoveltyPayload>>({ kind: "loading" });

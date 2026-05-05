@@ -52,7 +52,7 @@ test.describe("run citations viewer", () => {
   });
 
   test("graph tab renders all 8 nodes", async ({ page }) => {
-    await page.goto(`/runs/${RUN_ID}/citations`);
+    await page.goto(`/runs/citations?runId=${RUN_ID}`);
 
     await expect(page.getByTestId("citation-graph-view")).toBeVisible();
     await expect(page.getByTestId("citation-graph-svg")).toBeVisible();
@@ -78,7 +78,7 @@ test.describe("run citations viewer", () => {
   });
 
   test("list tab shows Seeds and Expanded sections", async ({ page }) => {
-    await page.goto(`/runs/${RUN_ID}/citations`);
+    await page.goto(`/runs/citations?runId=${RUN_ID}`);
 
     await page.getByTestId("citation-tab-list").click();
     await expect(page.getByTestId("citation-tab-list")).toHaveAttribute(
@@ -103,7 +103,7 @@ test.describe("run citations viewer", () => {
   });
 
   test("stats tab shows correct metric values", async ({ page }) => {
-    await page.goto(`/runs/${RUN_ID}/citations`);
+    await page.goto(`/runs/citations?runId=${RUN_ID}`);
 
     await page.getByTestId("citation-tab-stats").click();
     await expect(page.getByTestId("citation-stats")).toBeVisible();
@@ -117,7 +117,7 @@ test.describe("run citations viewer", () => {
   });
 
   test("tabs switch via radix triggers", async ({ page }) => {
-    await page.goto(`/runs/${RUN_ID}/citations`);
+    await page.goto(`/runs/citations?runId=${RUN_ID}`);
 
     // Default tab is "graph".
     await expect(page.getByTestId("citation-tab-graph")).toHaveAttribute(

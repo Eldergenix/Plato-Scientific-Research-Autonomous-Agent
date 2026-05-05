@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { use as usePromise } from "react";
 import {
   CounterEvidenceList,
   type CounterEvidencePayload,
@@ -49,16 +48,7 @@ async function fetchOptional<T>(path: string): Promise<Loadable<T>> {
   }
 }
 
-interface RunResearchParams {
-  runId: string;
-}
-
-export default function ResearchClient({
-  params,
-}: {
-  params: Promise<RunResearchParams>;
-}) {
-  const { runId } = usePromise(params);
+export default function ResearchClient({ runId }: { runId: string }) {
 
   const [counter, setCounter] =
     React.useState<Loadable<CounterEvidencePayload>>({ kind: "loading" });
