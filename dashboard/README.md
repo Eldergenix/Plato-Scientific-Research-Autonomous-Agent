@@ -85,7 +85,7 @@ All paths under `/api/v1`.
 ```bash
 # Terminal 1 — backend
 cd backend
-python3.13 -m venv .venv && source .venv/bin/activate
+python3.12 -m venv .venv && source .venv/bin/activate  # 3.12 or 3.13 (pyproject requires-python >=3.12,<3.14)
 pip install -e .
 
 # Install Plato itself into the same venv so the worker subprocess

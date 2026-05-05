@@ -77,6 +77,7 @@ uv add plato
 Then, run the gui with:
 
 ```
+pip install plato_app   # required by `plato run` (separate package)
 plato run
 ```
 

@@ -3,7 +3,11 @@
 # HuggingFace Spaces entrypoint for the Plato Dashboard.
 # Invoked from dashboard/spaces/Dockerfile via tini.
 # =============================================================================
-set -e
+# Iter-11: ``set -e`` alone misses unset-variable expansions and
+# pipeline-mid failures. Match the standalone Dockerfile entrypoint
+# which uses ``set -euo pipefail`` so a partial failure aborts
+# instead of silently exiting 0.
+set -euo pipefail
 
 # Demo mode is the safe default on a public Space. Operators can flip this
 # to "disabled" by setting PLATO_DEMO_MODE in the Space "Variables" panel
