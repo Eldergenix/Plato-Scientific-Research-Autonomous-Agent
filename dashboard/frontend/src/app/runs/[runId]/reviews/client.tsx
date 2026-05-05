@@ -8,6 +8,7 @@ import {
 } from "@/components/review/critique-panel";
 import { RevisionCounter } from "@/components/review/revision-counter";
 import { RunDetailNav } from "@/components/manifest/run-detail-nav";
+import { useFocusRefresh } from "@/lib/use-focus-refresh";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:7878/api/v1";
@@ -58,6 +59,11 @@ export default function RunReviewsClient() {
     kind: "loading",
   });
 
+  const refresh = React.useCallback(() => {
+    if (!ready) return;
+    void fetchOptional<ReviewsPayload>(`/runs/${runId}/critiques`).then(setReviews);
+  }, [ready, runId]);
+
   React.useEffect(() => {
     if (!ready) {
       // Iter-7: same fix as research/literature/citations — drop into
@@ -76,6 +82,9 @@ export default function RunReviewsClient() {
       cancelled = true;
     };
   }, [ready, runId]);
+
+  // Iter-11: refresh on focus + 15s polling — see citations/client.tsx.
+  useFocusRefresh(refresh, { enabled: ready });
 
   return (
     <div className="min-h-screen bg-(--color-bg-page) px-6 py-8">

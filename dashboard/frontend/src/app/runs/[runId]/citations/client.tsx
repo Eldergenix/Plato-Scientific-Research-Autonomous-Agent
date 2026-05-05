@@ -7,6 +7,7 @@ import {
   type CitationGraphPayload,
 } from "@/components/citations/citation-graph-view";
 import { RunDetailNav } from "@/components/manifest/run-detail-nav";
+import { useFocusRefresh } from "@/lib/use-focus-refresh";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:7878/api/v1";
@@ -67,6 +68,13 @@ export default function CitationsClient() {
     kind: "loading",
   });
 
+  const refresh = React.useCallback(() => {
+    if (!ready) return;
+    void fetchOptional<CitationGraphPayload>(
+      `/runs/${runId}/citation_graph`,
+    ).then(setState);
+  }, [ready, runId]);
+
   React.useEffect(() => {
     if (!ready) {
       // Iter-7: drop to "missing" instead of permanent "loading" while
@@ -86,6 +94,11 @@ export default function CitationsClient() {
       cancelled = true;
     };
   }, [ready, runId]);
+
+  // Iter-11: re-fetch when the user returns to the tab + every 15s
+  // while visible, so a run finishing in the background doesn't leave
+  // the page stuck on the mount-time snapshot.
+  useFocusRefresh(refresh, { enabled: ready });
 
   return (
     <div className="min-h-screen bg-(--color-bg-page) px-6 py-8 text-(--color-text-primary)">

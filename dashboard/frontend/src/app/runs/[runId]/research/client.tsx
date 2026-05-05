@@ -11,6 +11,7 @@ import {
   type GapsPayload,
 } from "@/components/research/gaps-panel";
 import { RunDetailNav } from "@/components/manifest/run-detail-nav";
+import { useFocusRefresh } from "@/lib/use-focus-refresh";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:7878/api/v1";
@@ -63,6 +64,17 @@ export default function RunResearchClient() {
     React.useState<Loadable<CounterEvidencePayload>>({ kind: "loading" });
   const [gaps, setGaps] = React.useState<Loadable<GapsPayload>>({ kind: "loading" });
 
+  const refresh = React.useCallback(() => {
+    if (!ready) return;
+    void Promise.all([
+      fetchOptional<CounterEvidencePayload>(`/runs/${runId}/counter_evidence`),
+      fetchOptional<GapsPayload>(`/runs/${runId}/gaps`),
+    ]).then(([c, g]) => {
+      setCounter(c);
+      setGaps(g);
+    });
+  }, [ready, runId]);
+
   React.useEffect(() => {
     if (!ready) {
       // Iter-7: when the placeholder runId is active we never fetch, so
@@ -91,6 +103,9 @@ export default function RunResearchClient() {
       cancelled = true;
     };
   }, [ready, runId]);
+
+  // Iter-11: see citations/client.tsx for the rationale.
+  useFocusRefresh(refresh, { enabled: ready });
 
   return (
     <div className="min-h-screen bg-(--color-bg-page) px-6 py-8">

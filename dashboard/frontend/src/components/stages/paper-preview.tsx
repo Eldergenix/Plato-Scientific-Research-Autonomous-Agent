@@ -374,6 +374,17 @@ function SectionsTab({
   activeId: string | null;
   onActivate: (id: string) => void;
 }) {
+  // Iter-11: explicit empty state when sections=[] — previously rendered
+  // an empty <div> on the Sections tab, which is what users see today
+  // because page.tsx passes EMPTY_PAPER_SECTIONS until a real backend
+  // endpoint exposes per-section metadata.
+  if (sections.length === 0) {
+    return (
+      <div className="px-5 py-12 text-center text-[13px] text-(--color-text-tertiary)">
+        No section data yet — run the Paper stage to populate this view.
+      </div>
+    );
+  }
   return (
     <div className="px-5 py-4 space-y-2">
       {sections.map((s) => {
@@ -480,6 +491,14 @@ function LatexTab({
   activeId: string | null;
   onActivate: (id: string) => void;
 }) {
+  // Iter-11: explicit empty state — see SectionsTab above.
+  if (sections.length === 0) {
+    return (
+      <div className="px-5 py-12 text-center text-[13px] text-(--color-text-tertiary)">
+        No LaTeX content yet — run the Paper stage to populate this view.
+      </div>
+    );
+  }
   return (
     <div className="px-5 py-4 space-y-3">
       {sections.map((s) => {

@@ -11,6 +11,7 @@ import {
   type RetrievalSummaryPayload,
 } from "@/components/retrieval/source-breakdown";
 import { RunDetailNav } from "@/components/manifest/run-detail-nav";
+import { useFocusRefresh } from "@/lib/use-focus-refresh";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:7878/api/v1";
@@ -62,6 +63,17 @@ export default function LiteratureClient() {
   const [retrieval, setRetrieval] =
     React.useState<Loadable<RetrievalSummaryPayload>>({ kind: "loading" });
 
+  const refresh = React.useCallback(() => {
+    if (!ready) return;
+    void Promise.all([
+      fetchOptional<NoveltyPayload>(`/runs/${runId}/novelty`),
+      fetchOptional<RetrievalSummaryPayload>(`/runs/${runId}/retrieval_summary`),
+    ]).then(([n, r]) => {
+      setNovelty(n);
+      setRetrieval(r);
+    });
+  }, [ready, runId]);
+
   React.useEffect(() => {
     if (!ready) {
       // Iter-7: see research/client.tsx — drop to "missing" instead of
@@ -87,6 +99,11 @@ export default function LiteratureClient() {
       cancelled = true;
     };
   }, [ready, runId]);
+
+  // Iter-11: refresh on focus + polling so a run finishing in the
+  // background lands here instead of showing a frozen mount-time
+  // snapshot. See citations/client.tsx for the rationale.
+  useFocusRefresh(refresh, { enabled: ready });
 
   return (
     <div className="min-h-screen bg-(--color-bg-page) px-6 py-8">

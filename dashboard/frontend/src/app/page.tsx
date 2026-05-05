@@ -110,20 +110,41 @@ export default function Home() {
     target: StageId;
     blockedBy: StageId;
   } | null>(null);
+  // Iter-11: store the auto-dismiss timer so rapid re-clicks can clear
+  // the previous timer before setting a new one. The bare ``setTimeout``
+  // also leaked a callback that would set state on an unmounted
+  // component.
+  const gateToastTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  React.useEffect(() => {
+    return () => {
+      if (gateToastTimerRef.current !== null) {
+        clearTimeout(gateToastTimerRef.current);
+        gateToastTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // Wrap startRun so all callers (sidebar, palette, list, detail) respect approval gates.
   const guardedStartRun = React.useCallback<typeof startRun>(
     async (stage, body) => {
       const blockedBy = getBlockingApproval(project, stage);
       if (blockedBy) {
+        // Iter-11: clear any stale ``runStartError`` toast so the user
+        // doesn't see two overlapping fixed-position alerts at once.
+        clearRunStartError?.();
         setGateToast({ target: stage, blockedBy });
-        // Auto-dismiss after 4s
-        setTimeout(() => setGateToast(null), 4000);
+        if (gateToastTimerRef.current !== null) {
+          clearTimeout(gateToastTimerRef.current);
+        }
+        gateToastTimerRef.current = setTimeout(() => {
+          setGateToast(null);
+          gateToastTimerRef.current = null;
+        }, 4000);
         return;
       }
       await startRun(stage, body);
     },
-    [project, startRun],
+    [project, startRun, clearRunStartError],
   );
 
   React.useEffect(() => {

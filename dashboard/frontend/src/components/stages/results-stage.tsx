@@ -102,7 +102,12 @@ export function ResultsStage({
             <h2 className="font-h1 tracking-[-0.704px]">Results</h2>
             <Pill tone="indigo" className="gap-2">
               <StatusDot status="running" size={6} />
-              Step {run?.step}/{run?.totalSteps} · attempt {run?.attempt}/{run?.totalAttempts}
+              {/* Iter-11: render "—" when run progress fields are absent
+                  (partial SSE state before first stage.heartbeat). The
+                  previous unconditional interpolation produced
+                  "Step undefined/undefined · attempt undefined/undefined"
+                  for several seconds at run start. */}
+              Step {run?.step ?? "—"}/{run?.totalSteps ?? "—"} · attempt {run?.attempt ?? "—"}/{run?.totalAttempts ?? "—"}
               <span className="font-mono text-(--color-text-quaternary) ml-1">
                 {formatDuration(elapsedMs)}
               </span>

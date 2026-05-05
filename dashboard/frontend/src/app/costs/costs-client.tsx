@@ -274,11 +274,27 @@ export default function CostsPage() {
   };
 
   const onExport = (p: Project) => {
+    // Iter-11: proper RFC 4180 quoting for every string field. The
+    // previous JSON.stringify(p.name) used backslash-escapes for inner
+    // quotes which is not valid CSV — Excel would mis-parse names like
+    // ``My "Best" Project``. Add a UTF-8 BOM so Excel-on-Windows opens
+    // the file as UTF-8 instead of cp1252 (mangling non-ASCII names).
+    const csvEscape = (s: string): string =>
+      `"${String(s).replace(/"/g, '""')}"`;
     const csv = [
       "id,name,created_at,stages_done,total_tokens,total_cost_cents",
-      [p.id, JSON.stringify(p.name), p.createdAt, stagesDoneCount(p), p.totalTokens, p.totalCostCents].join(","),
+      [
+        csvEscape(p.id),
+        csvEscape(p.name),
+        csvEscape(p.createdAt),
+        stagesDoneCount(p),
+        p.totalTokens,
+        p.totalCostCents,
+      ].join(","),
     ].join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const url = URL.createObjectURL(
+      new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" }),
+    );
     const a = document.createElement("a");
     a.href = url;
     a.download = `${p.id}-usage.csv`;
