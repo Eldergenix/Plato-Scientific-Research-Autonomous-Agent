@@ -13,19 +13,45 @@ back to titles only when nothing more authoritative is available.
 """
 from __future__ import annotations
 
+import re
+
 from ..state.models import Source
+from .doi import normalize_doi, parse_arxiv_id
 
 __all__ = ["dedup_sources"]
 
 
+# Whitespace + punctuation collapser for the title-fallback dedup path.
+# Without this, "Foo: Bar" and "Foo:  Bar" land in separate buckets even
+# though they're the same paper from two adapters.
+_TITLE_PUNCT_RE = re.compile(r"[\s\W_]+", re.UNICODE)
+
+
+def _normalize_title(title: str | None) -> str:
+    if not title:
+        return ""
+    return _TITLE_PUNCT_RE.sub(" ", title).strip().lower()
+
+
 def _dedup_key(source: Source) -> str:
-    """Return the strongest stable identifier for ``source`` as a dedup key."""
-    return (
-        source.doi
-        or source.arxiv_id
-        or source.openalex_id
-        or source.title.lower()
-    )
+    """Return the strongest stable identifier for ``source`` as a dedup key.
+
+    Iter-5: normalise each candidate before falling through. Without this,
+    DOI variants (``10.1234/X`` vs ``10.1234/x`` vs
+    ``https://doi.org/10.1234/X``) and arXiv variants (``arXiv:2401.12345v2``
+    vs ``2401.12345``) collide into separate buckets, defeating the
+    multi-adapter dedup.
+    """
+    doi = normalize_doi(source.doi)
+    if doi:
+        return f"doi:{doi}"
+    arxiv = parse_arxiv_id(source.arxiv_id)
+    if arxiv:
+        return f"arxiv:{arxiv}"
+    if source.openalex_id:
+        # OpenAlex ids are already canonical (W12345...).
+        return f"oa:{source.openalex_id.strip()}"
+    return f"title:{_normalize_title(source.title)}"
 
 
 def dedup_sources(sources: list[Source]) -> list[Source]:

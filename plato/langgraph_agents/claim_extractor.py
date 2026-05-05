@@ -37,6 +37,7 @@ import json5
 from .parameters import GraphState
 from .prompts import claim_extraction_prompt
 from ..paper_agents.tools import LLM_call_stream  # noqa: F401  (re-export point for tests)
+from ..safety import detect_injection_signals, wrap_external
 from ..state.models import Claim, Source
 
 
@@ -146,7 +147,26 @@ async def claim_extractor(state: GraphState, config: Optional[RunnableConfig] = 
             continue
 
         source_id = _source_id_for(item, idx)
-        prompt = claim_extraction_prompt(state, abstract)
+
+        # Iter-5 prompt-injection defense parity with the literature node:
+        # log signals on every untrusted abstract, and wrap the text in a
+        # framing block so the model treats it as data rather than
+        # instructions. ``detect_injection_signals`` is best-effort —
+        # the wrap is the load-bearing part for the prompt itself.
+        signals = detect_injection_signals(abstract)
+        if signals:
+            try:  # noqa: SIM105 — log shape varies by harness
+                import logging
+                logging.getLogger(__name__).warning(
+                    "claim_extractor: %d injection signal(s) in source %s",
+                    len(signals),
+                    source_id,
+                )
+            except Exception:
+                pass
+        framed_abstract = wrap_external(abstract, kind="abstract")
+
+        prompt = claim_extraction_prompt(state, framed_abstract)
 
         parsed: list[dict[str, Any]] | None = None
         for attempt in range(_CLAIM_RETRIES):

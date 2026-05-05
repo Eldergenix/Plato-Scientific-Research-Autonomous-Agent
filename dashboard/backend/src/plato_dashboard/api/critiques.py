@@ -103,11 +103,12 @@ def get_critiques(
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> dict:
-    run_dir = _find_run_dir(settings.project_root, run_id)
+    requester = _user_id(request)
+    run_dir = _find_run_dir(settings.project_root, run_id, requester)
     if run_dir is None:
         raise HTTPException(404, detail={"code": "run_not_found", "run_id": run_id})
 
-    _enforce_tenant(run_dir, _user_id(request))
+    _enforce_tenant(run_dir, requester)
 
     sidecar = run_dir / "critiques.json"
     if sidecar.is_file():

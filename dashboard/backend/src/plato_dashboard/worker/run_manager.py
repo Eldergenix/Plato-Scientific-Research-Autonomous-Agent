@@ -255,6 +255,7 @@ def _child_main(
     project_dir: str,
     events_file: str,
     env_keys: dict[str, str],
+    cost_cap_usd: Optional[float] = None,
 ) -> None:
     """Subprocess entry point. Imports Plato, dispatches on stage, emits events."""
     # Detach: own session/process group so killpg reaps cmbagent grandchildren.
@@ -267,6 +268,14 @@ def _child_main(
     for env_var, value in env_keys.items():
         if value:
             os.environ[env_var] = value
+
+    # Iter-5: deliver the project's cost cap into the child env so
+    # ``plato.observability.callbacks_for`` picks it up via the
+    # ``PLATO_COST_CAP_USD`` fallback. Without this, the cap persisted
+    # via the /cost_caps API never reaches the LangChain callback handler
+    # and in-flight enforcement silently no-ops.
+    if cost_cap_usd is not None and cost_cap_usd > 0:
+        os.environ["PLATO_COST_CAP_USD"] = f"{cost_cap_usd:.6f}"
 
     writer = _EventWriter(Path(events_file))
     sys.stdout = _LogStream(writer, source=stage, level="info")
@@ -666,6 +675,7 @@ async def start_run(
     config: dict,
     bus: EventBus,
     project_dir: Optional[Path] = None,
+    cost_cap_usd: Optional[float] = None,
 ) -> Run:
     """Spawn a Plato subprocess for the given stage and start streaming events.
 
@@ -676,6 +686,12 @@ async def start_run(
     (e.g. CLI callers, tests), fall back to the legacy
     ``settings.project_root / project_id`` resolution to preserve every
     pre-iter-25 entry point.
+
+    Iter-5: ``cost_cap_usd`` is the project's per-run budget ceiling (in
+    USD). When provided, the worker exports it as ``PLATO_COST_CAP_USD``
+    inside the child process so ``callbacks_for`` picks it up and the
+    LangChain handler can flag breaches in real time. ``None`` disables
+    in-flight enforcement (gate-only mode).
     """
     run = Run(
         project_id=project_id,
@@ -712,6 +728,7 @@ async def start_run(
             str(resolved_project_dir),
             str(events_file),
             env_keys,
+            cost_cap_usd,
         ),
         daemon=False,
     )

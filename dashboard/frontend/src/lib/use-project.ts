@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { api, setActiveRunId } from "./api";
+import { api, ApiError, setActiveRunId } from "./api";
 import type { LogLine, Project, Stage, StageId } from "./types";
 
 export interface PlotEntry {
@@ -37,6 +37,31 @@ export interface CodeEventEntry {
   } | null;
 }
 
+/**
+ * Iter-5: discriminated error shape returned by ``startRun`` when the
+ * backend refuses to launch a stage. ``budget_exceeded`` and
+ * ``approval_required`` carry detail fields the UI can render in a
+ * toast/banner instead of swallowing the rejection silently.
+ */
+export type RunStartError =
+  | {
+      kind: "budget_exceeded";
+      spentCents: number;
+      budgetCents: number;
+      message: string;
+    }
+  | {
+      kind: "approval_required";
+      blockingGate: string;
+      targetStage: StageId;
+      message: string;
+    }
+  | {
+      kind: "other";
+      status: number;
+      message: string;
+    };
+
 interface ProjectState {
   project: Project;
   log: LogLine[];
@@ -55,6 +80,13 @@ interface ProjectState {
    * carries the cell's full source string.
    */
   codeEvents: CodeEventEntry[];
+  /**
+   * Iter-5: latest error from a ``startRun`` rejection (cap, approval,
+   * or other). ``null`` when the last call succeeded or none has run.
+   * Consumers render a toast/banner from this; calling ``startRun``
+   * again clears it.
+   */
+  runStartError: RunStartError | null;
   isLive: boolean; // true when fetched from API; false when offline / pre-bootstrap
   loading: boolean; // true until the first ``getProject`` resolves (or fails)
   capabilities: {
@@ -66,6 +98,7 @@ interface ProjectState {
   cancelRun: () => Promise<void>;
   refresh: () => Promise<void>;
   refreshPlots: () => Promise<void>;
+  clearRunStartError: () => void;
 }
 
 // Iter-23: replaced the SAMPLE_PROJECT first-paint flash. The previous
@@ -124,6 +157,8 @@ export function useProject(): ProjectState {
   const [plots, setPlots] = React.useState<PlotEntry[]>([]);
   const [nodeEvents, setNodeEvents] = React.useState<NodeEventEntry[]>([]);
   const [codeEvents, setCodeEvents] = React.useState<CodeEventEntry[]>([]);
+  const [runStartError, setRunStartError] =
+    React.useState<RunStartError | null>(null);
   const [isLive, setIsLive] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [caps, setCaps] = React.useState<ProjectState["capabilities"]>(null);
@@ -213,6 +248,9 @@ export function useProject(): ProjectState {
   const startRun = React.useCallback<ProjectState["startRun"]>(
     async (stage, body) => {
       if (!isLive || !projectIdRef.current) return;
+      // Iter-5: clear any prior toast before re-attempting so a stale
+      // banner doesn't stick around past a successful retry.
+      setRunStartError(null);
       try {
         const run = await api.startRun(projectIdRef.current, stage, body);
         // Set the module-level run-id so every subsequent fetchJson
@@ -329,11 +367,67 @@ export function useProject(): ProjectState {
           },
         );
       } catch (e) {
+        // Iter-5: surface the rejection through ``runStartError`` so
+        // pages can render a real banner. Distinguish budget /
+        // approval rejections from network/other failures so the UI
+        // can show targeted CTAs (raise cap, approve gate).
+        if (e instanceof ApiError && e.status === 403) {
+          const detail =
+            (e.detail as Record<string, unknown> | undefined)?.["detail"] ??
+            e.detail;
+          const code =
+            typeof detail === "object" && detail !== null
+              ? (detail as Record<string, unknown>).code
+              : undefined;
+          if (code === "budget_exceeded") {
+            const d = detail as Record<string, unknown>;
+            setRunStartError({
+              kind: "budget_exceeded",
+              spentCents: Number(d.spent_cents ?? 0),
+              budgetCents: Number(d.budget_cents ?? 0),
+              message: String(d.message ?? "Project budget exceeded."),
+            });
+          } else if (code === "approval_required") {
+            const d = detail as Record<string, unknown>;
+            setRunStartError({
+              kind: "approval_required",
+              blockingGate: String(d.blocking_gate ?? ""),
+              targetStage: stage,
+              message: String(d.message ?? "Upstream approval required."),
+            });
+          } else {
+            setRunStartError({
+              kind: "other",
+              status: 403,
+              message: String(
+                (detail as Record<string, unknown> | undefined)?.message ??
+                  "Run blocked by server.",
+              ),
+            });
+          }
+        } else if (e instanceof ApiError) {
+          setRunStartError({
+            kind: "other",
+            status: e.status,
+            message: e.message || `Request failed (${e.status}).`,
+          });
+        } else {
+          setRunStartError({
+            kind: "other",
+            status: 0,
+            message:
+              e instanceof Error ? e.message : "Failed to start run.",
+          });
+        }
         console.error("Failed to start run", e);
       }
     },
     [isLive, refresh, refreshPlots],
   );
+
+  const clearRunStartError = React.useCallback(() => {
+    setRunStartError(null);
+  }, []);
 
   const cancelRun = React.useCallback<ProjectState["cancelRun"]>(async () => {
     if (!isLive || !projectIdRef.current || !project.activeRun) return;
@@ -346,6 +440,7 @@ export function useProject(): ProjectState {
     plots,
     nodeEvents,
     codeEvents,
+    runStartError,
     isLive,
     loading,
     capabilities: caps,
@@ -353,5 +448,6 @@ export function useProject(): ProjectState {
     cancelRun,
     refresh,
     refreshPlots,
+    clearRunStartError,
   };
 }

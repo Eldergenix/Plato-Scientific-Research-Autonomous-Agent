@@ -122,6 +122,11 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     r = await fetch(`${API_BASE}${path}`, {
       ...init,
+      // ``credentials: "include"`` carries the ``plato_user`` cookie
+      // set at /auth/login. ``auth.extract_user_id`` reads cookie or
+      // header — without ``include`` here, browser-driven calls 401
+      // in PLATO_DASHBOARD_AUTH_REQUIRED=1 mode.
+      credentials: "include",
       headers,
     });
   } catch (e) {
@@ -473,7 +478,12 @@ export const api = {
   },
 
   async testKey(
-    provider: "OPENAI" | "GEMINI" | "ANTHROPIC",
+    provider:
+      | "OPENAI"
+      | "GEMINI"
+      | "ANTHROPIC"
+      | "PERPLEXITY"
+      | "SEMANTIC_SCHOLAR",
   ): Promise<{ ok: boolean; latency_ms?: number; error?: string }> {
     try {
       return await fetchJson<{ ok: boolean; latency_ms?: number; error?: string }>(

@@ -555,12 +555,25 @@ def create_app() -> FastAPI:
         # entry-point guard already blocks cross-tenant launches; this
         # closes the worker-side gap so a missed guard at a future
         # call site can't silently leak into the wrong tree.
+        # Iter-5: thread the project's cost cap (USD) into the worker so
+        # the child process exports ``PLATO_COST_CAP_USD`` and the
+        # LangChain callback handler can flag in-flight breaches —
+        # before iter-5 the gate was launch-only, with no enforcement
+        # once a run was running.
+        cap_usd: float | None = None
+        if (
+            cap is not None
+            and cap.budget_cents is not None
+            and cap.budget_cents > 0
+        ):
+            cap_usd = cap.budget_cents / 100.0
         return await start_run(
             pid,
             stage,
             run_request.model_dump(),
             bus,
             project_dir=store.project_dir(pid),
+            cost_cap_usd=cap_usd,
         )
 
     @app.get("/api/v1/projects/{pid}/runs/{run_id}", response_model=Run)

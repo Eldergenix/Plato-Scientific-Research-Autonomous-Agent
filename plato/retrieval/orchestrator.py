@@ -127,6 +127,7 @@ async def retrieve_with_expansion(
     expand: bool = False,
     expansion_direction: ExpansionDirection = "referenced_works",
     expansion_limit_per_seed: int = 25,
+    run_dir: "Path | str | None" = None,
 ) -> list[Source]:
     """Run :func:`retrieve` and optionally fold in a 1-hop citation-graph expansion.
 
@@ -136,6 +137,12 @@ async def retrieve_with_expansion(
     (``referenced_works`` or ``cited_by``) via
     :func:`plato.retrieval.citation_graph.expand_citations`, and the
     deduped union of seeds plus expansion is returned.
+
+    Iter-5: when ``run_dir`` is supplied, persist a ``citation_graph.json``
+    payload alongside the run's other artefacts so the dashboard's
+    citation-graph view has a real source to read. Without this write,
+    the dashboard endpoint falls back to the manifest-extras path which
+    most workflows never populate.
     """
     seeds = await retrieve(
         query, limit, profile=profile, adapter_names=adapter_names
@@ -148,4 +155,90 @@ async def retrieve_with_expansion(
         direction=expansion_direction,
         limit_per_seed=expansion_limit_per_seed,
     )
-    return dedup_sources(seeds + expanded)
+    merged = dedup_sources(seeds + expanded)
+
+    if run_dir is not None:
+        try:
+            _persist_citation_graph(
+                run_dir,
+                seeds=seeds,
+                expanded=expanded,
+                merged=merged,
+            )
+        except Exception:  # noqa: BLE001
+            # Persistence is best-effort — a write failure must never
+            # break the retrieval flow. The dashboard falls back to
+            # manifest extras when the file is absent.
+            import logging
+            logging.getLogger(__name__).exception(
+                "citation_graph.json persistence failed; continuing"
+            )
+
+    return merged
+
+
+def _persist_citation_graph(
+    run_dir: "Path | str",
+    *,
+    seeds: list[Source],
+    expanded: list[Source],
+    merged: list[Source],
+) -> None:
+    """Write ``<run_dir>/citation_graph.json`` in the dashboard view shape.
+
+    The shape mirrors what
+    ``dashboard.../citation_graph_view._read_graph_payload`` returns —
+    keep the two in sync. ``edges`` are derived best-effort: every
+    expanded node points back at the first seed that carries an
+    ``openalex_id`` (the ``expand_citations`` walker doesn't currently
+    return per-edge provenance, so we encode the seed→expanded
+    relationship without finer attribution).
+    """
+    import json
+    from pathlib import Path as _Path
+
+    target = _Path(run_dir) / "citation_graph.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    def _node(s: Source) -> dict:
+        return {
+            "id": getattr(s, "openalex_id", None) or getattr(s, "doi", None) or s.title,
+            "title": s.title,
+            "doi": getattr(s, "doi", None),
+            "openalex_id": getattr(s, "openalex_id", None),
+            "year": getattr(s, "year", None),
+            "authors": list(getattr(s, "authors", []) or []),
+        }
+
+    seed_nodes = [_node(s) for s in seeds]
+    expanded_nodes = [_node(s) for s in expanded]
+    seed_ids = [n["id"] for n in seed_nodes if n["id"]]
+    primary_seed = seed_ids[0] if seed_ids else None
+    edges = (
+        [
+            {"source": primary_seed, "target": n["id"]}
+            for n in expanded_nodes
+            if n["id"]
+        ]
+        if primary_seed
+        else []
+    )
+
+    payload = {
+        "seeds": seed_nodes,
+        "expanded": expanded_nodes,
+        "edges": edges,
+        "stats": {
+            "seed_count": len(seed_nodes),
+            "expanded_count": len(expanded_nodes),
+            "edge_count": len(edges),
+            "duplicates_filtered": max(
+                0, len(seeds) + len(expanded) - len(merged)
+            ),
+        },
+    }
+
+    tmp = target.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True))
+    import os
+    os.replace(tmp, target)

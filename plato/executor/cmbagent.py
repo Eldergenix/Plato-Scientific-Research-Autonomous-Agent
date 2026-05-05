@@ -33,7 +33,22 @@ class CmbagentExecutor:
     ) -> ExecutorResult:
         # Late import so this module is cheap to import even if cmbagent
         # isn't usable in the current environment (e.g. CI without LLM keys).
-        from ..experiment import Experiment
+        # Surface a clear install hint matching modal/e2b — bare ImportError
+        # from cmbagent's transitive graph is too noisy to be actionable.
+        try:
+            from ..experiment import Experiment
+        except ImportError as exc:
+            raise ImportError(
+                "CmbagentExecutor requires cmbagent. "
+                "Install it with: pip install 'plato[cmbagent]' "
+                "or pip install cmbagent"
+            ) from exc
+
+        # Iter-4 path-traversal parity with sibling backends. cmbagent
+        # writes scratch artefacts and plots under work_dir, so reject
+        # paths outside the allowed roots before construction.
+        from . import _safe_project_dir
+        project_dir = _safe_project_dir(project_dir)
 
         experiment = Experiment(
             research_idea=research_idea,
@@ -61,6 +76,14 @@ class CmbagentExecutor:
         return ExecutorResult(
             results=experiment.results,
             plot_paths=list(experiment.plot_paths),
+            artifacts={
+                "executor": "cmbagent",
+                # cmbagent flow runs as one logical unit, not per-cell.
+                # Surface a `cells_executed` of 1 so dashboard consumers
+                # that read this field don't KeyError on cmbagent runs.
+                "cells_executed": 1,
+                "had_error": False,
+            },
         )
 
 

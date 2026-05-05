@@ -10,6 +10,9 @@ import {
 import { RunDetailNav } from "@/components/manifest/run-detail-nav";
 import { cn } from "@/lib/utils";
 
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:7878/api/v1";
+
 type Loadable<T> =
   | { state: "loading" }
   | { state: "ready"; data: T }
@@ -27,9 +30,15 @@ async function fetchOptional<T>(url: string): Promise<T | null> {
   return (await resp.json()) as T;
 }
 
+// Placeholder param emitted by the static-export build. Treat it as
+// "no real id yet" so we don't fire fetches that would 404 against the
+// SPA shell while the client router is still resolving the live URL.
+const PLACEHOLDER_RUN_ID = "_";
+
 export default function ClarifyClient() {
   const params = useParams<{ runId: string }>();
   const runId = params?.runId ?? "";
+  const ready = !!runId && runId !== PLACEHOLDER_RUN_ID;
 
   const [loadable, setLoadable] = React.useState<Loadable<ClarificationsPayload>>(
     { state: "loading" },
@@ -37,10 +46,10 @@ export default function ClarifyClient() {
   const [modalOpen, setModalOpen] = React.useState(true);
 
   const refresh = React.useCallback(async () => {
-    if (!runId) return;
+    if (!ready) return;
     try {
       const data = await fetchOptional<ClarificationsPayload>(
-        `/api/v1/runs/${runId}/clarifications`,
+        `${API_BASE}/runs/${runId}/clarifications`,
       );
       if (data == null) {
         setLoadable({ state: "error", error: "Run not found." });
@@ -52,7 +61,7 @@ export default function ClarifyClient() {
         err instanceof Error ? err.message : "Failed to load clarifications";
       setLoadable({ state: "error", error: msg });
     }
-  }, [runId]);
+  }, [ready, runId]);
 
   React.useEffect(() => {
     void refresh();

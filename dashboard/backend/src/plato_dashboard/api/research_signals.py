@@ -119,7 +119,7 @@ def get_counter_evidence(
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> dict:
-    run_dir = _find_run_dir(settings.project_root, run_id)
+    run_dir = _find_run_dir(settings.project_root, run_id, _user_id(request))
     if run_dir is None:
         raise HTTPException(404, detail={"code": "run_not_found", "run_id": run_id})
 
@@ -165,7 +165,7 @@ def get_gaps(
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> dict:
-    run_dir = _find_run_dir(settings.project_root, run_id)
+    run_dir = _find_run_dir(settings.project_root, run_id, _user_id(request))
     if run_dir is None:
         raise HTTPException(404, detail={"code": "run_not_found", "run_id": run_id})
 

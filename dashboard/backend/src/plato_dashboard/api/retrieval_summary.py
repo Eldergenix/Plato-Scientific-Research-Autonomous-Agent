@@ -177,7 +177,7 @@ def get_retrieval_summary(
     settings: Settings = Depends(get_settings),
 ) -> dict:
     requester = extract_user_id(request)
-    run_dir = _find_run_dir(settings.project_root, run_id)
+    run_dir = _find_run_dir(settings.project_root, run_id, requester)
     if run_dir is None:
         raise HTTPException(404, detail={"code": "run_not_found", "run_id": run_id})
 

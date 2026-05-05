@@ -39,13 +39,18 @@ const PROVIDERS: ProviderSpec[] = [
     id: "PERPLEXITY",
     name: "Perplexity",
     description: "Literature search via FutureHouse",
-    testable: false,
+    // Backend ``_PROVIDER_PROBES`` has a real probe (with chat-completions
+    // fallback) — leaving testable=false meant the test button never
+    // showed even though the endpoint works.
+    testable: true,
   },
   {
     id: "SEMANTIC_SCHOLAR",
     name: "Semantic Scholar",
     description: "Literature novelty checks",
-    testable: false,
+    // ``_PROVIDER_PROBES["SEMANTIC_SCHOLAR"]`` hits the public search
+    // endpoint with the API key — flip this to true so the UI can use it.
+    testable: true,
   },
   // Langfuse triplet (public/secret/host) — observability backend. Backend
   // surfaces all three fields via /keys/status (see KeysStatus in lib/api.ts);
@@ -167,8 +172,31 @@ export default function KeysPage() {
     }
   };
 
+  // Backend ``_PROVIDER_PROBES`` whitelist — keep this in sync with
+  // dashboard/backend/src/plato_dashboard/api/server.py. The previous
+  // hard-coded ``OPENAI/GEMINI/ANTHROPIC`` allow-list silently dropped
+  // PERPLEXITY/SEMANTIC_SCHOLAR even though the server has working probes.
+  type TestableProvider =
+    | "ANTHROPIC"
+    | "OPENAI"
+    | "GEMINI"
+    | "PERPLEXITY"
+    | "SEMANTIC_SCHOLAR";
+
+  const TESTABLE_PROVIDERS = new Set<TestableProvider>([
+    "ANTHROPIC",
+    "OPENAI",
+    "GEMINI",
+    "PERPLEXITY",
+    "SEMANTIC_SCHOLAR",
+  ]);
+
+  function isTestable(id: ProviderId): id is TestableProvider {
+    return TESTABLE_PROVIDERS.has(id as TestableProvider);
+  }
+
   const onTest = async (id: ProviderId) => {
-    if (id !== "OPENAI" && id !== "GEMINI" && id !== "ANTHROPIC") return;
+    if (!isTestable(id)) return;
     setTesting((t) => ({ ...t, [id]: true }));
     setTests((t) => ({ ...t, [id]: undefined }));
     try {
@@ -176,6 +204,15 @@ export default function KeysPage() {
       setTests((t) => ({
         ...t,
         [id]: { ok: r.ok, latencyMs: r.latency_ms, error: r.error },
+      }));
+    } catch (err) {
+      // Demo-mode and other server-side refusals come back as
+      // ApiError 403; surface the message instead of leaving the
+      // pill stuck on "testing".
+      const msg = err instanceof Error ? err.message : "Test failed.";
+      setTests((t) => ({
+        ...t,
+        [id]: { ok: false, latencyMs: 0, error: msg },
       }));
     } finally {
       setTesting((t) => ({ ...t, [id]: false }));

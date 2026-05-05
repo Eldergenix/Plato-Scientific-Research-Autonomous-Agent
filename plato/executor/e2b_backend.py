@@ -116,6 +116,12 @@ class E2BExecutor:
                 "Install it with: pip install e2b-code-interpreter"
             ) from exc
 
+        # Iter-4 path-traversal guard parity with the modal/local backends.
+        # Refuse project_dir that resolves outside Path.home / tmp /
+        # PLATO_PROJECT_ROOT before any artefact lands.
+        from . import _safe_project_dir
+        project_dir = _safe_project_dir(project_dir)
+
         explicit_code = kwargs.get("code")
         if isinstance(explicit_code, str) and explicit_code.strip():
             cells: list[str] = [explicit_code.strip()]

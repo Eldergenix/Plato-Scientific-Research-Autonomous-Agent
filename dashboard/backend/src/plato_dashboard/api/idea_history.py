@@ -70,12 +70,24 @@ def _user_id(req: Request) -> str | None:
     return extract_user_id(req)
 
 
-def _project_dir_for(project_root: Path, pid: str) -> Path | None:
-    """Resolve ``<project_root>/<pid>/`` if it exists, else ``None``.
+def _project_dir_for(
+    project_root: Path, pid: str, user_id: str | None
+) -> Path | None:
+    """Resolve the on-disk project directory for ``pid`` honouring tenancy.
 
-    Matches the multi-project layout used by ``ProjectStore.project_dir``
-    without dragging the storage module into this read-only router.
+    Search order matches ``ProjectStore``'s effective layout under
+    multi-tenant deploys:
+
+    1. ``<project_root>/users/<user_id>/<pid>/`` (per-user namespace).
+    2. ``<project_root>/<pid>/`` (legacy single-tenant flat layout) —
+       only when no user header is supplied or the per-user candidate
+       doesn't exist; the manifest's own ``user_id`` field still gates
+       per-run visibility.
     """
+    if user_id:
+        scoped = project_root / "users" / user_id / pid
+        if scoped.is_dir():
+            return scoped
     direct = project_root / pid
     if direct.is_dir():
         return direct
@@ -187,7 +199,8 @@ def list_idea_history(
     settings: Settings = Depends(get_settings),
 ) -> IdeaHistoryResponse:
     """Return past idea-generation runs for ``pid``, newest first."""
-    project_dir = _project_dir_for(settings.project_root, pid)
+    requester = _user_id(request)
+    project_dir = _project_dir_for(settings.project_root, pid, requester)
     if project_dir is None:
         # Treat missing project as "no history" rather than 404 — the
         # frontend renders the empty state regardless and a 404 here
@@ -197,8 +210,6 @@ def list_idea_history(
     runs_dir = project_dir / "runs"
     if not runs_dir.is_dir():
         return IdeaHistoryResponse(entries=[])
-
-    requester = _user_id(request)
     entries: list[IdeaRunHistoryEntry] = []
 
     for run_dir in runs_dir.iterdir():

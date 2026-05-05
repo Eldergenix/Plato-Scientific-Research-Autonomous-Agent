@@ -41,7 +41,14 @@ class Settings(BaseSettings):
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"
-    use_fakeredis: bool = True  # set False for production
+    # Default ``True`` keeps single-process installs (HF Spaces, Railway,
+    # dev, the bundled docker-compose with ``PLATO_USE_FAKEREDIS=true``)
+    # working out of the box. Multi-worker production deploys MUST set
+    # ``PLATO_USE_FAKEREDIS=false`` AND point ``PLATO_REDIS_URL`` at a
+    # real Redis — the in-memory bus is process-local and SSE will drop
+    # cross-worker events otherwise. ``events.bus.get_bus`` logs a CRITICAL
+    # warning at startup when this combo looks misconfigured.
+    use_fakeredis: bool = True
 
     # Worker
     worker_concurrency: int = 2

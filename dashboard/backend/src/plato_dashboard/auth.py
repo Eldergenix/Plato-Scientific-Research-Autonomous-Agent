@@ -20,6 +20,7 @@ import re
 from fastapi import HTTPException, Request, status
 
 USER_HEADER = "X-Plato-User"
+USER_COOKIE = "plato_user"
 AUTH_REQUIRED_ENV = "PLATO_DASHBOARD_AUTH_REQUIRED"
 
 # A user id is used directly as a path segment under
@@ -56,19 +57,34 @@ def _is_safe_user_id(value: str) -> bool:
 def extract_user_id(request: Request) -> str | None:
     """Return the requester's user id, or ``None`` when unauthenticated.
 
+    Source order:
+    1. ``X-Plato-User`` header — preferred for API/CLI callers and
+       upstream proxies (Cloudflare Access, oauth2-proxy, ...) that
+       inject identity downstream.
+    2. ``plato_user`` cookie — set by ``/api/v1/auth/login`` for the
+       browser dashboard. The frontend's ``fetch`` calls don't repeat
+       the header on every request; without this fallback every
+       browser-driven router invocation would 401 in auth-required
+       mode.
+
     The returned value has been validated against :data:`_USER_ID_RE`
     so callers can use it directly as a filesystem path segment without
     additional sanitization. An invalid value is treated as missing.
     """
-    raw = request.headers.get(USER_HEADER)
-    if raw is None:
-        return None
-    cleaned = raw.strip()
-    if not cleaned:
-        return None
-    if not _is_safe_user_id(cleaned):
-        return None
-    return cleaned
+    candidates: list[str | None] = [
+        request.headers.get(USER_HEADER),
+        request.cookies.get(USER_COOKIE),
+    ]
+    for raw in candidates:
+        if raw is None:
+            continue
+        cleaned = raw.strip()
+        if not cleaned:
+            continue
+        if not _is_safe_user_id(cleaned):
+            continue
+        return cleaned
+    return None
 
 
 def require_user_id(request: Request) -> str:

@@ -49,6 +49,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     r = await fetch(`${API_BASE}${path}`, {
       ...init,
+      // ``credentials: "include"`` is what carries the ``plato_user``
+      // cookie set by /auth/login; without it, every loop call 401s
+      // when PLATO_DASHBOARD_AUTH_REQUIRED=1.
+      credentials: "include",
       headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
     });
   } catch (e) {

@@ -37,12 +37,18 @@ from ..events.bus import EventBus
 # ---------------------------------------------------------------------------
 
 # cmbagent emits its logs under per-phase dirs that don't perfectly mirror our
-# StageId vocabulary, so we keep an explicit map.
+# StageId vocabulary, so we keep an explicit map. Every value in the
+# ``StageId`` literal must have an entry here — ``LogTailer`` raises
+# ``ValueError`` on unknown stages, which would crash the worker's
+# orchestrator when the run reaches paper / referee.
 _STAGE_DIRS: dict[StageId, str] = {
-    "idea": "idea_generation_output",
-    "method": "method_generation_output",
-    "results": "experiment_generation_output",
+    "data":       "data_output",
+    "idea":       "idea_generation_output",
     "literature": "literature_output",
+    "method":     "method_generation_output",
+    "results":    "experiment_generation_output",
+    "paper":      "paper_generation_output",
+    "referee":    "referee_output",
 }
 
 # File extensions worth tailing as log streams. JSON files (chat_history.json)

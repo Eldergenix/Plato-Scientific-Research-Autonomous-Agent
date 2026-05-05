@@ -35,40 +35,13 @@ router = APIRouter()
 
 
 # --------------------------------------------------------------------------- #
-# Helpers (local copies — manifests.py is not in this worktree).
+# Helpers — delegate to the manifest router so tenant scoping stays in one
+# place. The bare ``X-Plato-User`` lookup at this layer used to bypass
+# ``auth._is_safe_user_id`` and the per-user namespace; the imports below
+# fix both leaks at once.
 # --------------------------------------------------------------------------- #
-def _user_id(req: Request) -> str | None:
-    """Read ``X-Plato-User`` header. ``None`` when unset.
-
-    Mirrors the convention used by the (forthcoming) manifest router so a
-    later refactor can hoist this into a shared module without touching
-    callers.
-    """
-    return req.headers.get("X-Plato-User")
-
-
-def _find_run_dir(project_root: Path, run_id: str) -> Path | None:
-    """Locate ``runs/<run_id>`` under ``project_root``.
-
-    Supports both layouts:
-
-    - ``<project_root>/runs/<run_id>/`` (single-project install).
-    - ``<project_root>/<project>/runs/<run_id>/`` (dashboard, multi-project).
-    """
-    if not project_root.exists():
-        return None
-
-    flat = project_root / "runs" / run_id
-    if flat.is_dir():
-        return flat
-
-    for child in project_root.iterdir():
-        if not child.is_dir():
-            continue
-        candidate = child / "runs" / run_id
-        if candidate.is_dir():
-            return candidate
-    return None
+from ..auth import auth_required, extract_user_id as _user_id  # noqa: E402
+from .manifests import _find_run_dir  # noqa: E402
 
 
 def _read_json(path: Path) -> Any:
@@ -200,31 +173,44 @@ def _read_graph_payload(run_dir: Path) -> dict:
 
 
 def _check_tenant(run_dir: Path, request_user: str | None) -> None:
-    """403 if the manifest's ``user_id`` disagrees with the request user.
+    """403 if the run's manifest disagrees with the requesting user.
 
-    A run without a manifest, or a manifest without ``user_id``, is
-    treated as un-owned and accessible to anyone — same posture as the
-    rest of the dashboard pre-auth.
+    Posture matches the manifest router:
+    - Auth required + header missing → 401-equivalent (caller never gets
+      here because ``extract_user_id`` returns ``None`` and the route
+      404s through the empty per-user namespace).
+    - Manifest with a ``user_id`` that doesn't match → 403.
+    - Manifest with no ``user_id`` (legacy un-namespaced run) → 403 only
+      when auth is required; otherwise allowed (single-user install).
     """
-    if request_user is None:
-        return
     manifest_path = run_dir / "manifest.json"
-    if not manifest_path.is_file():
+    manifest: dict[str, Any] | None = None
+    if manifest_path.is_file():
+        try:
+            loaded = json.loads(manifest_path.read_text())
+            if isinstance(loaded, dict):
+                manifest = loaded
+        except json.JSONDecodeError:
+            manifest = None
+
+    owner = (manifest or {}).get("user_id")
+    if isinstance(owner, str) and owner:
+        if request_user is None or owner != request_user:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "cross_tenant_blocked",
+                    "message": "This run belongs to a different user.",
+                },
+            )
         return
-    try:
-        manifest = json.loads(manifest_path.read_text())
-    except json.JSONDecodeError:
-        return
-    if not isinstance(manifest, dict):
-        return
-    owner = manifest.get("user_id")
-    if isinstance(owner, str) and owner and owner != request_user:
+
+    # Manifest missing or has no user_id — refuse in auth-required mode so
+    # legacy runs don't become world-readable on a multi-tenant deploy.
+    if auth_required():
         raise HTTPException(
             status_code=403,
-            detail={
-                "code": "cross_tenant_blocked",
-                "message": "This run belongs to a different user.",
-            },
+            detail={"code": "run_forbidden", "message": "Run has no owner record."},
         )
 
 
@@ -237,13 +223,14 @@ def get_citation_graph(
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> dict:
-    run_dir = _find_run_dir(settings.project_root, run_id)
+    requester = _user_id(request)
+    run_dir = _find_run_dir(settings.project_root, run_id, requester)
     if run_dir is None:
         raise HTTPException(
             status_code=404,
             detail={"code": "run_not_found", "run_id": run_id},
         )
-    _check_tenant(run_dir, _user_id(request))
+    _check_tenant(run_dir, requester)
     return _read_graph_payload(run_dir)
 
 

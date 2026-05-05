@@ -89,8 +89,25 @@ def _load(path: Path) -> dict[str, Any]:
 
 
 def _save(path: Path, data: dict[str, Any]) -> None:
+    """Atomic write: temp file + ``os.replace`` + parent fsync.
+
+    Direct ``Path.write_text`` truncates the destination first; if two
+    PUT /user/preferences requests race, one can write zero bytes and
+    the other can read the resulting empty file. ``_load`` swallows
+    the JSON error and returns ``{}``, silently destroying the saved
+    preferences. The temp-file dance preserves the old contents until
+    the new payload is fully on disk.
+    """
+    import os
+
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+    payload = json.dumps(data, indent=2, sort_keys=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write(payload)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, path)
 
 
 @router.get("/user/preferences", response_model=PreferencesResponse)

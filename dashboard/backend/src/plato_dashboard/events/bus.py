@@ -42,16 +42,52 @@ class EventBus:
         self._lock = asyncio.Lock()
 
     async def publish(self, channel: str, event: dict) -> None:
-        payload = json.dumps(event, default=str)
+        try:
+            payload = json.dumps(event, default=str)
+        except (TypeError, ValueError):
+            # ``default=str`` covers most non-serialisable values, but a
+            # caller can still pass a circular reference. Drop with a
+            # warning instead of crashing the publisher's request.
+            _log.warning(
+                "EventBus dropping non-JSON-serialisable event channel=%s "
+                "type=%s",
+                channel,
+                event.get("type") if isinstance(event, dict) else None,
+            )
+            return
         # Snapshot the subscribers under lock; deliver outside lock.
         async with self._lock:
             queues = list(self._channels.get(channel, ()))
+        is_terminal = isinstance(event, dict) and event.get("type") in (
+            "stage.finished", "stage.failed", "stage.cancelled",
+        )
         for q in queues:
             try:
                 q.put_nowait(payload)
             except asyncio.QueueFull:
-                # Drop slow consumers; they'll see the next event.
-                pass
+                # Slow consumer. For non-terminal events, drop quietly —
+                # they'll see the next one. For terminal events (the SSE
+                # generator returns on those) a drop strands the client
+                # forever, so fall back to a blocking put with a tight
+                # timeout that surfaces as a warning if it can't drain.
+                if is_terminal:
+                    try:
+                        await asyncio.wait_for(q.put(payload), timeout=1.0)
+                        continue
+                    except (asyncio.TimeoutError, asyncio.CancelledError):
+                        _log.warning(
+                            "EventBus terminal-event drop channel=%s type=%s "
+                            "(slow subscriber stranded)",
+                            channel,
+                            event.get("type"),
+                        )
+                else:
+                    _log.warning(
+                        "EventBus QueueFull drop channel=%s type=%s "
+                        "(slow subscriber)",
+                        channel,
+                        event.get("type") if isinstance(event, dict) else None,
+                    )
 
     async def subscribe(self, channel: str) -> AsyncIterator[dict]:
         q: asyncio.Queue[str] = asyncio.Queue(maxsize=2048)
@@ -92,7 +128,16 @@ class RedisEventBus:
         _log.info("RedisEventBus connected to %s", redis_url)
 
     async def publish(self, channel: str, event: dict) -> None:
-        payload = json.dumps(event, default=str)
+        try:
+            payload = json.dumps(event, default=str)
+        except (TypeError, ValueError):
+            _log.warning(
+                "RedisEventBus dropping non-JSON-serialisable event "
+                "channel=%s type=%s",
+                channel,
+                event.get("type") if isinstance(event, dict) else None,
+            )
+            return
         try:
             await self._client.publish(channel, payload)
         except Exception:  # noqa: BLE001
@@ -102,6 +147,21 @@ class RedisEventBus:
                 "RedisEventBus publish failed; dropping event channel=%s",
                 channel,
             )
+
+    async def ping(self) -> bool:
+        """Lightweight liveness check. ``False`` on any client error.
+
+        ``__init__`` constructs a client lazily — connection failures
+        only surface on first publish/subscribe, which means a typo in
+        ``PLATO_REDIS_URL`` produces silent event-drop instead of a loud
+        startup error. Callers that care about fail-fast can ``await
+        bus.ping()`` from the FastAPI lifespan.
+        """
+        try:
+            return bool(await self._client.ping())
+        except Exception:  # noqa: BLE001
+            _log.exception("RedisEventBus.ping failed url=%s", self._url)
+            return False
 
     async def subscribe(self, channel: str) -> AsyncIterator[dict]:
         # Each subscriber gets its own pubsub object so close-on-cancel
@@ -158,6 +218,7 @@ def get_bus() -> EventBus | RedisEventBus:
     settings = get_settings()
     redis_url = getattr(settings, "redis_url", None)
     use_fake = getattr(settings, "use_fakeredis", True)
+    worker_concurrency = int(getattr(settings, "worker_concurrency", 1) or 1)
 
     if redis_url and not use_fake:
         try:
@@ -169,6 +230,17 @@ def get_bus() -> EventBus | RedisEventBus:
             )
 
     _bus = EventBus()
+    if worker_concurrency > 1:
+        # Multi-worker uvicorn + in-memory bus = silent SSE drops between
+        # workers. Make the misconfiguration loud so operators notice in
+        # their log pane instead of waking up to broken dashboards.
+        _log.critical(
+            "PLATO SSE MISCONFIG: in-memory EventBus selected with "
+            "worker_concurrency=%d. Cross-worker events will NOT be "
+            "delivered. Set PLATO_USE_FAKEREDIS=false and configure "
+            "PLATO_REDIS_URL for multi-worker deploys.",
+            worker_concurrency,
+        )
     return _bus
 
 

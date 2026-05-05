@@ -158,18 +158,24 @@ class ManifestRecorder:
         return self._path
 
     def update(self, **fields: Any) -> None:
-        for key, value in fields.items():
-            if key in {"models", "prompt_hashes", "seeds", "extra"}:
-                getattr(self.manifest, key).update(value)
-            elif key == "source_ids":
-                seen = set(self.manifest.source_ids)
-                for sid in value:
-                    if sid not in seen:
-                        self.manifest.source_ids.append(sid)
-                        seen.add(sid)
-            else:
-                setattr(self.manifest, key, value)
-        self.flush()
+        # Iter-5 thread-safety parity with ``add_tokens`` / ``finish``.
+        # Without the lock, a concurrent ``add_tokens`` on the callback
+        # thread can clobber tokens_in / cost_usd between the read and
+        # the flush — and two ``update`` calls hitting the same dict
+        # field can race on the dict-update + flush.
+        with self._lock:
+            for key, value in fields.items():
+                if key in {"models", "prompt_hashes", "seeds", "extra"}:
+                    getattr(self.manifest, key).update(value)
+                elif key == "source_ids":
+                    seen = set(self.manifest.source_ids)
+                    for sid in value:
+                        if sid not in seen:
+                            self.manifest.source_ids.append(sid)
+                            seen.add(sid)
+                else:
+                    setattr(self.manifest, key, value)
+            self.flush()
 
     def add_tokens(self, *, input_tokens: int = 0, output_tokens: int = 0, cost_usd: float = 0.0) -> None:
         with self._lock:
@@ -179,11 +185,12 @@ class ManifestRecorder:
             self.flush()
 
     def finish(self, status: str = "success", error: str | None = None) -> None:
-        self.manifest.status = status
-        self.manifest.ended_at = datetime.now(timezone.utc)
-        if error:
-            self.manifest.error = error
-        self.flush()
+        with self._lock:
+            self.manifest.status = status
+            self.manifest.ended_at = datetime.now(timezone.utc)
+            if error:
+                self.manifest.error = error
+            self.flush()
 
     def flush(self) -> None:
         """Atomic write via temp-file rename so partial writes never leave junk.
