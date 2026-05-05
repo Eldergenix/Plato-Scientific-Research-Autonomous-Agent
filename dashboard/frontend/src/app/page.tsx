@@ -220,12 +220,6 @@ export default function Home() {
               onChangeDisplay={() => setLogHeight((h) => (h === 0 ? 30 : h === 30 ? 60 : 0))}
               onToggleDetails={cost.openMeter}
               onMoreActions={() => setCmdOpen(true)}
-              onToggleFavorite={() => {
-                /* favorites — Phase 4 */
-              }}
-              onOpenNotifications={() => {
-                /* notifications — Phase 4 */
-              }}
             />
 
             <div className="flex-1 min-h-0 overflow-hidden">

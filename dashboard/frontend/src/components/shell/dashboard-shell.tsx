@@ -129,9 +129,10 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
           <BottomBar
             onAskAi={() => setCmdOpen(true)}
-            onOpenHistory={() => {
-              /* run history panel — Phase 4 */
-            }}
+            // Run-history button → activity feed (the closest existing
+            // surface to "all runs across projects"). Iter-6: replaced
+            // a Phase-4 placeholder that did nothing on click.
+            onOpenHistory={() => router.push("/activity")}
           />
         </div>
       </div>

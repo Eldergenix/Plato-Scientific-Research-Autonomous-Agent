@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import {
-  Bell,
   Filter,
   Lightbulb,
   MoreHorizontal,
@@ -11,7 +10,6 @@ import {
   Play,
   SlidersHorizontal,
   Square,
-  Star,
   Wallet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -39,9 +37,6 @@ export interface TopBarProps {
   onRunPipeline?: () => void;
   /** Disabled-state tooltip surfaced on the Run-pipeline button when truthy. */
   runPipelineDisabledReason?: string;
-  onToggleFavorite?: () => void;
-  onOpenNotifications?: () => void;
-  isFavorite?: boolean;
   /** Elapsed milliseconds since the active run started, for live duration. */
   elapsedMs?: number;
 }
@@ -258,9 +253,6 @@ export function TopBar({
   onMoreActions,
   onRunPipeline,
   runPipelineDisabledReason,
-  onToggleFavorite,
-  onOpenNotifications,
-  isFavorite,
   elapsedMs: _elapsedMs,
 }: TopBarProps) {
   const running = project.activeRun;
@@ -300,24 +292,6 @@ export function TopBar({
             {truncatedName}
           </h1>
 
-          <Row1IconButton
-            aria-label={isFavorite ? "Remove favorite" : "Add favorite"}
-            pressed={isFavorite}
-            onClick={onToggleFavorite}
-            icon={
-              <Star
-                size={14}
-                strokeWidth={1.5}
-                fill={isFavorite ? "currentColor" : "none"}
-              />
-            }
-          />
-
-          <Row1IconButton
-            aria-label="Notifications"
-            onClick={onOpenNotifications}
-            icon={<Bell size={14} strokeWidth={1.5} />}
-          />
         </div>
 
         {/* Right: cost meter + run controls + more.
