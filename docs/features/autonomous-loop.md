@@ -52,9 +52,13 @@ revisions.
   Default 50. Cost data flows from the run manifest's `cost_usd`
   field, populated by the iter-8 ManifestCallbackHandler (R8).
 - `--max-iters` caps iteration count.
-- `--simplicity-bias` adjusts the LOC-drift weight (default 0.001).
 - SIGINT (Ctrl-C) writes an "interrupted" row to the TSV log and
   exits cleanly without corrupting git state.
+
+> The LOC-drift weight is currently a hardcoded constant (0.001) inside
+> the composite scorer. A future `--simplicity-bias` flag will expose
+> it on the CLI; until that ships, edit
+> `plato/loop/research_loop.py:_score_composite` to tune it.
 
 ## Output
 

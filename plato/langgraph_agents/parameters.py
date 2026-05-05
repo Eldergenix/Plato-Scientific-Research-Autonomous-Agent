@@ -76,7 +76,15 @@ class LITERATURE(TypedDict):
     num_papers: int #controls the number of papers found by semantic scholar
     
 # Graph state class
-class GraphState(TypedDict):
+class GraphState(TypedDict, total=False):
+    """LangGraph state contract.
+
+    ``total=False`` because the graph is built incrementally — early nodes
+    populate a subset, downstream nodes append/extend. Without this, every
+    early node would have to seed every key just to keep the TypedDict
+    happy, which would defeat the whole point of LangGraph reducers.
+    """
+
     messages: Annotated[list[AnyMessage], add_messages]
     idea: IDEA
     tokens: TOKENS
@@ -95,3 +103,15 @@ class GraphState(TypedDict):
     needs_clarification: bool
     counter_evidence_sources: list[Any]
     gaps: list[dict[str, Any]]
+    # Iter-3: fields actively read/written by claim_extractor /
+    # gap_detector / counter_evidence / literature.semantic_scholar /
+    # clarifier that the iter-2 audit found missing from the schema.
+    # Adding them here makes the LangGraph reducer / checkpointer aware
+    # of these state slots so resume-from-checkpoint preserves them and
+    # type-checkers stop flagging the .get() workarounds.
+    sources: list[Any]
+    claims: list[dict[str, Any]]
+    evidence_links: list[dict[str, Any]]
+    domain: str
+    domain_profile: Any  # plato.domain.DomainProfile (avoid circular import)
+    skip_clarification: bool

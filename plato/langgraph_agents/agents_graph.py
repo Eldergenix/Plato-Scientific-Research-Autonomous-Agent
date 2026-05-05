@@ -7,10 +7,12 @@ from .methods import methods_fast
 from .literature import novelty_decider, semantic_scholar, literature_summary
 from .referee import referee
 from .clarifier import research_question_clarifier
+from .claim_extractor import claim_extractor
 from .counter_evidence import counter_evidence_search
 from .gap_detector import gap_detector
 from .routers import router, task_router, literature_router, clarifier_router
 from .scopes import (
+    CLAIM_EXTRACTOR_SCOPE,
     CLARIFIER_SCOPE,
     IDEA_HATER_SCOPE,
     IDEA_SCOPE,
@@ -64,6 +66,16 @@ def build_lg_graph(mermaid_diagram=False, checkpointer=None):
         "literature_summary",
         scoped_node(literature_summary, LITERATURE_SUMMARY_SCOPE),
     )
+    # Iter-3: claim_extractor was implemented but never wired. gap_detector
+    # consumes ``state["evidence_links"]`` and counter_evidence_search reads
+    # ``state["claims"]`` — both nodes were silently seeing empty lists
+    # because nothing populated them. Insert claim_extractor between
+    # literature_summary and counter_evidence_search so the downstream
+    # nodes get real data.
+    builder.add_node(
+        "claim_extractor",
+        scoped_node(claim_extractor, CLAIM_EXTRACTOR_SCOPE),
+    )
     builder.add_node("counter_evidence_search",      counter_evidence_search)
     builder.add_node("gap_detector",                 gap_detector)
     builder.add_node("referee",                      scoped_node(referee, REFEREE_SCOPE))
@@ -82,9 +94,12 @@ def build_lg_graph(mermaid_diagram=False, checkpointer=None):
     builder.add_edge("methods",                      END)
     builder.add_conditional_edges("novelty",         literature_router)
     builder.add_edge("semantic_scholar",             "novelty")
-    # Workflow #11 + #12: after the literature summary, hunt for
-    # counter-evidence and then run gap analysis before terminating.
-    builder.add_edge("literature_summary",           "counter_evidence_search")
+    # Workflow #11 + #12 (iter-3 wiring): literature_summary →
+    # claim_extractor → counter_evidence_search → gap_detector → END.
+    # claim_extractor populates state["claims"]/state["evidence_links"]
+    # which the next two nodes consume.
+    builder.add_edge("literature_summary",           "claim_extractor")
+    builder.add_edge("claim_extractor",              "counter_evidence_search")
     builder.add_edge("counter_evidence_search",      "gap_detector")
     builder.add_edge("gap_detector",                 END)
     builder.add_edge("referee",                      END)

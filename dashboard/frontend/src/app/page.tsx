@@ -193,13 +193,24 @@ export default function Home() {
             }}
           >
             <TopBar
-              project={project}
+              project={
+                // While the initial fetch is in flight, hand TopBar a
+                // blank-name + zeroed project so the cost meter and
+                // project-title don't briefly render the iter-1
+                // EMPTY_PROJECT placeholder ("Untitled project · $0.00 ·
+                // 0 tok"). The Sidebar already does the same on line 160.
+                loading
+                  ? { ...project, name: "", totalCostCents: 0, totalTokens: 0 }
+                  : project
+              }
               elapsedMs={elapsedMs}
               filterTab={filterTab}
               onChangeFilter={setFilterTab}
               onCancelRun={requestCancel}
               onRunPipeline={() => guardedStartRun("idea")}
-              runPipelineDisabledReason={runPipelineDisabledReason}
+              runPipelineDisabledReason={
+                loading ? "Loading…" : runPipelineDisabledReason
+              }
               onOpenCostMeter={cost.openMeter}
               onAddFilter={() =>
                 setFilterTab((t) =>

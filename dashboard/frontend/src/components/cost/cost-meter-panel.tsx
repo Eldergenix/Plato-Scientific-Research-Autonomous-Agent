@@ -403,6 +403,11 @@ function BudgetCard({
 
   const persistCap = React.useCallback(
     async (next: number | null) => {
+      // Capture the previous value so we can roll back on save failure;
+      // without this, an api.setCostCaps reject leaves the UI showing the
+      // new cap while the server still has the old one — silent
+      // divergence from the source of truth.
+      const before = capCents;
       setCapCents(next);
       setPersistError(null);
       try {
@@ -411,16 +416,18 @@ function BudgetCard({
           stop_on_exceed: stopOnOverrun,
         });
       } catch (e: unknown) {
+        setCapCents(before);
         setPersistError(
           e instanceof Error ? e.message : "Failed to save cost cap",
         );
       }
     },
-    [projectId, stopOnOverrun],
+    [projectId, stopOnOverrun, capCents],
   );
 
   const persistStop = React.useCallback(
     async (next: boolean) => {
+      const before = stopOnOverrun;
       setStopOnOverrun(next);
       setPersistError(null);
       try {
@@ -429,12 +436,13 @@ function BudgetCard({
           stop_on_exceed: next,
         });
       } catch (e: unknown) {
+        setStopOnOverrun(before);
         setPersistError(
           e instanceof Error ? e.message : "Failed to save cost cap",
         );
       }
     },
-    [projectId, capCents],
+    [projectId, capCents, stopOnOverrun],
   );
 
   // Budget-cap entry uses a controlled inline editor rather than window.prompt

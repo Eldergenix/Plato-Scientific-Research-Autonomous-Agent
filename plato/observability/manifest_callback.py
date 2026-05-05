@@ -72,11 +72,47 @@ def _compute_cost(model: str, inp: int, out: int) -> float:
 
 
 class ManifestCallbackHandler(BaseCallbackHandler):
-    """LangChain handler that forwards token usage to a :class:`ManifestRecorder`."""
+    """LangChain handler that forwards token usage to a :class:`ManifestRecorder`.
 
-    def __init__(self, recorder: "ManifestRecorder") -> None:
+    Optional ``cost_cap_usd`` enables in-flight enforcement: every time
+    the running total crosses the cap, ``CostCapExceeded`` is raised
+    from inside ``on_llm_end``. LangChain swallows callback exceptions
+    by default, so the way to actually halt is to call ``check_cap()``
+    yourself from your node body — the cap's *real* role here is to
+    flag the breach so the next iteration of the outer loop refuses to
+    schedule another LLM call. The outer ResearchLoop honours this.
+    """
+
+    def __init__(
+        self,
+        recorder: "ManifestRecorder",
+        *,
+        cost_cap_usd: float | None = None,
+    ) -> None:
         super().__init__()
         self._recorder = recorder
+        self._cost_cap_usd = cost_cap_usd
+
+    @property
+    def cost_cap_usd(self) -> float | None:
+        return self._cost_cap_usd
+
+    def is_over_cap(self) -> bool:
+        if self._cost_cap_usd is None:
+            return False
+        return self._recorder.manifest.cost_usd >= self._cost_cap_usd
+
+    def check_cap(self) -> None:
+        """Raise ``CostCapExceeded`` if the recorder's running total is over.
+
+        Call this between LLM calls — typically at the top of each node body
+        — to refuse to schedule the next LLM round when the cap is breached.
+        """
+        if self.is_over_cap():
+            raise CostCapExceeded(
+                spent_usd=self._recorder.manifest.cost_usd,
+                cap_usd=self._cost_cap_usd or 0.0,
+            )
 
     def on_llm_end(self, response: Any, **kwargs: Any) -> None:  # noqa: ARG002
         llm_output = getattr(response, "llm_output", None)
@@ -104,4 +140,19 @@ class ManifestCallbackHandler(BaseCallbackHandler):
             pass
 
 
-__all__ = ["ManifestCallbackHandler"]
+class CostCapExceeded(RuntimeError):
+    """Raised by ``ManifestCallbackHandler.check_cap()`` when over budget.
+
+    Carries the spent vs cap amounts so callers can include them in the
+    user-facing error message (e.g. dashboard cost-banner toast).
+    """
+
+    def __init__(self, *, spent_usd: float, cap_usd: float) -> None:
+        self.spent_usd = spent_usd
+        self.cap_usd = cap_usd
+        super().__init__(
+            f"Cost cap exceeded: spent ${spent_usd:.4f} of ${cap_usd:.4f} cap"
+        )
+
+
+__all__ = ["ManifestCallbackHandler", "CostCapExceeded"]
