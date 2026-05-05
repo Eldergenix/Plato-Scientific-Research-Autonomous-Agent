@@ -31,14 +31,24 @@ _ANON_USER = "__anon__"
 # so a malicious header can't traverse outside the per-user directory.
 _USER_ID_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 
+# Stage ids the workspace recognizes. Mirrors the StageId set in
+# plato_dashboard.domain.models — kept here as a literal because this
+# module otherwise has no domain dependency.
+_KNOWN_STAGE_IDS = frozenset(
+    {"data", "idea", "literature", "method", "results", "paper", "referee"}
+)
+_MODEL_ID_MAX = 200
+
 
 class PreferencesResponse(BaseModel):
     default_domain: str | None = None
     default_executor: str | None = None
+    models_by_stage: dict[str, str] = Field(default_factory=dict)
 
 
 class PreferencesUpdate(BaseModel):
-    default_domain: str = Field(min_length=1)
+    default_domain: str | None = Field(default=None, min_length=1)
+    models_by_stage: dict[str, str] | None = None
 
 
 def _resolve_user_id(
@@ -100,10 +110,51 @@ def get_preferences(
 ) -> PreferencesResponse:
     user_id = _resolve_user_id(settings, x_plato_user)
     data = _load(_prefs_path(settings, user_id))
+    raw_models = data.get("models_by_stage") or {}
+    models_by_stage = {
+        str(k): str(v)
+        for k, v in raw_models.items()
+        if isinstance(k, str) and isinstance(v, str)
+    }
     return PreferencesResponse(
         default_domain=data.get("default_domain"),
         default_executor=data.get("default_executor"),
+        models_by_stage=models_by_stage,
     )
+
+
+def _validate_models_by_stage(value: dict[str, str]) -> dict[str, str]:
+    cleaned: dict[str, str] = {}
+    for stage_id, model_id in value.items():
+        if stage_id not in _KNOWN_STAGE_IDS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "unknown_stage",
+                    "message": (
+                        f"Unknown stage {stage_id!r}. "
+                        f"Known: {sorted(_KNOWN_STAGE_IDS)}"
+                    ),
+                },
+            )
+        if not isinstance(model_id, str) or not model_id.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "invalid_model_id",
+                    "message": f"model_id for stage {stage_id!r} must be a non-empty string.",
+                },
+            )
+        if len(model_id) > _MODEL_ID_MAX:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "model_id_too_long",
+                    "message": f"model_id must be <= {_MODEL_ID_MAX} chars.",
+                },
+            )
+        cleaned[stage_id] = model_id
+    return cleaned
 
 
 @router.put("/user/preferences", response_model=PreferencesResponse)
@@ -114,28 +165,48 @@ def put_preferences(
 ) -> PreferencesResponse:
     user_id = _resolve_user_id(settings, x_plato_user)
 
-    registered = list_domains()
-    if body.default_domain not in registered:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "code": "unknown_domain",
-                "message": (
-                    f"Unknown domain {body.default_domain!r}. "
-                    f"Registered: {registered}"
-                ),
-            },
-        )
+    if body.default_domain is not None:
+        registered = list_domains()
+        if body.default_domain not in registered:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "unknown_domain",
+                    "message": (
+                        f"Unknown domain {body.default_domain!r}. "
+                        f"Registered: {registered}"
+                    ),
+                },
+            )
 
     path = _prefs_path(settings, user_id)
     data = _load(path)
-    data["default_domain"] = body.default_domain
+    if body.default_domain is not None:
+        data["default_domain"] = body.default_domain
     # Stream 7 owns this field — preserve any value already on disk, otherwise
     # surface ``None`` rather than fabricating an executor here.
     data.setdefault("default_executor", None)
+
+    if body.models_by_stage is not None:
+        existing = data.get("models_by_stage")
+        merged: dict[str, str] = {}
+        if isinstance(existing, dict):
+            for k, v in existing.items():
+                if isinstance(k, str) and isinstance(v, str):
+                    merged[k] = v
+        merged.update(_validate_models_by_stage(body.models_by_stage))
+        data["models_by_stage"] = merged
+
     _save(path, data)
 
+    raw_models = data.get("models_by_stage") or {}
+    models_by_stage = {
+        str(k): str(v)
+        for k, v in raw_models.items()
+        if isinstance(k, str) and isinstance(v, str)
+    }
     return PreferencesResponse(
-        default_domain=data["default_domain"],
+        default_domain=data.get("default_domain"),
         default_executor=data.get("default_executor"),
+        models_by_stage=models_by_stage,
     )

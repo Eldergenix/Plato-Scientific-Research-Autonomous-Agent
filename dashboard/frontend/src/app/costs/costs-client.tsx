@@ -11,10 +11,9 @@ import {
   Plus,
   X,
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, type ProjectUsage, type StageTokens } from "@/lib/api";
 import type { Project } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Pill } from "@/components/ui/pill";
 import { formatCost, formatTokens, cn } from "@/lib/utils";
 
 type SortKey = "name" | "createdAt" | "stagesRun" | "tokens" | "cost";
@@ -112,8 +111,6 @@ function formatDate(iso: string): string {
   }
 }
 
-// Mock 7-point sparkline for the "this week" card. Real time-series
-// aggregation lands in Phase 4 via /api/v1/projects/{pid}/usage.
 function buildSparklinePath(points: number[], w = 60, h = 16): string {
   if (points.length === 0) return "";
   const max = Math.max(...points, 1);
@@ -129,6 +126,7 @@ function buildSparklinePath(points: number[], w = 60, h = 16): string {
 
 export default function CostsPage() {
   const [projects, setProjects] = React.useState<Project[] | null>(null);
+  const [usages, setUsages] = React.useState<Record<string, ProjectUsage>>({});
   const [error, setError] = React.useState<string | null>(null);
   const [tab, setTab] = React.useState<TabId>("project");
   const [sortKey, setSortKey] = React.useState<SortKey>("cost");
@@ -144,12 +142,31 @@ export default function CostsPage() {
         const list = await api.listProjects();
         if (cancelled) return;
         setProjects(list);
+
         // One-time migration of any pre-iter-26 localStorage caps to the
         // server, then load the canonical state from the backend.
         await migrateLegacyCaps();
         if (cancelled) return;
         const serverCaps = await fetchCapsFromBackend(list);
         if (!cancelled) setCaps(serverCaps);
+
+        // Fan out per-project usage fetches in parallel; tolerate per-project
+        // failures (e.g. project dir missing on disk → 404). Powers the
+        // by-model breakdown tab.
+        const entries = await Promise.all(
+          list.map(async (p): Promise<[string, ProjectUsage] | null> => {
+            try {
+              const u = await api.getProjectUsage(p.id);
+              return [p.id, u];
+            } catch {
+              return null;
+            }
+          }),
+        );
+        if (cancelled) return;
+        const map: Record<string, ProjectUsage> = {};
+        for (const e of entries) if (e) map[e[0]] = e[1];
+        setUsages(map);
       } catch (e: unknown) {
         if (cancelled) return;
         console.error("listProjects failed", e);
@@ -164,13 +181,35 @@ export default function CostsPage() {
 
   const totalCents = (projects ?? []).reduce((s, p) => s + p.totalCostCents, 0);
   const totalTokensThisMonth = (projects ?? []).reduce((s, p) => s + p.totalTokens, 0);
-  // Mock weekly/monthly slices — backend usage aggregation is Phase 4.
-  const monthCents = Math.round(totalCents * 0.6);
-  const weekCents = Math.round(totalCents * 0.2);
-  const sparklinePoints = React.useMemo(() => {
-    const seed = Math.max(weekCents, 1);
-    return [0.4, 0.7, 0.55, 0.85, 0.6, 0.95, 1.0].map((f) => f * seed);
-  }, [weekCents]);
+
+  // The backend's ``aggregate_project_usage`` doesn't expose
+  // per-day timestamps (``by_run`` is currently always ``[]`` and
+  // ``LLM_calls.txt`` lines aren't timestamped in a structured way).
+  // Until that ships we can't honestly slice "this week" vs "this
+  // month" — show the all-time total in both cards rather than
+  // fabricating a 60%/20% ratio. The sparkline is omitted for the
+  // same reason; restore once daily totals are available.
+  const monthCents = totalCents;
+  const weekCents = totalCents;
+
+  // Aggregate by_model across every project. StageTokens.model is
+  // the canonical model id; collapse identical ids by summing.
+  const byModel = React.useMemo(() => {
+    const acc = new Map<string, StageTokens>();
+    for (const u of Object.values(usages)) {
+      for (const [model, tok] of Object.entries(u.by_model)) {
+        const prev = acc.get(model);
+        if (prev) {
+          prev.input_tokens += tok.input_tokens;
+          prev.output_tokens += tok.output_tokens;
+          prev.cost_cents += tok.cost_cents;
+        } else {
+          acc.set(model, { ...tok, model });
+        }
+      }
+    }
+    return [...acc.values()].sort((a, b) => b.cost_cents - a.cost_cents);
+  }, [usages]);
 
   const sorted = React.useMemo(() => {
     if (!projects) return null;
@@ -269,7 +308,7 @@ export default function CostsPage() {
             Costs
           </h1>
           <div className="flex items-stretch gap-3">
-            <MetricCard label="This week" value={formatCost(weekCents)} sparkline={sparklinePoints} />
+            <MetricCard label="This week" value={formatCost(weekCents)} />
             <MetricCard label="This month" value={formatCost(monthCents)} />
             <MetricCard label="All-time" value={formatCost(totalCents)} />
             <MetricCard
@@ -297,13 +336,10 @@ export default function CostsPage() {
           <div className="surface-linear-card px-4 py-3 text-[13px] text-(--color-status-red)">{error}</div>
         )}
 
-        {tab !== "project" ? (
-          <section className="surface-linear-card flex items-center justify-between gap-3 p-6">
-            <div className="text-[13px] text-(--color-text-tertiary-spec)">
-              Coming soon — {tab === "model" ? "per-model" : "per-day"} aggregation ships in Phase 4.
-            </div>
-            <Pill tone="amber">TODO</Pill>
-          </section>
+        {tab === "model" ? (
+          <ModelBreakdown rows={byModel} loading={isLoading} />
+        ) : tab === "day" ? (
+          <DayBreakdownEmpty />
         ) : isEmpty ? (
           <EmptyState />
         ) : (
@@ -523,6 +559,79 @@ function SkeletonBar({ w, align = "left" }: { w: string; align?: "left" | "right
     <div className={cn("flex", align === "right" && "justify-end")}>
       <div className="animate-shimmer h-3 rounded-[4px]" style={{ width: w }} />
     </div>
+  );
+}
+
+function ModelBreakdown({ rows, loading }: { rows: StageTokens[]; loading: boolean }) {
+  if (loading) {
+    return (
+      <section className="surface-linear-card overflow-hidden">
+        {[0, 1, 2].map((i) => (
+          <div
+            key={i}
+            className="grid items-center gap-3 border-b border-(--color-border-card) px-4 last:border-b-0"
+            style={{ height: 48, gridTemplateColumns: "minmax(0,2fr) 1fr 1fr 1fr" }}
+          >
+            <SkeletonBar w="60%" />
+            <SkeletonBar w="40%" />
+            <SkeletonBar w="40%" />
+            <SkeletonBar w="30%" align="right" />
+          </div>
+        ))}
+      </section>
+    );
+  }
+  if (rows.length === 0) {
+    return (
+      <section className="surface-linear-card flex items-center justify-center px-6 py-12">
+        <p className="text-[13px] text-(--color-text-tertiary-spec)">
+          No model usage recorded yet — run a stage to see per-model costs.
+        </p>
+      </section>
+    );
+  }
+  return (
+    <section className="surface-linear-card overflow-hidden">
+      <div
+        className="grid items-center gap-3 border-b border-(--color-border-card) px-4"
+        style={{ height: 36, gridTemplateColumns: "minmax(0,2fr) 1fr 1fr 1fr" }}
+      >
+        <span className="text-[11px] font-[510] uppercase tracking-wider text-(--color-text-tertiary-spec)">Model</span>
+        <span className="text-[11px] font-[510] uppercase tracking-wider text-(--color-text-tertiary-spec)">Input tokens</span>
+        <span className="text-[11px] font-[510] uppercase tracking-wider text-(--color-text-tertiary-spec)">Output tokens</span>
+        <span className="text-right text-[11px] font-[510] uppercase tracking-wider text-(--color-text-tertiary-spec)">Cost</span>
+      </div>
+      {rows.map((r) => (
+        <div
+          key={r.model ?? "unknown"}
+          className="grid items-center gap-3 border-b border-(--color-border-card) px-4 last:border-b-0 hover:bg-(--color-ghost-bg-hover)"
+          style={{ height: 48, gridTemplateColumns: "minmax(0,2fr) 1fr 1fr 1fr" }}
+        >
+          <div className="truncate font-mono text-[13px] text-(--color-text-row-title)">{r.model ?? "unknown"}</div>
+          <div className="text-[13px] text-(--color-text-secondary-spec)">{formatTokens(r.input_tokens)}</div>
+          <div className="text-[13px] text-(--color-text-secondary-spec)">{formatTokens(r.output_tokens)}</div>
+          <div className="text-right font-mono text-[13px] tabular-nums text-(--color-text-primary-strong)">
+            {formatCost(r.cost_cents)}
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function DayBreakdownEmpty() {
+  // The backend's ``aggregate_project_usage`` doesn't yet record
+  // per-day timestamps — ``LLM_calls.txt`` lines aren't structured
+  // for time-bucketing and ``ProjectUsage.by_run`` is currently
+  // unpopulated. Render an honest empty state instead of fabricating
+  // a chart; this view lights up automatically once the backend
+  // surfaces dated entries.
+  return (
+    <section className="surface-linear-card flex items-center justify-center px-6 py-12">
+      <p className="text-[13px] text-(--color-text-tertiary-spec)">
+        No daily breakdown available yet — backend doesn&apos;t expose per-day usage timestamps.
+      </p>
+    </section>
   );
 }
 

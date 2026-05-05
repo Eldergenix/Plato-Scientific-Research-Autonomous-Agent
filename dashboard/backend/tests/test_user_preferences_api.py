@@ -24,7 +24,11 @@ def _client() -> TestClient:
 def test_get_returns_null_defaults_when_no_file(tmp_project_root: Path) -> None:
     resp = _client().get("/api/v1/user/preferences")
     assert resp.status_code == 200
-    assert resp.json() == {"default_domain": None, "default_executor": None}
+    assert resp.json() == {
+        "default_domain": None,
+        "default_executor": None,
+        "models_by_stage": {},
+    }
 
 
 def test_get_reads_persisted_preferences(tmp_project_root: Path) -> None:
@@ -39,7 +43,11 @@ def test_get_reads_persisted_preferences(tmp_project_root: Path) -> None:
         headers={"X-Plato-User": "alice"},
     )
     assert resp.status_code == 200
-    assert resp.json() == {"default_domain": "biology", "default_executor": None}
+    assert resp.json() == {
+        "default_domain": "biology",
+        "default_executor": None,
+        "models_by_stage": {},
+    }
 
 
 # ---------------------------------------------------------------- PUT
@@ -55,7 +63,11 @@ def test_put_persists_default_domain_and_get_reflects(
         json={"default_domain": "biology"},
     )
     assert put.status_code == 200
-    assert put.json() == {"default_domain": "biology", "default_executor": None}
+    assert put.json() == {
+        "default_domain": "biology",
+        "default_executor": None,
+        "models_by_stage": {},
+    }
 
     # Round-trip: GET reads the same value back.
     got = client.get("/api/v1/user/preferences").json()
@@ -147,3 +159,74 @@ def test_put_rejects_malformed_user_header_in_required_mode(
     )
     assert resp.status_code == 401
     assert resp.json()["detail"]["code"] == "user_invalid"
+
+
+# ---------------------------------------------------------------- models_by_stage
+
+
+def test_put_models_by_stage_round_trips_through_get(
+    tmp_project_root: Path,
+) -> None:
+    client = _client()
+
+    put = client.put(
+        "/api/v1/user/preferences",
+        json={"models_by_stage": {"idea": "gpt-5"}},
+    )
+    assert put.status_code == 200, put.text
+    assert put.json()["models_by_stage"] == {"idea": "gpt-5"}
+
+    got = client.get("/api/v1/user/preferences").json()
+    assert got["models_by_stage"] == {"idea": "gpt-5"}
+
+    saved = json.loads(
+        (tmp_project_root / "users" / "__anon__" / "preferences.json").read_text()
+    )
+    assert saved["models_by_stage"] == {"idea": "gpt-5"}
+
+
+def test_put_models_by_stage_merges_with_existing(
+    tmp_project_root: Path,
+) -> None:
+    client = _client()
+
+    client.put(
+        "/api/v1/user/preferences",
+        json={"models_by_stage": {"idea": "gpt-5"}},
+    )
+    second = client.put(
+        "/api/v1/user/preferences",
+        json={"models_by_stage": {"results": "claude-4.1-opus"}},
+    )
+    assert second.status_code == 200
+    assert second.json()["models_by_stage"] == {
+        "idea": "gpt-5",
+        "results": "claude-4.1-opus",
+    }
+
+
+def test_put_rejects_unknown_stage_id(tmp_project_root: Path) -> None:
+    resp = _client().put(
+        "/api/v1/user/preferences",
+        json={"models_by_stage": {"not-a-stage": "gpt-5"}},
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["code"] == "unknown_stage"
+
+
+def test_put_rejects_empty_model_id(tmp_project_root: Path) -> None:
+    resp = _client().put(
+        "/api/v1/user/preferences",
+        json={"models_by_stage": {"idea": ""}},
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["code"] == "invalid_model_id"
+
+
+def test_put_rejects_model_id_too_long(tmp_project_root: Path) -> None:
+    resp = _client().put(
+        "/api/v1/user/preferences",
+        json={"models_by_stage": {"idea": "x" * 201}},
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["code"] == "model_id_too_long"
