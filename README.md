@@ -23,7 +23,7 @@ Phase 5 hardening landed alongside the dashboard's 13-stream feature push:
 - **Reviewer panel + revision loop** — methodology / statistics / novelty /
   writing axes feed an aggregator that drives a redraft loop bounded by
   `Plato.get_paper(max_revision_iters=...)`.
-- **Autonomous research loop** — `plato loop --hours 8 --max-cost-usd 50`
+- **Autonomous research loop** — `plato loop --project-dir <path> --hours 8 --max-cost-usd 50`
   iterates under a wall-clock + cost budget, committing improvements and
   reverting regressions.
 - **Reproducibility manifest** — every workflow emits `manifest.json` with
@@ -64,14 +64,14 @@ To install plato create a virtual environment and pip install it. We recommend u
 ```bash
 python -m venv Plato_env
 source Plato_env/bin/activate
-pip install "plato[app]"
+pip install plato
 ```
 
 Or alternatively install it with [uv](https://docs.astral.sh/uv/), initializing a project and installing it:
 
 ```bash
 uv init
-uv add plato[app]
+uv add plato
 ```
 
 Then, run the gui with:
@@ -144,7 +144,7 @@ The dashboard supersedes the legacy `plato run` Streamlit app for new workflows.
 
 You can run Plato using a GUI through the [PlatoApp](https://github.com/AstroPilot-AI/PlatoApp).
 
-The app is already installed with `pip install "plato[app]"`, otherwise install it with `pip install plato_app` or `uv sync --extra app`.
+PlatoApp is a separate package — install it directly with `pip install plato_app`. (The previous ``plato[app]`` extra was removed in iter-8 because ``plato_app`` is published independently and the extra confused the dependency resolver.)
 
 Then, launch the GUI with
 

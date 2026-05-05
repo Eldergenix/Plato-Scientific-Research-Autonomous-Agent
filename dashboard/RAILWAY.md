@@ -121,10 +121,11 @@ limits comfortably.
 ## Why one container, not two services?
 
 The repo's [`dashboard/Dockerfile`](Dockerfile) is a multi-stage build
-that runs `next build --turbopack` with `output: "export"` to produce a
-pure-static `out/` directory, then copies that into the Python image
-where FastAPI serves it at `/`. The frontend has no Node runtime in
-production — it's just HTML + JS files served by uvicorn. So:
+that runs `npx next build` (webpack, NOT Turbopack — Turbopack breaks
+`@/*` path aliases under static export) with `output: "export"` to
+produce a pure-static `out/` directory, then copies that into the
+Python image where FastAPI serves it at `/`. The frontend has no Node
+runtime in production — it's just HTML + JS files served by uvicorn. So:
 
 - **One origin** → zero CORS, zero proxy config
 - **One service** → simpler env vars, no internal-DNS plumbing
