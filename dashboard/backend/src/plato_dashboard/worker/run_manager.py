@@ -360,6 +360,14 @@ def _child_main(
             max_attempts = int(config.get("max_attempts") or extra.get("max_attempts") or 10)
             restart_at = int(config.get("restart_at_step") or extra.get("restart_at_step") or -1)
             hardware = config.get("hardware_constraints") or extra.get("hardware_constraints")
+            # Iter-7: honour the user's saved /user/executor_preferences
+            # default. server.py:run_stage now injects ``executor`` into
+            # the config dict from the prefs file before calling
+            # ``start_run``; we forward it to ``Plato.get_results`` which
+            # accepts the kwarg directly.
+            executor_override = config.get("executor") or extra.get("executor")
+            if executor_override:
+                kwargs["executor"] = executor_override
             plato.get_results(
                 involved_agents=list(agents),
                 max_n_steps=max_steps,
@@ -629,7 +637,16 @@ async def _supervise(run: Run, bus: EventBus, events_file: Path) -> None:
         )
         raise
     finally:
+        # Iter-7: prune every per-run dict on normal finish too. Previously
+        # only ``_subprocesses`` was popped here; ``_active_runs``,
+        # ``_run_tasks``, and ``_run_dirs`` stayed populated forever, so a
+        # long-running worker kept growing memory linearly with run count.
+        # ``cancel_run`` already pops these (it's the only path that did),
+        # but the supervisor's success / failure exit went unpruned.
         _subprocesses.pop(run.id, None)
+        _active_runs.pop(run.id, None)
+        _run_tasks.pop(run.id, None)
+        _run_dirs.pop(run.id, None)
 
 
 async def _terminate_process(run_id: str, proc: mp.Process) -> None:

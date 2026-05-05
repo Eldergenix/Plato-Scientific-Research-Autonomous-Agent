@@ -24,6 +24,7 @@ project_dir works whether driven by the Python class or the dashboard.
 """
 
 from __future__ import annotations
+import asyncio
 import json
 import os
 import re
@@ -244,8 +245,16 @@ class ProjectStore:
             hist = self.history_dir(pid) / f"{stage}_{ts}.md"
             shutil.copy2(path, hist)
 
-        async with aiofiles.open(path, "w") as f:
+        # Iter-7: atomic write via temp-file + os.replace so two
+        # concurrent PUT /stages/{stage} requests can't interleave their
+        # writes and corrupt the file. The async open of a plain file
+        # name was a torn-write window; ``meta.json`` already used this
+        # pattern via ``_atomic_write_text`` and now stage markdown
+        # matches.
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        async with aiofiles.open(tmp_path, "w") as f:
             await f.write(markdown)
+        await asyncio.to_thread(os.replace, tmp_path, path)
 
         proj = self.load(pid)
         s = proj.stages[stage]

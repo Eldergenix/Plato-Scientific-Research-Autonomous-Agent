@@ -29,6 +29,27 @@ from typing import AsyncIterator, Optional, Protocol
 _log = logging.getLogger(__name__)
 
 
+def _event_kind(event: object) -> str | None:
+    """Extract the event-kind discriminator from a bus event.
+
+    Iter-7: ``run_manager`` and ``log_tail`` emit events under the ``kind``
+    key (``{"kind": "stage.finished", ...}``) but the bus's terminal-event
+    detection used to read ``event.get("type")`` — a different key — so
+    is_terminal was silently always False, the slow-consumer fallback
+    never engaged, and a backed-up SSE queue could lose the terminal
+    event with a quiet drop. Tolerate both keys: ``kind`` first because
+    that's what the producers actually write, ``type`` as a fallback for
+    any external integration that may follow the older convention.
+    """
+    if not isinstance(event, dict):
+        return None
+    k = event.get("kind")
+    if isinstance(k, str):
+        return k
+    t = event.get("type")
+    return t if isinstance(t, str) else None
+
+
 class _Bus(Protocol):
     async def publish(self, channel: str, event: dict) -> None: ...
     def subscribe(self, channel: str) -> AsyncIterator[dict]: ...
@@ -52,13 +73,13 @@ class EventBus:
                 "EventBus dropping non-JSON-serialisable event channel=%s "
                 "type=%s",
                 channel,
-                event.get("type") if isinstance(event, dict) else None,
+                _event_kind(event) if isinstance(event, dict) else None,
             )
             return
         # Snapshot the subscribers under lock; deliver outside lock.
         async with self._lock:
             queues = list(self._channels.get(channel, ()))
-        is_terminal = isinstance(event, dict) and event.get("type") in (
+        is_terminal = isinstance(event, dict) and _event_kind(event) in (
             "stage.finished", "stage.failed", "stage.cancelled",
         )
         for q in queues:
@@ -79,14 +100,14 @@ class EventBus:
                             "EventBus terminal-event drop channel=%s type=%s "
                             "(slow subscriber stranded)",
                             channel,
-                            event.get("type"),
+                            _event_kind(event),
                         )
                 else:
                     _log.warning(
                         "EventBus QueueFull drop channel=%s type=%s "
                         "(slow subscriber)",
                         channel,
-                        event.get("type") if isinstance(event, dict) else None,
+                        _event_kind(event) if isinstance(event, dict) else None,
                     )
 
     async def subscribe(self, channel: str) -> AsyncIterator[dict]:
@@ -135,7 +156,7 @@ class RedisEventBus:
                 "RedisEventBus dropping non-JSON-serialisable event "
                 "channel=%s type=%s",
                 channel,
-                event.get("type") if isinstance(event, dict) else None,
+                _event_kind(event) if isinstance(event, dict) else None,
             )
             return
         try:

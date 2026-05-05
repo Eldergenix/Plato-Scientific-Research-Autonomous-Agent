@@ -38,10 +38,13 @@ def _write_transcript(project_root: Path, pid: str, lines: list[dict]) -> Path:
     return log
 
 
-def test_returns_empty_when_project_missing(client) -> None:
+def test_returns_404_when_project_missing(client) -> None:
+    """Iter-7: missing project dir returns 404 (not 200 + empty turns)
+    so a typo'd pid surfaces explicitly instead of looking like a real
+    project that just hasn't been debated yet."""
     resp = client.get("/api/v1/projects/no_such_pid/idea_transcript")
-    assert resp.status_code == 200
-    assert resp.json() == {"turns": []}
+    assert resp.status_code == 404
+    assert resp.json()["detail"]["code"] == "project_not_found"
 
 
 def test_returns_empty_when_log_missing(client, tmp_project_root: Path) -> None:

@@ -22,7 +22,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from ..settings import Settings, get_settings
@@ -107,7 +107,15 @@ def get_idea_transcript(
     requester = _user_id(request)
     project_dir = _project_dir_for(settings.project_root, pid, requester)
     if project_dir is None:
-        return IdeaTranscriptResponse(turns=[])
+        # Iter-7: 404 on missing project (vs the previous 200 + empty
+        # turns) so a wrong ``pid`` in the URL doesn't masquerade as a
+        # never-debated project. The frontend catches the 404 in the
+        # ``catch`` branch of getIdeaTranscript and falls back to the
+        # honest empty state.
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "project_not_found", "pid": pid},
+        )
 
     log_path = project_dir / "idea_generation_output" / "idea_transcript.jsonl"
     if not log_path.is_file():

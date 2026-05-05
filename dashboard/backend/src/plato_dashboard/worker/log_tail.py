@@ -49,6 +49,12 @@ _STAGE_DIRS: dict[StageId, str] = {
     "results":    "experiment_generation_output",
     "paper":      "paper_generation_output",
     "referee":    "referee_output",
+    # Iter-7: clarifier writes its log to ``clarifier_output/clarifier.log``
+    # (see plato.langgraph_agents.scopes.CLARIFIER_SCOPE). Without this
+    # entry, constructing a LogTailer for the clarifier stage raised
+    # ValueError and crashed the orchestrator the first time the run
+    # reached that node.
+    "clarifier":  "clarifier_output",
 }
 
 # File extensions worth tailing as log streams. JSON files (chat_history.json)

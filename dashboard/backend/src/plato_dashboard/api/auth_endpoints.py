@@ -89,6 +89,21 @@ class LoginRequest(BaseModel):
     user_id: str = Field(min_length=1, max_length=128)
 
 
+def _cookie_secure() -> bool:
+    """``Secure`` cookie flag — on except for local dev.
+
+    Browsers refuse to send Secure cookies over HTTP. We default to True
+    (production-safe) and only opt out when ``PLATO_INSECURE_COOKIES=1``
+    is set, which is the explicit local-dev escape hatch the dev server
+    uses on http://127.0.0.1.
+    """
+    import os
+
+    return os.environ.get("PLATO_INSECURE_COOKIES", "").lower() not in {
+        "1", "true", "yes", "on",
+    }
+
+
 @router.post("/auth/login")
 def login(response: Response, body: LoginRequest) -> dict[str, Any]:
     """Set the ``plato_user`` cookie and echo the chosen user id back."""
@@ -103,6 +118,7 @@ def login(response: Response, body: LoginRequest) -> dict[str, Any]:
         value=user_id,
         max_age=_COOKIE_MAX_AGE_SECONDS,
         httponly=True,
+        secure=_cookie_secure(),
         samesite="lax",
         # No domain — scope to the current host. Avoids accidentally
         # leaking the cookie to a sibling subdomain in shared deploys.
@@ -114,7 +130,12 @@ def login(response: Response, body: LoginRequest) -> dict[str, Any]:
 @router.post("/auth/logout")
 def logout(response: Response) -> dict[str, Any]:
     """Clear the ``plato_user`` cookie."""
-    response.delete_cookie(key=_COOKIE_NAME, path="/")
+    # Match the secure flag from login so the browser actually clears the
+    # cookie. delete_cookie ignores secure on Starlette but we set it
+    # explicitly for clarity + future-proofing.
+    response.delete_cookie(
+        key=_COOKIE_NAME, path="/", secure=_cookie_secure()
+    )
     return {"ok": True}
 
 

@@ -315,6 +315,17 @@ def aggregate_project_usage(project_dir: Path) -> ProjectUsage:
             primary_model = (
                 next(iter(models.values()), None) if isinstance(models, dict) else None
             )
+            # Iter-7: legacy manifests written before the cost_usd field
+            # landed report ``cost_cents == 0`` even when tokens were
+            # spent. Fall back to estimate_cost_cents when we have a
+            # known model + nonzero tokens, so the by-day timeline
+            # doesn't undercount older runs.
+            tokens_in = int(data.get("tokens_in") or 0)
+            tokens_out = int(data.get("tokens_out") or 0)
+            if cost_cents == 0 and primary_model and (tokens_in or tokens_out):
+                cost_cents = estimate_cost_cents(
+                    primary_model, tokens_in, tokens_out
+                )
             usage.by_run.append(
                 {
                     "run_id": data.get("run_id") or run_sub.name,
@@ -322,8 +333,8 @@ def aggregate_project_usage(project_dir: Path) -> ProjectUsage:
                     "status": data.get("status") or "unknown",
                     "started_at": data.get("started_at"),
                     "ended_at": data.get("ended_at"),
-                    "tokens_in": int(data.get("tokens_in") or 0),
-                    "tokens_out": int(data.get("tokens_out") or 0),
+                    "tokens_in": tokens_in,
+                    "tokens_out": tokens_out,
                     "cost_cents": cost_cents,
                     "model": primary_model,
                 }
@@ -336,6 +347,10 @@ def aggregate_project_usage(project_dir: Path) -> ProjectUsage:
 # ---------------------------------------------------------------------------
 
 _run_ledger: dict[str, StageTokens] = {}
+# Iter-7: per-stage breakdown keyed by run_id so reconcile_run can replace
+# just one stage's contribution without erasing others. Always read/written
+# under ``_ledger_lock``.
+_run_stage_ledger: dict[str, dict[str, StageTokens]] = {}
 _ledger_lock = threading.Lock()
 
 
@@ -385,28 +400,42 @@ def reconcile_run(
     project_dir: Path,
     stage: str,
 ) -> StageTokens:
-    """When a run finishes, replace the ledger entry with canonical totals
-    parsed from the on-disk LLM_calls.txt for ``stage``. The on-disk file
-    is the source of truth.
+    """Reconcile the live ledger with on-disk LLM_calls.txt totals for ``stage``.
+
+    Iter-7: the previous implementation replaced the entry outright. That
+    erased earlier stages' contributions for any run that ran multiple
+    stages back-to-back (each ``start_run`` is one stage, but the same
+    ``run_id`` may be re-used for a continuation). The fix: keep a
+    per-stage breakdown in ``_run_stage_ledger`` and rebuild the run-wide
+    snapshot from all known stages so each reconcile call replaces only
+    that stage's contribution.
     """
     records = parse_llm_calls_file(_stage_log_path(project_dir, stage))
-    canonical = StageTokens()
+    canonical_for_stage = StageTokens()
     for rec in records:
-        canonical.add(rec)
+        canonical_for_stage.add(rec)
+
     with _ledger_lock:
-        _run_ledger[run_id] = canonical
-    return StageTokens(
-        model=canonical.model,
-        input_tokens=canonical.input_tokens,
-        output_tokens=canonical.output_tokens,
-        cost_cents=canonical.cost_cents,
-    )
+        per_stage = _run_stage_ledger.setdefault(run_id, {})
+        per_stage[stage] = canonical_for_stage
+        # Recompute the run-wide totals across every reconciled stage.
+        merged = StageTokens()
+        for st in per_stage.values():
+            merged.add(st)
+        _run_ledger[run_id] = merged
+        return StageTokens(
+            model=merged.model,
+            input_tokens=merged.input_tokens,
+            output_tokens=merged.output_tokens,
+            cost_cents=merged.cost_cents,
+        )
 
 
 def clear_run_ledger() -> None:
     """Test helper — drops all in-memory entries."""
     with _ledger_lock:
         _run_ledger.clear()
+        _run_stage_ledger.clear()
 
 
 # ---------------------------------------------------------------------------

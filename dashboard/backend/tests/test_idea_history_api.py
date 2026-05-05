@@ -67,11 +67,14 @@ def _write_manifest(
     return run_dir
 
 
-def test_returns_empty_list_when_project_dir_missing(client) -> None:
-    """Treat missing pid as empty history, not 404."""
+def test_returns_404_when_project_dir_missing(client) -> None:
+    """Iter-7: missing pid returns 404 with a project_not_found detail
+    code, not 200 + empty list. The frontend already treats 404 the
+    same as an empty list (renders the empty state) so no consumer
+    breaks; the 404 surfaces real misrouting."""
     resp = client.get("/api/v1/projects/nonexistent_pid/idea_history")
-    assert resp.status_code == 200
-    assert resp.json() == {"entries": []}
+    assert resp.status_code == 404
+    assert resp.json()["detail"]["code"] == "project_not_found"
 
 
 def test_returns_empty_list_when_runs_dir_missing(

@@ -29,7 +29,11 @@ router = APIRouter()
 _ANON_USER = "__anon__"
 # Conservative slug — matches the alphabet ProjectStore already uses for IDs
 # so a malicious header can't traverse outside the per-user directory.
-_USER_ID_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
+# Iter-7: drop the dot from the alphabet. The previous regex permitted
+# the literal "..", which on Path("users") / ".." / "preferences.json"
+# resolves to one directory above users/ and reads/writes outside the
+# user namespace — a path-traversal escape via the auth header.
+_USER_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
 class PreferencesResponse(BaseModel):

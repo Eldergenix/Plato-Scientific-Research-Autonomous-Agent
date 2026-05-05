@@ -202,10 +202,16 @@ def list_idea_history(
     requester = _user_id(request)
     project_dir = _project_dir_for(settings.project_root, pid, requester)
     if project_dir is None:
-        # Treat missing project as "no history" rather than 404 — the
-        # frontend renders the empty state regardless and a 404 here
-        # would force every dashboard to special-case it.
-        return IdeaHistoryResponse(entries=[])
+        # Iter-7: a missing project directory is genuinely a different
+        # condition from "exists but has no idea runs yet". Returning 200
+        # with an empty list let buggy ``pid`` URLs hide silently. 404
+        # surfaces the real cause; the frontend already handles 404 the
+        # same way as an empty list (showing the empty state) so no
+        # caller breaks.
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "project_not_found", "pid": pid},
+        )
 
     runs_dir = project_dir / "runs"
     if not runs_dir.is_dir():

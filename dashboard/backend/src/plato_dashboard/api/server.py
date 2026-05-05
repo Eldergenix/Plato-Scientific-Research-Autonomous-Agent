@@ -571,10 +571,25 @@ def create_app() -> FastAPI:
             and cap.budget_cents > 0
         ):
             cap_usd = cap.budget_cents / 100.0
+
+        # Iter-7: read the user's executor preference and inject it into
+        # the run config so the worker actually honours the saved default.
+        # The /user/executor_preferences endpoint persisted the choice,
+        # but the worker never consulted it — every dashboard run used
+        # whatever Plato.get_results picked by default, ignoring the
+        # explicit user preference shown in the settings page.
+        run_kwargs = run_request.model_dump()
+        if not run_kwargs.get("executor"):
+            from .executor_preferences import _read_prefs, _prefs_path
+
+            prefs = _read_prefs(_prefs_path(get_settings(), _get_user_id(request)))
+            if prefs.default_executor:
+                run_kwargs["executor"] = prefs.default_executor
+
         return await start_run(
             pid,
             stage,
-            run_request.model_dump(),
+            run_kwargs,
             bus,
             project_dir=store.project_dir(pid),
             cost_cap_usd=cap_usd,
