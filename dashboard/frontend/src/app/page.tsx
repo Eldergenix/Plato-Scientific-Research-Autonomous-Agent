@@ -554,7 +554,18 @@ function StagePane({
         />
       );
     default:
-      return null;
+      // Iter-10: surface an honest empty-state for any new StageId value
+      // not yet covered by the switch above. The previous `return null`
+      // silently rendered nothing — a typo in a caller or a future
+      // stage addition produced a blank pane with no diagnostic.
+      return (
+        <EmptyStage
+          icon={ClipboardList}
+          title={`Stage: ${stage}`}
+          description={`No detail pane is registered for the "${stage}" stage yet. Wire one up in StagePane.`}
+          onGenerate={onRun}
+        />
+      );
   }
 }
 

@@ -62,35 +62,48 @@ async function migrateLegacyCaps(): Promise<void> {
   if (typeof window === "undefined") return;
   const raw = window.localStorage.getItem(LEGACY_CAPS_KEY);
   if (!raw) return;
+  // Iter-10: don't unconditionally remove the legacy key in `finally` —
+  // if every backend write fails (e.g. backend unreachable on first
+  // page load) the previous logic permanently erased the user's pre-
+  // iter-26 caps. Now: track failures, only remove the key when every
+  // write succeeded; on failure, leave the legacy data in place so the
+  // next page load retries.
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      window.localStorage.removeItem(LEGACY_CAPS_KEY);
-      return;
-    }
-    await Promise.all(
-      parsed
-        .filter(
-          (c: unknown): c is BudgetCap =>
-            typeof (c as BudgetCap)?.projectId === "string" &&
-            typeof (c as BudgetCap)?.capUsd === "number" &&
-            (c as BudgetCap).capUsd > 0,
-        )
-        .map((c) =>
-          api
-            .setCostCaps(c.projectId, {
-              budget_cents: Math.round(c.capUsd * 100),
-              stop_on_exceed: true,
-            })
-            .catch(() => {
-              // Best-effort migration; surface failures via console for debug
-              // but don't block the page load.
-            }),
-        ),
-    );
+    parsed = JSON.parse(raw);
   } catch {
-    // Malformed cache — drop it.
-  } finally {
+    // Malformed cache — drop it. (Can't be migrated and isn't useful.)
+    window.localStorage.removeItem(LEGACY_CAPS_KEY);
+    return;
+  }
+  if (!Array.isArray(parsed)) {
+    window.localStorage.removeItem(LEGACY_CAPS_KEY);
+    return;
+  }
+  const validCaps = parsed.filter(
+    (c: unknown): c is BudgetCap =>
+      typeof (c as BudgetCap)?.projectId === "string" &&
+      typeof (c as BudgetCap)?.capUsd === "number" &&
+      (c as BudgetCap).capUsd > 0,
+  );
+  if (validCaps.length === 0) {
+    window.localStorage.removeItem(LEGACY_CAPS_KEY);
+    return;
+  }
+  let allSucceeded = true;
+  await Promise.all(
+    validCaps.map((c) =>
+      api
+        .setCostCaps(c.projectId, {
+          budget_cents: Math.round(c.capUsd * 100),
+          stop_on_exceed: true,
+        })
+        .catch(() => {
+          allSucceeded = false;
+        }),
+    ),
+  );
+  if (allSucceeded) {
     window.localStorage.removeItem(LEGACY_CAPS_KEY);
   }
 }

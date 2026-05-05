@@ -268,6 +268,19 @@ export default function KeysPage() {
                       onChange={(e) =>
                         setDrafts((d) => ({ ...d, [p.id]: e.target.value }))
                       }
+                      // Iter-10: opt out of every form of autofill /
+                      // password-manager. API keys are not credentials —
+                      // they're per-project secrets that should never
+                      // land in the browser's saved-passwords store, and
+                      // 1Password / LastPass auto-populating an unrelated
+                      // value into ``draft`` would silently submit a
+                      // wrong key on the next save.
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="off"
+                      spellCheck={false}
+                      data-1p-ignore
+                      data-lpignore="true"
                       placeholder={
                         inputDisabled
                           ? "Override with in-app key…"

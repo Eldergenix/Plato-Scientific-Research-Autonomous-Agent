@@ -111,6 +111,11 @@ export function ConfirmDialog({
 /** Convenience hook for one-shot confirmation flows. */
 export function useConfirm() {
   const [config, setConfig] = React.useState<Omit<ConfirmDialogProps, "open" | "onOpenChange"> | null>(null);
+  // Iter-10: hold the Promise's resolver in a ref so the dismiss path
+  // (Esc, overlay click, Cancel) can call ``resolve(false)``. The previous
+  // implementation declared a ``cleanup`` closure but never wired it,
+  // so dismissed dialogs left every ``await confirm(...)`` hung forever.
+  const resolveRef = React.useRef<((v: boolean) => void) | null>(null);
 
   const confirm = React.useCallback(
     (
@@ -119,17 +124,15 @@ export function useConfirm() {
       },
     ) =>
       new Promise<boolean>((resolve) => {
+        resolveRef.current = resolve;
         setConfig({
           ...cfg,
           onConfirm: async () => {
             await cfg.onConfirm?.();
-            resolve(true);
+            resolveRef.current?.(true);
+            resolveRef.current = null;
           },
         });
-        // Resolve false if dismissed.
-        const cleanup = () => resolve(false);
-        // Dismiss handler is provided by ConfirmDialog rendered below.
-        void cleanup;
       }),
     [],
   );
@@ -137,7 +140,14 @@ export function useConfirm() {
   const node = config ? (
     <ConfirmDialog
       open
-      onOpenChange={(o) => !o && setConfig(null)}
+      onOpenChange={(o) => {
+        if (!o) {
+          // Dismiss → resolve false so the caller's await path completes.
+          resolveRef.current?.(false);
+          resolveRef.current = null;
+          setConfig(null);
+        }
+      }}
       {...config}
     />
   ) : null;

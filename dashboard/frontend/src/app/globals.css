@@ -141,8 +141,13 @@
      3. Typography (unchanged) — Inter Variable, weights 450–590
         12px label, 13px body / row title, 14px workspace name.
      --------------------------------------------------------------------------- */
-  --font-sans: "Inter", "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Menlo", "Berkeley Mono", monospace;
+  /* Iter-10: prefer the next/font-injected variables so Next's optimised
+     + subset font faces actually activate. Without this, the browser
+     fell through to the system fallback on every page load — the inter
+     import in layout.tsx loaded the font but the CSS variable was never
+     referenced, shipping dead bytes to every visitor. */
+  --font-sans: var(--font-sans-loaded), "Inter", "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: var(--font-mono-loaded), "JetBrains Mono", ui-monospace, "SF Mono", "Menlo", "Berkeley Mono", monospace;
 
   --text-display-xl: 72px;
   --text-display-lg: 64px;
@@ -555,4 +560,18 @@
 
   --gradient-progress: linear-gradient(90deg, #effaf3 0%, #f5f6f8 100%);
   --gradient-backlog: linear-gradient(90deg, #fef9ec 0%, #f5f6f8 100%);
+
+  /* Iter-10: light-mode equivalents for tokens that were dark-only.
+     Components that referenced these in `text-(--color-X)` /
+     `bg-(--color-X)` previously inherited the dark @theme defaults
+     under :root.light, rendering near-white text on white backgrounds
+     (illegible). */
+  --color-text-primary-strong: #0a0a0b;
+  --color-text-secondary-spec: #2c3038;
+  --color-text-quaternary-spec: #8a92a0;
+  --color-bg-tag-pill: #f0f1f3;
+  --color-text-progress-meta: #3a6b4a;
+  --color-text-backlog-meta: #7a6a4a;
+  --color-border-subtle: rgba(0, 0, 0, 0.04);
+  --color-border-stronger: #9ca3af;
 }
