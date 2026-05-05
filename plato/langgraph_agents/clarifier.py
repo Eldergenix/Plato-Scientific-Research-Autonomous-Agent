@@ -56,12 +56,19 @@ def _parse_questions(text: str) -> list[str]:
     return [str(q).strip() for q in data if str(q).strip()]
 
 
-async def research_question_clarifier(
+def research_question_clarifier(
     state: GraphState, config: Optional[RunnableConfig] = None
 ):
     # Note: ``Optional[RunnableConfig]`` (not ``RunnableConfig | None``)
     # because LangGraph's annotation introspection only whitelists the
     # ``Optional[...]`` and bare-``RunnableConfig`` forms.
+    #
+    # Sync, not async: ``LLM_call_stream`` is synchronous and there are
+    # no other awaits in this body. Declaring the node ``async def``
+    # forced LangGraph's ``graph.invoke()`` (used by ``Plato.get_idea``)
+    # to refuse the node with "No synchronous function provided", which
+    # crashed every idea-stage run before the maker/hater debate could
+    # spin up.
     """Generate up to 3 clarifying questions for the supplied data description."""
 
     if isinstance(state, dict) and state.get("skip_clarification"):
