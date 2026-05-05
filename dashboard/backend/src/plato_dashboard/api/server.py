@@ -10,8 +10,10 @@ from typing import AsyncIterator
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.types import Scope
 
 from ..auth import auth_required, extract_user_id
 from ..domain.models import (
@@ -62,6 +64,74 @@ from .user_preferences import router as user_preferences_router
 from .idea_history import router as idea_history_router
 from .cost_caps import router as cost_caps_router
 from .approvals import router as approvals_router, compute_blocking_approval
+
+
+class _SPAStaticFiles(StaticFiles):
+    """``StaticFiles`` that falls back to a placeholder HTML for dynamic routes.
+
+    The Next.js static export under ``output: "export"`` only writes HTML
+    for routes whose params are returned from ``generateStaticParams``.
+    The dashboard returns a single ``"_"`` placeholder for every dynamic
+    segment (run IDs / loop IDs are coined at runtime), so e.g.
+    ``out/runs/_/research/index.html`` exists but ``out/runs/abc123/research/``
+    does not. Deep-linking to a real ID needs to serve the placeholder's
+    HTML for the matching *route shape* — that way React hydrates against
+    JSX whose component tree matches the route, and ``useParams()`` reads
+    the real ID from the live URL on the client.
+
+    The fallback chain is:
+      1. Literal file under ``out/`` → serve as-is (regular static request).
+      2. URL of the form ``/runs/<id>[/sub]/`` → swap ``<id>`` with ``_``
+         and try the placeholder file.
+      3. URL of the form ``/loop/<id>/`` → same swap with ``_``.
+      4. Anything else that's not a static asset → ``out/index.html``
+         (last-resort SPA shell so the URL bar still resolves to *something*).
+
+    Static assets (.js, .css, images, fonts, source maps, JSON, manifests)
+    keep their honest 404 — falling back for a missing JS chunk would mask
+    broken builds and cause the browser to try parsing HTML as JavaScript.
+    """
+
+    _ASSET_SUFFIXES: tuple[str, ...] = (
+        ".js", ".mjs", ".cjs", ".css", ".map",
+        ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".avif", ".ico",
+        ".woff", ".woff2", ".ttf", ".otf", ".eot",
+        ".json", ".xml", ".txt", ".webmanifest",
+        ".mp4", ".webm", ".mp3", ".wav", ".pdf",
+    )
+
+    # Top-level path prefixes that have a dynamic placeholder under
+    # them. Add new entries here when new ``[xId]`` segments are
+    # introduced — see dashboard/frontend/src/app for the source of truth.
+    _DYNAMIC_PREFIXES: tuple[str, ...] = ("runs", "loop")
+
+    @classmethod
+    def _placeholder_path(cls, path: str) -> str | None:
+        """Map ``runs/abc/research/`` → ``runs/_/research/``; ``None`` if N/A."""
+        parts = path.split("/")
+        if len(parts) >= 2 and parts[0] in cls._DYNAMIC_PREFIXES and parts[1] != "_":
+            parts[1] = "_"
+            return "/".join(parts)
+        return None
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code != 404:
+                raise
+            if path.lower().endswith(self._ASSET_SUFFIXES):
+                raise
+
+            placeholder = self._placeholder_path(path)
+            if placeholder is not None:
+                try:
+                    return await super().get_response(placeholder, scope)
+                except StarletteHTTPException:
+                    pass
+
+            # Last-resort SPA shell.
+            return await super().get_response("index.html", scope)
 
 
 def _resolve_project_root(settings: Settings, user_id: str | None) -> Path:
@@ -690,7 +760,17 @@ def create_app() -> FastAPI:
         None,
     )
     if static_dir is not None:
-        app.mount("/", StaticFiles(directory=static_dir, html=True), name="frontend")
+        # SPA-aware static serving. The Next.js static export only emits
+        # HTML for routes whose params are returned from
+        # ``generateStaticParams``; dynamic routes like /runs/<id>/research/
+        # return [] so no per-id files exist. Without a fallback to
+        # index.html, a deep-link to such a URL 404s instead of loading
+        # the SPA shell that handles the route client-side.
+        app.mount(
+            "/",
+            _SPAStaticFiles(directory=static_dir, html=True),
+            name="frontend",
+        )
 
     return app
 
