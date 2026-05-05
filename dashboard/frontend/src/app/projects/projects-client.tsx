@@ -301,7 +301,13 @@ export default function ProjectsPage() {
     const list = projects ?? [];
     const q = query.trim().toLowerCase();
     return list.filter((p) => {
-      if (q && !p.name.toLowerCase().includes(q)) return false;
+      // Iter-8: also match against the project id so a user pasting a
+      // UUID (the most reliable way to disambiguate two projects with
+      // similar names) actually finds it. Previously search was
+      // name-only and pasted ids returned no results.
+      if (q && !p.name.toLowerCase().includes(q) && !p.id.toLowerCase().includes(q)) {
+        return false;
+      }
       const status = rollupStatus(p);
       if (tab === "active") return p.activeRun != null || status === "running";
       if (tab === "completed") return status === "done";

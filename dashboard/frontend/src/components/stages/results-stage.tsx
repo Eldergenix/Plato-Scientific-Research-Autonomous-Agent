@@ -282,12 +282,18 @@ function AgentSwimlane({
               {lane.name}
             </span>
             <div className="flex-1 h-3 rounded-[3px] bg-(--color-ghost-bg) relative">
-              {lane.events.map((e, i) => {
+              {lane.events.map((e) => {
                 const offset = Math.max(0, e.ts - startMs);
                 const left = (offset / maxOffsetMs) * 100;
                 return (
                   <span
-                    key={i}
+                    // Iter-8: stable key. Index-based keys broke React
+                    // reconciliation under the ring-buffer trim — when
+                    // NODE_EVENTS_MAX is exceeded the front of the array
+                    // is sliced, so retained events shift index and React
+                    // remounts every tick instead of animating positions.
+                    // ``${name}-${kind}-${ts}`` is unique per event.
+                    key={`${e.name}-${e.kind}-${e.ts}`}
                     className={cn(
                       "absolute top-0 bottom-0 w-1 rounded-full opacity-80",
                       e.kind === "entered"

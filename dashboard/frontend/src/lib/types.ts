@@ -57,6 +57,10 @@ export interface Project {
   // so synchronous gate evaluation (``getBlockingApproval``) doesn't
   // have to await an extra round trip per stage. ``null`` / undefined
   // means "no approvals recorded yet".
+  // Iter-8: shape mirrors ``ApprovalState`` / ``ApprovalsState`` from
+  // ``api.ts``; we cannot import them here because ``api.ts`` already
+  // imports from this file (cycle). The literal string union below
+  // must stay in lockstep with the canonical ``ApprovalState`` Literal.
   approvals?: {
     per_stage: Record<string, "pending" | "approved" | "rejected" | "skipped">;
     auto_skip: boolean;

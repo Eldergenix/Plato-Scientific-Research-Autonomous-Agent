@@ -84,6 +84,10 @@ export function ManifestPanel({ manifest }: { manifest: RunManifest }) {
     manifest.run_id.length > 8 ? `${manifest.run_id.slice(0, 8)}…` : manifest.run_id;
 
   const modelEntries = Object.entries(manifest.models ?? {});
+  // Iter-8: defensively coalesce — early manifest writers can omit
+  // ``source_ids`` entirely (vs. emit []), and ``manifest.source_ids.length``
+  // would crash the panel before reaching the empty-state branch.
+  const sourceIds = manifest.source_ids ?? [];
 
   return (
     <section
@@ -180,15 +184,15 @@ export function ManifestPanel({ manifest }: { manifest: RunManifest }) {
         style={{ borderBottom: "1px solid var(--color-border-standard)" }}
       >
         <div className="font-label" style={{ marginBottom: 6 }}>
-          Sources ({manifest.source_ids.length})
+          Sources ({sourceIds.length})
         </div>
-        {manifest.source_ids.length === 0 ? (
+        {sourceIds.length === 0 ? (
           <p className="text-[12px] text-(--color-text-row-meta)">
             No sources cited.
           </p>
         ) : (
           <ul className="flex flex-col gap-1">
-            {manifest.source_ids.map((id) => {
+            {sourceIds.map((id) => {
               const url = sourceUrl(id);
               return (
                 <li

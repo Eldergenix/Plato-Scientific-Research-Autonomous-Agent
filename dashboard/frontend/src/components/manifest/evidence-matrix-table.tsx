@@ -81,16 +81,24 @@ function StrengthIndicator({ strength }: { strength: StrengthLabel }) {
 }
 
 export function EvidenceMatrixTable({ data }: { data: EvidenceMatrixData }) {
-  const { claims, evidence_links: links, sources = [] } = data;
+  // Iter-8: guard against null/undefined arrays. Backend manifest writers
+  // sometimes omit a key entirely (vs. emit []) when the stage didn't
+  // produce any data, so ``new Map(claims.map(...))`` would throw a
+  // TypeError before reaching the empty-state branch. Default-and-coalesce
+  // each list at the top so every downstream access is safe.
+  const safeClaims = data.claims ?? [];
+  const safeLinks = data.evidence_links ?? [];
+  const safeSources = data.sources ?? [];
 
   const claimById = React.useMemo(
-    () => new Map(claims.map((c) => [c.id, c])),
-    [claims],
+    () => new Map(safeClaims.map((c) => [c.id, c])),
+    [safeClaims],
   );
   const sourceById = React.useMemo(
-    () => new Map(sources.map((s) => [s.id, s])),
-    [sources],
+    () => new Map(safeSources.map((s) => [s.id, s])),
+    [safeSources],
   );
+  const links = safeLinks;
 
   if (links.length === 0) {
     return (

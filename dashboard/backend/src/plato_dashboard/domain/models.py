@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Literal, Optional
 from uuid import uuid4
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 def utcnow() -> datetime:
@@ -101,6 +101,27 @@ class ApprovalsState(BaseModel):
 
     per_stage: dict[str, ApprovalState] = Field(default_factory=dict)
     auto_skip: bool = False
+
+    # Iter-8: validate that ``per_stage`` keys are real ``StageId`` values
+    # so a typo (e.g. "methods") fails fast at PUT /approvals time
+    # instead of silently bypassing the gate. The previous bare
+    # ``dict[str, ...]`` accepted any string key.
+    @field_validator("per_stage")
+    @classmethod
+    def _validate_per_stage_keys(
+        cls, v: dict[str, ApprovalState]
+    ) -> dict[str, ApprovalState]:
+        valid_stages = {
+            "data", "idea", "literature", "method",
+            "results", "paper", "referee", "clarifier",
+        }
+        bad = [k for k in v if k not in valid_stages]
+        if bad:
+            raise ValueError(
+                f"approvals.per_stage contains unknown stage(s): {bad!r}. "
+                f"Expected one of {sorted(valid_stages)}."
+            )
+        return v
 
 
 class Project(BaseModel):

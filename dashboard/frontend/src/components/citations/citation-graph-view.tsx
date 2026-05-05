@@ -228,6 +228,21 @@ function GraphCanvas({ payload }: GraphProps) {
             {layout.nodes.map((node) => {
               const isFocused = !connectedIds || connectedIds.has(node.id);
               const fill = node.side === "seed" ? COLOR_SEED : COLOR_EXPANDED;
+              // Iter-8: pick the most useful external URL for the node.
+              // Prefer DOI (always rendered as doi.org/<doi>); fall back to
+              // OpenAlex (which has its own page); if neither is present
+              // the node is a leaf without a stable URL — keep the click
+              // affordance off in that case to avoid a dead-link UX.
+              const url =
+                (node.doi
+                  ? `https://doi.org/${node.doi}`
+                  : node.openalex_id
+                    ? `https://openalex.org/${node.openalex_id}`
+                    : null);
+              const openUrl = () => {
+                if (!url) return;
+                window.open(url, "_blank", "noopener,noreferrer");
+              };
               return (
                 <g
                   key={node.id}
@@ -236,8 +251,19 @@ function GraphCanvas({ payload }: GraphProps) {
                   onMouseLeave={() => setHoverId(null)}
                   onFocus={() => setHoverId(node.id)}
                   onBlur={() => setHoverId(null)}
-                  tabIndex={0}
-                  className="cursor-pointer"
+                  // Iter-8: make the node actually navigable. Was tabIndex+
+                  // cursor-pointer with no handler — pure decoration.
+                  onClick={openUrl}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      openUrl();
+                    }
+                  }}
+                  tabIndex={url ? 0 : -1}
+                  role={url ? "link" : undefined}
+                  aria-label={url ? `Open ${node.title} (${url})` : node.title}
+                  className={url ? "cursor-pointer" : "cursor-default"}
                   data-testid={`node-${node.id}`}
                   data-side={node.side}
                   style={{ outline: "none" }}
