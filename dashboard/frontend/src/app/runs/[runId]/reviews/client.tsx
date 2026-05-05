@@ -46,16 +46,20 @@ async function fetchOptional<T>(path: string): Promise<Loadable<T>> {
   }
 }
 
+// Placeholder param emitted by the static-export build — see clarify/client.tsx.
+const PLACEHOLDER_RUN_ID = "_";
+
 export default function RunReviewsClient() {
   const params = useParams<{ runId: string }>();
   const runId = params?.runId ?? "";
+  const ready = !!runId && runId !== PLACEHOLDER_RUN_ID;
 
   const [reviews, setReviews] = React.useState<Loadable<ReviewsPayload>>({
     kind: "loading",
   });
 
   React.useEffect(() => {
-    if (!runId) return;
+    if (!ready) return;
     let cancelled = false;
     setReviews({ kind: "loading" });
     void fetchOptional<ReviewsPayload>(`/runs/${runId}/critiques`).then((r) => {
@@ -65,7 +69,7 @@ export default function RunReviewsClient() {
     return () => {
       cancelled = true;
     };
-  }, [runId]);
+  }, [ready, runId]);
 
   return (
     <div className="min-h-screen bg-(--color-bg-page) px-6 py-8">

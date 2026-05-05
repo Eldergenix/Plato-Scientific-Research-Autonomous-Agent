@@ -49,9 +49,13 @@ async function fetchOptional<T>(path: string): Promise<Loadable<T>> {
   }
 }
 
+// Placeholder param emitted by the static-export build — see clarify/client.tsx.
+const PLACEHOLDER_RUN_ID = "_";
+
 export default function LiteratureClient() {
   const params = useParams<{ runId: string }>();
   const runId = params?.runId ?? "";
+  const ready = !!runId && runId !== PLACEHOLDER_RUN_ID;
 
   const [novelty, setNovelty] =
     React.useState<Loadable<NoveltyPayload>>({ kind: "loading" });
@@ -59,7 +63,7 @@ export default function LiteratureClient() {
     React.useState<Loadable<RetrievalSummaryPayload>>({ kind: "loading" });
 
   React.useEffect(() => {
-    if (!runId) return;
+    if (!ready) return;
     let cancelled = false;
     setNovelty({ kind: "loading" });
     setRetrieval({ kind: "loading" });
@@ -76,7 +80,7 @@ export default function LiteratureClient() {
     return () => {
       cancelled = true;
     };
-  }, [runId]);
+  }, [ready, runId]);
 
   return (
     <div className="min-h-screen bg-(--color-bg-page) px-6 py-8">

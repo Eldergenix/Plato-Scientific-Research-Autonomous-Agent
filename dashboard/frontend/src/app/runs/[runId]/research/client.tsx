@@ -49,16 +49,22 @@ async function fetchOptional<T>(path: string): Promise<Loadable<T>> {
   }
 }
 
+// Placeholder param emitted by the static-export build. Treat it as
+// "no real id yet" so we don't fire fetches that would 404 against the
+// SPA shell while the client router is still resolving the live URL.
+const PLACEHOLDER_RUN_ID = "_";
+
 export default function RunResearchClient() {
   const params = useParams<{ runId: string }>();
   const runId = params?.runId ?? "";
+  const ready = !!runId && runId !== PLACEHOLDER_RUN_ID;
 
   const [counter, setCounter] =
     React.useState<Loadable<CounterEvidencePayload>>({ kind: "loading" });
   const [gaps, setGaps] = React.useState<Loadable<GapsPayload>>({ kind: "loading" });
 
   React.useEffect(() => {
-    if (!runId) return;
+    if (!ready) return;
     let cancelled = false;
     setCounter({ kind: "loading" });
     setGaps({ kind: "loading" });
@@ -75,7 +81,7 @@ export default function RunResearchClient() {
     return () => {
       cancelled = true;
     };
-  }, [runId]);
+  }, [ready, runId]);
 
   return (
     <div className="min-h-screen bg-(--color-bg-page) px-6 py-8">

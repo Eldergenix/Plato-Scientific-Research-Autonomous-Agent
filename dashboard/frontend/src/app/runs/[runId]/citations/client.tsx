@@ -55,16 +55,20 @@ const EMPTY_PAYLOAD: CitationGraphPayload = {
   },
 };
 
+// Placeholder param emitted by the static-export build — see clarify/client.tsx.
+const PLACEHOLDER_RUN_ID = "_";
+
 export default function CitationsClient() {
   const params = useParams<{ runId: string }>();
   const runId = params?.runId ?? "";
+  const ready = !!runId && runId !== PLACEHOLDER_RUN_ID;
 
   const [state, setState] = React.useState<Loadable<CitationGraphPayload>>({
     kind: "loading",
   });
 
   React.useEffect(() => {
-    if (!runId) return;
+    if (!ready) return;
     let cancelled = false;
     setState({ kind: "loading" });
     void fetchOptional<CitationGraphPayload>(
@@ -75,7 +79,7 @@ export default function CitationsClient() {
     return () => {
       cancelled = true;
     };
-  }, [runId]);
+  }, [ready, runId]);
 
   return (
     <div className="min-h-screen bg-(--color-bg-page) px-6 py-8 text-(--color-text-primary)">
