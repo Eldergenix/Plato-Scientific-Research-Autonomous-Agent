@@ -14,38 +14,44 @@ interface ProviderSpec {
   name: string;
   description: string;
   testable: boolean;
+  group: "models" | "support";
 }
 
 const PROVIDERS: ProviderSpec[] = [
   {
     id: "ANTHROPIC",
     name: "Anthropic",
-    description: "Claude (claude-3.7-sonnet, claude-4-opus, claude-4.1-opus)",
+    description: "Claude models",
     testable: true,
+    group: "models",
   },
   {
     id: "OPENAI",
     name: "OpenAI",
-    description: "GPT-4o, GPT-4.1, GPT-5, o3-mini",
+    description: "GPT and reasoning models",
     testable: true,
+    group: "models",
   },
   {
     id: "GEMINI",
     name: "Google",
-    description: "Gemini 2.0 / 2.5",
+    description: "Gemini models",
     testable: true,
+    group: "models",
   },
   {
     id: "PERPLEXITY",
     name: "Perplexity",
-    description: "Literature search via FutureHouse",
+    description: "Literature search",
     testable: false,
+    group: "support",
   },
   {
     id: "SEMANTIC_SCHOLAR",
     name: "Semantic Scholar",
-    description: "Literature novelty checks",
+    description: "Novelty checks",
     testable: false,
+    group: "support",
   },
   // Langfuse triplet (public/secret/host) — observability backend. Backend
   // surfaces all three fields via /keys/status (see KeysStatus in lib/api.ts);
@@ -55,18 +61,38 @@ const PROVIDERS: ProviderSpec[] = [
     name: "Langfuse public",
     description: "Public key for Langfuse tracing",
     testable: false,
+    group: "support",
   },
   {
     id: "LANGFUSE_SECRET",
     name: "Langfuse secret",
     description: "Secret key for Langfuse tracing",
     testable: false,
+    group: "support",
   },
   {
     id: "LANGFUSE_HOST",
     name: "Langfuse host",
-    description: "e.g. https://cloud.langfuse.com",
+    description: "Tracing endpoint",
     testable: false,
+    group: "support",
+  },
+];
+
+const PROVIDER_SECTIONS: Array<{
+  id: ProviderSpec["group"];
+  title: string;
+  description: string;
+}> = [
+  {
+    id: "models",
+    title: "Model providers",
+    description: "Keys used for reasoning, drafting, and execution.",
+  },
+  {
+    id: "support",
+    title: "Search & tracing",
+    description: "Retrieval, novelty, and observability integrations.",
   },
 ];
 
@@ -91,6 +117,7 @@ interface TestResult {
 export default function KeysPage() {
   const [status, setStatus] = React.useState<KeysStatus | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState(false);
   const [drafts, setDrafts] = React.useState<Partial<Record<ProviderId, string>>>({});
   const [overrides, setOverrides] = React.useState<Partial<Record<ProviderId, boolean>>>({});
   const [saving, setSaving] = React.useState<Partial<Record<ProviderId, boolean>>>({});
@@ -140,7 +167,9 @@ export default function KeysPage() {
     try {
       const s = await api.getKeysStatus();
       setStatus(s);
+      setLoadError(false);
     } catch (err) {
+      setLoadError(true);
       console.error("getKeysStatus failed", err);
     } finally {
       setLoading(false);
@@ -183,183 +212,204 @@ export default function KeysPage() {
   };
 
   return (
-    <div className="min-h-screen bg-(--color-bg-page) px-6 py-8">
-      <div className="mx-auto max-w-7xl space-y-6">
-        <header className="surface-linear-card p-5">
-          <h1 className="text-[20px] font-[510] tracking-[-0.3px] text-(--color-text-primary-strong)">
-            API keys
-          </h1>
-          <p className="mt-1 text-[13px] text-(--color-text-tertiary-spec)">
-            Configure provider credentials. Local desktop reads <code className="font-mono text-[12px]">~/.env</code> automatically; in-app keys take precedence.
-          </p>
+    <div className="min-h-screen bg-(--color-bg-page) px-3 py-4 sm:px-6 sm:py-8">
+      <div className="mx-auto max-w-6xl space-y-5">
+        <header className="surface-linear-card p-4 sm:p-5">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div className="min-w-0">
+              <h1 className="text-[20px] font-[510] tracking-[-0.3px] text-(--color-text-primary-strong)">
+                API keys
+              </h1>
+              <p className="mt-1 max-w-2xl text-[13px] text-(--color-text-tertiary-spec)">
+                Configure provider credentials. Local <code className="font-mono text-[12px]">~/.env</code> keys are detected; in-app keys override them.
+              </p>
+            </div>
+            <Pill
+              tone={loading ? "neutral" : loadError ? "amber" : "green"}
+              className="self-start sm:self-auto"
+            >
+              {loading ? "Loading" : loadError ? "Offline" : "Ready"}
+            </Pill>
+          </div>
         </header>
 
-        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {PROVIDERS.map((p) => {
-            const state: KeyState = status?.[p.id] ?? "unset";
-            const draft = drafts[p.id] ?? "";
-            const isOverride = overrides[p.id] ?? false;
-            const isFromEnv = state === "from_env";
-            const inputDisabled = isFromEnv && !isOverride;
-            const isDirty = draft.length > 0;
-            const test = tests[p.id];
-            const isTesting = testing[p.id];
-            const isSaving = saving[p.id];
+        {PROVIDER_SECTIONS.map((section) => (
+          <section key={section.id} className="space-y-2">
+            <div className="flex flex-col gap-0.5 px-1 sm:flex-row sm:items-baseline sm:justify-between">
+              <h2 className="text-[14px] font-[510] text-(--color-text-primary-strong)">
+                {section.title}
+              </h2>
+              <p className="text-[12px] text-(--color-text-tertiary-spec)">
+                {section.description}
+              </p>
+            </div>
 
-            return (
-              <article key={p.id} className="surface-linear-card flex flex-col gap-3 p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="text-[15px] font-[510] text-(--color-text-primary-strong)">
-                      {p.name}
-                    </div>
-                    <div className="mt-0.5 text-[12px] leading-snug text-(--color-text-tertiary-spec)">
-                      {p.description}
-                    </div>
-                  </div>
-                  <Pill tone={pillToneFor(state)} className="shrink-0">
-                    {loading ? "…" : pillLabelFor(state)}
-                  </Pill>
-                </div>
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
+              {PROVIDERS.filter((p) => p.group === section.id).map((p) => {
+                const state: KeyState = status?.[p.id] ?? "unset";
+                const draft = drafts[p.id] ?? "";
+                const isOverride = overrides[p.id] ?? false;
+                const isFromEnv = state === "from_env";
+                const inputDisabled = isFromEnv && !isOverride;
+                const isDirty = draft.length > 0;
+                const test = tests[p.id];
+                const isTesting = testing[p.id];
+                const isSaving = saving[p.id];
 
-                <div className="flex flex-col gap-2">
-                  <div className="relative flex items-center gap-1">
-                    <input
-                      type={revealed[p.id] ? "text" : "password"}
-                      value={draft}
-                      disabled={inputDisabled}
-                      onChange={(e) =>
-                        setDrafts((d) => ({ ...d, [p.id]: e.target.value }))
-                      }
-                      placeholder={
-                        inputDisabled
-                          ? "Override with in-app key…"
-                          : state === "in_app"
-                            ? "Replace stored key…"
-                            : "Paste API key"
-                      }
-                      className={cn(
-                        "w-full rounded-[6px] border px-2 py-2 pr-20 font-mono text-[12px]",
-                        "bg-[#141415] border-[#262628] text-(--color-text-primary)",
-                        "placeholder:text-(--color-text-quaternary-spec)",
-                        "focus:outline-none focus:border-(--color-brand-indigo)",
-                        "disabled:opacity-60 disabled:cursor-not-allowed",
+                return (
+                  <article key={p.id} className="surface-linear-card flex min-w-0 flex-col gap-3 p-3 sm:p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="truncate text-[15px] font-[510] text-(--color-text-primary-strong)">
+                          {p.name}
+                        </div>
+                        <div className="mt-0.5 truncate text-[12px] leading-snug text-(--color-text-tertiary-spec)">
+                          {p.description}
+                        </div>
+                      </div>
+                      <Pill tone={pillToneFor(state)} className="shrink-0">
+                        {loading ? "..." : pillLabelFor(state)}
+                      </Pill>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <div className="relative flex items-center">
+                        <input
+                          type={revealed[p.id] ? "text" : "password"}
+                          value={draft}
+                          disabled={inputDisabled}
+                          onChange={(e) =>
+                            setDrafts((d) => ({ ...d, [p.id]: e.target.value }))
+                          }
+                          placeholder={
+                            inputDisabled
+                              ? "Override key"
+                              : state === "in_app"
+                                ? "Replace key"
+                                : "Paste key"
+                          }
+                          className={cn(
+                            "h-9 w-full rounded-[6px] border px-2.5 pr-24 font-mono text-[12px]",
+                            "border-(--color-border-card) bg-(--color-bg-pill-inactive) text-(--color-text-primary)",
+                            "placeholder:text-(--color-text-quaternary-spec)",
+                            "focus:outline-none focus:border-(--color-brand-indigo)",
+                            "disabled:cursor-not-allowed disabled:opacity-60",
+                          )}
+                        />
+                        <div className="absolute right-1 flex items-center gap-0.5">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setRevealed((r) => ({ ...r, [p.id]: !r[p.id] }))
+                            }
+                            disabled={!draft || inputDisabled}
+                            aria-label={
+                              revealed[p.id] ? "Hide key" : "Show key"
+                            }
+                            title={revealed[p.id] ? "Hide" : "Show"}
+                            className="inline-flex size-7 items-center justify-center rounded text-(--color-text-tertiary-spec) hover:bg-(--color-ghost-bg-hover) hover:text-(--color-text-primary) disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            {revealed[p.id] ? (
+                              <EyeOff className="size-3.5" />
+                            ) : (
+                              <Eye className="size-3.5" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onCopyDraft(p.id, draft)}
+                            disabled={!draft}
+                            aria-label="Copy key"
+                            title={copied[p.id] ? "Copied" : "Copy"}
+                            className="inline-flex size-7 items-center justify-center rounded text-(--color-text-tertiary-spec) hover:bg-(--color-ghost-bg-hover) hover:text-(--color-text-primary) disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            {copied[p.id] ? (
+                              <Check className="size-3.5 text-(--color-status-emerald)" />
+                            ) : (
+                              <Copy className="size-3.5" />
+                            )}
+                          </button>
+                          {state === "in_app" ? (
+                            <button
+                              type="button"
+                              onClick={() => onClearKey(p.id)}
+                              disabled={Boolean(saving[p.id])}
+                              aria-label="Delete stored key"
+                              title="Delete stored key"
+                              className="inline-flex size-7 items-center justify-center rounded text-(--color-text-tertiary-spec) hover:bg-(--color-ghost-bg-hover) hover:text-(--color-status-red-spec) disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              <Trash2 className="size-3.5" />
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                      {isFromEnv && (
+                        <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-(--color-text-tertiary-spec)">
+                          <input
+                            type="checkbox"
+                            checked={isOverride}
+                            onChange={(e) =>
+                              setOverrides((o) => ({ ...o, [p.id]: e.target.checked }))
+                            }
+                            className="h-3 w-3"
+                          />
+                          <span>Override</span>
+                        </label>
                       )}
-                    />
-                    <div className="absolute right-1 flex items-center gap-0.5">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setRevealed((r) => ({ ...r, [p.id]: !r[p.id] }))
-                        }
-                        disabled={!draft || inputDisabled}
-                        aria-label={
-                          revealed[p.id] ? "Hide key" : "Show key"
-                        }
-                        title={revealed[p.id] ? "Hide" : "Show"}
-                        className="inline-flex size-7 items-center justify-center rounded text-(--color-text-tertiary-spec) hover:bg-[rgba(255,255,255,0.06)] hover:text-(--color-text-primary) disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        {revealed[p.id] ? (
-                          <EyeOff className="size-3.5" />
-                        ) : (
-                          <Eye className="size-3.5" />
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onCopyDraft(p.id, draft)}
-                        disabled={!draft}
-                        aria-label="Copy key"
-                        title={copied[p.id] ? "Copied" : "Copy"}
-                        className="inline-flex size-7 items-center justify-center rounded text-(--color-text-tertiary-spec) hover:bg-[rgba(255,255,255,0.06)] hover:text-(--color-text-primary) disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        {copied[p.id] ? (
-                          <Check className="size-3.5 text-(--color-status-emerald)" />
-                        ) : (
-                          <Copy className="size-3.5" />
-                        )}
-                      </button>
-                      {state === "in_app" ? (
-                        <button
-                          type="button"
-                          onClick={() => onClearKey(p.id)}
-                          disabled={Boolean(saving[p.id])}
-                          aria-label="Delete stored key"
-                          title="Delete stored key"
-                          className="inline-flex size-7 items-center justify-center rounded text-(--color-text-tertiary-spec) hover:bg-[rgba(255,255,255,0.06)] hover:text-(--color-status-red-spec) disabled:opacity-40 disabled:cursor-not-allowed"
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      {p.testable ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={isTesting || state === "unset"}
+                          onClick={() => onTest(p.id)}
                         >
-                          <Trash2 className="size-3.5" />
-                        </button>
+                          {isTesting ? (
+                            <Loader2 className="size-3 animate-spin" />
+                          ) : null}
+                          Test
+                        </Button>
+                      ) : (
+                        <span className="text-[11px] text-(--color-text-quaternary-spec)">
+                          Stored
+                        </span>
+                      )}
+                      {isDirty && (
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          disabled={isSaving}
+                          onClick={() => onSave(p.id)}
+                        >
+                          {isSaving ? <Loader2 className="size-3 animate-spin" /> : null}
+                          Save
+                        </Button>
+                      )}
+                      {test ? (
+                        test.ok ? (
+                          <span className="inline-flex min-w-0 items-center gap-1 text-[11px] text-(--color-status-emerald)">
+                            <Check className="size-3" />
+                            {test.latencyMs ? `${test.latencyMs}ms` : "ok"}
+                          </span>
+                        ) : (
+                          <span
+                            className="inline-flex min-w-0 items-center gap-1 truncate text-[11px] text-(--color-status-red)"
+                            title={test.error}
+                          >
+                            <X className="size-3 flex-none" />
+                            {test.error ?? "failed"}
+                          </span>
+                        )
                       ) : null}
                     </div>
-                  </div>
-                  {isFromEnv && (
-                    <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-(--color-text-tertiary-spec)">
-                      <input
-                        type="checkbox"
-                        checked={isOverride}
-                        onChange={(e) =>
-                          setOverrides((o) => ({ ...o, [p.id]: e.target.checked }))
-                        }
-                        className="h-3 w-3"
-                      />
-                      <span>(Override)</span>
-                    </label>
-                  )}
-                </div>
-
-                <div className="flex flex-col gap-2 pt-1">
-                  <div className="flex items-center gap-2">
-                    {p.testable ? (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={isTesting || state === "unset"}
-                        onClick={() => onTest(p.id)}
-                      >
-                        {isTesting ? (
-                          <Loader2 className="size-3 animate-spin" />
-                        ) : null}
-                        Test
-                      </Button>
-                    ) : (
-                      <span className="text-[11px] text-(--color-text-quaternary-spec)">
-                        No test endpoint
-                      </span>
-                    )}
-                    {test ? (
-                      test.ok ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] text-(--color-status-emerald)">
-                          <Check className="size-3" />
-                          {test.latencyMs ? `${test.latencyMs}ms` : "ok"}
-                        </span>
-                      ) : (
-                        <span
-                          className="inline-flex items-center gap-1 truncate text-[11px] text-(--color-status-red)"
-                          title={test.error}
-                        >
-                          <X className="size-3" />
-                          {test.error ?? "failed"}
-                        </span>
-                      )
-                    ) : null}
-                  </div>
-                  {isDirty && (
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      disabled={isSaving}
-                      onClick={() => onSave(p.id)}
-                    >
-                      {isSaving ? <Loader2 className="size-3 animate-spin" /> : null}
-                      Save
-                    </Button>
-                  )}
-                </div>
-              </article>
-            );
-          })}
-        </section>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        ))}
       </div>
     </div>
   );

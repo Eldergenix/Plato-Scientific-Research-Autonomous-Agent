@@ -98,6 +98,25 @@ function themeIcon(theme: "dark" | "light" | "system", resolved: "dark" | "light
   return resolved === "dark" ? Moon : Sun;
 }
 
+function LogoMark({ src }: { src: string }) {
+  return (
+    <span
+      className="flex shrink-0 items-center justify-center overflow-hidden"
+      style={{ width: 20, height: 20 }}
+      aria-hidden
+    >
+      <img
+        src={src}
+        alt=""
+        width={20}
+        height={20}
+        className="block h-5 w-5 object-contain"
+        draggable={false}
+      />
+    </span>
+  );
+}
+
 export function Sidebar({
   collapsed,
   onToggle,
@@ -116,6 +135,7 @@ export function Sidebar({
   void onToggle;
 
   const ThemeIcon = themeIcon(theme, resolvedTheme);
+  const logoSrc = resolvedTheme === "dark" ? "/dark-theme-logo.svg" : "/light-theme-logo.svg";
   const themeLabel =
     theme === "system" ? "Theme: system" : theme === "dark" ? "Theme: dark" : "Theme: light";
   const onCycleTheme = () => setTheme(nextTheme(theme));
@@ -129,11 +149,12 @@ export function Sidebar({
         onCycleTheme={onCycleTheme}
         ThemeIcon={ThemeIcon}
         themeLabel={themeLabel}
+        logoSrc={logoSrc}
       />
     );
   }
 
-  const teamName = projectName ?? "Nexis Foundation - Development";
+  const teamName = projectName?.trim() || "Plato workspace";
 
   return (
     <aside
@@ -152,19 +173,7 @@ export function Sidebar({
           style={{ width: 152, height: 28, padding: "0 7px", gap: 6 }}
           aria-label="Workspace menu"
         >
-          <span
-            className="flex items-center justify-center rounded-[5px] text-white shrink-0"
-            style={{
-              width: 20,
-              height: 20,
-              backgroundColor: "var(--color-status-teal)",
-              fontSize: 11,
-              fontWeight: 400,
-            }}
-            aria-hidden
-          >
-            N
-          </span>
+          <LogoMark src={logoSrc} />
           <span
             className="truncate"
             style={{
@@ -520,6 +529,7 @@ function CollapsedSidebar({
   onCycleTheme,
   ThemeIcon,
   themeLabel,
+  logoSrc,
 }: {
   pathname: string;
   onOpenCommand: () => void;
@@ -527,6 +537,7 @@ function CollapsedSidebar({
   onCycleTheme: () => void;
   ThemeIcon: LucideIcon;
   themeLabel: string;
+  logoSrc: string;
 }) {
   return (
     <aside
@@ -538,18 +549,7 @@ function CollapsedSidebar({
         className="flex items-center justify-center"
         style={{ height: 52, paddingTop: 8 }}
       >
-        <span
-          className="flex items-center justify-center rounded-[5px] text-white"
-          style={{
-            width: 20,
-            height: 20,
-            backgroundColor: "var(--color-status-teal)",
-            fontSize: 11,
-          }}
-          aria-hidden
-        >
-          N
-        </span>
+        <LogoMark src={logoSrc} />
       </div>
 
       <div className="flex flex-col items-center" style={{ gap: 4, marginTop: 4 }}>

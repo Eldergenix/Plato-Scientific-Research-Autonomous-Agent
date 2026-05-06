@@ -20,6 +20,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Sheet } from "@/components/ui/sheet";
 import { useProject } from "@/lib/use-project";
 import { api } from "@/lib/api";
+import type { RunRecord } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 import {
@@ -50,7 +51,30 @@ export default function Home() {
   const cost = useCostMeter();
   const [createOpen, setCreateOpen] = React.useState(false);
   const [detailsOpen, setDetailsOpen] = React.useState(false);
+  const [runHistoryOpen, setRunHistoryOpen] = React.useState(false);
+  const [runHistory, setRunHistory] = React.useState<RunRecord[] | null>(null);
+  const [runHistoryError, setRunHistoryError] = React.useState<string | null>(null);
   const [cancelConfirmOpen, setCancelConfirmOpen] = React.useState(false);
+
+  const refreshRunHistory = React.useCallback(async () => {
+    if (!project.id) {
+      setRunHistoryError(null);
+      setRunHistory([]);
+      return;
+    }
+    try {
+      setRunHistoryError(null);
+      setRunHistory(await api.listRuns(project.id));
+    } catch (error) {
+      setRunHistoryError(error instanceof Error ? error.message : "Failed to load runs");
+      setRunHistory([]);
+    }
+  }, [project.id]);
+
+  React.useEffect(() => {
+    if (!runHistoryOpen) return;
+    void refreshRunHistory();
+  }, [refreshRunHistory, runHistoryOpen]);
 
   // Fetch the current key-status snapshot once on mount so the
   // Run-pipeline button can render in a clearly-disabled state when
@@ -301,7 +325,7 @@ export default function Home() {
 
           <BottomBar
             onAskAi={() => setCmdOpen(true)}
-            onOpenHistory={() => setLogHeight((h) => (h === 0 ? 30 : 0))}
+            onOpenHistory={() => setRunHistoryOpen(true)}
           />
         </div>
       </div>
@@ -323,6 +347,14 @@ export default function Home() {
         open={detailsOpen}
         onOpenChange={setDetailsOpen}
         project={project}
+      />
+
+      <RunHistorySheet
+        open={runHistoryOpen}
+        onOpenChange={setRunHistoryOpen}
+        runs={runHistory}
+        error={runHistoryError}
+        onRefresh={refreshRunHistory}
       />
 
       <CreateProjectModal
@@ -383,6 +415,92 @@ export default function Home() {
       />
     </div>
   );
+}
+
+function RunHistorySheet({
+  open,
+  onOpenChange,
+  runs,
+  error,
+  onRefresh,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  runs: RunRecord[] | null;
+  error: string | null;
+  onRefresh: () => Promise<void>;
+}) {
+  return (
+    <Sheet
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Run history"
+      side="right"
+      className="w-[min(400px,calc(100vw-24px))]"
+    >
+      <div className="space-y-4 px-4 py-4 text-[13px]">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-(--color-text-tertiary)">
+            Persisted pipeline runs for the current project.
+          </p>
+          <button
+            type="button"
+            onClick={() => void onRefresh()}
+            className="rounded-[6px] border border-(--color-border-card) px-2.5 py-1 text-[12px] text-(--color-text-secondary) hover:bg-(--color-ghost-bg-hover)"
+          >
+            Refresh
+          </button>
+        </div>
+
+        {error ? (
+          <div
+            role="alert"
+            className="rounded-[6px] border border-(--color-status-red-spec) px-3 py-2 text-(--color-status-red-spec)"
+          >
+            {error}
+          </div>
+        ) : null}
+
+        {runs === null ? (
+          <div className="text-(--color-text-tertiary)">Loading runs...</div>
+        ) : runs.length === 0 ? (
+          <div className="text-(--color-text-tertiary)">No runs recorded yet.</div>
+        ) : (
+          <div className="space-y-2">
+            {runs.map((run) => (
+              <div
+                key={run.id}
+                className="rounded-[8px] border border-(--color-border-card) px-3 py-2.5"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="capitalize text-(--color-text-primary)">
+                    {run.stage}
+                  </span>
+                  <span className="rounded-full bg-(--color-ghost-bg) px-2 py-0.5 font-mono text-[11px] text-(--color-text-tertiary)">
+                    {run.status}
+                  </span>
+                </div>
+                <div className="mt-1 font-mono text-[11px] text-(--color-text-tertiary)">
+                  {run.id}
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-[11.5px] text-(--color-text-tertiary)">
+                  <span>Started {formatRunTime(run.startedAt)}</span>
+                  <span className="text-right">Finished {formatRunTime(run.finishedAt)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Sheet>
+  );
+}
+
+function formatRunTime(value?: string | null): string {
+  if (!value) return "n/a";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "n/a";
+  return date.toLocaleString();
 }
 
 function ProjectDetailsSheet({
