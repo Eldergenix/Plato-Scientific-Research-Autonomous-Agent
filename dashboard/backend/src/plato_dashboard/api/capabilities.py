@@ -45,7 +45,7 @@ def get_capabilities(request: Request, settings: Settings = Depends(get_settings
     )
 
 
-def _session_used_cents(request: Request, settings: Settings) -> int:
+def _session_used_cents(request: Request, settings: Settings | None = None) -> int:
     """Sum the dollar spend across the current user's projects.
 
     Reads ``project.totalCostCents`` from each project's meta.json — the same
@@ -59,9 +59,14 @@ def _session_used_cents(request: Request, settings: Settings) -> int:
     a misconfigured environment doesn't lock every user out of the demo.
     """
     try:
+        from ..worker.session_costs import get_session_cost
+
         user_id = extract_user_id(request) or ""
+        live_total = get_session_cost(user_id)
+        if settings is None:
+            return live_total
         if not user_id:
-            return 0
+            return live_total
         # Per-user project root mirrors the layout enforced by
         # ProjectStore.__init__ (settings.project_root / "users" / <uid>).
         user_root = settings.project_root / "users" / user_id
@@ -70,7 +75,7 @@ def _session_used_cents(request: Request, settings: Settings) -> int:
         # Bind the store to user_id so list_projects + load apply the
         # iter-2 tenant guard. Without this argument the guard is a no-op.
         store = ProjectStore(root=user_root, user_id=user_id)
-        return sum(p.total_cost_cents for p in store.list_projects())
+        return live_total + sum(p.total_cost_cents for p in store.list_projects())
     except Exception:  # noqa: BLE001 — never let budget read crash the request
         _log.exception("session_used_cents lookup failed; defaulting to 0")
         return 0

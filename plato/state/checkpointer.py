@@ -24,8 +24,9 @@ from __future__ import annotations
 import os
 import sqlite3
 import warnings
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, AsyncIterator, Literal
 
 # ``MemorySaver`` is the fallback path; lazy-import so plato.state
 # (which is imported by every graph builder) doesn't pay the
@@ -79,10 +80,25 @@ def _apply_concurrency_pragmas(conn: sqlite3.Connection) -> None:
     connection is a no-op, so callers who want to re-harden a borrowed
     handle can call this helper directly.
     """
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute(f"PRAGMA busy_timeout={_SQLITE_BUSY_TIMEOUT_MS}")
+    row = conn.execute("PRAGMA journal_mode").fetchone()
+    if not row or str(row[0]).lower() != "wal":
+        conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute("PRAGMA wal_autocheckpoint=1000")
+
+
+async def _apply_async_concurrency_pragmas(conn: Any) -> None:
+    """Async equivalent for ``aiosqlite`` connections."""
+    await conn.execute(f"PRAGMA busy_timeout={_SQLITE_BUSY_TIMEOUT_MS}")
+    cursor = await conn.execute("PRAGMA journal_mode")
+    row = await cursor.fetchone()
+    await cursor.close()
+    if not row or str(row[0]).lower() != "wal":
+        await conn.execute("PRAGMA journal_mode=WAL")
+    await conn.execute("PRAGMA synchronous=NORMAL")
+    await conn.execute("PRAGMA wal_autocheckpoint=1000")
+    await conn.commit()
 
 
 def make_checkpointer(
@@ -153,5 +169,83 @@ def make_checkpointer(
             return _memory_saver()
 
         return PostgresSaver.from_conn_string(dsn)
+
+    raise ValueError(f"Unknown checkpointer backend: {backend!r}")
+
+
+@asynccontextmanager
+async def make_async_checkpointer(
+    backend: Backend = "sqlite",
+    *,
+    path: str | os.PathLike[str] | None = None,
+    dsn: str | None = None,
+    **kwargs: Any,
+) -> AsyncIterator[Any]:
+    """Yield a checkpointer compatible with LangGraph async APIs.
+
+    ``SqliteSaver`` works with synchronous ``invoke`` calls only. Paper
+    generation uses ``graph.ainvoke(...)``, so it needs ``AsyncSqliteSaver``
+    or an async Postgres saver to avoid runtime failures.
+    """
+    if kwargs:
+        warnings.warn(
+            f"make_async_checkpointer received unexpected keyword arguments: "
+            f"{sorted(kwargs)}. They will be ignored. Known kwargs: "
+            f"path (sqlite), dsn (postgres).",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+    if backend == "memory":
+        if path is not None or dsn is not None:
+            warnings.warn(
+                "make_async_checkpointer('memory') ignores 'path' and 'dsn'.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        yield _memory_saver()
+        return
+
+    if backend == "sqlite":
+        try:
+            import aiosqlite
+            from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+        except ImportError:
+            warnings.warn(
+                "langgraph-checkpoint-sqlite or aiosqlite is not installed; "
+                "falling back to MemorySaver. Install with "
+                "`pip install langgraph-checkpoint-sqlite aiosqlite` for "
+                "async crash-resumable runs.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            yield _memory_saver()
+            return
+
+        resolved = _resolve_sqlite_path(path or _DEFAULT_SQLITE_PATH)
+        async with aiosqlite.connect(str(resolved)) as conn:
+            await _apply_async_concurrency_pragmas(conn)
+            yield AsyncSqliteSaver(conn)
+        return
+
+    if backend == "postgres":
+        if not dsn:
+            raise ValueError("postgres backend requires a `dsn` keyword argument")
+        try:
+            from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+        except ImportError:
+            warnings.warn(
+                "langgraph-checkpoint-postgres is not installed; "
+                "falling back to MemorySaver. Install with "
+                "`pip install langgraph-checkpoint-postgres`.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            yield _memory_saver()
+            return
+
+        async with AsyncPostgresSaver.from_conn_string(dsn) as saver:
+            await saver.setup()
+            yield saver
+        return
 
     raise ValueError(f"Unknown checkpointer backend: {backend!r}")

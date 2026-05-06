@@ -42,7 +42,7 @@ class ClarificationsAnswerRequest(BaseModel):
     with megabytes of free-form text before any LLM call has happened.
     """
 
-    answers: list[str] = Field(max_length=50)
+    answers: list[Any] = Field(max_length=50)
 
 
 router = APIRouter()
@@ -177,7 +177,16 @@ def post_clarifications(
 
     _check_tenant(run_dir, request)
 
-    answers = body.answers
+    answers_raw = body.answers
+    if not all(isinstance(answer, str) for answer in answers_raw):
+        raise HTTPException(
+            400,
+            detail={
+                "code": "invalid_answers",
+                "message": "answers must be a list of strings",
+            },
+        )
+    answers = list(answers_raw)
     # Per-answer length cap (4 KiB) — Pydantic doesn't enforce this on
     # list elements, so we check inline.
     for a in answers:

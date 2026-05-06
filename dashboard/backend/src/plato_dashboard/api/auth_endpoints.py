@@ -31,7 +31,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Body, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from ..settings import get_settings
@@ -86,13 +86,13 @@ class LoginRequest(BaseModel):
     browsers cap cookie values around 4 KiB).
     """
 
-    user_id: str = Field(min_length=1, max_length=128)
+    user_id: str | None = Field(default=None, max_length=128)
 
 
 @router.post("/auth/login")
 def login(response: Response, body: LoginRequest) -> dict[str, Any]:
     """Set the ``plato_user`` cookie and echo the chosen user id back."""
-    user_id = body.user_id.strip()
+    user_id = body.user_id.strip() if isinstance(body.user_id, str) else ""
     if not user_id:
         raise HTTPException(
             status_code=400,

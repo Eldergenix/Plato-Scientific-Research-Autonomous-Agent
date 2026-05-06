@@ -8,7 +8,6 @@ from tqdm import tqdm
 import asyncio
 from functools import partial
 import fitz  # PyMuPDF
-import cmbagent
 
 from .parameters import GraphState
 from .prompts import abstract_prompt, abstract_reflection, caption_prompt, clean_section_prompt, conclusions_prompt, introduction_prompt, introduction_reflection, keyword_prompt, methods_prompt, plot_prompt, references_prompt, refine_results_prompt, results_prompt, cmbagent_keywords_prompt
@@ -666,4 +665,3 @@ async def citations_node(state: GraphState, config: RunnableConfig):
     return {'paper': state['paper'],
             'tokens': state['tokens']}
 #######################################################################################
-

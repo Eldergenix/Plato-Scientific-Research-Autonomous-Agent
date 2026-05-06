@@ -248,7 +248,9 @@ def gap_detector(state: GraphState, config: Optional[RunnableConfig] = None):
 
     sources: list[Source] = [s for s in sources_raw if isinstance(s, Source)]
     evidence_links: list[EvidenceLink] = [
-        l for l in (state.get("evidence_links") or []) if isinstance(l, EvidenceLink)
+        link
+        for link in (state.get("evidence_links") or [])
+        if isinstance(link, EvidenceLink)
     ]
     claims: list[Claim] = [
         c for c in (state.get("claims") or []) if isinstance(c, Claim)

@@ -83,13 +83,57 @@ class REVISION_STATE(TypedDict):
     max_iterations: int  # hard cap on revision loops to guarantee termination
 
 
+def merge_critiques(
+    left: dict[str, dict] | None,
+    right: dict[str, dict] | None,
+) -> dict[str, dict]:
+    """Merge parallel reviewer updates while preserving explicit resets."""
+    if right == {}:
+        return {}
+    if not left:
+        return dict(right or {})
+    merged = dict(left)
+    merged.update(right or {})
+    return merged
+
+
+def merge_tokens(left: TOKENS | None, right: TOKENS | None) -> TOKENS:
+    """Merge token bookkeeping from parallel reviewer nodes.
+
+    Reviewer nodes start from the same prior state, so summing their
+    cumulative totals would double-count the pre-review tokens. Keep the
+    highest cumulative total and preserve the latest per-call counters.
+    """
+    if not left:
+        base = right or {"ti": 0, "to": 0, "i": 0, "o": 0}
+        return {
+            "ti": int(base.get("ti", 0)),
+            "to": int(base.get("to", 0)),
+            "i": int(base.get("i", 0)),
+            "o": int(base.get("o", 0)),
+        }
+    if not right:
+        return {
+            "ti": int(left.get("ti", 0)),
+            "to": int(left.get("to", 0)),
+            "i": int(left.get("i", 0)),
+            "o": int(left.get("o", 0)),
+        }
+    return {
+        "ti": max(int(left.get("ti", 0)), int(right.get("ti", 0))),
+        "to": max(int(left.get("to", 0)), int(right.get("to", 0))),
+        "i": int(right.get("i", left.get("i", 0))),
+        "o": int(right.get("o", left.get("o", 0))),
+    }
+
+
 # Graph state class
 class GraphState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
     files: FILES
     idea: IDEA
     paper: PAPER
-    tokens: TOKENS
+    tokens: Annotated[TOKENS, merge_tokens]
     llm: LLM
     latex: LATEX
     keys: KeyManager
@@ -97,7 +141,8 @@ class GraphState(TypedDict):
     writer: str  #determines who is writing the paper. E.g. astrophysicists, biologist
     params: PARAMS #parameters of model
     # Phase 3 — R6: multi-reviewer panel + revision loop
-    critiques: dict[str, dict]            # e.g. {"methodology": {"severity": 3, "issues": [...]}, ...}
+    # e.g. {"methodology": {"severity": 3, "issues": [...]}, ...}
+    critiques: Annotated[dict[str, dict], merge_critiques]
     critique_digest: Optional[dict]        # CritiqueDigest payload (max_severity, issues, iteration)
     revision_state: REVISION_STATE         # iteration counter and max_iterations cap
     # Phase 2 — R3 citation validation pipeline

@@ -16,7 +16,7 @@ the existing ``ADAPTER_REGISTRY`` test pattern).
 from __future__ import annotations
 
 import inspect
-from typing import Awaitable, Callable, Literal, Union
+from typing import Any, Awaitable, Callable, Literal, Union
 
 from pydantic import BaseModel, ConfigDict
 

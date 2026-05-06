@@ -182,7 +182,7 @@ def test_corrupt_manifest_is_skipped(
     client, tmp_project_root: Path
 ) -> None:
     """A run with a busted manifest.json should drop out of the list, not 500."""
-    good = _write_manifest(
+    _write_manifest(
         tmp_project_root, "pid_corrupt", "run_good",
         workflow="get_idea_fast", started_offset_minutes=5,
     )

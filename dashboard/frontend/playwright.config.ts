@@ -1,12 +1,15 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3001";
+const shouldStartServer = !process.env.PLAYWRIGHT_BASE_URL;
+
 /**
  * Playwright configuration for the Plato dashboard frontend.
  *
- * - baseURL points at the dev server on port 3001.
+ * - baseURL defaults to the dev server on port 3001, or PLAYWRIGHT_BASE_URL.
  * - testDir lives next to the frontend at ./tests/e2e.
  * - Chromium-only for speed (CI parity is not yet required).
- * - reuseExistingServer: true so we attach to a running `npm run dev`.
+ * - when no override is provided, reuseExistingServer attaches to `npm run dev`.
  */
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -17,7 +20,7 @@ export default defineConfig({
   reporter: [["list"]],
 
   use: {
-    baseURL: "http://localhost:3001",
+    baseURL,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "off",
@@ -30,10 +33,12 @@ export default defineConfig({
     },
   ],
 
-  webServer: {
-    command: "npm run dev -- --port 3001",
-    url: "http://localhost:3001",
-    reuseExistingServer: true,
-    timeout: 60_000,
-  },
+  webServer: shouldStartServer
+    ? {
+        command: "npm run dev -- --port 3001",
+        url: baseURL,
+        reuseExistingServer: true,
+        timeout: 60_000,
+      }
+    : undefined,
 });

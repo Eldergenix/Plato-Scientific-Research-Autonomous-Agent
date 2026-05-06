@@ -105,7 +105,7 @@ def test_evidence_matrix_parses_claims_and_links(app_client) -> None:
     assert len(body["claims"]) == 2
     assert {c["id"] for c in body["claims"]} == {"c1", "c2"}
     assert len(body["evidence_links"]) == 2
-    assert {(l["claim_id"], l["support"]) for l in body["evidence_links"]} == {
+    assert {(link["claim_id"], link["support"]) for link in body["evidence_links"]} == {
         ("c1", "supports"),
         ("c2", "neutral"),
     }

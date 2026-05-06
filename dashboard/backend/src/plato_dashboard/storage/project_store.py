@@ -34,7 +34,7 @@ from typing import Optional
 
 import aiofiles
 
-from ..domain.models import Journal, Project, Stage, StageId, StageContent, utcnow
+from ..domain.models import Journal, Project, StageId, StageContent, utcnow
 
 # Project IDs flow into filesystem paths verbatim. Restrict to the same
 # safe charset we use for X-Plato-User to block path traversal (`..`,

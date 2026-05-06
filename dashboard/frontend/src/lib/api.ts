@@ -5,7 +5,7 @@ import type {
 } from "./types";
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:7878/api/v1";
+  process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
 
 // Discriminated union for SSE payloads emitted by the FastAPI event
 // bus (see plato_dashboard.events.bus). Consumers should switch on
@@ -301,6 +301,60 @@ export interface RunUsage {
   cost_cents: number;
 }
 
+export type RunStatus =
+  | "queued"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "cancelled";
+
+export interface RunRecord {
+  id: string;
+  projectId: string;
+  stage: StageId;
+  mode: "fast" | "cmbagent";
+  status: RunStatus;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  error?: string | null;
+  config: Record<string, unknown>;
+  pid?: number | null;
+  tokenInput: number;
+  tokenOutput: number;
+}
+
+interface RawRun {
+  id: string;
+  project_id: string;
+  stage: StageId;
+  mode: "fast" | "cmbagent";
+  status: RunStatus;
+  started_at?: string | null;
+  finished_at?: string | null;
+  error?: string | null;
+  config?: Record<string, unknown>;
+  pid?: number | null;
+  token_input?: number;
+  token_output?: number;
+}
+
+function adaptRun(r: RawRun): RunRecord {
+  return {
+    id: r.id,
+    projectId: r.project_id,
+    stage: r.stage,
+    mode: r.mode,
+    status: r.status,
+    startedAt: r.started_at ?? null,
+    finishedAt: r.finished_at ?? null,
+    error: r.error ?? null,
+    config: r.config ?? {},
+    pid: r.pid ?? null,
+    tokenInput: r.token_input ?? 0,
+    tokenOutput: r.token_output ?? 0,
+  };
+}
+
 // Iter-31 — paper artifact shape returned by api.getPaperArtifacts.
 // PaperPreview consumes sections directly; pdfUrl is wired into the
 // PDF tab when the worker has produced paper/main.pdf.
@@ -308,6 +362,7 @@ export interface PaperSectionArtifact {
   id: string;
   name: string;
   status: "compiled" | "warning" | "failed" | "pending";
+  markdown?: string;
   tex?: string;
 }
 
@@ -320,10 +375,24 @@ export interface PaperArtifacts {
 // gutter has something honest to render. We only look at the document
 // body; anything before begin{document} is preamble and section refs
 // inside macros aren't real sections.
+function latexSectionToMarkdown(sectionTex: string): string {
+  return sectionTex
+    .replace(/\\section\*?\{([^}]+)\}/g, "## $1\n\n")
+    .replace(/\\label\{[^}]*\}/g, "")
+    .replace(/\\(?:citep?|ref|eqref)\{([^}]*)\}/g, "[$1]")
+    .replace(/\\[a-zA-Z]+\*?(?:\[[^\]]*\])?\{([^{}]*)\}/g, "$1")
+    .replace(/\\[a-zA-Z]+/g, "")
+    .replace(/[{}]/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function parseTexSections(tex: string): PaperSectionArtifact[] {
   const begin = tex.indexOf("\\begin{document}");
   const body = begin >= 0 ? tex.slice(begin) : tex;
   const re = /\\section\*?\{([^}]+)\}/g;
+  const matches: Array<{ id: string; name: string; start: number }> = [];
   const out: PaperSectionArtifact[] = [];
   const seen = new Set<string>();
   let m: RegExpExecArray | null;
@@ -337,7 +406,28 @@ function parseTexSections(tex: string): PaperSectionArtifact[] {
       || `section-${out.length + 1}`;
     if (seen.has(id)) continue;
     seen.add(id);
-    out.push({ id, name, status: "compiled" });
+    matches.push({ id, name, start: m.index });
+  }
+  matches.forEach((match, index) => {
+    const next = matches[index + 1];
+    const sectionTex = body.slice(match.start, next?.start).trim();
+    out.push({
+      id: match.id,
+      name: match.name,
+      status: "compiled",
+      markdown: latexSectionToMarkdown(sectionTex),
+      tex: sectionTex,
+    });
+  });
+  if (out.length === 0 && tex.trim()) {
+    const sectionTex = tex.trim();
+    out.push({
+      id: "full-document",
+      name: "Full document",
+      status: "compiled",
+      markdown: latexSectionToMarkdown(sectionTex),
+      tex: sectionTex,
+    });
   }
   return out;
 }
@@ -435,6 +525,15 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     });
+  },
+
+  async listRuns(pid: string): Promise<RunRecord[]> {
+    const raw = await fetchJson<RawRun[]>(`/projects/${pid}/runs`);
+    return raw.map(adaptRun);
+  },
+
+  async listRunEvents(pid: string, runId: string): Promise<RunEvent[]> {
+    return fetchJson<RunEvent[]>(`/projects/${pid}/runs/${runId}/events/history`);
   },
 
   async cancelRun(pid: string, runId: string): Promise<{ cancelled: boolean }> {

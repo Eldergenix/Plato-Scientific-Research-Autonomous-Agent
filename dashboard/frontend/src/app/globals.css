@@ -40,6 +40,7 @@
   --color-bg-row-active: #191a1a;
   --color-bg-tag-pill: #0f1010;
   --color-bg-button-glass: #1d1d1e;
+  --color-bg-button-glass-hover: #232325;
 
   /* Borders */
   --color-border-card: #1d1d1f;
@@ -73,6 +74,8 @@
   /* Gradients */
   --gradient-progress: linear-gradient(90deg, #161b19 0%, #171718 100%);
   --gradient-backlog: linear-gradient(90deg, #1c1a18 0%, #171718 100%);
+  --gradient-failed: linear-gradient(90deg, #1f1818 0%, #171718 100%);
+  --gradient-done: linear-gradient(90deg, #171b18 0%, #171718 100%);
 
   /* Shadows */
   --shadow-card: 0 4px 4px -1px rgba(0, 0, 0, 0.04), 0 1px 1px rgba(0, 0, 0, 0.08);
@@ -212,6 +215,7 @@
     font-size: var(--text-body);
     line-height: 1.5;
     font-weight: var(--font-weight-regular);
+    overflow: hidden;
   }
 
   ::selection {
@@ -315,7 +319,7 @@
     transition: background 120ms ease-out;
   }
   .glass-button:hover {
-    background: #232325;
+    background: var(--color-bg-button-glass-hover);
   }
 
   .icon-button {
@@ -446,6 +450,8 @@
     font-size: 12px;
     font-weight: var(--font-weight-medium);
     color: var(--color-text-row-meta);
+    max-width: min(180px, 42vw);
+    min-width: 0;
   }
   .tag-pill::before {
     content: "";
@@ -465,6 +471,10 @@
   .tag-pill[data-color="teal"]   { color: var(--color-status-teal); }
   .tag-pill > span {
     color: var(--color-text-row-meta);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   /* ---- Hairlines & legacy pill ---- */
@@ -529,6 +539,8 @@
   --color-bg-pill-active: #e2e4e9;
   --color-bg-row-active: #eef0f3;
   --color-bg-button-glass: #ffffff;
+  --color-bg-button-glass-hover: #edf0f4;
+  --color-bg-tag-pill: #ffffff;
   --color-bg-marketing: #f8fafb;
   --color-bg-panel: #ffffff;
   --color-bg-surface: #f5f6f8;
@@ -539,14 +551,21 @@
   --color-border-solid: #e2e5ea;
   --color-border-strong: #c8cdd5;
   --color-border-pill: #e2e5ea;
+  --color-border-button-glass: rgba(10, 10, 11, 0.12);
 
+  --color-text-primary-strong: #0a0a0b;
   --color-text-primary: #0a0a0b;
   --color-text-secondary: #2c3038;
+  --color-text-secondary-spec: #2c3038;
   --color-text-tertiary: #5d6470;
   --color-text-tertiary-spec: #5d6470;
   --color-text-quaternary: #8a92a0;
+  --color-text-quaternary-spec: #8a92a0;
+  --color-text-quinary: #9aa3af;
   --color-text-row-title: #0a0a0b;
   --color-text-row-meta: #5d6470;
+  --color-text-progress-meta: #2f7a46;
+  --color-text-backlog-meta: #8a6514;
   --color-text-workspace: #0a0a0b;
 
   --color-ghost-bg: rgba(0, 0, 0, 0.02);
@@ -555,4 +574,22 @@
 
   --gradient-progress: linear-gradient(90deg, #effaf3 0%, #f5f6f8 100%);
   --gradient-backlog: linear-gradient(90deg, #fef9ec 0%, #f5f6f8 100%);
+  --gradient-failed: linear-gradient(90deg, #fff1f1 0%, #f5f6f8 100%);
+  --gradient-done: linear-gradient(90deg, #eef8f1 0%, #f5f6f8 100%);
+
+  --shadow-glass: 0 0 0 0.5px rgba(10, 10, 11, 0.12), 0 4px 4px -1px rgba(15, 23, 42, 0.04), 0 1px 1px rgba(15, 23, 42, 0.08);
+  --shadow-glass-active: 0 0 0 0.5px rgba(10, 10, 11, 0.16);
+  --shadow-icon-button: 0 0 0 1px rgba(10, 10, 11, 0.1), 0 4px 4px -1px rgba(15, 23, 42, 0.05), 0 1px 1px rgba(15, 23, 42, 0.08);
+}
+
+@media (max-width: 640px) {
+  :root {
+    --text-h1: 24px;
+    --text-h2: 20px;
+    --text-h3: 18px;
+    --text-body: 15px;
+    --h-row: 44px;
+    --h-button: 32px;
+    --h-tab: 32px;
+  }
 }

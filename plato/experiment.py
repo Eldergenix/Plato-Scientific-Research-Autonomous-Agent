@@ -1,4 +1,5 @@
 import re
+import os
 from pathlib import Path
 import cmbagent
 
@@ -100,25 +101,46 @@ class Experiment:
         print(f"Restart at step: {self.restart_at_step}")
         print(f"Hardware constraints: {self.hardware_constraints}")
 
-        results = cmbagent.planning_and_control_context_carryover(data_description,
-                            n_plan_reviews = 1,
-                            max_n_attempts = self.max_n_attempts,
-                            max_plan_steps = self.max_n_steps,
-                            max_rounds_control = 500,
-                            engineer_model = self.engineer_model,
-                            researcher_model = self.researcher_model,
-                            planner_model = self.planner_model,
-                            plan_reviewer_model = self.plan_reviewer_model,
-                            plan_instructions=self.planner_append_instructions,
-                            researcher_instructions=self.researcher_append_instructions,
-                            engineer_instructions=self.engineer_append_instructions,
-                            work_dir = self.experiment_dir,
-                            api_keys = self.api_keys,
-                            restart_at_step = self.restart_at_step,
-                            hardware_constraints = self.hardware_constraints,
-                            default_llm_model = self.orchestration_model,
-                            default_formatter_model = self.formatter_model
-                            )
+        original_listdir = os.listdir
+        original_rmdir = os.rmdir
+
+        def listdir_for_cmbagent_cleanup(path):
+            try:
+                return original_listdir(path)
+            except FileNotFoundError:
+                return []
+
+        def rmdir_for_cmbagent_cleanup(path, *args, **kwargs):
+            try:
+                return original_rmdir(path, *args, **kwargs)
+            except FileNotFoundError:
+                return None
+
+        os.listdir = listdir_for_cmbagent_cleanup
+        os.rmdir = rmdir_for_cmbagent_cleanup
+        try:
+            results = cmbagent.planning_and_control_context_carryover(data_description,
+                                n_plan_reviews = 1,
+                                max_n_attempts = self.max_n_attempts,
+                                max_plan_steps = self.max_n_steps,
+                                max_rounds_control = 500,
+                                engineer_model = self.engineer_model,
+                                researcher_model = self.researcher_model,
+                                planner_model = self.planner_model,
+                                plan_reviewer_model = self.plan_reviewer_model,
+                                plan_instructions=self.planner_append_instructions,
+                                researcher_instructions=self.researcher_append_instructions,
+                                engineer_instructions=self.engineer_append_instructions,
+                                work_dir = self.experiment_dir,
+                                api_keys = self.api_keys,
+                                restart_at_step = self.restart_at_step,
+                                hardware_constraints = self.hardware_constraints,
+                                default_llm_model = self.orchestration_model,
+                                default_formatter_model = self.formatter_model
+                                )
+        finally:
+            os.listdir = original_listdir
+            os.rmdir = original_rmdir
         chat_history = results['chat_history']
         final_context = results['final_context']
         
@@ -126,13 +148,22 @@ class Experiment:
             task_result = get_task_result(chat_history,'researcher_response_formatter')
         except Exception as e:
             raise e
+        if not isinstance(task_result, str) or not task_result.strip():
+            raise RuntimeError(
+                "Experiment workflow finished without a researcher results summary. "
+                "Check the run events for the generated-code or dependency failure."
+            )
             
         MD_CODE_BLOCK_PATTERN = r"```[ \t]*(?:markdown)[ \t]*\r?\n(.*)\r?\n[ \t]*```"
-        extracted_results = re.findall(MD_CODE_BLOCK_PATTERN, task_result, flags=re.DOTALL)[0]
+        result_matches = re.findall(MD_CODE_BLOCK_PATTERN, task_result, flags=re.DOTALL)
+        if not result_matches:
+            raise RuntimeError(
+                "Experiment workflow returned no markdown results block. "
+                "Check the run events for the generated-code or dependency failure."
+            )
+        extracted_results = result_matches[0]
         clean_results = re.sub(r'^<!--.*?-->\s*\n', '', extracted_results)
         self.results = clean_results
         self.plot_paths = final_context['displayed_images']
 
         return None
-
-

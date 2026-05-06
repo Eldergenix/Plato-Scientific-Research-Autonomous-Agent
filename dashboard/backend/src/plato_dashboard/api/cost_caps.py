@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from ..domain.models import CostCapState, Project
+from ..domain.models import CostCapState
 from ..settings import Settings, get_settings
 from ..storage.project_store import ProjectStore
 

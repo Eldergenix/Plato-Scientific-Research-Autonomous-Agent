@@ -110,7 +110,7 @@ def test_required_mode_creates_per_user_namespaces(
     app_client, required_mode: Path
 ) -> None:
     """Two users → two on-disk roots under ``users/<id>/``."""
-    plato_home = required_mode / "projects"  # parent for users/<id>/
+    plato_home = required_mode / "projects"
     a_proj = app_client.post(
         "/api/v1/projects",
         json={"name": "alice's"},
@@ -123,10 +123,10 @@ def test_required_mode_creates_per_user_namespaces(
     ).json()
 
     # Each user lands under users/<id>/<pid>/.
-    assert (_user_root(plato_home.parent, "alice") / a_proj["id"]).exists()
-    assert (_user_root(plato_home.parent, "bob") / b_proj["id"]).exists()
+    assert (_user_root(plato_home, "alice") / a_proj["id"]).exists()
+    assert (_user_root(plato_home, "bob") / b_proj["id"]).exists()
     # Cross-namespace pollution check.
-    assert not (_user_root(plato_home.parent, "alice") / b_proj["id"]).exists()
+    assert not (_user_root(plato_home, "alice") / b_proj["id"]).exists()
 
 
 def test_user_b_cannot_fetch_user_a_run(
@@ -143,7 +143,7 @@ def test_user_b_cannot_fetch_user_a_run(
     )
     assert a_resp.status_code == 201
     pid_a = a_resp.json()["id"]
-    a_project_dir = _user_root(plato_home.parent, "alice") / pid_a
+    a_project_dir = _user_root(plato_home, "alice") / pid_a
     _write_manifest(a_project_dir, run_id="r_alice_1", user_id="alice")
 
     # Pre-load the run into the in-memory registry so the route doesn't
