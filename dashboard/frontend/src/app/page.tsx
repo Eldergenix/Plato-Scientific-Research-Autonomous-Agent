@@ -17,8 +17,10 @@ import { CostMeterPanel, useCostMeter } from "@/components/cost/cost-meter-panel
 import { CreateProjectModal } from "@/components/projects/create-project-modal";
 import { PaperPreview } from "@/components/stages/paper-preview";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Sheet } from "@/components/ui/sheet";
 import { useProject } from "@/lib/use-project";
 import { api } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 import {
   ArrowLeft,
@@ -26,6 +28,7 @@ import {
   ClipboardList,
   FlaskConical,
   Lightbulb,
+  Menu,
   Newspaper,
   Stamp,
 } from "lucide-react";
@@ -34,6 +37,7 @@ import type { StageId, Stage } from "@/lib/types";
 export default function Home() {
   const [collapsed, setCollapsed] = React.useState(false);
   const [cmdOpen, setCmdOpen] = React.useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
   const [openStage, setOpenStage] = React.useState<StageId | null>(null);
   const [logHeight, setLogHeight] = React.useState<0 | 30 | 60>(0);
   const [paused, setPaused] = React.useState(false);
@@ -42,9 +46,10 @@ export default function Home() {
     "active",
   );
 
-  const { project, log, plots, nodeEvents, codeEvents, loading, isLive, capabilities, startRun, cancelRun, refresh } = useProject();
+  const { project, log, plots, nodeEvents, codeEvents, loading, isLive, capabilities, startRun, cancelRun, selectProject, refresh } = useProject();
   const cost = useCostMeter();
   const [createOpen, setCreateOpen] = React.useState(false);
+  const [detailsOpen, setDetailsOpen] = React.useState(false);
   const [cancelConfirmOpen, setCancelConfirmOpen] = React.useState(false);
 
   // Fetch the current key-status snapshot once on mount so the
@@ -83,6 +88,18 @@ export default function Home() {
     if (!project.activeRun) return;
     setCancelConfirmOpen(true);
   }, [project.activeRun]);
+
+  const handleSidebarStage = React.useCallback((stage: string) => {
+    if (stage === "history") {
+      setLogHeight((h) => (h === 0 ? 30 : 0));
+      return;
+    }
+    if (stage === "stages") {
+      setOpenStage("idea");
+      return;
+    }
+    setOpenStage(stage as StageId);
+  }, []);
 
   const [gateToast, setGateToast] = React.useState<{
     target: StageId;
@@ -132,37 +149,74 @@ export default function Home() {
   }, [project, filterTab]);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-(--color-bg-page) text-(--color-text-primary)">
-      <Sidebar
-        collapsed={collapsed}
-        onToggle={() => setCollapsed((c) => !c)}
-        onOpenCommand={() => setCmdOpen(true)}
-        onCreateProject={() => setCreateOpen(true)}
-        projectName={loading ? "" : project.name}
-        activeStage={openStage ?? undefined}
-        onSelectStage={(stage) => {
-          // Sidebar TEAM_LINKS uses pseudo-ids: "stages" → idea (jump to first stage),
-          // "history" → toggle log drawer, "referee" → real referee stage.
-          if (stage === "history") {
-            setLogHeight((h) => (h === 0 ? 30 : 0));
-            return;
-          }
-          if (stage === "stages") {
-            setOpenStage("idea");
-            return;
-          }
-          setOpenStage(stage as StageId);
-        }}
-      />
+    <div className="flex h-[100dvh] w-full overflow-hidden bg-(--color-bg-page) text-(--color-text-primary)">
+      <div className="hidden md:flex">
+        <Sidebar
+          collapsed={collapsed}
+          onToggle={() => setCollapsed((c) => !c)}
+          onOpenCommand={() => setCmdOpen(true)}
+          onCreateProject={() => setCreateOpen(true)}
+          projectName={loading ? "" : project.name}
+          activeStage={openStage ?? undefined}
+          onSelectStage={handleSidebarStage}
+        />
+      </div>
+
+      <Sheet
+        open={mobileNavOpen}
+        onOpenChange={setMobileNavOpen}
+        title="Navigation"
+        srOnly
+        side="left"
+        hideCloseButton
+        className="w-[min(280px,calc(100vw-24px))]"
+      >
+        <Sidebar
+          collapsed={false}
+          onToggle={() => setMobileNavOpen(false)}
+          onOpenCommand={() => {
+            setMobileNavOpen(false);
+            setCmdOpen(true);
+          }}
+          onCreateProject={() => {
+            setMobileNavOpen(false);
+            setCreateOpen(true);
+          }}
+          projectName={loading ? "" : project.name}
+          activeStage={openStage ?? undefined}
+          onSelectStage={(stage) => {
+            setMobileNavOpen(false);
+            handleSidebarStage(stage);
+          }}
+        />
+      </Sheet>
 
       {/* Outer canvas with the Linear-style inset card */}
       <div className="flex-1 min-w-0 flex flex-col">
+        <div
+          className="flex min-h-12 items-center gap-2 px-3 hairline-b bg-(--color-bg-marketing) md:hidden"
+          data-testid="mobile-shell-header"
+        >
+          <button
+            type="button"
+            aria-label="Open navigation"
+            data-testid="mobile-nav-trigger"
+            onClick={() => setMobileNavOpen(true)}
+            className="size-8 inline-flex items-center justify-center rounded-[6px] text-(--color-text-tertiary) hover:bg-(--color-ghost-bg-hover) hover:text-(--color-text-primary)"
+          >
+            <Menu size={16} strokeWidth={1.75} />
+          </button>
+          <span className="min-w-0 truncate text-[13px] font-medium text-(--color-text-primary)">
+            Plato
+          </span>
+        </div>
+
         {capabilities?.is_demo && (
           <CapabilitiesBanner isDemo notes={capabilities.notes} />
         )}
         {!isLive && capabilities === null && <OfflineBanner />}
 
-        <div className="flex-1 min-h-0 flex flex-col p-1.5 pl-0">
+        <div className="flex-1 min-h-0 flex flex-col p-1.5 md:pl-0">
           <main
             id="main-content"
             className="flex-1 min-h-0 flex flex-col bg-(--color-bg-card) overflow-hidden"
@@ -198,8 +252,10 @@ export default function Home() {
                   t === "active" ? "backlog" : t === "backlog" ? "all" : "active",
                 )
               }
-              onChangeDisplay={() => setLogHeight((h) => (h === 0 ? 30 : h === 30 ? 60 : 0))}
-              onToggleDetails={cost.openMeter}
+              onChangeDisplay={() =>
+                setLogHeight((h) => (h === 0 ? 30 : h === 30 ? 60 : 0))
+              }
+              onToggleDetails={() => setDetailsOpen(true)}
               onMoreActions={() => setCmdOpen(true)}
               onToggleFavorite={() => {
                 /* favorites — Phase 4 */
@@ -263,12 +319,18 @@ export default function Home() {
         project={project}
       />
 
+      <ProjectDetailsSheet
+        open={detailsOpen}
+        onOpenChange={setDetailsOpen}
+        project={project}
+      />
+
       <CreateProjectModal
         open={createOpen}
         onOpenChange={setCreateOpen}
-        onCreated={() => {
+        onCreated={(createdProject) => {
+          selectProject(createdProject);
           setCreateOpen(false);
-          void refresh();
         }}
       />
 
@@ -323,6 +385,114 @@ export default function Home() {
   );
 }
 
+function ProjectDetailsSheet({
+  open,
+  onOpenChange,
+  project,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  project: ReturnType<typeof useProject>["project"];
+}) {
+  const stageEntries = Object.values(project.stages);
+  const completed = stageEntries.filter((stage) => stage.status === "done").length;
+  const active = project.activeRun;
+
+  return (
+    <Sheet
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Project details"
+      side="right"
+      className="w-[min(360px,calc(100vw-24px))]"
+    >
+      <div className="space-y-4 px-4 py-4 text-[13px]">
+        <section className="space-y-2">
+          <h3 className="text-[12px] font-medium uppercase tracking-wide text-(--color-text-tertiary)">
+            Project
+          </h3>
+          <dl className="space-y-1.5">
+            <DetailRow label="Name" value={project.name} />
+            <DetailRow label="ID" value={project.id || "—"} mono />
+            <DetailRow label="Journal" value={project.journal} />
+            <DetailRow
+              label="Updated"
+              value={new Date(project.updatedAt).toLocaleString()}
+            />
+          </dl>
+        </section>
+
+        <section className="space-y-2">
+          <h3 className="text-[12px] font-medium uppercase tracking-wide text-(--color-text-tertiary)">
+            Progress
+          </h3>
+          <dl className="space-y-1.5">
+            <DetailRow label="Stages complete" value={`${completed}/${stageEntries.length}`} />
+            <DetailRow
+              label="Active run"
+              value={active ? `${active.stage} · ${active.runId}` : "None"}
+              mono={Boolean(active)}
+            />
+            <DetailRow
+              label="Tokens"
+              value={project.totalTokens.toLocaleString()}
+            />
+            <DetailRow
+              label="Cost"
+              value={`$${(project.totalCostCents / 100).toFixed(2)}`}
+            />
+          </dl>
+        </section>
+
+        <section className="space-y-2">
+          <h3 className="text-[12px] font-medium uppercase tracking-wide text-(--color-text-tertiary)">
+            Stage status
+          </h3>
+          <div className="space-y-1.5">
+            {stageEntries.map((stage) => (
+              <div
+                key={stage.id}
+                className="flex items-center justify-between gap-3 rounded-[6px] border border-(--color-border-card) px-2.5 py-2"
+              >
+                <span className="capitalize text-(--color-text-secondary)">
+                  {stage.label}
+                </span>
+                <span className="font-mono text-[11px] text-(--color-text-tertiary)">
+                  {stage.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+    </Sheet>
+  );
+}
+
+function DetailRow({
+  label,
+  value,
+  mono = false,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <dt className="text-(--color-text-tertiary)">{label}</dt>
+      <dd
+        className={cn(
+          "min-w-0 text-right text-(--color-text-primary)",
+          mono && "font-mono text-[11.5px]",
+        )}
+      >
+        {value}
+      </dd>
+    </div>
+  );
+}
+
 /* -------------------------------------------------------------- stage detail */
 
 function StageDetail({
@@ -367,7 +537,7 @@ function StageDetail({
         project={project}
         currentStage={stage}
         onApprove={() => {
-          /* approval state persisted by the component itself */
+          void onRefresh();
         }}
         onReject={() => {}}
         onRefine={onRun}
@@ -524,6 +694,7 @@ function PaperStagePane({
             id: s.id,
             name: s.name,
             status: s.status,
+            markdown: s.markdown,
             tex: s.tex,
           })),
         });

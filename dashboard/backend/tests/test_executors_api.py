@@ -29,13 +29,13 @@ def client(tmp_project_root: Path):  # noqa: ARG001 — fixture forces env setup
         yield c
 
 
-def test_lists_all_four_built_in_executors(client) -> None:
+def test_lists_all_built_in_executors(client) -> None:
     resp = client.get("/api/v1/executors")
     assert resp.status_code == 200
     body = resp.json()
     assert body["default"] == "cmbagent"
     names = {e["name"] for e in body["executors"]}
-    assert names == {"cmbagent", "local_jupyter", "modal", "e2b"}
+    assert names == {"cmbagent", "local_jupyter", "modal", "e2b", "sklearn_synthetic"}
 
 
 def test_each_executor_has_required_fields(client) -> None:
@@ -81,6 +81,18 @@ def test_local_jupyter_kind_reflects_jupyter_client_presence(client) -> None:
     by_name = {e["name"]: e for e in body["executors"]}
     entry = by_name["local_jupyter"]
     sdk_present = importlib.util.find_spec("jupyter_client") is not None
+    assert entry["kind"] == ("real" if sdk_present else "lazy")
+    assert entry["available"] is sdk_present
+
+
+def test_sklearn_synthetic_kind_reflects_scientific_stack_presence(client) -> None:
+    import importlib.util
+
+    body = client.get("/api/v1/executors").json()
+    by_name = {e["name"]: e for e in body["executors"]}
+    entry = by_name["sklearn_synthetic"]
+    modules = ("sklearn", "numpy", "pandas", "matplotlib", "scipy")
+    sdk_present = all(importlib.util.find_spec(module) is not None for module in modules)
     assert entry["kind"] == ("real" if sdk_present else "lazy")
     assert entry["available"] is sdk_present
 

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { api, setActiveRunId } from "./api";
+import type { RunEventCodeExecute } from "./api";
 import type { LogLine, Project, Stage, StageId } from "./types";
 
 export interface PlotEntry {
@@ -64,6 +65,7 @@ interface ProjectState {
   } | null;
   startRun: (stage: StageId, body?: { mode?: "fast" | "cmbagent" }) => Promise<void>;
   cancelRun: () => Promise<void>;
+  selectProject: (project: Project) => void;
   refresh: () => Promise<void>;
   refreshPlots: () => Promise<void>;
 }
@@ -118,6 +120,36 @@ const NODE_EVENTS_MAX = 500;
 // runs; older cells fall off the front when exceeded.
 const CODE_EVENTS_MAX = 200;
 
+function coerceCodeEvent(evt: RunEventCodeExecute): CodeEventEntry {
+  const tsMs = (() => {
+    const raw = evt.ts;
+    if (typeof raw === "number") return raw;
+    const parsed = Date.parse(String(raw));
+    return Number.isFinite(parsed) ? parsed : Date.now();
+  })();
+  return {
+    index: typeof evt.index === "number" ? evt.index : undefined,
+    source: typeof evt.source === "string" ? evt.source : undefined,
+    stdout:
+      evt.stdout === null || typeof evt.stdout === "string"
+        ? evt.stdout
+        : undefined,
+    stderr:
+      evt.stderr === null || typeof evt.stderr === "string"
+        ? evt.stderr
+        : undefined,
+    executor:
+      evt.executor === null || typeof evt.executor === "string"
+        ? evt.executor
+        : undefined,
+    ts: tsMs,
+    error:
+      evt.error === null || typeof evt.error === "object"
+        ? (evt.error as CodeEventEntry["error"])
+        : undefined,
+  };
+}
+
 export function useProject(): ProjectState {
   const [project, setProject] = React.useState<Project>(EMPTY_PROJECT);
   const [log, setLog] = React.useState<LogLine[]>([]);
@@ -145,7 +177,7 @@ export function useProject(): ProjectState {
     if (!projectIdRef.current) return;
     try {
       const r = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:7878/api/v1"}/projects/${projectIdRef.current}/plots`,
+        `${process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1"}/projects/${projectIdRef.current}/plots`,
       );
       if (!r.ok) return;
       const list = (await r.json()) as PlotEntry[];
@@ -154,6 +186,48 @@ export function useProject(): ProjectState {
       // ignore
     }
   }, []);
+
+  const refreshHistoricalResultsEvents = React.useCallback(async (pid: string) => {
+    try {
+      const runs = await api.listRuns(pid);
+      const resultRuns = runs
+        .filter((run) => run.stage === "results" && run.status === "succeeded")
+        .sort((a, b) => {
+          const aTime = Date.parse(a.finishedAt ?? a.startedAt ?? "");
+          const bTime = Date.parse(b.finishedAt ?? b.startedAt ?? "");
+          return (
+            (Number.isFinite(aTime) ? aTime : 0) -
+            (Number.isFinite(bTime) ? bTime : 0)
+          );
+        });
+      const latest = resultRuns[resultRuns.length - 1];
+      if (!latest) {
+        if (projectIdRef.current === pid) setCodeEvents([]);
+        return;
+      }
+      const events = await api.listRunEvents(pid, latest.id);
+      const entries = events
+        .filter((evt): evt is RunEventCodeExecute => evt.kind === "code.execute")
+        .map(coerceCodeEvent)
+        .slice(-CODE_EVENTS_MAX);
+      if (projectIdRef.current === pid) setCodeEvents(entries);
+    } catch {
+      // Keep the live buffer. Historical replay is best-effort for reloads.
+    }
+  }, []);
+
+  const selectProject = React.useCallback((nextProject: Project) => {
+    projectIdRef.current = nextProject.id;
+    setProject(nextProject);
+    setLog([]);
+    setPlots([]);
+    setNodeEvents([]);
+    setCodeEvents([]);
+    setActiveRunId(null);
+    sseUnsubRef.current?.();
+    sseUnsubRef.current = null;
+    void refreshHistoricalResultsEvents(nextProject.id);
+  }, [refreshHistoricalResultsEvents]);
 
   // Bootstrap: ping API, load caps + first project (or create one).
   React.useEffect(() => {
@@ -184,7 +258,7 @@ export function useProject(): ProjectState {
         // Initial plots fetch.
         try {
           const plotsRes = await fetch(
-            `${process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:7878/api/v1"}/projects/${active.id}/plots`,
+            `${process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1"}/projects/${active.id}/plots`,
           );
           if (plotsRes.ok) {
             const list = (await plotsRes.json()) as PlotEntry[];
@@ -193,6 +267,7 @@ export function useProject(): ProjectState {
         } catch {
           // ignore
         }
+        if (!cancelled) void refreshHistoricalResultsEvents(active.id);
       } catch {
         // Iter-23: backend offline → stay on EMPTY_PROJECT instead of
         // SAMPLE_PROJECT. The offline banner is the right place to tell
@@ -208,7 +283,7 @@ export function useProject(): ProjectState {
       cancelled = true;
       sseUnsubRef.current?.();
     };
-  }, []);
+  }, [refreshHistoricalResultsEvents]);
 
   const startRun = React.useCallback<ProjectState["startRun"]>(
     async (stage, body) => {
@@ -257,33 +332,7 @@ export function useProject(): ProjectState {
               // Iter-30: fan out to CodePane via codeEvents. Same ring-
               // buffer treatment as nodeEvents — bounded so a long run
               // can't accumulate unbounded source-string allocations.
-              const tsMs = (() => {
-                const raw = evt.ts;
-                if (typeof raw === "number") return raw;
-                const parsed = Date.parse(String(raw));
-                return Number.isFinite(parsed) ? parsed : Date.now();
-              })();
-              const entry: CodeEventEntry = {
-                index: typeof evt.index === "number" ? evt.index : undefined,
-                source: typeof evt.source === "string" ? evt.source : undefined,
-                stdout:
-                  evt.stdout === null || typeof evt.stdout === "string"
-                    ? evt.stdout
-                    : undefined,
-                stderr:
-                  evt.stderr === null || typeof evt.stderr === "string"
-                    ? evt.stderr
-                    : undefined,
-                executor:
-                  evt.executor === null || typeof evt.executor === "string"
-                    ? evt.executor
-                    : undefined,
-                ts: tsMs,
-                error:
-                  evt.error === null || typeof evt.error === "object"
-                    ? (evt.error as CodeEventEntry["error"])
-                    : undefined,
-              };
+              const entry = coerceCodeEvent(evt as RunEventCodeExecute);
               setCodeEvents((prev) => {
                 const next = [...prev, entry];
                 return next.length > CODE_EVENTS_MAX
@@ -325,6 +374,9 @@ export function useProject(): ProjectState {
               setActiveRunId(null);
               void refresh();
               void refreshPlots();
+              if (stage === "results" && projectIdRef.current) {
+                void refreshHistoricalResultsEvents(projectIdRef.current);
+              }
             }
           },
         );
@@ -332,7 +384,7 @@ export function useProject(): ProjectState {
         console.error("Failed to start run", e);
       }
     },
-    [isLive, refresh, refreshPlots],
+    [isLive, refresh, refreshHistoricalResultsEvents, refreshPlots],
   );
 
   const cancelRun = React.useCallback<ProjectState["cancelRun"]>(async () => {
@@ -351,6 +403,7 @@ export function useProject(): ProjectState {
     capabilities: caps,
     startRun,
     cancelRun,
+    selectProject,
     refresh,
     refreshPlots,
   };

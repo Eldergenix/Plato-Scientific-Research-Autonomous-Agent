@@ -21,6 +21,8 @@ const SECURITY_HEADERS = [
 
 const staticExport = process.env.PLATO_STATIC_EXPORT === "true";
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH?.trim() || undefined;
+const apiProxyTarget =
+  process.env.PLATO_API_PROXY_TARGET?.trim() || "http://127.0.0.1:7878";
 
 // Anchor turbopack to this dashboard/frontend folder so Next stops
 // inferring the workspace root from a sibling pnpm-lock.yaml in the
@@ -45,6 +47,15 @@ const nextConfig: NextConfig = {
         // Next.js-served HTML/static assets.
         source: "/(.*)",
         headers: SECURITY_HEADERS,
+      },
+    ];
+  },
+  async rewrites() {
+    if (staticExport) return [];
+    return [
+      {
+        source: "/api/v1/:path*",
+        destination: `${apiProxyTarget}/api/v1/:path*`,
       },
     ];
   },

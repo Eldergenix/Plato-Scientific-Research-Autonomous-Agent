@@ -8,7 +8,8 @@ The default backend is :class:`CmbagentExecutor`, which wraps the existing
 ``cmbagent.planning_and_control_context_carryover`` flow Plato has used
 since day one. Alternative backends (``local_jupyter``, ``modal``, ``e2b``)
 are stubbed here so a domain profile can swap executors via
-``DomainProfile.executor`` without touching Plato itself.
+``DomainProfile.executor`` without touching Plato itself. ``sklearn_synthetic``
+is a deterministic local backend for no-upload synthetic tabular studies.
 
 Concrete executors implement :class:`Executor` and register themselves at
 import time with :func:`register_executor`. The four built-in backends are
@@ -110,6 +111,7 @@ _BUILTIN_BACKENDS: tuple[str, ...] = (
     "local_jupyter",
     "modal_backend",
     "e2b_backend",
+    "sklearn_synthetic",
 )
 _builtins_loaded = False
 
@@ -130,5 +132,4 @@ def _ensure_builtins_registered() -> None:
             # installed) shouldn't block the others. Each backend
             # module handles its own optional-dep behaviour.
             pass
-
 

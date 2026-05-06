@@ -4,7 +4,7 @@ import * as React from "react";
 import { LineChart, X as CloseIcon } from "lucide-react";
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:7878/api/v1";
+  process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
 
 // Mirror of evals/runner.py:_summarize output shape. Each metric
 // reports {count, mean, p50, p95}; an empty count means no task in

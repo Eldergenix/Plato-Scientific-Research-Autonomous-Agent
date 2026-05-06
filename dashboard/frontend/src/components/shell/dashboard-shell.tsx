@@ -52,7 +52,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   }, [pathname]);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-(--color-bg-page) text-(--color-text-primary)">
+    <div className="flex h-[100dvh] w-full overflow-hidden bg-(--color-bg-page) text-(--color-text-primary)">
       {/* Desktop sidebar — hidden below the md breakpoint so the
           hamburger drawer can take over without overlapping content. */}
       <div className="hidden md:flex">
@@ -74,7 +74,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         srOnly
         side="left"
         hideCloseButton
-        className="w-[280px]"
+        className="w-[min(280px,calc(100vw-24px))]"
       >
         <Sidebar
           collapsed={false}
@@ -95,7 +95,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             md:hidden breakpoint matches the desktop-sidebar visibility
             so the two never coexist on screen. */}
         <div
-          className="flex h-12 items-center gap-2 px-3 hairline-b bg-(--color-bg-marketing) md:hidden"
+          className="flex min-h-12 items-center gap-2 px-3 hairline-b bg-(--color-bg-marketing) md:hidden"
           data-testid="mobile-shell-header"
         >
           <button
@@ -114,7 +114,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
         {caps?.is_demo && <CapabilitiesBanner isDemo notes={caps.notes} />}
 
-        <div className="flex-1 min-h-0 flex flex-col p-1.5 pl-0">
+        <div className="flex-1 min-h-0 flex flex-col p-1.5 md:pl-0">
           <main
             className="flex-1 min-h-0 flex flex-col bg-(--color-bg-card) overflow-hidden"
             style={{

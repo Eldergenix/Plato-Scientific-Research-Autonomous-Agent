@@ -1,6 +1,7 @@
 import subprocess
 import os
 import re
+import shutil
 from pathlib import Path
 
 from .parameters import GraphState
@@ -24,6 +25,43 @@ special_chars = {
     "~": r"\~{}",
     "^": r"\^{}",
 }
+
+
+def _latex_engine() -> tuple[str, str]:
+    xelatex = shutil.which("xelatex")
+    if xelatex:
+        return "xelatex", xelatex
+    tectonic = shutil.which("tectonic")
+    if tectonic:
+        return "tectonic", tectonic
+    raise FileNotFoundError(
+        "No LaTeX engine found. Install xelatex or tectonic to compile PDFs."
+    )
+
+
+def _run_latex_engine(
+    doc_name: str,
+    doc_folder: str,
+    *,
+    nonstop: bool = False,
+    check: bool = False,
+) -> tuple[str, subprocess.CompletedProcess[str]]:
+    engine, executable = _latex_engine()
+    if engine == "xelatex":
+        command = [executable]
+        if nonstop:
+            command.extend(["-interaction=nonstopmode", "-file-line-error"])
+        command.append(doc_name)
+    else:
+        command = [executable, "--keep-logs", "--keep-intermediates", doc_name]
+    return engine, subprocess.run(
+        command,
+        cwd=doc_folder,
+        input="\n",
+        capture_output=True,
+        text=True,
+        check=check,
+    )
 
 
 def extract_latex_errors(state):
@@ -101,9 +139,8 @@ def compile_tex_document(state: dict, doc_name: str, doc_folder: str) -> None:
     # bibtex can resolve refs from the section's own working directory.
     bib_path = os.path.join(state['files']['Paper_folder'], "bibliography.bib")
 
-    def run_xelatex(pass_num=None):
-        result = subprocess.run(["xelatex", doc_name], cwd=doc_folder,
-                                input="\n", capture_output=True, text=True)
+    def run_latex(pass_num=None):
+        _engine, result = _run_latex_engine(doc_name, doc_folder)
         if result.returncode != 0:
             print("❌", end="", flush=True)
             clean_files(doc_name, doc_folder)
@@ -138,11 +175,12 @@ def compile_tex_document(state: dict, doc_name: str, doc_folder: str) -> None:
             f.write(result.stderr)
 
     # Pass 1
-    if not(run_xelatex(pass_num=1)):
+    if not(run_latex(pass_num=1)):
         return False
 
     # Bibliography step if needed
-    if os.path.exists(bib_path):
+    engine, _executable = _latex_engine()
+    if os.path.exists(bib_path) and engine == "xelatex":
         run_bibtex()
         total_passes = 3
     else:
@@ -150,7 +188,7 @@ def compile_tex_document(state: dict, doc_name: str, doc_folder: str) -> None:
 
     # Additional passes
     for i in range(2, total_passes + 1):
-        run_xelatex(pass_num=i)
+        run_latex(pass_num=i)
 
     print("✅", end="", flush=True)
     clean_files(doc_name, doc_folder)
@@ -168,11 +206,14 @@ def compile_latex(state: GraphState, paper_name: str) -> None:
     # get the paper stem
     paper_stem = Path(paper_name).stem
 
-    def run_xelatex():
-        return subprocess.run(["xelatex", "-interaction=nonstopmode", "-file-line-error", paper_name],
-                              cwd=state['files']['Paper_folder'],
-                              input="\n", capture_output=True,
-                              text=True, check=True)
+    def run_latex():
+        _engine, result = _run_latex_engine(
+            paper_name,
+            state['files']['Paper_folder'],
+            nonstop=True,
+            check=True,
+        )
+        return result
 
     def run_bibtex():
         subprocess.run(["bibtex", paper_stem],
@@ -187,10 +228,12 @@ def compile_latex(state: GraphState, paper_name: str) -> None:
             f.write("---- STDERR ----\n")
             f.write(result_or_error.stderr or "")
 
+    engine, _executable = _latex_engine()
+
     # Try to compile it the first time
     print(f'Compiling {paper_stem}'.ljust(33,'.'), end="", flush=True)
     try:
-        run_xelatex()
+        run_latex()
         print("✅", end="", flush=True)
     except subprocess.CalledProcessError as e:
         log_output("Pass 1", e, is_error=True)
@@ -198,14 +241,14 @@ def compile_latex(state: GraphState, paper_name: str) -> None:
 
     # if there is bibliography, compile it
     further_iterations = 1
-    if os.path.exists(f"{state['files']['Paper_folder']}/bibliography.bib"):
+    if os.path.exists(f"{state['files']['Paper_folder']}/bibliography.bib") and engine == "xelatex":
         run_bibtex()
         further_iterations =2
 
     # Compile it two more times to put references and citations
     for i in range(further_iterations):        
         try:
-            run_xelatex()
+            run_latex()
             print("✅", end="", flush=True)
         except subprocess.CalledProcessError as e:
             log_output(f"Final Pass {i+1}", e, is_error=True)

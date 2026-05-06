@@ -257,7 +257,7 @@ async def _supervise(record: LoopRecord) -> None:
 router = APIRouter(prefix="/api/v1/loop", tags=["loop"])
 
 
-@router.post("/start", response_model=LoopStatus, status_code=status.HTTP_201_CREATED)
+@router.post("/start", response_model=LoopStatus)
 async def start_loop(
     req: LoopStartRequest,
     user: Optional[str] = Depends(_user_id),
