@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import {
   ChevronRight,
+  Atom,
   Globe2,
   Monitor,
   Moon,
@@ -66,6 +67,14 @@ const SETTINGS_SECTIONS: Array<{
       "Audit third-party license compatibility and download a CycloneDX SBOM.",
     icon: ScrollText,
     testId: "settings-link-licenses",
+  },
+  {
+    href: "/settings/scientific-analysis",
+    label: "Scientific analysis",
+    description:
+      "Review optional analysis stacks, artifact contracts, and repeatability checks.",
+    icon: Atom,
+    testId: "settings-link-scientific-analysis",
   },
 ];
 
@@ -166,7 +175,7 @@ export default function SettingsPage() {
             title="Configuration"
             subtitle="Server-side settings that affect every project in this workspace."
           />
-          <ul className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <ul className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {SETTINGS_SECTIONS.map((section) => {
               const Icon = section.icon;
               return (

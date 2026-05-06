@@ -11,6 +11,8 @@ The goal of the task is to write a plan that will be used to generate a detailed
 - This can be done in multiple steps. 
 - The focus should be strictly on the methods and workflow for this specific project to be performed. **Do not include** any discussion of future directions, future work, project extensions, or limitations.
 - The description should be written as if it were a senior researcher explaining to her research assistant how to perform the research necessary for this project.
+- Explicitly identify the mathematical models, statistical tests, equations, variables, parameters, random seeds, plotting outputs, and reproducibility artifacts that the results workflow must produce.
+- If the project includes numerical analysis, require the use of Plato's scientific tool registry where applicable, especially `run_scientific_analysis`, so calculations can be repeated and checked from structured outputs rather than only from prose.
 
 The final step of the plan must be entirely dedicated to writing the full Methodology description.
 
@@ -27,6 +29,8 @@ The goal of the task is to develop a detailed methodology that will be used to c
 
 - You should focus on the methods for this specific project to be performed. **Do not include** any discussion of future directions, future work, project extensions, or limitations.
 - The methodology description should be written as if it were a senior researcher explaining to her research assistant how to perform the project. 
+- Include a reproducibility subsection. It must specify data inputs, preprocessing filters, equations or mathematical models, statistical tests, plotting/graphing outputs, random seeds, software/tool choices, expected output files, and validation checks.
+- When calculations are needed, name the exact operation to run through Plato's scientific-analysis registry when possible: `formula_mass`, `harmonic_oscillator`, `linear_regression`, `single_cell_qc`, `quantum_pauli`, or `publication_plot`.
 
 The designed methodology should focus on describing the research and analysis that will be performed.
 

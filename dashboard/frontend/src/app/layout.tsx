@@ -23,6 +23,11 @@ export const metadata: Metadata = {
   title: "Plato — Scientific Research Dashboard",
   description:
     "Multi-agent research workspace for Plato — orchestrate ideas, methods, results, and papers.",
+  icons: {
+    icon: [{ url: "/favicon.png", type: "image/png", sizes: "632x636" }],
+    shortcut: "/favicon.png",
+    apple: "/favicon.png",
+  },
 };
 
 // Inline pre-hydration script that mirrors ThemeProvider's resolution logic.
