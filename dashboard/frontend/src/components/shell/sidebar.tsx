@@ -53,7 +53,7 @@ interface NavLink {
 
 const TOP_LINKS: NavLink[] = [
   { href: "/", label: "Workspace", icon: Inbox },
-  { href: "/projects", label: "Projects", icon: LayoutList },
+  { href: "/projects", label: "Recent", icon: LayoutList },
 ];
 
 const WORKSPACE_LINKS: NavLink[] = [
