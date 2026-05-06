@@ -257,6 +257,9 @@ export function CreateProjectModal({
               <FolderPlus size={14} strokeWidth={1.75} className="text-(--color-brand-hover)" />
               New project
             </Dialog.Title>
+            <Dialog.Description className="sr-only">
+              Create a Plato project with a name, optional data description, starter template, and journal target.
+            </Dialog.Description>
             <Dialog.Close
               aria-label="Close"
               disabled={submitting}

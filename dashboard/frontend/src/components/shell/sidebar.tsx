@@ -53,7 +53,7 @@ interface NavLink {
 
 const TOP_LINKS: NavLink[] = [
   { href: "/", label: "Workspace", icon: Inbox },
-  { href: "/projects", label: "My projects", icon: LayoutList },
+  { href: "/projects", label: "Projects", icon: LayoutList },
 ];
 
 const WORKSPACE_LINKS: NavLink[] = [
@@ -61,7 +61,7 @@ const WORKSPACE_LINKS: NavLink[] = [
   { href: "/models", label: "Models", icon: Folder },
   { href: "/costs", label: "Costs", icon: Eye },
   { href: "/activity", label: "Activity", icon: Activity },
-  { href: "/loop", label: "Autonomous loop", icon: Repeat },
+  { href: "/loop", label: "Loop", icon: Repeat },
   { href: "/evals", label: "Evals", icon: LineChart },
   { href: "/keys", label: "Keys", icon: KeyRound },
   // Settings is also reachable via the bottom-bar gear, but keeping a
@@ -73,7 +73,7 @@ const WORKSPACE_LINKS: NavLink[] = [
 
 const TEAM_LINKS: { id: string; label: string; icon: LucideIcon }[] = [
   { id: "stages", label: "Stages", icon: FlaskConical },
-  { id: "history", label: "Run history", icon: History },
+  { id: "history", label: "History", icon: History },
   { id: "referee", label: "Referee", icon: Stamp },
 ];
 
@@ -137,8 +137,8 @@ export function Sidebar({
 
   return (
     <aside
-      className="relative flex h-screen flex-col bg-(--color-bg-marketing) text-[#E2E3E4] transition-[width] duration-150"
-      style={{ width: 244 }}
+      className="relative flex h-screen flex-col bg-(--color-bg-marketing) text-(--color-text-secondary-spec) transition-[width] duration-150"
+      style={{ width: "var(--w-sidebar)" }}
       aria-label="Primary navigation"
     >
       {/* Top row */}
@@ -157,7 +157,7 @@ export function Sidebar({
             style={{
               width: 20,
               height: 20,
-              backgroundColor: "#00738E",
+              backgroundColor: "var(--color-status-teal)",
               fontSize: 11,
               fontWeight: 400,
             }}
@@ -171,12 +171,12 @@ export function Sidebar({
               fontSize: 14,
               fontWeight: 550,
               letterSpacing: "-0.1px",
-              color: "#E2E3E4",
+              color: "var(--color-text-workspace)",
             }}
           >
             Plato
           </span>
-          <ChevronDown size={8} strokeWidth={2} color="#919193" className="ml-auto shrink-0" />
+          <ChevronDown size={8} strokeWidth={2} className="ml-auto shrink-0 text-(--color-text-row-meta)" />
         </button>
 
         <div className="flex items-center" style={{ width: 60, height: 28, gap: 4 }}>
@@ -184,25 +184,24 @@ export function Sidebar({
             type="button"
             onClick={onOpenCommand}
             aria-label="Search"
-            className="flex items-center justify-center rounded-full hover:bg-(--color-ghost-bg-hover) transition-colors"
+            className="flex items-center justify-center rounded-full text-(--color-text-row-meta) hover:bg-(--color-ghost-bg-hover) hover:text-(--color-text-primary-strong) transition-colors"
             style={{ width: 28, height: 28 }}
           >
-            <Search size={14} strokeWidth={1.75} color="#919193" />
+            <Search size={14} strokeWidth={1.75} />
           </button>
           <button
             type="button"
             onClick={onCreateProject}
             aria-label="New project"
-            className="flex items-center justify-center rounded-full transition-colors"
+            className="flex items-center justify-center rounded-full text-(--color-text-primary-strong) hover:bg-(--color-bg-button-glass-hover) transition-colors"
             style={{
               width: 28,
               height: 28,
-              backgroundColor: "#1D1D1E",
-              boxShadow:
-                "0 0 0 1px #202122, 0 4px 4px -1px rgba(0,0,0,0.04), 0 1px 1px rgba(0,0,0,0.08)",
+              backgroundColor: "var(--color-bg-button-glass)",
+              boxShadow: "var(--shadow-icon-button)",
             }}
           >
-            <Plus size={14} strokeWidth={1.75} color="#FFFFFF" />
+            <Plus size={14} strokeWidth={1.75} />
           </button>
         </div>
       </div>
@@ -213,7 +212,7 @@ export function Sidebar({
           className="flex flex-col"
           style={{
             padding: "0 12px",
-            backgroundColor: "rgba(0, 0, 0, 0.004)",
+            backgroundColor: "var(--color-ghost-bg)",
             borderRadius: 8,
           }}
         >
@@ -240,7 +239,7 @@ export function Sidebar({
               ))}
               <button
                 type="button"
-                className="flex items-center rounded-[8px] text-[#919193] hover:bg-(--color-ghost-bg-hover) transition-colors"
+                className="flex items-center rounded-[8px] text-(--color-text-row-meta) hover:bg-(--color-ghost-bg-hover) hover:text-(--color-text-primary-strong) transition-colors"
                 style={{
                   width: 220,
                   height: 30,
@@ -248,7 +247,7 @@ export function Sidebar({
                   gap: 8,
                 }}
               >
-                <PlusCircle size={14} strokeWidth={1.75} color="#919193" />
+                <PlusCircle size={14} strokeWidth={1.75} />
                 <span style={{ fontSize: 13, fontWeight: 500 }}>More</span>
               </button>
             </div>
@@ -268,10 +267,10 @@ export function Sidebar({
             <button
               type="button"
               aria-label="Join a team"
-              className="flex items-center justify-center rounded-full opacity-0 group-hover/teams:opacity-100 hover:bg-(--color-ghost-bg-hover) transition-opacity"
+              className="flex items-center justify-center rounded-full text-(--color-text-row-meta) opacity-0 group-hover/teams:opacity-100 hover:bg-(--color-ghost-bg-hover) hover:text-(--color-text-primary-strong) transition-opacity"
               style={{ width: 28, height: 28 }}
             >
-              <Plus size={14} strokeWidth={1.75} color="#919193" />
+              <Plus size={14} strokeWidth={1.75} />
             </button>
           </div>
 
@@ -291,7 +290,7 @@ export function Sidebar({
                 style={{
                   width: 4,
                   height: 4,
-                  backgroundColor: "#FF0080",
+                  backgroundColor: "var(--color-status-pink)",
                   borderRadius: 9999,
                   display: "block",
                 }}
@@ -304,7 +303,7 @@ export function Sidebar({
                 textAlign: "left",
                 fontSize: 13,
                 fontWeight: 500,
-                color: "#919193",
+                color: "var(--color-text-row-meta)",
               }}
             >
               {teamName}
@@ -312,8 +311,7 @@ export function Sidebar({
             <ChevronRight
               size={16}
               strokeWidth={1.75}
-              color="#919193"
-              className="shrink-0 transition-transform"
+              className="shrink-0 text-(--color-text-row-meta) transition-transform"
               style={{ transform: teamOpen ? "rotate(90deg)" : "rotate(0deg)" }}
             />
           </button>
@@ -331,8 +329,8 @@ export function Sidebar({
                     className={cn(
                       "flex items-center rounded-[8px] transition-colors",
                       active
-                        ? "bg-[#191A1A] text-white"
-                        : "text-[#919193] hover:bg-(--color-ghost-bg-hover) hover:text-(--color-text-primary)",
+                        ? "bg-(--color-bg-row-active) text-(--color-text-primary-strong)"
+                        : "text-(--color-text-row-meta) hover:bg-(--color-ghost-bg-hover) hover:text-(--color-text-primary)",
                     )}
                     style={{
                       width: 201,
@@ -341,11 +339,7 @@ export function Sidebar({
                       gap: 6,
                     }}
                   >
-                    <Icon
-                      size={14}
-                      strokeWidth={1.75}
-                      color={active ? "#FFFFFF" : "#919193"}
-                    />
+                    <Icon size={14} strokeWidth={1.75} />
                     <span
                       className="truncate"
                       style={{
@@ -404,6 +398,7 @@ export function Sidebar({
         </SidebarIconButton>
         <Link
           href="/settings"
+          prefetch={false}
           aria-label="Settings"
           className={cn(
             "flex items-center justify-center rounded-[12px] transition-colors hover:bg-(--color-ghost-bg-hover)",
@@ -425,7 +420,7 @@ export function Sidebar({
       <div
         aria-hidden
         className="absolute top-0 right-0 h-full opacity-0 hover:opacity-100 transition-opacity"
-        style={{ width: "0.5px", backgroundColor: "#515153" }}
+        style={{ width: "0.5px", backgroundColor: "var(--color-text-quaternary-spec)" }}
       />
     </aside>
   );
@@ -438,21 +433,18 @@ function SidebarLink({ item, pathname }: { item: NavLink; pathname: string }) {
   return (
     <Link
       href={item.href}
+      prefetch={false}
       className={cn(
         "flex items-center rounded-[8px] transition-colors",
         active
-          ? "bg-[#191A1A] text-white"
-          : "text-[#919193] hover:bg-(--color-ghost-bg-hover) hover:text-(--color-text-primary)",
+          ? "bg-(--color-bg-row-active) text-(--color-text-primary-strong)"
+          : "text-(--color-text-row-meta) hover:bg-(--color-ghost-bg-hover) hover:text-(--color-text-primary)",
       )}
       style={{ width: 220, height: 28, padding: "0 9px 0 10px", gap: 8 }}
       aria-current={active ? "page" : undefined}
     >
-      <Icon
-        size={14}
-        strokeWidth={1.75}
-        color={active ? "#FFFFFF" : "#919193"}
-      />
-      <span style={{ fontSize: 13, fontWeight: 500 }}>{item.label}</span>
+      <Icon size={14} strokeWidth={1.75} />
+      <span className="min-w-0 truncate" style={{ fontSize: 13, fontWeight: 500 }}>{item.label}</span>
     </Link>
   );
 }
@@ -478,14 +470,13 @@ function SectionHeader({
       )}
       style={{ height: 28, padding: "0 6px", gap: 4 }}
     >
-      <span style={{ fontSize: 12, fontWeight: 500, color: "#919193" }}>
+      <span style={{ fontSize: 12, fontWeight: 500, color: "var(--color-text-row-meta)" }}>
         {label}
       </span>
       <ChevronDown
         size={16}
         strokeWidth={1.75}
-        color="#919193"
-        className="transition-transform"
+        className="text-(--color-text-row-meta) transition-transform"
         style={{ transform: open ? "rotate(0deg)" : "rotate(-90deg)" }}
       />
     </button>
@@ -539,7 +530,7 @@ function CollapsedSidebar({
 }) {
   return (
     <aside
-      className="flex h-screen flex-col items-center bg-(--color-bg-marketing) hairline-r"
+      className="flex h-screen flex-col items-center bg-(--color-bg-marketing) hairline-r text-(--color-text-row-meta)"
       style={{ width: 56 }}
       aria-label="Primary navigation"
     >
@@ -552,7 +543,7 @@ function CollapsedSidebar({
           style={{
             width: 20,
             height: 20,
-            backgroundColor: "#00738E",
+            backgroundColor: "var(--color-status-teal)",
             fontSize: 11,
           }}
           aria-hidden
@@ -566,25 +557,24 @@ function CollapsedSidebar({
           type="button"
           onClick={onOpenCommand}
           aria-label="Search"
-          className="flex items-center justify-center rounded-full hover:bg-(--color-ghost-bg-hover) transition-colors"
+          className="flex items-center justify-center rounded-full hover:bg-(--color-ghost-bg-hover) hover:text-(--color-text-primary-strong) transition-colors"
           style={{ width: 28, height: 28 }}
         >
-          <Search size={14} strokeWidth={1.75} color="#919193" />
+          <Search size={14} strokeWidth={1.75} />
         </button>
         <button
           type="button"
           onClick={onCreateProject}
           aria-label="New project"
-          className="flex items-center justify-center rounded-full transition-colors"
+          className="flex items-center justify-center rounded-full text-(--color-text-primary-strong) hover:bg-(--color-bg-button-glass-hover) transition-colors"
           style={{
             width: 28,
             height: 28,
-            backgroundColor: "#1D1D1E",
-            boxShadow:
-              "0 0 0 1px #202122, 0 4px 4px -1px rgba(0,0,0,0.04), 0 1px 1px rgba(0,0,0,0.08)",
+            backgroundColor: "var(--color-bg-button-glass)",
+            boxShadow: "var(--shadow-icon-button)",
           }}
         >
-          <Plus size={14} strokeWidth={1.75} color="#FFFFFF" />
+          <Plus size={14} strokeWidth={1.75} />
         </button>
       </div>
 
@@ -602,20 +592,17 @@ function CollapsedSidebar({
             <Link
               key={`${item.href}-${item.label}`}
               href={item.href}
+              prefetch={false}
               aria-label={item.label}
               className={cn(
                 "flex items-center justify-center rounded-[8px] transition-colors",
                 active
-                  ? "bg-[#191A1A] text-white"
-                  : "text-[#919193] hover:bg-(--color-ghost-bg-hover) hover:text-(--color-text-primary)",
+                  ? "bg-(--color-bg-row-active) text-(--color-text-primary-strong)"
+                  : "text-(--color-text-row-meta) hover:bg-(--color-ghost-bg-hover) hover:text-(--color-text-primary)",
               )}
               style={{ width: 32, height: 32 }}
             >
-              <Icon
-                size={14}
-                strokeWidth={1.75}
-                color={active ? "#FFFFFF" : "#919193"}
-              />
+              <Icon size={14} strokeWidth={1.75} />
             </Link>
           );
         })}
@@ -624,6 +611,7 @@ function CollapsedSidebar({
       <div className="mt-auto flex flex-col items-center gap-1.5 pb-3">
         <Link
           href="/settings"
+          prefetch={false}
           aria-label="Settings"
           className={cn(
             "flex items-center justify-center rounded-[12px] transition-colors hover:bg-(--color-ghost-bg-hover)",

@@ -24,7 +24,7 @@ import {
 import { SbomSummary } from "@/components/license/sbom-summary";
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:7878/api/v1";
+  process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
 
 interface LicenseAuditPayload {
   summary: LicenseSummary;

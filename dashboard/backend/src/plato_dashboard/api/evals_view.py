@@ -14,6 +14,7 @@ nightly workflow.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -55,8 +56,6 @@ def get_eval_summary() -> dict:
 # Match a task id from a path segment. Same charset rule as the
 # X-Plato-User regex from iter 4 — keeps a crafted id from escaping
 # evals/results/ via path traversal.
-import re
-
 _TASK_ID_RE = re.compile(r"\A[A-Za-z0-9._-]{1,128}\Z")
 
 

@@ -14,26 +14,26 @@ export function EmptyStage({
   onGenerate?: () => void;
 }) {
   return (
-    <div className="flex h-full">
-      <main className="flex-1 flex flex-col items-center justify-center gap-3 px-6">
+    <div className="flex h-full min-h-0 flex-col lg:flex-row">
+      <main className="flex-1 flex flex-col items-center justify-center gap-3 px-5 py-10 sm:px-6">
         <div className="size-12 rounded-full bg-(--color-ghost-bg) hairline-r hairline-l hairline-t hairline-b flex items-center justify-center">
           <Icon size={20} strokeWidth={1.5} className="text-(--color-text-tertiary)" />
         </div>
-        <h2 className="font-h1 tracking-[-0.704px]">{title}</h2>
+        <h2 className="font-h1 text-center">{title}</h2>
         <p className="text-[13.5px] text-(--color-text-tertiary) max-w-md text-center leading-[1.6]">
           {description}
         </p>
-        <div className="mt-4 flex gap-2">
+        <div className="mt-4 flex max-w-full flex-wrap justify-center gap-2">
           <Button variant="primary" size="md" onClick={onGenerate}>
             <Sparkles size={13} strokeWidth={1.5} />
             Generate
           </Button>
           <Button variant="ghost" size="md">
-            Use file
+            Upload
           </Button>
         </div>
       </main>
-      <aside className="w-[320px] hairline-l bg-(--color-bg-marketing) p-4">
+      <aside className="w-full border-t border-(--color-border-standard) bg-(--color-bg-marketing) p-4 lg:w-[320px] lg:border-l lg:border-t-0">
         <h3 className="font-label">This stage is empty</h3>
         <p className="text-[12px] text-(--color-text-tertiary) mt-2 leading-[1.6]">
           Run a generation to populate this stage, or upload a markdown file via{" "}

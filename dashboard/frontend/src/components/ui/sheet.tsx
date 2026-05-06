@@ -32,6 +32,8 @@ export interface SheetProps {
   onOpenChange: (open: boolean) => void;
   /** Visible title for screen readers; pass `srOnly` to hide visually. */
   title: string;
+  /** Short screen-reader description for the dialog body. */
+  description?: string;
   /** Hide the title visually while keeping it in the a11y tree. */
   srOnly?: boolean;
   side?: SheetSide;
@@ -46,6 +48,7 @@ export function Sheet({
   open,
   onOpenChange,
   title,
+  description = "Use this panel to navigate the dashboard.",
   srOnly = false,
   side = "left",
   className,
@@ -83,6 +86,9 @@ export function Sheet({
           >
             {title}
           </Dialog.Title>
+          <Dialog.Description className="sr-only">
+            {description}
+          </Dialog.Description>
 
           {!hideCloseButton ? (
             <Dialog.Close asChild>

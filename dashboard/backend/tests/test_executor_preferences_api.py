@@ -79,9 +79,7 @@ def test_persistence_writes_per_user_path_with_header(
         json={"default_executor": "e2b"},
         headers={"X-Plato-User": "alice"},
     )
-    user_path = (
-        tmp_project_root.parent / "users" / "alice" / "executor_prefs.json"
-    )
+    user_path = tmp_project_root / "users" / "alice" / "executor_prefs.json"
     assert user_path.is_file()
     assert json.loads(user_path.read_text()) == {"default_executor": "e2b"}
 

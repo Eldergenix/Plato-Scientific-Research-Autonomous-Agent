@@ -41,15 +41,23 @@ function applyClass(resolved: ResolvedTheme): void {
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = React.useState<Theme>(() => readStored());
-  const [resolvedTheme, setResolvedTheme] = React.useState<ResolvedTheme>(() => {
-    const t = readStored();
-    if (t === "system") return systemPrefersDark() ? "dark" : "light";
-    return t;
-  });
+  const [theme, setThemeState] = React.useState<Theme>("dark");
+  const [resolvedTheme, setResolvedTheme] = React.useState<ResolvedTheme>("dark");
+  const [hydrated, setHydrated] = React.useState(false);
+
+  React.useEffect(() => {
+    const stored = readStored();
+    const next: ResolvedTheme =
+      stored === "system" ? (systemPrefersDark() ? "dark" : "light") : stored;
+    setThemeState(stored);
+    setResolvedTheme(next);
+    applyClass(next);
+    setHydrated(true);
+  }, []);
 
   // Apply class + persist on theme change.
   React.useEffect(() => {
+    if (!hydrated) return;
     const next: ResolvedTheme =
       theme === "system" ? (systemPrefersDark() ? "dark" : "light") : theme;
     setResolvedTheme(next);
@@ -59,11 +67,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     } catch {
       /* storage may be unavailable */
     }
-  }, [theme]);
+  }, [theme, hydrated]);
 
   // When theme === "system", react to OS-level prefers-color-scheme changes.
   React.useEffect(() => {
-    if (theme !== "system" || typeof window === "undefined") return;
+    if (!hydrated || theme !== "system" || typeof window === "undefined") return;
     const mql = window.matchMedia("(prefers-color-scheme: dark)");
     const handler = (e: MediaQueryListEvent) => {
       const next: ResolvedTheme = e.matches ? "dark" : "light";
@@ -72,7 +80,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     };
     mql.addEventListener("change", handler);
     return () => mql.removeEventListener("change", handler);
-  }, [theme]);
+  }, [theme, hydrated]);
 
   const setTheme = React.useCallback((t: Theme) => {
     setThemeState(t);

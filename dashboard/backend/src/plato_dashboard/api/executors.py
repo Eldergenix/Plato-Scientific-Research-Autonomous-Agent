@@ -1,11 +1,12 @@
 """Executor backend discovery endpoint.
 
-Plato ships four executor backends in :mod:`plato.executor`:
+Plato ships five executor backends in :mod:`plato.executor`:
 
 - ``cmbagent`` — the historical default, wraps cmbagent's planning loop.
 - ``local_jupyter`` — kernel-based execution via ``jupyter_client``.
 - ``modal`` — Modal Labs sandbox per run (iter-20 real impl).
 - ``e2b`` — E2B Code Interpreter sandbox per run (iter-20 real impl).
+- ``sklearn_synthetic`` — dependency-stable local synthetic-tabular benchmark.
 
 The dashboard's settings page wants to render them as a single picker so a
 user can flip the default for new runs without editing YAML.
@@ -67,6 +68,11 @@ _DESCRIPTIONS: dict[str, str] = {
         "Jupyter-flavoured sandbox. Requires the e2b-code-interpreter SDK "
         "and the E2B_API_KEY env var."
     ),
+    "sklearn_synthetic": (
+        "Dependency-stable local scikit-learn executor for synthetic tabular "
+        "publications. Produces metrics, plots, and markdown without generated "
+        "package installs."
+    ),
 }
 
 
@@ -79,6 +85,7 @@ _SDK_PROBES: dict[str, tuple[str, ...]] = {
     "local_jupyter": ("jupyter_client",),
     "modal": ("modal",),
     "e2b": ("e2b_code_interpreter",),
+    "sklearn_synthetic": ("sklearn", "numpy", "pandas", "matplotlib", "scipy"),
 }
 
 

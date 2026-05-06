@@ -15,7 +15,9 @@ in their checkpoint.
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Awaitable, Callable, Union
+from typing import Any, Awaitable, Callable, Optional, Union
+
+from langchain_core.runnables import RunnableConfig
 
 from .scoped_writer import FileScope, ScopedWriter
 
@@ -32,24 +34,30 @@ def scoped_node(fn: NodeFn, scope: FileScope) -> NodeFn:
     LangGraph expects: ``(state, [config]) -> partial_state``.
     """
     if asyncio.iscoroutinefunction(fn):
-        async def _async_wrapper(state: dict[str, Any], *args: Any, **kwargs: Any) -> dict:
+        async def _async_wrapper(
+            state: dict[str, Any],
+            config: Optional[RunnableConfig] = None,
+        ) -> dict:
             folder = state["files"]["Folder"]
             writer = ScopedWriter(folder, scope)
             # Copy state so we don't mutate the caller's dict — same
             # reason iter-5 made idea_maker return new dicts.
             scoped_state = {**state, "_writer": writer}
-            return await fn(scoped_state, *args, **kwargs)
+            return await fn(scoped_state, config)
 
         _async_wrapper.__name__ = fn.__name__
         _async_wrapper.__qualname__ = fn.__qualname__
         _async_wrapper.__doc__ = fn.__doc__
         return _async_wrapper
 
-    def _sync_wrapper(state: dict[str, Any], *args: Any, **kwargs: Any) -> dict:
+    def _sync_wrapper(
+        state: dict[str, Any],
+        config: Optional[RunnableConfig] = None,
+    ) -> dict:
         folder = state["files"]["Folder"]
         writer = ScopedWriter(folder, scope)
         scoped_state = {**state, "_writer": writer}
-        return fn(scoped_state, *args, **kwargs)
+        return fn(scoped_state, config)
 
     _sync_wrapper.__name__ = fn.__name__
     _sync_wrapper.__qualname__ = fn.__qualname__

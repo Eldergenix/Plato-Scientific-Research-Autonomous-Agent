@@ -18,7 +18,6 @@ once and runs without commits.
 """
 from __future__ import annotations
 
-import asyncio
 import inspect
 import logging
 import shutil

@@ -14,8 +14,6 @@ multiprocessing path stubbed out.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
-
 import pytest
 
 
@@ -172,3 +170,126 @@ def test_cancel_run_clears_run_dirs_entry(
     finally:
         rm._active_runs.pop("cancel_target", None)
         rm._run_dirs.pop("cancel_target", None)
+
+
+def test_project_run_lifecycle_updates_meta_from_artifact(tmp_path: Path) -> None:
+    """Run finalization should clear active_run and mark a stage done only
+    when the canonical artifact exists."""
+    from plato_dashboard.domain.models import Project, Run, utcnow
+    from plato_dashboard.worker import run_manager as rm
+
+    project = Project.empty(name="Lifecycle")
+    project.id = "proj_lifecycle"
+    project_dir = tmp_path / project.id
+    (project_dir / "input_files").mkdir(parents=True)
+    (project_dir / "meta.json").write_text(project.model_dump_json())
+
+    run = Run(
+        id="run_lifecycle",
+        project_id=project.id,
+        stage="idea",
+        status="running",
+        started_at=utcnow(),
+        config={"models": {"llm": "gpt-4.1-mini"}},
+    )
+
+    rm._set_project_run_started(run, project_dir)
+    started = Project.model_validate_json((project_dir / "meta.json").read_text())
+    assert started.active_run is not None
+    assert started.active_run.run_id == run.id
+    assert started.stages["idea"].status == "running"
+
+    (project_dir / "input_files" / "idea.md").write_text("Test idea")
+    run.status = "succeeded"
+    run.finished_at = utcnow()
+    rm._set_project_run_finished(run, project_dir)
+
+    finished = Project.model_validate_json((project_dir / "meta.json").read_text())
+    assert finished.active_run is None
+    assert finished.stages["idea"].status == "done"
+    assert finished.stages["idea"].origin == "ai"
+    assert finished.stages["idea"].model == "gpt-4.1-mini"
+
+
+def test_project_run_success_without_artifact_becomes_failed(tmp_path: Path) -> None:
+    """A subprocess exit code of 0 is not enough for a successful stage."""
+    from plato_dashboard.domain.models import Project, Run, utcnow
+    from plato_dashboard.worker import run_manager as rm
+
+    project = Project.empty(name="Missing artifact")
+    project.id = "proj_missing_artifact"
+    project_dir = tmp_path / project.id
+    (project_dir / "input_files").mkdir(parents=True)
+    (project_dir / "meta.json").write_text(project.model_dump_json())
+
+    run = Run(
+        id="run_missing_artifact",
+        project_id=project.id,
+        stage="idea",
+        status="succeeded",
+        started_at=utcnow(),
+        finished_at=utcnow(),
+    )
+
+    rm._set_project_run_finished(run, project_dir)
+
+    finished = Project.model_validate_json((project_dir / "meta.json").read_text())
+    assert run.status == "failed"
+    assert "without writing the expected artifact" in (run.error or "")
+    assert finished.stages["idea"].status == "failed"
+
+
+def test_results_executor_selector_prefers_explicit_config(tmp_path: Path) -> None:
+    from plato_dashboard.worker import run_manager as rm
+
+    assert (
+        rm._select_results_executor(
+            tmp_path,
+            {"executor": "local_jupyter"},
+            {"executor": "sklearn_synthetic"},
+        )
+        == "local_jupyter"
+    )
+
+
+def test_results_executor_selector_prefers_explicit_extra(tmp_path: Path) -> None:
+    from plato_dashboard.worker import run_manager as rm
+
+    assert rm._select_results_executor(tmp_path, {}, {"executor": "e2b"}) == "e2b"
+
+
+def test_results_executor_selector_detects_no_upload_synthetic_tabular_project(
+    tmp_path: Path,
+) -> None:
+    from plato_dashboard.worker import run_manager as rm
+
+    input_dir = tmp_path / "input_files"
+    input_dir.mkdir()
+    (input_dir / "data_description.md").write_text(
+        "Synthetic tabular ML dataset with 600 rows and binary classification."
+    )
+    (input_dir / "idea.md").write_text(
+        "Compare logistic regression and random forest ROC-AUC and calibration."
+    )
+    (input_dir / "methods.md").write_text(
+        "Use stratified cross-validation and feature-effect analysis."
+    )
+
+    assert rm._select_results_executor(tmp_path, {}, {}) == "sklearn_synthetic"
+
+
+def test_results_executor_selector_does_not_override_data_file_projects(
+    tmp_path: Path,
+) -> None:
+    from plato_dashboard.worker import run_manager as rm
+
+    input_dir = tmp_path / "input_files"
+    input_dir.mkdir()
+    (input_dir / "data_description.md").write_text(
+        "Synthetic tabular classification dataset:\n"
+        "- /tmp/does-not-exist-plato-input.csv"
+    )
+    (input_dir / "idea.md").write_text("Compare random forest and logistic regression.")
+    (input_dir / "methods.md").write_text("Evaluate ROC-AUC.")
+
+    assert rm._select_results_executor(tmp_path, {}, {}) is None
