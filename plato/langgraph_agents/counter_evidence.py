@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Iterable, Optional
+from typing import Iterable, Optional
 
 from langchain_core.runnables import RunnableConfig
 

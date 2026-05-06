@@ -14,12 +14,12 @@ from .llm import LLM, models
 from .paper_agents.journal import Journal
 from .idea import Idea
 from .method import Method
-from .experiment import Experiment
 from .paper_agents.agents_graph import build_graph
 from .utils import llm_parser, input_check, check_file_paths, in_notebook
 from .langgraph_agents.agents_graph import build_lg_graph
 from .domain import DomainProfile, get_domain
 from .state import ManifestRecorder
+from .state import make_async_checkpointer
 from .observability import callbacks_for
 from .executor import get_executor
 
@@ -320,6 +320,7 @@ class Plato:
                  plan_reviewer_model: LLM | str = models["o3-mini"],
                  orchestration_model: LLM | str = models["gpt-4.1"],
                  formatter_model: LLM | str = models["o3-mini"],
+                 skip_clarification: bool = False,
                 ) -> None:
         """Generate an idea making use of the data and tools described in `data_description.md`.
 
@@ -337,7 +338,7 @@ class Plato:
         print(f"Generating idea with {mode} mode")
 
         if mode == "fast":
-            self.get_idea_fast(llm=llm)
+            self.get_idea_fast(llm=llm, skip_clarification=skip_clarification)
         elif mode == "cmbagent":
             self.get_idea_cmagent(idea_maker_model=idea_maker_model,
                                   idea_hater_model=idea_hater_model,
@@ -408,6 +409,7 @@ class Plato:
                       llm: LLM | str = models["gemini-2.0-flash"],
                       iterations: int = 4,
                       verbose=False,
+                      skip_clarification: bool = False,
                       ) -> None:
         """
         Generate an idea using the idea maker - idea hater method.
@@ -446,6 +448,7 @@ class Plato:
                     "stream_verbose": verbose},
             "keys": self.keys,
             "idea": {"total_iterations": iterations},
+            "skip_clarification": skip_clarification,
         }
 
         try:
@@ -892,8 +895,17 @@ class Plato:
                     os.remove(file_path)
                 elif os.path.isdir(file_path):
                     shutil.rmtree(file_path)
+        moved_plot_paths: list[str] = []
         for plot_path in self.research.plot_paths:
-            shutil.move(plot_path, self.plots_folder)
+            source = Path(plot_path)
+            destination = Path(self.plots_folder) / source.name
+            shutil.move(str(source), str(destination))
+            moved_plot_paths.append(str(destination))
+            self.research.results = self.research.results.replace(
+                str(source),
+                str(destination),
+            )
+        self.research.plot_paths = moved_plot_paths
 
         # Write results to file
         results_path = os.path.join(self.project_dir, INPUT_FILES, RESULTS_FILE)
@@ -964,9 +976,6 @@ class Plato:
         # Get LLM instance
         llm = llm_parser(llm)
 
-        # Build graph
-        graph = build_graph(mermaid_diagram=False)
-
         recorder = self._start_manifest(
             "get_paper",
             models={"writer": llm.name},
@@ -994,8 +1003,16 @@ class Plato:
         }
 
         try:
-            # Run the graph
-            asyncio.run(graph.ainvoke(input_state, config)) # type: ignore
+            async def _run_graph() -> None:
+                async with make_async_checkpointer() as checkpointer:
+                    graph = build_graph(
+                        mermaid_diagram=False,
+                        checkpointer=checkpointer,
+                    )
+                    await graph.ainvoke(input_state, config)  # type: ignore
+
+            asyncio.run(_run_graph())
+            self._publish_paper_artifacts()
             recorder.finish("success")
         except Exception as e:
             recorder.finish("error", error=str(e))
@@ -1007,6 +1024,26 @@ class Plato:
         minutes = int(elapsed_time // 60)
         seconds = int(elapsed_time % 60)
         print(f"Paper written in {minutes} min {seconds} sec.")
+
+    def _publish_paper_artifacts(self) -> None:
+        """Promote the best generated paper version to dashboard canonical names."""
+        paper_dir = Path(self.project_dir) / "paper"
+        candidates = (
+            "paper_v4_refereed",
+            "paper_v3_citations",
+            "paper_v2_no_citations",
+            "paper_v1_preliminary",
+        )
+        for stem in candidates:
+            tex = paper_dir / f"{stem}.tex"
+            pdf = paper_dir / f"{stem}.pdf"
+            if tex.is_file() and pdf.is_file():
+                shutil.copy2(tex, paper_dir / "main.tex")
+                shutil.copy2(pdf, paper_dir / "main.pdf")
+                return
+        if (paper_dir / "main.tex").is_file() and (paper_dir / "main.pdf").is_file():
+            return
+        raise RuntimeError("Paper generation finished without a compiled TeX/PDF artifact")
 
     def referee(self,
                 llm: LLM | str = models["gemini-2.5-flash"],

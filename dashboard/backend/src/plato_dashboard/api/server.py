@@ -1,14 +1,13 @@
 from __future__ import annotations
-import asyncio
 import json
 import logging
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -24,10 +23,11 @@ from ..domain.models import (
     StageId,
     StageRunRequest,
     WriteStageRequest,
+    utcnow,
 )
 from ..events.bus import EventBus, get_bus
 from ..settings import Settings, get_settings
-from ..storage.key_store import KeyStore
+from ..storage.key_store import ENV_KEYS, KeyStore
 from ..storage.project_store import ProjectStore
 from ..worker.run_manager import (
     cancel_run,
@@ -65,7 +65,7 @@ from .approvals import router as approvals_router, compute_blocking_approval
 
 
 def _resolve_project_root(settings: Settings, user_id: str | None) -> Path:
-    """Per-user namespace under ``~/.plato/users/<user_id>/`` when authed.
+    """Per-user namespace under ``<project_root>/users/<user_id>/`` when authed.
 
     Falls back to ``settings.project_root`` (the legacy single-user path)
     when ``user_id`` is None so single-user installs keep their existing
@@ -73,8 +73,7 @@ def _resolve_project_root(settings: Settings, user_id: str | None) -> Path:
     """
     if user_id is None:
         return settings.project_root
-    base = settings.project_root.parent  # ~/.plato/
-    return base / "users" / user_id
+    return settings.project_root / "users" / user_id
 
 
 def _get_user_id(request: Request) -> str | None:
@@ -108,6 +107,43 @@ def _get_keys(settings: Settings = Depends(get_settings)) -> KeyStore:
     return KeyStore(settings.keys_path)
 
 
+_LLM_KEY_PROVIDERS = ("OPENAI", "GEMINI", "ANTHROPIC", "PERPLEXITY")
+_LLM_REQUIRED_STAGES: set[StageId] = {
+    "idea",
+    "literature",
+    "method",
+    "results",
+    "paper",
+    "referee",
+}
+
+
+def _has_any_llm_key(settings: Settings) -> bool:
+    """Return True when at least one LLM provider key is available."""
+    keys = KeyStore(settings.keys_path)
+    return any(keys.resolve(provider) for provider in _LLM_KEY_PROVIDERS)
+
+
+def _require_llm_key_for_stage(stage: StageId, settings: Settings) -> None:
+    """Fail fast before spawning a run that cannot reach an LLM."""
+    if stage not in _LLM_REQUIRED_STAGES or _has_any_llm_key(settings):
+        return
+    env_vars = [ENV_KEYS[p] for p in _LLM_KEY_PROVIDERS]
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "code": "missing_llm_key",
+            "stage": stage,
+            "message": (
+                "Configure at least one LLM provider key before launching "
+                f"the {stage} stage."
+            ),
+            "providers": list(_LLM_KEY_PROVIDERS),
+            "env_vars": env_vars,
+        },
+    )
+
+
 def _load_run_manifest_user(project_dir: Path, run_id: str) -> str | None:
     """Read ``user_id`` from a run's manifest.json. Returns None on miss."""
     manifest_path = project_dir / "runs" / run_id / "manifest.json"
@@ -120,6 +156,92 @@ def _load_run_manifest_user(project_dir: Path, run_id: str) -> str | None:
         return None
     user = payload.get("user_id")
     return user if isinstance(user, str) else None
+
+
+def _load_run_config_from_events(run_dir: Path) -> dict[str, Any]:
+    """Read the launch config from the first persisted ``stage.started`` event."""
+    events_path = run_dir / "events.jsonl"
+    try:
+        with events_path.open(encoding="utf-8") as f:
+            for line in f:
+                try:
+                    evt = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(evt, dict) or evt.get("kind") != "stage.started":
+                    continue
+                config = evt.get("config")
+                return config if isinstance(config, dict) else {}
+    except OSError:
+        return {}
+    return {}
+
+
+def _load_run_status_from_disk(run_dir: Path) -> Run | None:
+    """Hydrate a finished/restarted run from ``runs/<id>/status.json``."""
+    status_path = run_dir / "status.json"
+    try:
+        with status_path.open(encoding="utf-8") as f:
+            raw = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+
+    config = _load_run_config_from_events(run_dir)
+    try:
+        return Run(
+            id=str(raw.get("id") or raw.get("run_id") or run_dir.name),
+            project_id=str(raw.get("project_id") or ""),
+            stage=raw.get("stage"),
+            mode=config.get("mode", "fast"),
+            status=raw.get("status", "queued"),
+            started_at=raw.get("started_at"),
+            finished_at=raw.get("finished_at"),
+            error=raw.get("error"),
+            config=config,
+            pid=raw.get("pid"),
+            token_input=int(raw.get("token_input") or 0),
+            token_output=int(raw.get("token_output") or 0),
+        )
+    except (TypeError, ValueError):
+        return None
+
+
+def _list_persisted_runs(project_dir: Path) -> list[Run]:
+    runs_dir = project_dir / "runs"
+    if not runs_dir.is_dir():
+        return []
+    runs: list[Run] = []
+    for run_dir in runs_dir.iterdir():
+        if not run_dir.is_dir():
+            continue
+        run = _load_run_status_from_disk(run_dir)
+        if run is not None:
+            runs.append(run)
+    return runs
+
+
+def _read_run_events(project_dir: Path, run_id: str) -> list[dict[str, Any]]:
+    events_path = project_dir / "runs" / run_id / "events.jsonl"
+    if not events_path.is_file():
+        raise HTTPException(404, detail={"code": "run_events_not_found", "run_id": run_id})
+
+    events: list[dict[str, Any]] = []
+    try:
+        with events_path.open(encoding="utf-8") as f:
+            for line in f:
+                try:
+                    evt = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(evt, dict):
+                    events.append(evt)
+    except OSError as exc:
+        raise HTTPException(
+            500, detail={"code": "run_events_read_failed", "run_id": run_id}
+        ) from exc
+    return events
 
 
 def _enforce_project_tenant(
@@ -410,6 +532,7 @@ def create_app() -> FastAPI:
         bus: EventBus = Depends(get_bus),
         store: ProjectStore = Depends(_get_store),
         caps: Capabilities = Depends(get_capabilities),
+        settings: Settings = Depends(get_settings),
     ) -> Run:
         # Iter-24 SECURITY: enforce tenant ownership BEFORE consulting
         # ``count_active_runs`` or invoking ``start_run`` so a
@@ -475,6 +598,7 @@ def create_app() -> FastAPI:
             )
         require_stage_allowed(stage, caps)
         require_under_budget(caps)
+        _require_llm_key_for_stage(stage, settings)
         if count_active_runs() >= caps.max_concurrent_runs:
             raise HTTPException(
                 status_code=429,
@@ -508,6 +632,8 @@ def create_app() -> FastAPI:
     ) -> Run:
         _enforce_run_tenant(store.project_dir(pid), run_id, _get_user_id(request))
         run = get_run(run_id)
+        if run is None:
+            run = _load_run_status_from_disk(store.project_dir(pid) / "runs" / run_id)
         if run is None:
             raise HTTPException(404, detail={"code": "run_not_found"})
         return run
@@ -545,6 +671,17 @@ def create_app() -> FastAPI:
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
+    @app.get("/api/v1/projects/{pid}/runs/{run_id}/events/history", response_model=list[dict[str, Any]])
+    def run_events_history(
+        pid: str,
+        run_id: str,
+        request: Request,
+        store: ProjectStore = Depends(_get_store),
+    ) -> list[dict[str, Any]]:
+        project_dir = store.project_dir(pid)
+        _enforce_run_tenant(project_dir, run_id, _get_user_id(request))
+        return _read_run_events(project_dir, run_id)
+
     @app.get("/api/v1/projects/{pid}/runs", response_model=list[Run])
     def list_runs(
         pid: str,
@@ -552,7 +689,14 @@ def create_app() -> FastAPI:
         store: ProjectStore = Depends(_get_store),
     ) -> list[Run]:
         _enforce_project_tenant(store, pid, _get_user_id(request))
-        return list_active_runs(pid)
+        by_id = {run.id: run for run in _list_persisted_runs(store.project_dir(pid))}
+        for run in list_active_runs(pid):
+            by_id[run.id] = run
+        return sorted(
+            by_id.values(),
+            key=lambda run: run.started_at or run.finished_at or utcnow(),
+            reverse=True,
+        )
 
     # ------------------------------------------------------------ files
     @app.get("/api/v1/projects/{pid}/plots", response_model=list[dict])
@@ -567,6 +711,7 @@ def create_app() -> FastAPI:
             for p in store.list_plots(pid)
         ]
 
+    @app.head("/api/v1/projects/{pid}/files/{relpath:path}")
     @app.get("/api/v1/projects/{pid}/files/{relpath:path}")
     def get_file(
         pid: str,

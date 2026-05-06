@@ -22,7 +22,6 @@ import json
 import re
 import time
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -33,7 +32,7 @@ if TYPE_CHECKING:  # pragma: no cover — annotation only
 
 import json5
 
-from ..state.models import Claim, EvidenceLink, Source
+from ..state.models import Claim, EvidenceLink
 from .tools import LLM_call
 
 

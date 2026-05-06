@@ -174,7 +174,7 @@ def test_get_file_rejects_path_prefix_collision(
 
     # Plant a file in the long project that the short-project handler
     # would return if the prefix-collision bug were present.
-    long_user_root = tmp_project_root.parent / "users" / "alice" / pid_long
+    long_user_root = tmp_project_root / "users" / "alice" / pid_long
     long_user_root.mkdir(parents=True, exist_ok=True)
     secret = long_user_root / "secret.txt"
     secret.write_text("this should never leak across projects")

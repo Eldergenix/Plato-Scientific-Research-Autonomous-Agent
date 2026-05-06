@@ -77,7 +77,30 @@ export function ResultsStage({
   onCancelRun,
 }: ResultsStageProps) {
   const [tab, setTab] = React.useState<Tab>("Plots");
-  const run = project.activeRun;
+  const run = project.activeRun?.stage === "results" ? project.activeRun : null;
+  const stage = project.stages.results;
+  const statusTone =
+    stage.status === "done"
+      ? "green"
+      : stage.status === "failed"
+        ? "red"
+        : stage.status === "stale"
+          ? "amber"
+          : run
+            ? "indigo"
+            : "neutral";
+  const statusLabel =
+    stage.status === "done"
+      ? "Done"
+      : stage.status === "failed"
+        ? "Failed"
+        : stage.status === "stale"
+          ? "Stale"
+          : stage.status === "pending"
+            ? "Pending"
+            : stage.status === "empty"
+              ? "Empty"
+              : "Running";
   const elapsedMs = run ? Date.now() - new Date(run.startedAt).getTime() : 0;
 
   // Promote backend plots → PlotItem[]. Iter-22: removed the SAMPLE_PLOTS
@@ -100,12 +123,26 @@ export function ResultsStage({
           <div className="flex items-baseline gap-3">
             <FlaskConical size={20} strokeWidth={1.5} className="text-(--color-status-emerald)" />
             <h2 className="font-h1 tracking-[-0.704px]">Results</h2>
-            <Pill tone="indigo" className="gap-2">
-              <StatusDot status="running" size={6} />
-              Step {run?.step}/{run?.totalSteps} · attempt {run?.attempt}/{run?.totalAttempts}
-              <span className="font-mono text-(--color-text-quaternary) ml-1">
-                {formatDuration(elapsedMs)}
-              </span>
+            <Pill tone={statusTone} className="gap-2">
+              <StatusDot status={run ? "running" : stage.status} size={6} />
+              {run ? (
+                <>
+                  Step {run.step ?? "?"}/{run.totalSteps ?? "?"} · attempt{" "}
+                  {run.attempt ?? "?"}/{run.totalAttempts ?? "?"}
+                  <span className="font-mono text-(--color-text-quaternary) ml-1">
+                    {formatDuration(elapsedMs)}
+                  </span>
+                </>
+              ) : (
+                <>
+                  {statusLabel}
+                  {stage.lastRunAt && (
+                    <span className="font-mono text-(--color-text-quaternary) ml-1">
+                      {formatRelativeTime(stage.lastRunAt)}
+                    </span>
+                  )}
+                </>
+              )}
             </Pill>
           </div>
           <RunMonitor project={project} nodeEvents={nodeEvents} />
