@@ -33,12 +33,20 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   const [createOpen, setCreateOpen] = React.useState(false);
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
   const [caps, setCaps] = React.useState<{ is_demo: boolean; notes: string[] } | null>(null);
+  const [teamName, setTeamName] = React.useState<string | undefined>();
 
   React.useEffect(() => {
     let cancelled = false;
     api.capabilities()
       .then((c) => !cancelled && setCaps({ is_demo: c.is_demo, notes: c.notes }))
       .catch(() => !cancelled && setCaps(null));
+    api.listProjects()
+      .then((projects) => {
+        if (cancelled) return;
+        const latest = projects[projects.length - 1];
+        setTeamName(latest?.name?.trim() || undefined);
+      })
+      .catch(() => !cancelled && setTeamName(undefined));
     return () => {
       cancelled = true;
     };
@@ -61,6 +69,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           onToggle={() => setCollapsed((c) => !c)}
           onOpenCommand={() => setCmdOpen(true)}
           onCreateProject={() => setCreateOpen(true)}
+          projectName={teamName}
         />
       </div>
 
@@ -87,6 +96,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             setMobileNavOpen(false);
             setCreateOpen(true);
           }}
+          projectName={teamName}
         />
       </Sheet>
 
@@ -118,11 +128,12 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           <main
             className="flex-1 min-h-0 flex flex-col bg-(--color-bg-card) overflow-hidden"
             style={{
+              "--color-bg-page": "var(--color-bg-card)",
               border: "1px solid var(--color-border-card)",
               borderRadius: 12,
               boxShadow:
                 "0 4px 4px -1px rgba(0, 0, 0, 0.04), 0 1px 1px rgba(0, 0, 0, 0.08)",
-            }}
+            } as React.CSSProperties}
           >
             {children}
           </main>

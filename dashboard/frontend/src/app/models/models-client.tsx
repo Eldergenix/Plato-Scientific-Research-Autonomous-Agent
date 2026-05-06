@@ -105,6 +105,12 @@ const FILTER_TABS = [
 ] as const;
 
 type FilterTabId = (typeof FILTER_TABS)[number]["id"];
+const SEARCH_FIELD_CLASS = cn(
+  "inline-flex h-8 w-full items-center gap-1.5 rounded-[6px] border px-2 sm:h-6 sm:w-[220px]",
+  "border-(--color-border-pill) bg-(--color-bg-card) text-(--color-text-primary)",
+  "shadow-[var(--shadow-glass)] transition-colors",
+  "hover:border-(--color-border-strong) focus-within:border-(--color-brand-indigo)",
+);
 
 const STAGE_ROWS: Array<{
   id: keyof typeof RECOMMENDED_BY_STAGE;
@@ -228,6 +234,67 @@ function SortHeader({
   );
 }
 
+function MobileModelCard({
+  model,
+  keysStatus,
+  keysLoading,
+}: {
+  model: ModelDef;
+  keysStatus: KeysStatus | null;
+  keysLoading: boolean;
+}) {
+  const best = bestForFor(model);
+  const ok = providerHasKey(model.provider, keysStatus);
+
+  return (
+    <article className="surface-linear-card p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="truncate text-[13.5px] font-[510] text-(--color-text-primary-strong)">
+            {model.label}
+          </h2>
+          <p className="truncate font-mono text-[11px] text-(--color-text-row-meta)">
+            {model.id}
+          </p>
+        </div>
+        <span className="inline-flex flex-none items-center gap-1.5 text-[12px] text-(--color-text-secondary-spec)">
+          <StatusDot ok={ok} loading={keysLoading} />
+          {keysLoading ? "..." : ok ? "Ready" : "No key"}
+        </span>
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <span className="inline-flex min-w-0 items-center gap-2 text-[12.5px] text-(--color-text-secondary-spec)">
+          <ProviderDot provider={model.provider} />
+          <span className="truncate">{PROVIDER_LABEL[model.provider]}</span>
+        </span>
+        <Pill tone={best.tone}>{best.label}</Pill>
+      </div>
+
+      <dl className="mt-3 grid grid-cols-3 gap-2 text-[11.5px]">
+        <div className="rounded-[6px] bg-(--color-bg-pill-inactive) px-2 py-1.5">
+          <dt className="text-(--color-text-quaternary-spec)">Max</dt>
+          <dd className="mt-0.5 font-mono text-(--color-text-primary)">
+            {formatTokensShort(model.maxOutputTokens)}
+          </dd>
+        </div>
+        <div className="rounded-[6px] bg-(--color-bg-pill-inactive) px-2 py-1.5">
+          <dt className="text-(--color-text-quaternary-spec)">Input</dt>
+          <dd className="mt-0.5 truncate font-mono text-(--color-text-primary)">
+            {formatCostPer1k(model.costInputPer1k)}
+          </dd>
+        </div>
+        <div className="rounded-[6px] bg-(--color-bg-pill-inactive) px-2 py-1.5">
+          <dt className="text-(--color-text-quaternary-spec)">Output</dt>
+          <dd className="mt-0.5 truncate font-mono text-(--color-text-primary)">
+            {formatCostPer1k(model.costOutputPer1k)}
+          </dd>
+        </div>
+      </dl>
+    </article>
+  );
+}
+
 // ----------------------------------------------------------------- page
 
 export default function ModelsPage() {
@@ -325,14 +392,13 @@ export default function ModelsPage() {
   }, [filter, query, sortKey, sortDir]);
 
   return (
-    <div className="min-h-screen bg-(--color-bg-page) px-6 py-8">
+    <div className="min-h-screen bg-(--color-bg-page) px-3 py-4 sm:px-6 sm:py-8">
       <div className="mx-auto max-w-7xl space-y-4">
         {/* ------------------------------------------------------- header */}
         <header className="surface-linear-card flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
           <div className="min-w-0">
             <h1
-              className="text-(--color-text-primary-strong)"
-              style={{ fontFamily: "Inter", fontWeight: 510, fontSize: 24, letterSpacing: "-0.5px" }}
+              className="text-[20px] font-[510] tracking-[-0.3px] text-(--color-text-primary-strong) sm:text-[24px]"
             >
               Models
             </h1>
@@ -365,7 +431,7 @@ export default function ModelsPage() {
         </header>
 
         {/* ------------------------------------------------------- filter bar */}
-        <div className="flex h-8 items-center gap-1.5 px-4">
+        <div className="flex h-auto flex-wrap items-center gap-2 px-0 sm:px-4">
           <Filter size={12} strokeWidth={1.6} className="text-(--color-text-quaternary-spec) shrink-0" />
           <TabPills
             tabs={FILTER_TABS as unknown as ReadonlyArray<{ id: string; label: string }>}
@@ -373,32 +439,33 @@ export default function ModelsPage() {
             onSelect={(id) => setFilter(id as FilterTabId)}
             ariaLabel="Filter models by tier"
           />
-          <div className="ml-auto flex items-center gap-1.5">
-            <div className="relative">
+          <div className="flex w-full items-center gap-1.5 sm:ml-auto sm:w-auto">
+            <label className={SEARCH_FIELD_CLASS}>
               <Search
                 size={11}
                 strokeWidth={1.6}
-                className="absolute left-2 top-1/2 -translate-y-1/2 text-(--color-text-quaternary-spec)"
+                className="shrink-0 text-(--color-text-quaternary-spec)"
               />
               <input
+                type="search"
+                aria-label="Search for model or provider"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search model or provider…"
+                placeholder="Search for model or provider"
                 className={cn(
-                  "h-6 w-[220px] rounded-[6px] pl-6 pr-2 font-mono text-[12px]",
-                  "bg-[#141415] border border-[#262628] text-(--color-text-primary)",
+                  "min-w-0 flex-1 bg-transparent font-mono text-[12px] text-(--color-text-primary)",
                   "placeholder:text-(--color-text-quaternary-spec)",
-                  "focus:outline-none focus:border-(--color-brand-indigo)",
+                  "focus:outline-none",
                 )}
               />
-            </div>
+            </label>
           </div>
         </div>
 
         {/* ------------------------------------------------------- table */}
-        <section className="surface-linear-card overflow-hidden">
+        <section className="surface-linear-card hidden overflow-hidden md:block">
           <div className="overflow-x-auto">
-            <table className="w-full table-fixed border-collapse">
+            <table className="min-w-[900px] w-full table-fixed border-collapse">
               <colgroup>
                 <col style={{ width: "26%" }} />
                 <col style={{ width: "13%" }} />
@@ -494,9 +561,26 @@ export default function ModelsPage() {
           </div>
         </section>
 
+        <section className="grid grid-cols-1 gap-2 md:hidden" aria-label="Models">
+          {visibleModels.length === 0 ? (
+            <div className="surface-linear-card px-4 py-8 text-center text-[12.5px] text-(--color-text-tertiary-spec)">
+              No models match the current filter.
+            </div>
+          ) : (
+            visibleModels.map((model) => (
+              <MobileModelCard
+                key={model.id}
+                model={model}
+                keysStatus={keysStatus}
+                keysLoading={keysLoading}
+              />
+            ))
+          )}
+        </section>
+
         {/* ------------------------------------------------------- recommended assignment */}
         <section className="surface-linear-card p-4">
-          <div className="mb-3 flex items-baseline justify-between">
+          <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
             <h2 className="text-[15px] font-[510] text-(--color-text-primary-strong)">
               Recommended assignment
             </h2>
@@ -511,7 +595,7 @@ export default function ModelsPage() {
               return (
                 <div
                   key={id}
-                  className="flex items-center gap-2 rounded-[6px] px-2 py-1.5 hover:bg-[rgba(255,255,255,0.02)]"
+                  className="flex flex-wrap items-center gap-2 rounded-[6px] px-2 py-1.5 hover:bg-[rgba(255,255,255,0.02)]"
                 >
                   <Icon
                     size={13}
@@ -522,10 +606,12 @@ export default function ModelsPage() {
                     {label}
                   </span>
                   <span className="text-[12px] text-(--color-text-quaternary-spec)">→</span>
-                  <ModelPickerCompact
-                    value={modelId}
-                    onChange={(next) => setStageModel(id, next)}
-                  />
+                  <div className="min-w-0 flex-1">
+                    <ModelPickerCompact
+                      value={modelId}
+                      onChange={(next) => setStageModel(id, next)}
+                    />
+                  </div>
                 </div>
               );
             })}

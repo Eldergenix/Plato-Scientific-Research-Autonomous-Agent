@@ -5,6 +5,7 @@ import { Activity, Edit3, Sparkles, AlertTriangle, TimerReset, Search, Filter, C
 import { api } from "@/lib/api";
 import type { Project, Stage, StageStatus } from "@/lib/types";
 import { StatusIcon } from "@/components/views/status-icon";
+import { TabPills } from "@/components/shell/tab-pills";
 import { Button } from "@/components/ui/button";
 import { cn, formatRelativeTime, formatDuration, formatTokens, formatCost } from "@/lib/utils";
 
@@ -168,7 +169,10 @@ export default function ActivityPage() {
         <div className="flex flex-1 items-center gap-3">
           <Activity size={18} className="text-(--color-text-tertiary)" />
           <div className="flex flex-col leading-tight">
-            <h1 className="text-white" style={{ fontFamily: "var(--font-sans)", fontSize: 24, fontWeight: 510, letterSpacing: "-0.5px" }}>
+            <h1
+              className="text-(--color-text-primary-strong)"
+              style={{ fontFamily: "var(--font-sans)", fontSize: 24, fontWeight: 510, letterSpacing: 0 }}
+            >
               Activity
             </h1>
             <p className="text-[12px] text-(--color-text-row-meta)">
@@ -189,17 +193,12 @@ export default function ActivityPage() {
       <div className="hairline-b mx-4 mt-4 flex h-10 items-center justify-between px-4">
         <div className="flex items-center gap-2">
           <Filter size={12} className="text-(--color-text-tertiary)" />
-          {FILTERS.map((f) => (
-            <button key={f.id} type="button" onClick={() => setFilter(f.id)}
-              className={cn(
-                "h-6 rounded-[6px] border px-2 text-[12px] transition-colors",
-                filter === f.id
-                  ? "border-(--color-border-pill) bg-(--color-bg-pill-active) text-white"
-                  : "border-(--color-border-solid) bg-(--color-bg-pill-inactive) text-(--color-text-row-meta) hover:text-white",
-              )}>
-              {f.label}
-            </button>
-          ))}
+          <TabPills
+            tabs={FILTERS}
+            activeId={filter}
+            onSelect={(id) => setFilter(id as FilterId)}
+            ariaLabel="Activity event filter"
+          />
         </div>
         <label className="flex h-6 items-center gap-1.5 rounded-[6px] border border-(--color-border-pill) bg-(--color-bg-pill-inactive) px-2">
           <Search size={11} className="text-(--color-text-tertiary)" />
@@ -259,7 +258,7 @@ function EventRow({ event, isLastInGroup }: { event: ActivityEvent; isLastInGrou
       </div>
       <div className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <div className="flex items-center gap-1.5 text-[15px] leading-tight text-white">
+          <div className="flex items-center gap-1.5 text-[15px] leading-tight text-(--color-text-primary-strong)">
             <KindIcon kind={event.kind} />
             <EventTitle event={event} />
           </div>
@@ -279,8 +278,8 @@ function EventRow({ event, isLastInGroup }: { event: ActivityEvent; isLastInGrou
 }
 
 function EventTitle({ event }: { event: ActivityEvent }) {
-  const project = <span className="font-medium text-white">{event.project.name}</span>;
-  const stage = <span className="font-medium text-white">{event.stage.label}</span>;
+  const project = <span className="font-medium text-(--color-text-primary-strong)">{event.project.name}</span>;
+  const stage = <span className="font-medium text-(--color-text-primary-strong)">{event.stage.label}</span>;
   if (event.kind === "stage.failed")
     return (
       <span className="truncate text-(--color-text-secondary-spec)">

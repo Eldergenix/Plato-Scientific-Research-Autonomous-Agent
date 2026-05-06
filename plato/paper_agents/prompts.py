@@ -295,6 +295,9 @@ In <METHODS> put the paper methods section written in LaTeX.
 Follow these guidelines:
 - Write in LaTex
 - Describe in detail the different methods used, the dataset, evaluation metrics, and any other element relevant
+- Include the mathematical models, equations, variables, parameter values, numerical tolerances, random seeds, software/tool operations, and validation checks needed to reproduce the analysis.
+- If the results were produced by Plato scientific-analysis tools, include the operation names and describe the emitted artifacts (CSV/JSON tables, PNG/SVG/PDF figures, HTML plots, and reproducibility metadata) without inventing paths not present in the provided results.
+- Explain enough repeatable steps that another researcher could regenerate the calculations and plots from the described inputs.
 - Do not write citations. References will be added later on
 - Do not create command, e.g. \MBH
 - Try to connect the text in this section with the one in the introduction
@@ -341,6 +344,10 @@ In <Results> put the results section written in LaTeX.
 Follow these guidelines:
 - Write in LaTex
 - Explain carefully the results obtained
+- Carry over exact quantitative values, formulas, model parameters, uncertainty estimates, p-values or confidence intervals, table values, and validation checks from the short results. Do not round away scientific meaning.
+- Include compact LaTeX tables for important numerical outputs when the short results provide structured values. For wide tables, use a layout suitable for a two-column paper.
+- If a calculation or figure has a reproducibility artifact path, mention it in prose only when it is scientifically relevant; do not fabricate missing artifacts.
+- Discuss failed validation checks or unavailable optional engines honestly instead of presenting the result as fully verified.
 - Do not add plots or placeholders for plots. Plots will be added later on
 - Describe what we have learned from the results
 - Do not write the bibliography
@@ -804,6 +811,7 @@ Focus on:
 - Significance testing and multiple-comparison corrections
 - Distributional assumptions
 - Over-claiming from noisy estimates
+- Whether formulas, fitted models, coefficient tables, plots, and validation checks are sufficient to reproduce the numerical claims
 
 Paper draft:
 {_paper_snapshot_for_review(state)}
@@ -903,4 +911,3 @@ Guidelines:
 - Do not write anything outside the fenced JSON block.
 """)
     ]
-
