@@ -8,7 +8,7 @@ export function generateStaticParams(): Params[] {
   return [];
 }
 
-export const dynamicParams = false;
+export const dynamicParams = true;
 
 // Server-side metadata so the browser tab + history entry name the
 // run instead of the generic "Plato — Scientific Research Dashboard"
