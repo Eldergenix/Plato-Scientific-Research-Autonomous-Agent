@@ -200,10 +200,7 @@ function ProjectRow({
 
 function GroupHeader({ label, count }: { label: string; count: number }) {
   return (
-    <header
-      className="flex h-9 items-center gap-2 px-4"
-      style={{ background: "linear-gradient(90deg, #161b19 0%, #171718 100%)" }}
-    >
+    <header className="hairline-b flex h-9 items-center gap-2 bg-(--color-bg-pill-inactive) px-4">
       <span className="text-[13px] font-medium text-(--color-text-secondary-spec)">
         {label}
       </span>
@@ -386,9 +383,9 @@ export default function ProjectsPage() {
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search projects"
             className={cn(
-              "h-6 w-[200px] rounded-[6px] border border-[#262628] bg-[#141415] pl-6 pr-2",
+              "h-6 w-[200px] rounded-[6px] border border-(--color-border-pill) bg-(--color-bg-card) pl-6 pr-2",
               "font-mono text-[12px] text-(--color-text-primary) placeholder:text-(--color-text-quaternary-spec)",
-              "transition-colors hover:border-[#34343a]",
+              "shadow-[var(--shadow-glass)] transition-colors hover:border-(--color-border-strong)",
               "focus-visible:border-(--color-brand-indigo) focus-visible:outline-none",
             )}
           />

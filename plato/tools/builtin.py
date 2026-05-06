@@ -19,6 +19,15 @@ from ..retrieval.orchestrator import retrieve as _retrieve_sources
 from ..state.models import Source, ValidationResult
 from .citation_validator import CitationValidator
 from .registry import Tool, ToolMetadata, register
+from .scientific_analysis import (
+    ScientificAnalysisInput,
+    ScientificAnalysisResult,
+    run_scientific_analysis,
+)
+from .scientific_capabilities import (
+    ScientificCapabilityReport,
+    build_scientific_capability_report,
+)
 
 
 # --- verify_citation -------------------------------------------------------
@@ -117,9 +126,69 @@ register(_VERIFY_CITATION_TOOL, overwrite=True)
 register(_SEARCH_LITERATURE_TOOL, overwrite=True)
 
 
+# --- scientific_capability_report -----------------------------------------
+
+
+class ScientificCapabilityReportInput(BaseModel):
+    """Input schema for ``scientific_capability_report``."""
+
+
+def _scientific_capability_report(
+    payload: ScientificCapabilityReportInput,  # noqa: ARG001 - future filter hook
+) -> ScientificCapabilityReport:
+    """Return the scientific stack decision matrix and repeatability checks."""
+    return build_scientific_capability_report()
+
+
+_SCIENTIFIC_CAPABILITY_REPORT_TOOL = Tool(
+    metadata=ToolMetadata(
+        name="scientific_capability_report",
+        description=(
+            "Review Plato's scientific analysis stack recommendations and return "
+            "deterministic verification checks for graphing, single-cell, "
+            "chemistry, physics, quantum physics, HEP, and statistics workflows."
+        ),
+        permissions=set(),
+        category="scientific_analysis",
+    ),
+    input_schema=ScientificCapabilityReportInput,
+    output_schema=ScientificCapabilityReport,
+    fn=_scientific_capability_report,
+)
+
+register(_SCIENTIFIC_CAPABILITY_REPORT_TOOL, overwrite=True)
+
+
+# --- run_scientific_analysis ----------------------------------------------
+
+
+_RUN_SCIENTIFIC_ANALYSIS_TOOL = Tool(
+    metadata=ToolMetadata(
+        name="run_scientific_analysis",
+        description=(
+            "Execute deterministic scientific calculations and plotting workflows "
+            "for publications. Supports formula_mass, harmonic_oscillator, "
+            "linear_regression, single_cell_qc, quantum_pauli, and publication_plot. "
+            "Returns Markdown, LaTeX, tables, artifacts, reproducibility metadata, "
+            "and validation checks."
+        ),
+        permissions={"filesystem_write"},
+        category="scientific_analysis",
+    ),
+    input_schema=ScientificAnalysisInput,
+    output_schema=ScientificAnalysisResult,
+    fn=run_scientific_analysis,
+)
+
+register(_RUN_SCIENTIFIC_ANALYSIS_TOOL, overwrite=True)
+
+
 __all__ = [
     "VerifyCitationInput",
     "VerifyCitationOutput",
     "SearchLiteratureInput",
     "SearchLiteratureOutput",
+    "ScientificAnalysisInput",
+    "ScientificAnalysisResult",
+    "ScientificCapabilityReportInput",
 ]
