@@ -1,4 +1,5 @@
 """Unit tests for the trajectory recorder helper itself."""
+
 from __future__ import annotations
 
 import asyncio
@@ -33,13 +34,18 @@ def test_wrap_async_preserves_return_value():
 def test_wrap_records_in_call_order():
     rec = TrajectoryRecorder()
 
-    def a(state, config): return state
-    def b(state, config): return state
+    def a(state, config):
+        return state
+
+    def b(state, config):
+        return state
 
     wa = rec.wrap("a", a)
     wb = rec.wrap("b", b)
 
-    wa({}, {}); wb({}, {}); wa({}, {})
+    wa({}, {})
+    wb({}, {})
+    wa({}, {})
     assert rec.calls == ["a", "b", "a"]
 
 

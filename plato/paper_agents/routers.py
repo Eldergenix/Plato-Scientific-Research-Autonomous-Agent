@@ -1,10 +1,11 @@
 from langgraph.graph import END
+from typing import Any, cast
 
 from .parameters import GraphState
 
 
 # idea - methods router
-def citation_router (state: GraphState) -> str:
+def citation_router(state: GraphState) -> str:
     """Route the post-refine_results stage.
 
     When ``add_citations`` is true we run the citation pipeline
@@ -13,12 +14,12 @@ def citation_router (state: GraphState) -> str:
     extraction so the reviewer panel can see an evidence matrix.
     """
 
-    if   state['paper']['add_citations'] is True:
-        return 'citations_node'
-    elif state['paper']['add_citations'] is False:
-        return 'claim_evidence_fanout'
+    if state["paper"]["add_citations"] is True:
+        return "citations_node"
+    elif state["paper"]["add_citations"] is False:
+        return "claim_evidence_fanout"
     else:
-        raise Exception('Wrong add_citations value')
+        raise Exception("Wrong add_citations value")
 
 
 # Phase 3 — R6: severity-gated revision-loop router.
@@ -34,8 +35,8 @@ def revision_router(state: GraphState):
 
     Either condition failing terminates the loop.
     """
-    digest = state.get("critique_digest") or {}
-    revision_state = state.get("revision_state") or {}
+    digest = cast(Any, state.get("critique_digest")) or {}
+    revision_state = cast(Any, state.get("revision_state")) or {}
 
     try:
         max_severity = int(digest.get("max_severity", 0) or 0)

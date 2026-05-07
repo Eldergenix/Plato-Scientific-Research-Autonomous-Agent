@@ -12,6 +12,7 @@ imports cleanly so callers can introspect the registry without
 credentials, but :meth:`ADSAdapter.search` is a no-op that returns ``[]``
 after emitting a one-time :class:`RuntimeWarning`.
 """
+
 from __future__ import annotations
 
 import os
@@ -43,8 +44,6 @@ def _extract_arxiv_id(identifiers: list[str] | None) -> str | None:
     if not identifiers:
         return None
     for ident in identifiers:
-        if not isinstance(ident, str):
-            continue
         match = _ARXIV_IDENTIFIER_RE.match(ident.strip())
         if match:
             return match.group(1)
@@ -67,7 +66,11 @@ def _doc_to_source(doc: dict[str, Any]) -> Source | None:
         return None
 
     titles = doc.get("title") or []
-    title = titles[0] if isinstance(titles, list) and titles else (titles if isinstance(titles, str) else "")
+    title = (
+        titles[0]
+        if isinstance(titles, list) and titles
+        else (titles if isinstance(titles, str) else "")
+    )
     if not title:
         # ADS records always have a title; if missing, skip the row to keep contract clean.
         return None

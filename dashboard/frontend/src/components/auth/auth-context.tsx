@@ -89,12 +89,7 @@ async function postLogin(id: string): Promise<{ user_id: string }> {
     body: JSON.stringify({ user_id: id }),
   });
   if (!r.ok) {
-    let detail: unknown;
-    try {
-      detail = await r.json();
-    } catch {
-      detail = await r.text();
-    }
+    const detail = await readErrorDetail(r);
     const msg =
       typeof detail === "object" && detail && "detail" in detail
         ? JSON.stringify((detail as { detail: unknown }).detail)
@@ -102,6 +97,16 @@ async function postLogin(id: string): Promise<{ user_id: string }> {
     throw new Error(`Login failed (${r.status}): ${msg}`);
   }
   return (await r.json()) as { user_id: string };
+}
+
+async function readErrorDetail(response: Response): Promise<unknown> {
+  const body = await response.text();
+  if (!body) return null;
+  try {
+    return JSON.parse(body);
+  } catch {
+    return body;
+  }
 }
 
 async function postLogout(): Promise<void> {

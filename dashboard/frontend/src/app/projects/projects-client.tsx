@@ -7,6 +7,7 @@ import { TabPills } from "@/components/shell/tab-pills";
 import { StatusIcon } from "@/components/views/status-icon";
 import { CreateProjectModal } from "@/components/projects/create-project-modal";
 import { api } from "@/lib/api";
+import { persistSelectedProjectId } from "@/lib/use-project";
 import {
   cn,
   formatCost,
@@ -117,7 +118,7 @@ function ProjectRow({
   onDelete,
 }: {
   project: Project;
-  onSelect: () => void;
+  onSelect: (project: Project) => void;
   onDelete?: (projectId: string) => void | Promise<void>;
 }) {
   const status = rollupStatus(project);
@@ -128,11 +129,11 @@ function ProjectRow({
     <div
       role="button"
       tabIndex={0}
-      onClick={onSelect}
+      onClick={() => onSelect(project)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          onSelect();
+          onSelect(project);
         }
       }}
       className={cn(
@@ -319,14 +320,14 @@ export default function ProjectsPage() {
   const handleCreated = React.useCallback(
     (project: Project) => {
       setProjects((prev) => (prev ? [project, ...prev] : [project]));
+      persistSelectedProjectId(project.id);
       router.push("/");
     },
     [router],
   );
 
-  const handleSelect = React.useCallback(() => {
-    // Today the workspace view lives at "/" and renders the most-recent
-    // project; future routing can use `/workspace/[id]`.
+  const handleSelect = React.useCallback((project: Project) => {
+    persistSelectedProjectId(project.id);
     router.push("/");
   }, [router]);
 

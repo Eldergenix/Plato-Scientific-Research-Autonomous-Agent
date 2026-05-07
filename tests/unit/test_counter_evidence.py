@@ -5,7 +5,6 @@ import asyncio
 from datetime import datetime, timezone
 from unittest.mock import patch, AsyncMock
 
-import pytest
 
 from plato.langgraph_agents import counter_evidence as ce
 from plato.state.models import Source

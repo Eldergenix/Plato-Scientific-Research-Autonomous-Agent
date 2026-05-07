@@ -56,7 +56,7 @@ const TSV_ROWS = [
   },
 ];
 
-const API_BASE = "http://127.0.0.1:7878/api/v1";
+const API_BASE = "**/api/v1";
 
 async function mockLoopApi(page: Page) {
   // Capabilities + projects must answer something so the dashboard shell loads

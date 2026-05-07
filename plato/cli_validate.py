@@ -11,6 +11,7 @@ Two entry points share this module:
 - ``plato run --validate-citations`` — fired after the main pipeline so the
   on-disk artifacts are present.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -19,17 +20,19 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from plato.paper_agents.citation_validator_node import _parse_bibtex_entries
-from plato.state.models import Source
-from plato.tools.citation_validator import CitationValidator
+from plato.state.models import RetrievedVia, Source
+from plato.tools.citation_reports import STRICT_ACCURACY_THRESHOLD
+from plato.tools.citation_validator import CitationValidator, build_validation_report
+from plato.tools.citation_matching import coerce_authors, coerce_year
 
 
-_DEFAULT_THRESHOLD = 1.0
+_DEFAULT_THRESHOLD = STRICT_ACCURACY_THRESHOLD
 
 
-def _entry_to_source(entry: dict[str, Any], idx: int) -> Source | None:
+def _entry_to_source(entry: Any, idx: int) -> Source | None:
     """Coerce a heterogeneous dict (BibTeX-parsed or sources.json) to a Source.
 
     Mirrors the priority used by the citation_validator_node so behaviour is
@@ -40,14 +43,14 @@ def _entry_to_source(entry: dict[str, Any], idx: int) -> Source | None:
 
     doi = entry.get("doi") or None
     arxiv_id = (
-        entry.get("arxiv_id")
-        or entry.get("arxiv")
-        or entry.get("eprint")
-        or None
+        entry.get("arxiv_id") or entry.get("arxiv") or entry.get("eprint") or None
     )
     title = entry.get("title") or entry.get("key") or f"reference-{idx}"
     url = entry.get("url") or entry.get("pdf_url") or None
     src_id = entry.get("id") or entry.get("key") or f"ref-{idx}"
+    authors = coerce_authors(entry.get("authors") or entry.get("author"))
+    year = coerce_year(entry.get("year"))
+    venue = entry.get("venue") or entry.get("journal") or entry.get("booktitle") or None
 
     retrieved_via = entry.get("retrieved_via")
     if retrieved_via not in {
@@ -74,8 +77,11 @@ def _entry_to_source(entry: dict[str, Any], idx: int) -> Source | None:
         doi=doi,
         arxiv_id=arxiv_id,
         title=str(title),
+        authors=authors,
+        year=year,
+        venue=str(venue) if venue else None,
         url=url,
-        retrieved_via=retrieved_via,
+        retrieved_via=cast(RetrievedVia, retrieved_via),
         fetched_at=fetched_at,
     )
 
@@ -136,13 +142,13 @@ def collect_sources_from_project(project_dir: Path) -> list[Source]:
         except OSError:
             blob = ""
         for idx, entry in enumerate(_parse_bibtex_entries(blob)):
-            src = _entry_to_source(entry, idx)
-            if src is None:
+            bib_source = _entry_to_source(entry, idx)
+            if bib_source is None:
                 continue
-            if src.id in seen_ids:
+            if bib_source.id in seen_ids:
                 continue
-            seen_ids.add(src.id)
-            out.append(src)
+            seen_ids.add(bib_source.id)
+            out.append(bib_source)
 
     return out
 
@@ -155,10 +161,6 @@ def _latest_run_dir(project_dir: Path) -> Path | None:
     if not candidates:
         return None
     return max(candidates, key=lambda p: p.stat().st_mtime)
-
-
-def _passed(result) -> bool:
-    return bool(result.doi_resolved or result.arxiv_resolved)
 
 
 async def run_validation(
@@ -180,34 +182,24 @@ async def run_validation(
             "validation_rate": 0.0,
             "total": 0,
             "passed": 0,
+            "total_references": 0,
+            "verified_references": 0,
+            "unverified_count": 0,
+            "likely_hallucinations": 0,
+            "accuracy_gate": {
+                "threshold": _DEFAULT_THRESHOLD,
+                "passed": False,
+                "reason": "no references were available for validation",
+            },
             "failures": [],
+            "warnings": [],
+            "references": [],
         }
     else:
         async with CitationValidator() as validator:
             results = await validator.validate_batch(sources)
-
-        failures: list[dict[str, Any]] = []
-        passed_count = 0
-        for src, result in zip(sources, results):
-            if _passed(result):
-                passed_count += 1
-            else:
-                failures.append(
-                    {
-                        "source_id": src.id,
-                        "doi": src.doi,
-                        "arxiv_id": src.arxiv_id,
-                        "title": src.title,
-                        "error": result.error,
-                    }
-                )
-        total = len(sources)
-        report = {
-            "validation_rate": passed_count / total if total else 0.0,
-            "total": total,
-            "passed": passed_count,
-            "failures": failures,
-        }
+        run_id = (_latest_run_dir(project_dir) or project_dir).name
+        report = build_validation_report(run_id, sources, results)
 
     if output is not None:
         out_path = Path(output)
@@ -254,7 +246,9 @@ def main(argv: list[str] | None = None) -> int:
 
     project_dir: Path = args.project_dir
     if not project_dir.is_dir():
-        print(f"error: project directory does not exist: {project_dir}", file=sys.stderr)
+        print(
+            f"error: project directory does not exist: {project_dir}", file=sys.stderr
+        )
         return 2
 
     report = asyncio.run(run_validation(project_dir, output=args.output))

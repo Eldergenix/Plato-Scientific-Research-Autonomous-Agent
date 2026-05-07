@@ -1,0 +1,68 @@
+import { clerkMiddleware } from "@clerk/nextjs/server";
+import { NextResponse } from "next/server";
+import { toPlatoTenantId } from "@/lib/plato-tenant";
+import type { NextRequest } from "next/server";
+
+const clerkAuthEnabled =
+  process.env.PLATO_AUTH_PROVIDER === "clerk" ||
+  process.env.NEXT_PUBLIC_PLATO_AUTH_PROVIDER === "clerk";
+
+const API_PREFIX = "/api/v1";
+const PUBLIC_PATHS = new Set(["/login", "/login/validation-demo"]);
+function isPublicPath(pathname: string): boolean {
+  if (PUBLIC_PATHS.has(pathname)) return true;
+  return pathname.startsWith("/_next/") || pathname.includes(".");
+}
+
+function passthroughProxy(_request: NextRequest) {
+  return NextResponse.next();
+}
+
+const clerkProxy = clerkAuthEnabled ? clerkMiddleware(async (auth, request) => {
+  const pathname = request.nextUrl.pathname;
+  const isApiRequest = pathname.startsWith(API_PREFIX);
+
+  const session = await auth();
+  if (!session.userId) {
+    if (isApiRequest) {
+      return NextResponse.json(
+        {
+          code: "auth_required",
+          message: "Sign in with Clerk before accessing Plato.",
+        },
+        { status: 401 },
+      );
+    }
+    if (!isPublicPath(pathname)) {
+      return session.redirectToSignIn();
+    }
+    return NextResponse.next();
+  }
+
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set(
+    "X-Plato-User",
+    session.orgId
+      ? toPlatoTenantId("lab", session.orgId)
+      : toPlatoTenantId("user", session.userId),
+  );
+  requestHeaders.set("X-Plato-Auth-Provider", "clerk");
+  if (session.orgId) {
+    requestHeaders.set("X-Plato-Lab-Id", session.orgId);
+  }
+
+  return NextResponse.next({
+    request: {
+      headers: requestHeaders,
+    },
+  });
+}) : passthroughProxy;
+
+export default clerkProxy;
+
+export const config = {
+  matcher: [
+    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    "/(api|trpc)(.*)",
+  ],
+};

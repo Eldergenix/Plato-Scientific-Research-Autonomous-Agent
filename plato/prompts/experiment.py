@@ -23,10 +23,10 @@ result = call(
     "run_scientific_analysis",
     ScientificAnalysisInput(
         operation="linear_regression",
-        data={"x": [0, 1, 2], "y": [1.0, 2.0, 3.1]},
+        data={{"x": [0, 1, 2], "y": [1.0, 2.0, 3.1]}},
         output_dir=".",
     ),
-    allowed_permissions={"filesystem_write"},
+    allowed_permissions={{"filesystem_write"}},
 )
 print(result.markdown)
 print(result.latex)

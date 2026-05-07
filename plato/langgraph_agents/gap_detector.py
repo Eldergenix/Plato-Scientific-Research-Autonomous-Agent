@@ -17,12 +17,13 @@ The output is a list of ``{kind, description, severity (0-5), evidence}``
 dicts. ``severity`` is an integer band so consumers don't have to wrangle
 floats; the bands are spec'd next to each detector.
 """
+
 from __future__ import annotations
 
 import logging
 import re
 from collections import Counter, defaultdict
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, Optional, cast
 
 from langchain_core.runnables import RunnableConfig
 
@@ -80,9 +81,7 @@ _MAX_KEYWORDS = 12
 
 
 def _idea_text(state: GraphState) -> str:
-    if not isinstance(state, dict):
-        return ""
-    idea = state.get("idea")
+    idea = cast(Any, state.get("idea"))
     if isinstance(idea, dict):
         text = idea.get("idea")
         if isinstance(text, str):
@@ -130,8 +129,6 @@ def _detect_contradictions(
     by_claim: dict[str, set[str]] = defaultdict(set)
     src_ids: dict[str, set[str]] = defaultdict(set)
     for link in evidence_links:
-        if not isinstance(link, EvidenceLink):
-            continue
         by_claim[link.claim_id].add(link.support)
         src_ids[link.claim_id].add(link.source_id)
 
@@ -171,8 +168,7 @@ def _detect_coverage_holes(
             {
                 "kind": "coverage",
                 "description": (
-                    "No retrieved sources at all; every idea keyword is "
-                    "uncovered."
+                    "No retrieved sources at all; every idea keyword is uncovered."
                 ),
                 "severity": 5,
                 "evidence": keywords,
@@ -236,11 +232,8 @@ def gap_detector(state: GraphState, config: Optional[RunnableConfig] = None):
     # the same fix and rationale.
     """LangGraph node: pure-analysis gap detection over retrieved evidence."""
 
-    if not isinstance(state, dict):
-        return {"gaps": []}
-
-    sources_raw = state.get("sources") or []
-    literature = state.get("literature") or {}
+    sources_raw: list[Any] = list(cast(Any, state.get("sources")) or [])
+    literature: dict[str, Any] = dict(cast(Any, state.get("literature")) or {})
     if isinstance(literature, dict):
         for s in literature.get("sources") or []:
             if isinstance(s, Source):
@@ -249,11 +242,11 @@ def gap_detector(state: GraphState, config: Optional[RunnableConfig] = None):
     sources: list[Source] = [s for s in sources_raw if isinstance(s, Source)]
     evidence_links: list[EvidenceLink] = [
         link
-        for link in (state.get("evidence_links") or [])
+        for link in (cast(Any, state.get("evidence_links")) or [])
         if isinstance(link, EvidenceLink)
     ]
     claims: list[Claim] = [
-        c for c in (state.get("claims") or []) if isinstance(c, Claim)
+        c for c in (cast(Any, state.get("claims")) or []) if isinstance(c, Claim)
     ]
 
     haystacks = _source_haystacks(sources)

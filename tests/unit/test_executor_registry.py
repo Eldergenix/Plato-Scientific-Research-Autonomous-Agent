@@ -2,10 +2,10 @@
 
 These tests are intentionally backend-agnostic: they exercise the
 :class:`~plato.executor.Executor` Protocol and the registration helpers
-without spinning up cmbagent / jupyter / modal / e2b. The Modal and E2B
-stubs are checked end-to-end (they're cheap to await — they just raise
-:class:`NotImplementedError`).
+without spinning up cmbagent / jupyter / modal / e2b. Optional backends are
+checked only through their import-time error contract.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -87,8 +87,8 @@ def test_executor_result_round_trips_json() -> None:
     assert restored.model_dump(mode="json") == payload
 
 
-def test_modal_executor_is_a_stub() -> None:
-    """Modal stub must surface a clear NotImplementedError when awaited."""
+def test_modal_executor_missing_sdk_has_clear_error() -> None:
+    """Modal is a real optional backend; missing SDK must be explicit."""
     ex = get_executor("modal")
 
     async def _drive():
@@ -100,11 +100,11 @@ def test_modal_executor_is_a_stub() -> None:
             keys=None,
         )
 
-    with pytest.raises(NotImplementedError, match="ModalExecutor"):
+    with pytest.raises(ImportError, match="modal SDK"):
         asyncio.run(_drive())
 
 
-def test_e2b_executor_is_a_stub() -> None:
+def test_e2b_executor_missing_sdk_has_clear_error() -> None:
     ex = get_executor("e2b")
 
     async def _drive():
@@ -116,37 +116,27 @@ def test_e2b_executor_is_a_stub() -> None:
             keys=None,
         )
 
-    with pytest.raises(NotImplementedError, match="E2BExecutor"):
+    with pytest.raises(ImportError, match="e2b-code-interpreter SDK"):
         asyncio.run(_drive())
 
 
-def test_local_jupyter_raises_helpful_error_when_dep_missing() -> None:
-    """If ``jupyter_client`` isn't installed the stub should hint at the fix.
-
-    If it *is* installed (the real implementation would run), the stub
-    still raises ``NotImplementedError`` for now — both outcomes are
-    acceptable signals that the wiring is correct.
-    """
+def test_local_jupyter_runs_explicit_code(tmp_path: Path) -> None:
+    """The local executor should be runnable when registered."""
     ex = get_executor("local_jupyter")
 
     async def _drive():
-        await ex.run(
+        return await ex.run(
             research_idea="i",
             methodology="m",
             data_description="d",
-            project_dir="/tmp",
+            project_dir=tmp_path,
             keys=None,
+            code="print('local-jupyter-ok')",
         )
 
-    try:
-        import jupyter_client  # type: ignore[import-not-found]  # noqa: F401
-
-        expected = NotImplementedError
-    except ImportError:
-        expected = ImportError
-
-    with pytest.raises(expected):
-        asyncio.run(_drive())
+    result = asyncio.run(_drive())
+    assert "local-jupyter-ok" in result.results
+    assert result.artifacts["cells_executed"] == 1
 
 
 def test_executor_result_defaults() -> None:

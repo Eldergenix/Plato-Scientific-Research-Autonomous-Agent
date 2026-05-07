@@ -11,6 +11,7 @@ Two backends ship out of the box:
 - ``StubEmbeddingBackend`` produces deterministic pseudo-vectors via
   hashing. Used for tests and as the default when no API key is present.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -32,8 +33,7 @@ class EmbeddingBackend(Protocol):
 
     name: str
 
-    async def embed(self, texts: list[str]) -> list[list[float]]:
-        ...
+    async def embed(self, texts: list[str]) -> list[list[float]]: ...
 
 
 class OpenAIEmbeddingBackend:
@@ -53,7 +53,7 @@ class OpenAIEmbeddingBackend:
         if self._client is not None:
             return self._client
         try:
-            import openai  # type: ignore[import-not-found]
+            import openai
         except ImportError as exc:
             raise ImportError(
                 "OpenAIEmbeddingBackend requires the 'openai' package. "
@@ -157,9 +157,7 @@ class EmbeddingScorer:
                 usable.append((s, text))
 
         if not usable:
-            return NoveltyResult(
-                score=1.0, max_similarity=0.0, nearest_source_id=None
-            )
+            return NoveltyResult(score=1.0, max_similarity=0.0, nearest_source_id=None)
 
         texts = [idea] + [t for _, t in usable]
         vectors = await self.backend.embed(texts)

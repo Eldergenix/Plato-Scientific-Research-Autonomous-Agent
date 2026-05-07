@@ -5,13 +5,12 @@ These tests never make real LLM calls. They patch
 deterministic mock responses so the extractor's parsing, span resolution,
 retry behaviour, and state-merge semantics can be verified in isolation.
 """
+
 from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
 from unittest.mock import patch
-
-import pytest
 
 from plato.langgraph_agents.claim_extractor import claim_extractor
 from plato.state.models import Claim, Source
@@ -55,22 +54,20 @@ def _state(sources=None, papers=None, claims=None):
 
 
 def _run(state):
-    return asyncio.run(claim_extractor(state, None))
+    result = claim_extractor(state, None)
+    return asyncio.run(result) if asyncio.iscoroutine(result) else result
 
 
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 
+
 def test_extracts_claims_with_correct_quote_span():
     """When span_text matches the abstract, quote_span = (start, end) offsets."""
     span = "Dark matter constitutes roughly 27% of the universe's mass-energy content."
     claim_text = "Dark matter is about 27% of the universe."
-    payload = (
-        "```json\n"
-        f'[{{"text": "{claim_text}", "span_text": "{span}"}}]\n'
-        "```"
-    )
+    payload = f'```json\n[{{"text": "{claim_text}", "span_text": "{span}"}}]\n```'
     state = _state(sources=[_make_source(0)])
 
     with patch(
@@ -132,7 +129,12 @@ def test_malformed_json_triggers_retry_then_returns_no_claims():
 def test_existing_claims_are_preserved_and_new_appended():
     """Pre-existing claims in state must survive; new claims are appended after."""
     existing = [
-        Claim(id="prev-001", text="Pre-existing claim", source_id="src-prev", section="results"),
+        Claim(
+            id="prev-001",
+            text="Pre-existing claim",
+            source_id="src-prev",
+            section="results",
+        ),
     ]
     state = _state(sources=[_make_source(3)], claims=existing)
 
@@ -188,11 +190,7 @@ def test_falls_back_to_literature_papers_when_sources_absent():
 def test_retry_recovers_after_initial_malformed_response():
     """If the 1st response is bad but the 2nd is good, the claim should land."""
     bad = "totally not json"
-    good = (
-        "```json\n"
-        '[{"text": "Recovered claim", "span_text": "ΛCDM cosmology"}]\n'
-        "```"
-    )
+    good = '```json\n[{"text": "Recovered claim", "span_text": "ΛCDM cosmology"}]\n```'
     state = _state(sources=[_make_source(4)])
 
     with patch(

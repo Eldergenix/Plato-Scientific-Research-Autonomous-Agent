@@ -16,6 +16,7 @@ The node also computes ``unsupported_claim_rate`` — the fraction of drafted
 claims that produced *no* supporting link — which the reviewer panel uses
 to gate redraft decisions.
 """
+
 from __future__ import annotations
 
 import json
@@ -23,7 +24,7 @@ import re
 import time
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 
 from langchain_core.runnables import RunnableConfig
 
@@ -76,7 +77,7 @@ def _classify_prompt(drafted_claim_text: str, source_claim_text: str) -> str:
     )
 
 
-def _drafted_claims(state: dict) -> list[Claim]:
+def _drafted_claims(state: Any) -> list[Claim]:
     """Pick claims with no source provenance — those drafted by Plato itself."""
     raw = state.get("claims") if isinstance(state, dict) else None
     if not raw:
@@ -92,7 +93,7 @@ def _drafted_claims(state: dict) -> list[Claim]:
     return out
 
 
-def _source_claims(state: dict) -> list[Claim]:
+def _source_claims(state: Any) -> list[Claim]:
     """Pick claims that *do* have a source — extracted from retrieved papers."""
     raw = state.get("claims") if isinstance(state, dict) else None
     if not raw:
@@ -106,7 +107,7 @@ def _source_claims(state: dict) -> list[Claim]:
     return out
 
 
-def _resolve_run_dir(state: dict) -> tuple[str, Path | None]:
+def _resolve_run_dir(state: Any) -> tuple[str, Path | None]:
     run_id = state.get("run_id") if isinstance(state, dict) else None
     if not run_id:
         run_id = uuid.uuid4().hex[:12]
@@ -127,7 +128,7 @@ def _coerce_label(value: Any, allowed: set[str], default: str) -> str:
 
 def evidence_matrix_node(
     state: "GraphState",
-    config: RunnableConfig | None = None,
+    config: Optional[RunnableConfig] = None,
 ) -> dict:
     """LangGraph node: build the claim/evidence matrix.
 
@@ -140,7 +141,9 @@ def evidence_matrix_node(
     source_claims = _source_claims(state)
     sources = state.get("sources") if isinstance(state, dict) else None
 
-    existing_links_raw = state.get("evidence_links") if isinstance(state, dict) else None
+    existing_links_raw = (
+        state.get("evidence_links") if isinstance(state, dict) else None
+    )
     existing_links: list[EvidenceLink] = []
     if existing_links_raw:
         for link in existing_links_raw:
@@ -220,9 +223,7 @@ def evidence_matrix_node(
 
     total_drafted = len(drafted)
     unsupported_count = total_drafted - len(supported_claim_ids)
-    unsupported_rate = (
-        unsupported_count / total_drafted if total_drafted else 0.0
-    )
+    unsupported_rate = unsupported_count / total_drafted if total_drafted else 0.0
 
     return {
         "evidence_links": existing_links + new_links,

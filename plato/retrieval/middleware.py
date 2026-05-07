@@ -25,6 +25,7 @@ This module composes those three concerns behind one drop-in client:
 Adapter tests that monkeypatch ``httpx.AsyncClient.get`` continue to work
 because every request still flows through the underlying httpx client.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -80,8 +81,6 @@ def _parse_retry_after(value: str | None) -> float | None:
         when = parsedate_to_datetime(raw)
     except (TypeError, ValueError):
         return None
-    if when is None:
-        return None
     delta = when.timestamp() - time.time()
     return max(0.0, delta)
 
@@ -116,7 +115,7 @@ class RateLimitBackoff:
         if retry_after is not None:
             return min(retry_after, self.max_delay)
         # Decorrelated jitter — keeps the bound tight without becoming periodic.
-        backoff = min(self.base_delay * (2 ** attempt), self.max_delay)
+        backoff = min(self.base_delay * (2**attempt), self.max_delay)
         return backoff * (0.5 + random.random() / 2)
 
     async def execute(
@@ -166,7 +165,9 @@ class ETagCache:
     """
 
     def __init__(self, cache_dir: Path | str | None = None) -> None:
-        self.cache_dir = Path(cache_dir) if cache_dir is not None else _default_cache_dir()
+        self.cache_dir = (
+            Path(cache_dir) if cache_dir is not None else _default_cache_dir()
+        )
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._hits = 0
         self._misses = 0
@@ -230,7 +231,9 @@ class ETagCache:
             replayed = httpx.Response(
                 status_code=cached.get("status", 200),
                 headers=cached.get("response_headers") or {},
-                content=cached["body"].encode("utf-8") if isinstance(cached.get("body"), str) else b"",
+                content=cached["body"].encode("utf-8")
+                if isinstance(cached.get("body"), str)
+                else b"",
                 request=request,
             )
             return replayed
@@ -256,11 +259,16 @@ class ETagCache:
                     response_headers: dict[str, str] = {}
                     try:
                         for k, v in response.headers.items():
-                            if isinstance(k, str) and isinstance(v, str) and k.lower() in {
-                                "content-type",
-                                "etag",
-                                "last-modified",
-                            }:
+                            if (
+                                isinstance(k, str)
+                                and isinstance(v, str)
+                                and k.lower()
+                                in {
+                                    "content-type",
+                                    "etag",
+                                    "last-modified",
+                                }
+                            ):
                                 response_headers[k] = v
                     except (AttributeError, TypeError):
                         response_headers = {}
@@ -268,7 +276,9 @@ class ETagCache:
                         url,
                         {
                             "etag": etag if isinstance(etag, str) else None,
-                            "last_modified": last_mod if isinstance(last_mod, str) else None,
+                            "last_modified": last_mod
+                            if isinstance(last_mod, str)
+                            else None,
                             "body": body,
                             "status": 200,
                             "response_headers": response_headers,
@@ -495,6 +505,7 @@ class RetrievalClient:
         # Resolve the breaker for this request. Explicit override wins;
         # otherwise consult the shared per-host registry so adapters that
         # rebuild a RetrievalClient per call still share breaker state.
+        breaker: CircuitBreaker | None
         if self._breaker is not None:
             breaker = self._breaker
         elif self._breaker_enabled:
