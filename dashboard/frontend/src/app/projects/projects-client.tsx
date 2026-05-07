@@ -51,7 +51,7 @@ const AVATAR_PALETTE: ReadonlyArray<{ bg: string; fg: string }> = [
   { bg: "#10A37F", fg: "#E7FFF7" }, // green
   { bg: "#EB5757", fg: "#FFEAEA" }, // red
   { bg: "#F0BF00", fg: "#1A1500" }, // amber
-  { bg: "#BB87FC", fg: "#1B1124" }, // purple
+  { bg: "var(--color-status-purple)", fg: "var(--color-status-purple-foreground)" }, // purple
   { bg: "#4EA7FC", fg: "#0B1B33" }, // blue
   { bg: "#FF7236", fg: "#1F0F08" }, // orange
 ];

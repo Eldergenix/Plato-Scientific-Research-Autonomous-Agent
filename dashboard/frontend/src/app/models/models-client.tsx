@@ -88,7 +88,7 @@ const PROVIDER_COLOR: Record<Provider, string> = {
   openai: "#27A644",
   gemini: "#4EA7FC",
   huggingface: "#ff9d00",
-  perplexity: "#bb87fc",
+  perplexity: "var(--color-status-purple)",
   semantic_scholar: "#ff7236",
 };
 

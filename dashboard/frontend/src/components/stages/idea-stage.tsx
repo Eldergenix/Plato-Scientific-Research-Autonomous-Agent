@@ -310,7 +310,13 @@ function EmptyIdeaHint({ onRun }: { onRun?: () => void }) {
         Run the idea generator to seed a research direction, or click Edit to write one yourself.
       </p>
       {onRun && (
-        <Button variant="primary" size="sm" className="mt-3" onClick={onRun}>
+        <Button
+          variant="primary"
+          size="sm"
+          className="mt-3"
+          onClick={onRun}
+          data-run-button="true"
+        >
           <Sparkles size={12} strokeWidth={1.5} />
           Run idea generation
         </Button>
