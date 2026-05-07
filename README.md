@@ -1,9 +1,6 @@
 # Plato
 
-[![Version](https://img.shields.io/pypi/v/plato.svg)](https://pypi.python.org/pypi/plato) [![Python Version](https://img.shields.io/badge/python-%3E%3D3.12-blue.svg)](https://www.python.org/downloads/) [![PyPI - Downloads](https://img.shields.io/pypi/dm/plato)](https://pypi.python.org/pypi/plato) [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/AstroPilot-AI/Plato)
-<a href="https://www.youtube.com/@plato-ai" target="_blank">
-<img src="https://img.shields.io/badge/YouTube-Subscribe-red?style=flat-square&logo=youtube" alt="Subscribe on YouTube" width="140"/>
-</a>
+[![Python Version](https://img.shields.io/badge/python-%3E%3D3.12-blue.svg)](https://www.python.org/downloads/) [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
 Plato is a multi-agent AI system that takes experimental data and produces peer-reviewable scientific papers end-to-end — generating the research idea, designing the methodology, running the analysis (via [cmbagent](https://github.com/CMBAgents/cmbagent)), and writing the LaTeX manuscript through a reviewer-panel revision loop.
 
@@ -42,19 +39,11 @@ See `docs/adr/` for the design decisions behind these changes and
 
 ## Resources
 
-- [🌐 Project page](https://astropilot-ai.github.io/PlatoPaperPage/)
+- [Live Plato demo](https://plato-production-9fea.up.railway.app)
 
-- [📄 Paper](https://arxiv.org/abs/2510.26887)
+- [GitHub repository](https://github.com/Eldergenix/Plato-Scientific-Research-Autonomous-Agent)
 
-- [📖 Documentation](https://plato.readthedocs.io/en/latest/)
-
-- [🖥️ Plato GUI repository](https://github.com/AstroPilot-AI/PlatoApp)
-
-- [🤗 Demo web app for Plato GUI](https://huggingface.co/spaces/astropilot-ai/Plato)
-
-- [📝 End-to-end research papers generated with Plato](https://github.com/AstroPilot-AI/PlatoExamplePapers)
-
-- [🎥 YouTube channel](https://www.youtube.com/@plato-ai)
+- [Paper](https://arxiv.org/abs/2510.26887)
 
 
 ## Installation
@@ -64,20 +53,20 @@ To install plato create a virtual environment and pip install it. We recommend u
 ```bash
 python -m venv Plato_env
 source Plato_env/bin/activate
-pip install "plato[app]"
+pip install "plato[dashboard]"
 ```
 
 Or alternatively install it with [uv](https://docs.astral.sh/uv/), initializing a project and installing it:
 
 ```bash
 uv init
-uv add plato[app]
+uv add plato[dashboard]
 ```
 
-Then, run the gui with:
+Then, run the Plato dashboard with:
 
 ```
-plato run
+plato dashboard
 ```
 
 ## Get started
@@ -140,20 +129,6 @@ plato dashboard
 
 The dashboard supersedes the legacy `plato run` Streamlit app for new workflows.
 
-## PlatoApp
-
-You can run Plato using a GUI through the [PlatoApp](https://github.com/AstroPilot-AI/PlatoApp).
-
-The app is already installed with `pip install "plato[app]"`, otherwise install it with `pip install plato_app` or `uv sync --extra app`.
-
-Then, launch the GUI with
-
-```bash
-plato run
-```
-
-Test a [deployed demo of the app in HugginFace Spaces](https://huggingface.co/spaces/astropilot-ai/Plato).
-
 ## Build from source
 
 ### pip
@@ -161,8 +136,8 @@ Test a [deployed demo of the app in HugginFace Spaces](https://huggingface.co/sp
 You will need python 3.12 or higher installed. Clone Plato:
 
 ```bash
-git clone https://github.com/AstroPilot-AI/Plato.git
-cd Plato
+git clone https://github.com/Eldergenix/Plato-Scientific-Research-Autonomous-Agent.git
+cd Plato-Scientific-Research-Autonomous-Agent
 ```
 
 Create and activate a virtual environment
@@ -194,33 +169,19 @@ source .venv/bin/activate
 
 ## Docker
 
-You can run Plato in a [Docker](https://www.docker.com/) image, which includes all the required dependencies for Plato including LaTeX. Pull the image with:
+You can run Plato with [Docker](https://www.docker.com/) using the dashboard compose file:
 
 ```bash
-docker pull pablovd/plato:latest
+docker compose -f dashboard/compose.yaml up --build
 ```
 
-Once built, you can run the GUI with
-
-```bash
-docker run -p 8501:8501 --rm pablovd/plato:latest
-```
-
-or in interactive mode with
-
-```bash
-docker run --rm -it pablovd/plato:latest bash
-```
-
-Share volumes with `-v $(pwd)/project:/app/project` for inputing data and accessing to it. You can also share the API keys with a `.env` file in the same folder with `-v $(pwd).env/app/.env`.
+The local dashboard runs on `http://localhost:7878` by default.
 
 You can also build an image locally with
 
 ```bash
 docker build -f docker/Dockerfile.dev -t plato_src .
 ```
-
-Read more information on how to use the Docker images in the [documentation](https://plato.readthedocs.io/en/latest/docker/).
 
 ## Contributing
 
@@ -249,8 +210,8 @@ If you make use of Plato, please cite the following references:
           author = {Pablo Villanueva-Domingo, Francisco Villaescusa-Navarro, Boris Bolliet},
           title = {Plato: Modular Multi-Agent System for Scientific Research Assistance},
           year = {2025},
-          url = {https://github.com/AstroPilot-AI/Plato},
-          note = {Available at https://github.com/AstroPilot-AI/Plato},
+          url = {https://github.com/Eldergenix/Plato-Scientific-Research-Autonomous-Agent},
+          note = {Available at https://github.com/Eldergenix/Plato-Scientific-Research-Autonomous-Agent},
           version = {latest}
           }
 
@@ -269,7 +230,3 @@ If you make use of Plato, please cite the following references:
 [GNU GENERAL PUBLIC LICENSE (GPLv3)](https://www.gnu.org/licenses/gpl-3.0.html)
 
 Plato - Copyright (C) 2026 Pablo Villanueva-Domingo, Francisco Villaescusa-Navarro, Boris Bolliet
-
-## Contact and enquiries
-
-E-mail: [plato.astropilot.ai@gmail.com](mailto:plato.astropilot.ai@gmail.com)
