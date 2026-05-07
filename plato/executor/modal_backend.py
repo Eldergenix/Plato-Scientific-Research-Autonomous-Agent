@@ -21,12 +21,12 @@ at call time when needed.
 Authentication: Modal needs ``modal token`` configured. Auth failures
 bubble up unchanged so the caller sees Modal's own error.
 """
+
 from __future__ import annotations
 
 import asyncio
 import base64
 import json
-import re
 import textwrap
 from datetime import datetime, timezone
 from pathlib import Path
@@ -37,19 +37,42 @@ from . import ExecutorResult, register_executor
 __all__ = ["ModalExecutor"]
 
 
-_FENCE_RE = re.compile(
-    r"```(?:python|py|ipython)\s*\n(.*?)\n```",
-    re.DOTALL | re.IGNORECASE,
-)
-
-
 def _extract_code_cells(methodology: str) -> list[str]:
     """Same contract as LocalJupyterExecutor — fences first, whole text fallback."""
     if not methodology or not methodology.strip():
         return []
-    fenced = _FENCE_RE.findall(methodology)
-    if fenced:
-        return [block.strip() for block in fenced if block.strip()]
+
+    cells: list[str] = []
+    in_python_fence = False
+    saw_python_fence = False
+    current: list[str] = []
+    for line in methodology.splitlines():
+        stripped = line.strip()
+        if in_python_fence:
+            if stripped == "```":
+                body = "\n".join(current).strip()
+                if body:
+                    cells.append(body)
+                current = []
+                in_python_fence = False
+            else:
+                current.append(line)
+            continue
+
+        if stripped.startswith("```"):
+            language = stripped[3:].strip().lower()
+            if language in {"python", "py", "ipython"}:
+                saw_python_fence = True
+                in_python_fence = True
+                current = []
+
+    if in_python_fence and current:
+        body = "\n".join(current).strip()
+        if body:
+            cells.append(body)
+
+    if saw_python_fence:
+        return cells
     return [methodology.strip()]
 
 
@@ -63,7 +86,7 @@ def _extract_code_cells(methodology: str) -> list[str]:
 # because the latter trips local security hooks that pattern-match on
 # the literal sigil. ``runpy.run_path`` is the standard-library escape
 # hatch for "evaluate this Python file" and works identically.
-_RUNNER_SCRIPT = '''
+_RUNNER_SCRIPT = """
 import base64, io, json, os, runpy, sys, tempfile, traceback
 from contextlib import redirect_stdout, redirect_stderr
 
@@ -135,7 +158,7 @@ print(json.dumps({{
     "error": _error,
 }}))
 print("===PLATO_RESULT_END===")
-'''
+"""
 
 
 def _parse_runner_envelope(stdout_text: str) -> dict[str, Any] | None:
@@ -171,7 +194,11 @@ def _coerce_text(stream_payload: Any) -> str:
         return stream_payload
     try:
         return "".join(
-            (chunk.decode("utf-8", errors="replace") if isinstance(chunk, bytes) else str(chunk))
+            (
+                chunk.decode("utf-8", errors="replace")
+                if isinstance(chunk, bytes)
+                else str(chunk)
+            )
             for chunk in stream_payload
         )
     except Exception:
@@ -193,14 +220,6 @@ class ModalExecutor:
         keys: Any,
         **kwargs: Any,
     ) -> ExecutorResult:
-        try:
-            import modal  # type: ignore[import-not-found]
-        except ImportError as exc:
-            raise ImportError(
-                "ModalExecutor requires the modal SDK. "
-                "Install it with: pip install modal"
-            ) from exc
-
         explicit_code = kwargs.get("code")
         if isinstance(explicit_code, str) and explicit_code.strip():
             cells: list[str] = [explicit_code.strip()]
@@ -214,6 +233,14 @@ class ModalExecutor:
                 artifacts={"cells_executed": 0, "executor": "modal"},
             )
 
+        try:
+            import modal
+        except ImportError as exc:
+            raise ImportError(
+                "ModalExecutor requires the modal SDK. "
+                "Install it with: pip install modal"
+            ) from exc
+
         plots_dir = Path(project_dir) / "plots" / "modal"
         plots_dir.mkdir(parents=True, exist_ok=True)
 
@@ -222,7 +249,10 @@ class ModalExecutor:
         image = kwargs.get("image")
         if image is None:
             image = modal.Image.debian_slim().pip_install(
-                "numpy", "scipy", "matplotlib", "pandas",
+                "numpy",
+                "scipy",
+                "matplotlib",
+                "pandas",
             )
 
         app_name = kwargs.get("app_name") or "plato-executor"
@@ -245,12 +275,20 @@ class ModalExecutor:
 
                 try:
                     sandbox = modal.Sandbox.create(
-                        "python", "-c", runner,
-                        image=image, app=app, timeout=timeout_seconds,
+                        "python",
+                        "-c",
+                        runner,
+                        image=image,
+                        app=app,
+                        timeout=timeout_seconds,
                     )
                     sandbox.wait()
-                    raw_stdout = _coerce_text(getattr(sandbox.stdout, "read", lambda: "")())
-                    raw_stderr = _coerce_text(getattr(sandbox.stderr, "read", lambda: "")())
+                    raw_stdout = _coerce_text(
+                        getattr(sandbox.stdout, "read", lambda: "")()
+                    )
+                    raw_stderr = _coerce_text(
+                        getattr(sandbox.stderr, "read", lambda: "")()
+                    )
                     try:
                         sandbox.terminate()
                     except Exception:
@@ -317,7 +355,9 @@ class ModalExecutor:
             err = record.get("error")
             if err:
                 sections.append("")
-                sections.append(f"**Error**: `{err.get('ename')}` — {err.get('evalue')}")
+                sections.append(
+                    f"**Error**: `{err.get('ename')}` — {err.get('evalue')}"
+                )
                 tb = err.get("traceback")
                 if tb:
                     sections.append("")

@@ -13,6 +13,7 @@ Both heavyweight backends are lazy-imported so ``plato.retrieval`` stays
 importable on a vanilla install with neither extra present. Install via
 ``pip install "plato[rerank]"``.
 """
+
 from __future__ import annotations
 
 import logging
@@ -48,7 +49,7 @@ def rerank(query: str, sources: list["Source"], *, top_k: int) -> list["Source"]
     cohere_key = os.environ.get("COHERE_API_KEY", "")
     if cohere_key:
         try:
-            import cohere  # type: ignore[import-untyped]
+            import cohere
 
             client = cohere.Client(cohere_key)
             docs = [_doc(s) for s in sources]
@@ -64,7 +65,7 @@ def rerank(query: str, sources: list["Source"], *, top_k: int) -> list["Source"]
 
     # --- CrossEncoder ---
     try:
-        from sentence_transformers import CrossEncoder  # type: ignore[import-untyped]
+        from sentence_transformers import CrossEncoder
 
         model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
         pairs = [(query, _doc(s)) for s in sources]

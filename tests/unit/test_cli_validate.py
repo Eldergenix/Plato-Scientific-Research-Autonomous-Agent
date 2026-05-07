@@ -3,25 +3,34 @@
 The CitationValidator and any HTTP traffic are mocked; these tests only
 exercise the wiring between the project-on-disk layout and the validator.
 """
+
 from __future__ import annotations
 
 import asyncio
 import json
 from datetime import datetime, timezone
-from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from plato import cli_validate
-from plato.state.models import Source, ValidationResult
+from plato.state.models import ValidationResult
 
 
-def _vr(source_id: str, *, doi_resolved=False, arxiv_resolved=False, error=None) -> ValidationResult:
+def _vr(
+    source_id: str,
+    *,
+    doi_resolved=False,
+    arxiv_resolved=False,
+    error=None,
+) -> ValidationResult:
+    passed = bool(doi_resolved or arxiv_resolved)
     return ValidationResult(
         source_id=source_id,
         doi_resolved=doi_resolved,
         arxiv_resolved=arxiv_resolved,
+        status="verified" if passed else "unverified",
+        verdict="UNLIKELY" if passed else "UNCERTAIN",
         retracted=False,
         error=error,
         checked_at=datetime.now(timezone.utc),
@@ -56,35 +65,51 @@ def test_collect_sources_walks_manifests_and_bibtex(tmp_path):
     runs = tmp_path / "runs"
     run1 = runs / "run-001"
     run1.mkdir(parents=True)
-    (run1 / "manifest.json").write_text(json.dumps({
-        "run_id": "run-001",
-        "workflow": "get_paper",
-        "source_ids": ["s1"],
-    }))
-    (run1 / "sources.json").write_text(json.dumps([
-        {
-            "id": "s1",
-            "doi": "10.1000/run1",
-            "title": "Run-1 paper",
-            "retrieved_via": "crossref",
-            "fetched_at": "2024-01-15T00:00:00+00:00",
-        },
-    ]))
+    (run1 / "manifest.json").write_text(
+        json.dumps(
+            {
+                "run_id": "run-001",
+                "workflow": "get_paper",
+                "source_ids": ["s1"],
+            }
+        )
+    )
+    (run1 / "sources.json").write_text(
+        json.dumps(
+            [
+                {
+                    "id": "s1",
+                    "doi": "10.1000/run1",
+                    "title": "Run-1 paper",
+                    "retrieved_via": "crossref",
+                    "fetched_at": "2024-01-15T00:00:00+00:00",
+                },
+            ]
+        )
+    )
 
     run2 = runs / "run-002"
     run2.mkdir(parents=True)
-    (run2 / "manifest.json").write_text(json.dumps({
-        "run_id": "run-002",
-        "workflow": "get_paper",
-        "source_ids": ["s2"],
-    }))
-    (run2 / "sources.json").write_text(json.dumps([
-        {
-            "id": "s2",
-            "arxiv_id": "2401.12345",
-            "title": "Run-2 arxiv paper",
-        },
-    ]))
+    (run2 / "manifest.json").write_text(
+        json.dumps(
+            {
+                "run_id": "run-002",
+                "workflow": "get_paper",
+                "source_ids": ["s2"],
+            }
+        )
+    )
+    (run2 / "sources.json").write_text(
+        json.dumps(
+            [
+                {
+                    "id": "s2",
+                    "arxiv_id": "2401.12345",
+                    "title": "Run-2 arxiv paper",
+                },
+            ]
+        )
+    )
 
     paper_dir = tmp_path / "paper"
     paper_dir.mkdir()
@@ -121,9 +146,13 @@ def test_collect_sources_dedupes_by_id(tmp_path):
     runs = tmp_path / "runs" / "run-001"
     runs.mkdir(parents=True)
     (runs / "manifest.json").write_text(json.dumps({"run_id": "run-001"}))
-    (runs / "sources.json").write_text(json.dumps([
-        {"id": "Smith2024", "doi": "10.1000/run", "title": "Run copy"},
-    ]))
+    (runs / "sources.json").write_text(
+        json.dumps(
+            [
+                {"id": "Smith2024", "doi": "10.1000/run", "title": "Run copy"},
+            ]
+        )
+    )
 
     paper_dir = tmp_path / "paper"
     paper_dir.mkdir()
@@ -142,10 +171,14 @@ def test_run_validation_writes_report(tmp_path):
     runs = tmp_path / "runs" / "run-001"
     runs.mkdir(parents=True)
     (runs / "manifest.json").write_text(json.dumps({"run_id": "run-001"}))
-    (runs / "sources.json").write_text(json.dumps([
-        {"id": "s1", "doi": "10.1/x", "title": "Real DOI"},
-        {"id": "s2", "doi": "10.9/fake", "title": "Hallucinated"},
-    ]))
+    (runs / "sources.json").write_text(
+        json.dumps(
+            [
+                {"id": "s1", "doi": "10.1/x", "title": "Real DOI"},
+                {"id": "s2", "doi": "10.9/fake", "title": "Hallucinated"},
+            ]
+        )
+    )
 
     results = [
         _vr("s1", doi_resolved=True),
@@ -157,6 +190,8 @@ def test_run_validation_writes_report(tmp_path):
 
     assert report["total"] == 2
     assert report["passed"] == 1
+    assert report["total_references"] == 2
+    assert report["verified_references"] == 1
     assert report["validation_rate"] == 0.5
     assert len(report["failures"]) == 1
     assert report["failures"][0]["source_id"] == "s2"
@@ -174,12 +209,13 @@ def test_run_validation_empty_project_writes_zero_report(tmp_path):
         report = asyncio.run(cli_validate.run_validation(tmp_path))
 
     ctor.assert_not_called()
-    assert report == {
-        "validation_rate": 0.0,
-        "total": 0,
-        "passed": 0,
-        "failures": [],
-    }
+    assert report["validation_rate"] == 0.0
+    assert report["total"] == 0
+    assert report["passed"] == 0
+    assert report["total_references"] == 0
+    assert report["verified_references"] == 0
+    assert report["failures"] == []
+    assert report["accuracy_gate"]["passed"] is False
     # No runs dir → falls back to project root.
     assert (tmp_path / "validation_report.json").exists()
 
@@ -189,9 +225,13 @@ def test_run_validation_honours_explicit_output(tmp_path):
     runs = tmp_path / "runs" / "run-001"
     runs.mkdir(parents=True)
     (runs / "manifest.json").write_text(json.dumps({"run_id": "run-001"}))
-    (runs / "sources.json").write_text(json.dumps([
-        {"id": "s1", "doi": "10.1/x", "title": "x"},
-    ]))
+    (runs / "sources.json").write_text(
+        json.dumps(
+            [
+                {"id": "s1", "doi": "10.1/x", "title": "x"},
+            ]
+        )
+    )
 
     results = [_vr("s1", doi_resolved=True)]
     custom_path = tmp_path / "custom" / "report.json"
@@ -225,9 +265,13 @@ def test_main_below_threshold_returns_1(tmp_path):
     runs = tmp_path / "runs" / "run-001"
     runs.mkdir(parents=True)
     (runs / "manifest.json").write_text(json.dumps({"run_id": "run-001"}))
-    (runs / "sources.json").write_text(json.dumps([
-        {"id": "s1", "doi": "10.9/fake", "title": "fail"},
-    ]))
+    (runs / "sources.json").write_text(
+        json.dumps(
+            [
+                {"id": "s1", "doi": "10.9/fake", "title": "fail"},
+            ]
+        )
+    )
 
     results = [_vr("s1", doi_resolved=False, error="404")]
 
@@ -280,7 +324,9 @@ def test_real_cli_main_validate_invocation(tmp_path):
     with patch.object(plato_cli, "sys") as mock_sys:
         mock_sys.argv = ["plato", "validate", str(tmp_path), "--threshold", "0.0"]
         # parser reads sys.argv via parse_args() default.
-        with patch("sys.argv", ["plato", "validate", str(tmp_path), "--threshold", "0.0"]):
+        with patch(
+            "sys.argv", ["plato", "validate", str(tmp_path), "--threshold", "0.0"]
+        ):
             with patch("plato.cli_validate.main", return_value=0) as mock_main:
                 # sys.exit is patched on the module-bound `sys` reference.
                 mock_sys.exit.side_effect = SystemExit

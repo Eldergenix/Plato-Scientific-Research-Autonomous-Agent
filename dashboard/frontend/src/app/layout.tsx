@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
 import { AuthProvider } from "@/components/auth/auth-context";
 import { ErrorBoundary } from "@/components/shell/error-boundary";
 import { ThemeProvider } from "@/components/shell/theme-provider";
+import { isClerkAuthEnabled } from "@/lib/auth-mode";
 import "./globals.css";
 
 const inter = Inter({
@@ -41,6 +43,14 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const app = (
+    <ThemeProvider>
+      <AuthProvider>
+        <ErrorBoundary>{children}</ErrorBoundary>
+      </AuthProvider>
+    </ThemeProvider>
+  );
+
   // suppressHydrationWarning on <html> is required because the inline
   // themeBootstrap script writes documentElement.className before React
   // reconciles. Without it, React logs a hydration mismatch.
@@ -58,11 +68,7 @@ export default function RootLayout({
         >
           Skip to main content
         </a>
-        <ThemeProvider>
-          <AuthProvider>
-            <ErrorBoundary>{children}</ErrorBoundary>
-          </AuthProvider>
-        </ThemeProvider>
+        {isClerkAuthEnabled() ? <ClerkProvider>{app}</ClerkProvider> : app}
       </body>
     </html>
   );

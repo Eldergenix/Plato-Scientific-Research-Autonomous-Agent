@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, Any, List
 import asyncio
 import logging
 import time
@@ -7,16 +7,21 @@ import shutil
 import warnings
 from pathlib import Path
 
-from .config import DEFAUL_PROJECT_NAME, INPUT_FILES, PLOTS_FOLDER, DESCRIPTION_FILE, IDEA_FILE, METHOD_FILE, RESULTS_FILE, LITERATURE_FILE
+from .config import (
+    DEFAUL_PROJECT_NAME,
+    INPUT_FILES,
+    PLOTS_FOLDER,
+    DESCRIPTION_FILE,
+    IDEA_FILE,
+    METHOD_FILE,
+    RESULTS_FILE,
+    LITERATURE_FILE,
+)
 from .research import Research
 from .key_manager import KeyManager
 from .llm import LLM, models
 from .paper_agents.journal import Journal
-from .idea import Idea
-from .method import Method
-from .paper_agents.agents_graph import build_graph
 from .utils import llm_parser, input_check, check_file_paths, in_notebook
-from .langgraph_agents.agents_graph import build_lg_graph
 from .domain import DomainProfile, get_domain
 from .state import ManifestRecorder
 from .state import make_async_checkpointer
@@ -34,10 +39,17 @@ if TYPE_CHECKING:  # pragma: no cover — annotations only
 
 logger = logging.getLogger(__name__)
 
+_MODEL_PROVIDER_ENV: tuple[tuple[tuple[str, ...], str, str], ...] = (
+    (("gpt", "o3"), "OPENAI", "OPENAI_API_KEY"),
+    (("gemini",), "GEMINI", "GOOGLE_API_KEY"),
+    (("claude", "anthropic"), "ANTHROPIC", "ANTHROPIC_API_KEY"),
+)
+
+
 class Plato:
     """
     Plato main class. Allows to set the data and tools description, generate a research idea, generate methodology and compute the results. The it can generate the latex draft of a scientific article with a given journal style from the computed results.
-    
+
     It uses two main backends:
 
     - `cmbagent`,  for detailed planning and control involving numerous agents for the idea, methods and results generation.
@@ -49,16 +61,16 @@ class Plato:
         clear_project_dir: Clear all files in project directory when initializing if `True`.
     """
 
-    def __init__(self,
-                 research: Research | None = None,
-                 project_dir: str | None = None,
-                 clear_project_dir: bool = False,
-                 domain: str | DomainProfile = "astro",
-                 user_id: str | None = None,
-                 ):
-
+    def __init__(
+        self,
+        research: Research | None = None,
+        project_dir: str | None = None,
+        clear_project_dir: bool = False,
+        domain: str | DomainProfile = "astro",
+        user_id: str | None = None,
+    ):
         if project_dir is None:
-            project_dir = os.path.join( os.getcwd(), DEFAUL_PROJECT_NAME )
+            project_dir = os.path.join(os.getcwd(), DEFAUL_PROJECT_NAME)
         if not os.path.exists(project_dir):
             os.mkdir(project_dir)
 
@@ -67,6 +79,7 @@ class Plato:
         self.research = research
         self.clear_project_dir = clear_project_dir
         self.user_id = user_id
+        self._cli_executor_override: str | None = None
         self.domain: DomainProfile = (
             domain if isinstance(domain, DomainProfile) else get_domain(domain)
         )
@@ -92,11 +105,11 @@ class Plato:
 
     def _setup_input_files(self) -> None:
         input_files_dir = os.path.join(self.project_dir, INPUT_FILES)
-        
+
         # If directory exists and want to clear it, remove it and all its contents
         if os.path.exists(input_files_dir) and self.clear_project_dir:
             shutil.rmtree(input_files_dir)
-            
+
         # Create fresh input_files directory
         os.makedirs(input_files_dir, exist_ok=True)
 
@@ -117,23 +130,51 @@ class Plato:
             recorder.update(**fields)
         return recorder
 
-    #---
+    def _require_model_credentials(self, *model_names: str) -> None:
+        """Fail fast when a requested hosted model has no configured API key."""
+        self.keys.get_keys_from_env()
+
+        missing: dict[str, set[str]] = {}
+        for model_name in model_names:
+            lowered = model_name.lower()
+            for markers, key_attr, env_name in _MODEL_PROVIDER_ENV:
+                if any(marker in lowered for marker in markers):
+                    if not getattr(self.keys, key_attr):
+                        missing.setdefault(env_name, set()).add(model_name)
+                    break
+
+        if not missing:
+            return
+
+        missing_parts = [
+            f"{env_name} for {', '.join(sorted(models_for_env))}"
+            for env_name, models_for_env in sorted(missing.items())
+        ]
+        raise RuntimeError(
+            "Missing API credentials: "
+            + "; ".join(missing_parts)
+            + ". Set the required environment variable(s) or provide a configured .env before running Plato."
+        )
+
+    # ---
     # Setters
-    #---
+    # ---
 
     def setter(self, field: str | None, file: str) -> str:
         """Base method for setting the content of idea, method or results."""
 
         if field is None:
             try:
-                with open(os.path.join(self.project_dir, INPUT_FILES, file), 'r') as f:
+                with open(os.path.join(self.project_dir, INPUT_FILES, file), "r") as f:
                     field = f.read()
             except FileNotFoundError:
-                raise FileNotFoundError("Please provide an input string or path to a markdown file.")
+                raise FileNotFoundError(
+                    "Please provide an input string or path to a markdown file."
+                )
 
         field = input_check(field)
-                
-        with open(os.path.join(self.project_dir, INPUT_FILES, file), 'w') as f:
+
+        with open(os.path.join(self.project_dir, INPUT_FILES, file), "w") as f:
             f.write(field)
 
         return field
@@ -157,15 +198,17 @@ class Plato:
 
     def set_method(self, method: str | None = None) -> None:
         """Manually set methods, either directly from a string or providing the path of a markdown file with the methods."""
-        
+
         self.research.methodology = self.setter(method, METHOD_FILE)
 
     def set_results(self, results: str | None = None) -> None:
         """Manually set the results, either directly from a string or providing the path of a markdown file with the results."""
-        
+
         self.research.results = self.setter(results, RESULTS_FILE)
 
-    def set_plots(self, plots: 'list[str] | list[_PILImage.Image] | None' = None) -> None:
+    def set_plots(
+        self, plots: "list[str] | list[_PILImage.Image] | None" = None
+    ) -> None:
         """Manually set the plots from their path."""
         # Lazy import — keeps PIL out of every ``from plato import``
         # path. PIL is only needed when the user is actually wiring
@@ -173,18 +216,26 @@ class Plato:
         from PIL import Image
 
         if plots is None:
-            plots = [str(p) for p in (Path(self.project_dir) / "input_files" / "Plots").glob("*.png")]
+            plots = [
+                str(p)
+                for p in (Path(self.project_dir) / "input_files" / "Plots").glob(
+                    "*.png"
+                )
+            ]
 
         for i, plot in enumerate(plots):
-            if isinstance(plot,str):
-                plot_path= Path(plot)
+            img: Any
+            if isinstance(plot, str):
+                plot_path = Path(plot)
                 img = Image.open(plot_path)
                 plot_name = str(plot_path.name)
             else:
                 img = plot
                 plot_name = f"plot_{i}.png"
 
-            img.save( os.path.join(self.project_dir, INPUT_FILES, PLOTS_FOLDER, plot_name) )
+            img.save(
+                os.path.join(self.project_dir, INPUT_FILES, PLOTS_FOLDER, plot_name)
+            )
 
     def set_all(self) -> None:
         """Set all Research fields if present in the working directory"""
@@ -201,18 +252,36 @@ class Plato:
             except FileNotFoundError:
                 pass
 
-    #---
+    # ---
     # Printers
-    #---
+    # ---
 
     def printer(self, content: str) -> None:
         """Method to show the content depending on the execution environment, whether Jupyter notebook or Python script."""
 
         if self.run_in_notebook:
             from IPython.display import display, Markdown
+
             display(Markdown(content))
         else:
             print(content)
+
+    def _run_coroutine_sync(self, coro):
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(coro)
+
+        if self.run_in_notebook:
+            import nest_asyncio
+
+            nest_asyncio.apply()
+            return loop.run_until_complete(coro)
+
+        coro.close()
+        raise RuntimeError(
+            "Cannot run Plato async workflow inside an active event loop."
+        )
 
     def show_data_description(self) -> None:
         """Show the data description set by the `set_data_description` method."""
@@ -242,21 +311,26 @@ class Plato:
         if isinstance(self.research.keywords, dict):
             # Handle dict format (AAS keywords with URLs)
             keyword_list = "\n".join(
-                                [f"- [{keyword}]({self.research.keywords[keyword]})" for keyword in self.research.keywords]
-                            )
+                [
+                    f"- [{keyword}]({self.research.keywords[keyword]})"
+                    for keyword in self.research.keywords
+                ]
+            )
         else:
             # Handle list format (UNESCO keywords)
-            keyword_list = "\n".join([f"- {keyword}" for keyword in self.research.keywords])
-        
+            keyword_list = "\n".join(
+                [f"- {keyword}" for keyword in self.research.keywords]
+            )
+
         self.printer(keyword_list)
 
-    #---
+    # ---
     # Generative modules
-    #---
+    # ---
 
-    def enhance_data_description(self,
-                                 summarizer_model: str, 
-                                 summarizer_response_formatter_model: str) -> None:
+    def enhance_data_description(
+        self, summarizer_model: str, summarizer_response_formatter_model: str
+    ) -> None:
         """
         Enhance the data description using the preprocess_task from cmbagent.
 
@@ -266,24 +340,32 @@ class Plato:
         """
 
         # Check if data description exists
-        if not hasattr(self.research, 'data_description') or not self.research.data_description:
+        if (
+            not hasattr(self.research, "data_description")
+            or not self.research.data_description
+        ):
             # Try to load from file if it exists
             try:
-                with open(os.path.join(self.project_dir, INPUT_FILES, DESCRIPTION_FILE), 'r') as f:
+                with open(
+                    os.path.join(self.project_dir, INPUT_FILES, DESCRIPTION_FILE), "r"
+                ) as f:
                     self.research.data_description = f.read()
             except FileNotFoundError:
-                raise ValueError("No data description found. Please set a data description first before enhancing it.")
+                raise ValueError(
+                    "No data description found. Please set a data description first before enhancing it."
+                )
 
         # Lazy import — keeps cmbagent out of the top-level plato.py
         # import chain. See module-level comment.
         from cmbagent import preprocess_task
 
         # Get the enhanced text from preprocess_task
-        enhanced_text = preprocess_task(self.research.data_description,
-                                        work_dir = self.project_dir,
-                                        summarizer_model = summarizer_model,
-                                        summarizer_response_formatter_model = summarizer_response_formatter_model
-                                        )
+        enhanced_text = preprocess_task(
+            self.research.data_description,
+            work_dir=self.project_dir,
+            summarizer_model=summarizer_model,
+            summarizer_response_formatter_model=summarizer_response_formatter_model,
+        )
 
         # Fall back to the on-disk enhanced_input.md when the cmbagent
         # preprocess returned the input verbatim (some summarizers do
@@ -291,9 +373,9 @@ class Plato:
         if self.research.data_description == enhanced_text:
             enhanced_input_path = os.path.join(self.project_dir, "enhanced_input.md")
             if os.path.exists(enhanced_input_path):
-                with open(enhanced_input_path, 'r', encoding='utf-8') as f:
+                with open(enhanced_input_path, "r", encoding="utf-8") as f:
                     enhanced_text = f.read()
-        
+
         # Update the research object with enhanced text
         self.research.data_description = enhanced_text
 
@@ -303,25 +385,30 @@ class Plato:
             os.makedirs(input_files_dir, exist_ok=True)
 
         # Write the enhanced text to data_description.md
-        with open(os.path.join(input_files_dir, DESCRIPTION_FILE), 'w', encoding='utf-8') as f:
+        with open(
+            os.path.join(input_files_dir, DESCRIPTION_FILE), "w", encoding="utf-8"
+        ) as f:
             f.write(enhanced_text)
 
         # set the enhanced text to the research object
         self.research.data_description = enhanced_text
-            
-        print(f"Enhanced text written to: {os.path.join(input_files_dir, DESCRIPTION_FILE)}")
 
-    def get_idea(self,
-                 mode = "fast",
-                 llm: LLM | str = models["gemini-2.0-flash"],
-                 idea_maker_model: LLM | str = models["gpt-4o"],
-                 idea_hater_model: LLM | str = models["o3-mini"],
-                 planner_model: LLM | str = models["gpt-4o"],
-                 plan_reviewer_model: LLM | str = models["o3-mini"],
-                 orchestration_model: LLM | str = models["gpt-4.1"],
-                 formatter_model: LLM | str = models["o3-mini"],
-                 skip_clarification: bool = False,
-                ) -> None:
+        print(
+            f"Enhanced text written to: {os.path.join(input_files_dir, DESCRIPTION_FILE)}"
+        )
+
+    def get_idea(
+        self,
+        mode="fast",
+        llm: LLM | str = models["gemini-2.5-flash"],
+        idea_maker_model: LLM | str = models["gpt-4o"],
+        idea_hater_model: LLM | str = models["o3-mini"],
+        planner_model: LLM | str = models["gpt-4o"],
+        plan_reviewer_model: LLM | str = models["o3-mini"],
+        orchestration_model: LLM | str = models["gpt-4.1"],
+        formatter_model: LLM | str = models["o3-mini"],
+        skip_clarification: bool = False,
+    ) -> None:
         """Generate an idea making use of the data and tools described in `data_description.md`.
 
         Args:
@@ -340,23 +427,26 @@ class Plato:
         if mode == "fast":
             self.get_idea_fast(llm=llm, skip_clarification=skip_clarification)
         elif mode == "cmbagent":
-            self.get_idea_cmagent(idea_maker_model=idea_maker_model,
-                                  idea_hater_model=idea_hater_model,
-                                  planner_model=planner_model,
-                                  plan_reviewer_model=plan_reviewer_model,
-                                  orchestration_model=orchestration_model,
-                                  formatter_model=formatter_model)
+            self.get_idea_cmagent(
+                idea_maker_model=idea_maker_model,
+                idea_hater_model=idea_hater_model,
+                planner_model=planner_model,
+                plan_reviewer_model=plan_reviewer_model,
+                orchestration_model=orchestration_model,
+                formatter_model=formatter_model,
+            )
         else:
             raise ValueError("Mode must be either 'fast' or 'cmbagent'")
 
-    def get_idea_cmagent(self,
-                    idea_maker_model: LLM | str = models["gpt-4o"],
-                    idea_hater_model: LLM | str = models["o3-mini"],
-                    planner_model: LLM | str = models["gpt-4o"],
-                    plan_reviewer_model: LLM | str = models["o3-mini"],
-                    orchestration_model: LLM | str = models["gpt-4.1"],
-                    formatter_model: LLM | str = models["o3-mini"],
-                ) -> None:
+    def get_idea_cmagent(
+        self,
+        idea_maker_model: LLM | str = models["gpt-4o"],
+        idea_hater_model: LLM | str = models["o3-mini"],
+        planner_model: LLM | str = models["gpt-4o"],
+        plan_reviewer_model: LLM | str = models["o3-mini"],
+        orchestration_model: LLM | str = models["gpt-4.1"],
+        formatter_model: LLM | str = models["o3-mini"],
+    ) -> None:
         """Generate an idea making use of the data and tools described in `data_description.md` with the cmbagent backend.
 
         Args:
@@ -382,38 +472,53 @@ class Plato:
         plan_reviewer_model = llm_parser(plan_reviewer_model)
         orchestration_model = llm_parser(orchestration_model)
         formatter_model = llm_parser(formatter_model)
-        
+        self._require_model_credentials(
+            idea_maker_model.name,
+            idea_hater_model.name,
+            planner_model.name,
+            plan_reviewer_model.name,
+            orchestration_model.name,
+            formatter_model.name,
+        )
+
         if self.research.data_description == "":
-            with open(os.path.join(self.project_dir, INPUT_FILES, DESCRIPTION_FILE), 'r') as f:
+            with open(
+                os.path.join(self.project_dir, INPUT_FILES, DESCRIPTION_FILE), "r"
+            ) as f:
                 self.research.data_description = f.read()
 
-        idea = Idea(work_dir = self.project_dir,
-                    idea_maker_model = idea_maker_model.name,
-                    idea_hater_model = idea_hater_model.name,
-                    planner_model = planner_model.name,
-                    plan_reviewer_model = plan_reviewer_model.name,
-                    keys=self.keys,
-                    orchestration_model = orchestration_model.name,
-                    formatter_model = formatter_model.name)
-        
-        idea = idea.develop_idea(self.research.data_description)
-        self.research.idea = idea
+        from .idea import Idea
+
+        idea_agent = Idea(
+            work_dir=self.project_dir,
+            idea_maker_model=idea_maker_model.name,
+            idea_hater_model=idea_hater_model.name,
+            planner_model=planner_model.name,
+            plan_reviewer_model=plan_reviewer_model.name,
+            keys=self.keys,
+            orchestration_model=orchestration_model.name,
+            formatter_model=formatter_model.name,
+        )
+
+        generated_idea = idea_agent.develop_idea(self.research.data_description)
+        self.research.idea = generated_idea
         # Write idea to file
         idea_path = os.path.join(self.project_dir, INPUT_FILES, IDEA_FILE)
-        with open(idea_path, 'w') as f:
-            f.write(idea)
+        with open(idea_path, "w") as f:
+            f.write(generated_idea)
 
-        self.idea = idea
+        self.idea = generated_idea
 
-    def get_idea_fast(self,
-                      llm: LLM | str = models["gemini-2.0-flash"],
-                      iterations: int = 4,
-                      verbose=False,
-                      skip_clarification: bool = False,
-                      ) -> None:
+    def get_idea_fast(
+        self,
+        llm: LLM | str = models["gemini-2.5-flash"],
+        iterations: int = 4,
+        verbose=False,
+        skip_clarification: bool = False,
+    ) -> None:
         """
         Generate an idea using the idea maker - idea hater method.
-        
+
         Args:
             llm: the LLM model to be used
             verbose: whether to stream the LLM response
@@ -423,29 +528,43 @@ class Plato:
         start_time = time.time()
         # Get LLM instance
         llm = llm_parser(llm)
+        self._require_model_credentials(llm.name)
 
         recorder = self._start_manifest(
             "get_idea_fast",
             models={"idea_maker": llm.name, "idea_hater": llm.name},
         )
-        config = {"configurable": {"thread_id": recorder.manifest.run_id}, "recursion_limit": 100}
-        config["callbacks"] = callbacks_for(recorder.manifest.run_id, recorder.manifest.workflow, recorder=recorder)
+        config = {
+            "configurable": {"thread_id": recorder.manifest.run_id},
+            "recursion_limit": 100,
+        }
+        config["callbacks"] = callbacks_for(
+            recorder.manifest.run_id, recorder.manifest.workflow, recorder=recorder
+        )
+
+        from .langgraph_agents.agents_graph import build_lg_graph
 
         # Build graph
         graph = build_lg_graph(mermaid_diagram=False)
 
         # get name of data description file
-        f_data_description = os.path.join(self.project_dir, INPUT_FILES, DESCRIPTION_FILE)
+        f_data_description = os.path.join(
+            self.project_dir, INPUT_FILES, DESCRIPTION_FILE
+        )
 
         # Initialize the state
         input_state = {
             "task": "idea_generation",
-            "files":{"Folder": self.project_dir,
-                     "data_description": f_data_description}, #name of project folder
-            "llm": {"model": llm.name,                #name of the LLM model to use
-                    "temperature": llm.temperature,
-                    "max_output_tokens": llm.max_output_tokens,
-                    "stream_verbose": verbose},
+            "files": {
+                "Folder": self.project_dir,
+                "data_description": f_data_description,
+            },  # name of project folder
+            "llm": {
+                "model": llm.name,  # name of the LLM model to use
+                "temperature": llm.temperature,
+                "max_output_tokens": llm.max_output_tokens,
+                "stream_verbose": verbose,
+            },
             "keys": self.keys,
             "idea": {"total_iterations": iterations},
             "skip_clarification": skip_clarification,
@@ -453,7 +572,7 @@ class Plato:
 
         try:
             # Run the graph
-            graph.invoke(input_state, config) # type: ignore
+            graph.invoke(input_state, config)
             recorder.finish("success")
         except Exception as e:
             recorder.finish("error", error=str(e))
@@ -466,11 +585,13 @@ class Plato:
         seconds = int(elapsed_time % 60)
         print(f"Idea generated in {minutes} min {seconds} sec.")
 
-    def check_idea(self,
-                   mode : str = 'semantic_scholar',
-                   llm: LLM | str = models["gemini-2.5-flash"],
-                   max_iterations: int = 7,
-                   verbose=False) -> str:
+    def check_idea(
+        self,
+        mode: str = "semantic_scholar",
+        llm: LLM | str = models["gemini-2.5-flash"],
+        max_iterations: int = 7,
+        verbose=False,
+    ) -> str:
         """
         Use Futurehouse or Semantic Scholar to check the idea against previous literature
 
@@ -483,16 +604,17 @@ class Plato:
 
         print(f"Checking idea in literature with {mode} mode")
 
-        if mode == 'futurehouse':
+        if mode == "futurehouse":
             return self.check_idea_futurehouse()
 
-        elif mode == 'semantic_scholar':
+        elif mode == "semantic_scholar":
+            return self.check_idea_semantic_scholar(
+                llm=llm, max_iterations=max_iterations, verbose=verbose
+            )
 
-            return self.check_idea_semantic_scholar(llm=llm, max_iterations=max_iterations, verbose=verbose)
-        
         else:
             raise ValueError("Mode must be either 'futurehouse' or 'semantic_scholar'")
-    
+
     def check_idea_futurehouse(self) -> str:
         """
         Check with the literature if an idea is original or not.
@@ -503,6 +625,7 @@ class Plato:
             TaskRequest,
         )
         import os
+
         fhkey = os.getenv("FUTURE_HOUSE_API_KEY")
 
         fh_client = FutureHouseClient(
@@ -520,15 +643,22 @@ class Plato:
         Related previous work: <describe previous literature on the topic>
         </DESIRED_RESPONSE_FORMAT>
         """
-        task_data = TaskRequest(name=JobNames.from_string("owl"),
-                                query=check_idea_prompt)
-        
+        task_data = TaskRequest(
+            name=JobNames.from_string("owl"), query=check_idea_prompt
+        )
+
         task_response = fh_client.run_tasks_until_done(task_data)
 
-        answer = task_response[0].formatted_answer # type: ignore
+        answer = task_response[0].formatted_answer  # type: ignore
 
         ## process the answer to remove everything above </DESIRED_RESPONSE_FORMAT>
-        answer = answer.split("</DESIRED_RESPONSE_FORMAT>")[1]
+        _prefix, delimiter, suffix = answer.partition("</DESIRED_RESPONSE_FORMAT>")
+        if delimiter:
+            answer = suffix
+        else:
+            logger.warning(
+                "FutureHouse response missing </DESIRED_RESPONSE_FORMAT>; using full answer."
+            )
 
         # R12 — FutureHouse responses concatenate paper abstracts that
         # could carry injection payloads. Detect signals (logged) and
@@ -554,55 +684,67 @@ class Plato:
         answer = "Has anyone worked on or explored the following idea?\n" + answer
 
         ## save the response into {INPUT_FILES}/{LITERATURE_FILE}
-        with open(os.path.join(self.project_dir, INPUT_FILES, LITERATURE_FILE), 'w') as f:
+        with open(
+            os.path.join(self.project_dir, INPUT_FILES, LITERATURE_FILE), "w"
+        ) as f:
             f.write(answer)
 
         return answer
 
-    def check_idea_semantic_scholar(self,
-                        llm: LLM | str = models["gemini-2.5-flash"],
-                        max_iterations: int = 7,
-                        verbose=False,
-                        ) -> str:
+    def check_idea_semantic_scholar(
+        self,
+        llm: LLM | str = models["gemini-2.5-flash"],
+        max_iterations: int = 7,
+        verbose=False,
+    ) -> str:
         """
         Check with the literature if an idea is original or not.
 
         Args:
            llm: the LLM model to be used
            max_iterations: maximum number of iterations to check the idea
-           verbose: whether to stream the LLM response 
+           verbose: whether to stream the LLM response
         """
 
         # Start timer
         start_time = time.time()
         # Get LLM instance
         llm = llm_parser(llm)
-
-        # Build graph
-        graph = build_lg_graph(mermaid_diagram=False)
+        self._require_model_credentials(llm.name)
 
         # get name of data description and idea files
-        f_data_description = os.path.join(self.project_dir, INPUT_FILES, DESCRIPTION_FILE)
-        f_idea             = os.path.join(self.project_dir, INPUT_FILES, IDEA_FILE)
+        f_data_description = os.path.join(
+            self.project_dir, INPUT_FILES, DESCRIPTION_FILE
+        )
+        f_idea = os.path.join(self.project_dir, INPUT_FILES, IDEA_FILE)
 
         recorder = self._start_manifest(
             "check_idea_semantic_scholar",
             models={"novelty": llm.name, "literature_summary": llm.name},
         )
-        config = {"configurable": {"thread_id": recorder.manifest.run_id}, "recursion_limit": 100}
-        config["callbacks"] = callbacks_for(recorder.manifest.run_id, recorder.manifest.workflow, recorder=recorder)
+        config = {
+            "configurable": {"thread_id": recorder.manifest.run_id},
+            "recursion_limit": 100,
+        }
+        config["callbacks"] = callbacks_for(
+            recorder.manifest.run_id, recorder.manifest.workflow, recorder=recorder
+        )
 
         # Phase 2 wiring: domain drives multi-source retrieval (arxiv+openalex+ads+semantic_scholar for astro)
         # Initialize the state
         input_state = {
             "task": "literature",
-            "files":{"Folder": self.project_dir, #name of project folder
-                     "data_description": f_data_description,
-                     "idea": f_idea},
-            "llm": {"model": llm.name,                #name of the LLM model to use
-                    "temperature": llm.temperature,
-                    "max_output_tokens": llm.max_output_tokens,
-                    "stream_verbose": verbose},
+            "files": {
+                "Folder": self.project_dir,  # name of project folder
+                "data_description": f_data_description,
+                "idea": f_idea,
+            },
+            "llm": {
+                "model": llm.name,  # name of the LLM model to use
+                "temperature": llm.temperature,
+                "max_output_tokens": llm.max_output_tokens,
+                "stream_verbose": verbose,
+            },
             "keys": self.keys,
             "literature": {"max_iterations": max_iterations},
             "idea": {"total_iterations": 4},
@@ -611,7 +753,18 @@ class Plato:
 
         # Run the graph
         try:
-            graph.invoke(input_state, config) # type: ignore
+
+            async def _run_graph() -> None:
+                from .langgraph_agents.agents_graph import build_lg_graph
+
+                async with make_async_checkpointer() as checkpointer:
+                    graph = build_lg_graph(
+                        mermaid_diagram=False,
+                        checkpointer=checkpointer,
+                    )
+                    await graph.ainvoke(input_state, config)
+
+            self._run_coroutine_sync(_run_graph())
             recorder.finish("success")
 
             # End timer and report duration in minutes and seconds
@@ -623,31 +776,34 @@ class Plato:
 
         except Exception as e:
             recorder.finish("error", error=str(e))
-            print('Plato failed to check literature')
-            print(f'Error: {e}')
-            return "Error occurred during literature check"
+            logger.error("Plato failed to check literature: %s", e)
+            raise
 
         # Read and return the generated literature content
         try:
-            literature_file = os.path.join(self.project_dir, INPUT_FILES, LITERATURE_FILE)
-            with open(literature_file, 'r') as f:
+            literature_file = os.path.join(
+                self.project_dir, INPUT_FILES, LITERATURE_FILE
+            )
+            with open(literature_file, "r") as f:
                 return f.read()
-        except FileNotFoundError:
-            return "Literature file not found"
-        
-    def get_method(self,
-                   mode = "fast",
-                   llm: LLM | str = models["gemini-2.0-flash"],
-                   method_generator_model: LLM | str = models["gpt-4o"],
-                   planner_model: LLM | str = models["gpt-4o"],
-                   plan_reviewer_model: LLM | str = models["o3-mini"],
-                   orchestration_model: LLM | str = models["gpt-4.1"],
-                   formatter_model: LLM | str = models["o3-mini"],
-                   verbose = False,
-                   ) -> None:
+        except FileNotFoundError as exc:
+            logger.error("Literature file was not generated: %s", exc)
+            raise
+
+    def get_method(
+        self,
+        mode="fast",
+        llm: LLM | str = models["gemini-2.5-flash"],
+        method_generator_model: LLM | str = models["gpt-4o"],
+        planner_model: LLM | str = models["gpt-4o"],
+        plan_reviewer_model: LLM | str = models["o3-mini"],
+        orchestration_model: LLM | str = models["gpt-4.1"],
+        formatter_model: LLM | str = models["o3-mini"],
+        verbose=False,
+    ) -> None:
         """
         Generate the methods to be employed making use of the data and tools described in `data_description.md` and the idea in `idea.md`.
-        
+
         Args:
             mode: either "fast" or "cmbagent". Fast mode uses langgraph backend and is faster but less reliable. Cmbagent mode uses cmbagent backend and is slower but more reliable.
             llm: the LLM to be used for the fast mode.
@@ -663,21 +819,24 @@ class Plato:
         if mode == "fast":
             self.get_method_fast(llm=llm, verbose=verbose)
         elif mode == "cmbagent":
-            self.get_method_cmbagent(method_generator_model=method_generator_model,
-                                     planner_model=planner_model,
-                                     plan_reviewer_model=plan_reviewer_model,
-                                     orchestration_model=orchestration_model,
-                                     formatter_model=formatter_model)
+            self.get_method_cmbagent(
+                method_generator_model=method_generator_model,
+                planner_model=planner_model,
+                plan_reviewer_model=plan_reviewer_model,
+                orchestration_model=orchestration_model,
+                formatter_model=formatter_model,
+            )
         else:
             raise ValueError("Mode must be either 'fast' or 'cmbagent'")
 
-    def get_method_cmbagent(self,
-                            method_generator_model: LLM | str = models["gpt-4o"],
-                            planner_model: LLM | str = models["gpt-4o"],
-                            plan_reviewer_model: LLM | str = models["o3-mini"],
-                            orchestration_model: LLM | str = models["gpt-4.1"],
-                            formatter_model: LLM | str = models["o3-mini"],
-                            ) -> None:
+    def get_method_cmbagent(
+        self,
+        method_generator_model: LLM | str = models["gpt-4o"],
+        planner_model: LLM | str = models["gpt-4o"],
+        plan_reviewer_model: LLM | str = models["o3-mini"],
+        orchestration_model: LLM | str = models["gpt-4.1"],
+        formatter_model: LLM | str = models["o3-mini"],
+    ) -> None:
         """
         Generate the methods to be employed making use of the data and tools described in `data_description.md` and the idea in `idea.md`.
 
@@ -697,11 +856,13 @@ class Plato:
         )
 
         if self.research.data_description == "":
-            with open(os.path.join(self.project_dir, INPUT_FILES, DESCRIPTION_FILE), 'r') as f:
-                self.research.data_description = f.read()        
+            with open(
+                os.path.join(self.project_dir, INPUT_FILES, DESCRIPTION_FILE), "r"
+            ) as f:
+                self.research.data_description = f.read()
 
         if self.research.idea == "":
-            with open(os.path.join(self.project_dir, INPUT_FILES, IDEA_FILE), 'r') as f:
+            with open(os.path.join(self.project_dir, INPUT_FILES, IDEA_FILE), "r") as f:
                 self.research.idea = f.read()
 
         method_generator_model = llm_parser(method_generator_model)
@@ -709,30 +870,43 @@ class Plato:
         plan_reviewer_model = llm_parser(plan_reviewer_model)
         orchestration_model = llm_parser(orchestration_model)
         formatter_model = llm_parser(formatter_model)
+        self._require_model_credentials(
+            method_generator_model.name,
+            planner_model.name,
+            plan_reviewer_model.name,
+            orchestration_model.name,
+            formatter_model.name,
+        )
 
-        method = Method(self.research.idea, keys=self.keys,  
-                        work_dir = self.project_dir, 
-                        researcher_model=method_generator_model.name, 
-                        planner_model=planner_model.name, 
-                        plan_reviewer_model=plan_reviewer_model.name,
-                        orchestration_model = orchestration_model.name,
-                        formatter_model = formatter_model.name)
-        
-        methododology = method.develop_method(self.research.data_description)
-        self.research.methodology = methododology
+        from .method import Method
+
+        method = Method(
+            self.research.idea,
+            keys=self.keys,
+            work_dir=self.project_dir,
+            researcher_model=method_generator_model.name,
+            planner_model=planner_model.name,
+            plan_reviewer_model=plan_reviewer_model.name,
+            orchestration_model=orchestration_model.name,
+            formatter_model=formatter_model.name,
+        )
+
+        methodology = method.develop_method(self.research.data_description)
+        self.research.methodology = methodology
 
         # Write idea to file
         method_path = os.path.join(self.project_dir, INPUT_FILES, METHOD_FILE)
-        with open(method_path, 'w') as f:
-            f.write(methododology)
+        with open(method_path, "w") as f:
+            f.write(methodology)
 
-    def get_method_fast(self,
-                        llm: LLM | str = models["gemini-2.0-flash"],
-                        verbose=False,
-                        ) -> None:
+    def get_method_fast(
+        self,
+        llm: LLM | str = models["gemini-2.5-flash"],
+        verbose=False,
+    ) -> None:
         """
         Generate the methods to be employed making use of the data and tools described in `data_description.md` and the idea in `idea.md`. Faster version get_method.
-        
+
         Args:
            llm: the LLM model to be used
            verbose: whether to stream the LLM response
@@ -742,38 +916,52 @@ class Plato:
         start_time = time.time()
         # Get LLM instance
         llm = llm_parser(llm)
+        self._require_model_credentials(llm.name)
+
+        from .langgraph_agents.agents_graph import build_lg_graph
 
         # Build graph
         graph = build_lg_graph(mermaid_diagram=False)
 
         # get name of data description file and idea
-        f_data_description = os.path.join(self.project_dir, INPUT_FILES, DESCRIPTION_FILE)
+        f_data_description = os.path.join(
+            self.project_dir, INPUT_FILES, DESCRIPTION_FILE
+        )
         f_idea = os.path.join(self.project_dir, INPUT_FILES, IDEA_FILE)
-        
+
         recorder = self._start_manifest(
             "get_method_fast",
             models={"methods": llm.name},
         )
-        config = {"configurable": {"thread_id": recorder.manifest.run_id}, "recursion_limit": 100}
-        config["callbacks"] = callbacks_for(recorder.manifest.run_id, recorder.manifest.workflow, recorder=recorder)
+        config = {
+            "configurable": {"thread_id": recorder.manifest.run_id},
+            "recursion_limit": 100,
+        }
+        config["callbacks"] = callbacks_for(
+            recorder.manifest.run_id, recorder.manifest.workflow, recorder=recorder
+        )
 
         # Initialize the state
         input_state = {
             "task": "methods_generation",
-            "files":{"Folder": self.project_dir,              #name of project folder
-                     "data_description": f_data_description,
-                     "idea": f_idea},
-            "llm": {"model": llm.name,                #name of the LLM model to use
-                    "temperature": llm.temperature,
-                    "max_output_tokens": llm.max_output_tokens,
-                    "stream_verbose": verbose},
+            "files": {
+                "Folder": self.project_dir,  # name of project folder
+                "data_description": f_data_description,
+                "idea": f_idea,
+            },
+            "llm": {
+                "model": llm.name,  # name of the LLM model to use
+                "temperature": llm.temperature,
+                "max_output_tokens": llm.max_output_tokens,
+                "stream_verbose": verbose,
+            },
             "keys": self.keys,
             "idea": {"total_iterations": 4},
         }
 
         try:
             # Run the graph
-            graph.invoke(input_state, config) # type: ignore
+            graph.invoke(input_state, config)
             recorder.finish("success")
         except Exception as e:
             recorder.finish("error", error=str(e))
@@ -786,20 +974,21 @@ class Plato:
         seconds = int(elapsed_time % 60)
         print(f"Methods generated in {minutes} min {seconds} sec.")
 
-    def get_results(self,
-                    involved_agents: List[str] = ['engineer', 'researcher'],
-                    engineer_model: LLM | str = models["gpt-4.1"],
-                    researcher_model: LLM | str = models["o3-mini"],
-                    restart_at_step: int = -1,
-                    hardware_constraints: str | None = None,
-                    planner_model: LLM | str = models["gpt-4o"],
-                    plan_reviewer_model: LLM | str = models["o3-mini"],
-                    max_n_attempts: int = 10,
-                    max_n_steps: int = 6,
-                    orchestration_model: LLM | str = models["gpt-4.1"],
-                    formatter_model: LLM | str = models["o3-mini"],
-                    executor: str | None = None,
-                    ) -> None:
+    def get_results(
+        self,
+        involved_agents: List[str] = ["engineer", "researcher"],
+        engineer_model: LLM | str = models["gpt-4.1"],
+        researcher_model: LLM | str = models["o3-mini"],
+        restart_at_step: int = -1,
+        hardware_constraints: str | None = None,
+        planner_model: LLM | str = models["gpt-4o"],
+        plan_reviewer_model: LLM | str = models["o3-mini"],
+        max_n_attempts: int = 10,
+        max_n_steps: int = 6,
+        orchestration_model: LLM | str = models["gpt-4.1"],
+        formatter_model: LLM | str = models["o3-mini"],
+        executor: str | None = None,
+    ) -> None:
         """
         Compute the results making use of the methods, idea and data description.
 
@@ -828,15 +1017,19 @@ class Plato:
         formatter_model = llm_parser(formatter_model)
 
         if self.research.data_description == "":
-            with open(os.path.join(self.project_dir, INPUT_FILES, DESCRIPTION_FILE), 'r') as f:
+            with open(
+                os.path.join(self.project_dir, INPUT_FILES, DESCRIPTION_FILE), "r"
+            ) as f:
                 self.research.data_description = f.read()
 
         if self.research.idea == "":
-            with open(os.path.join(self.project_dir, INPUT_FILES, IDEA_FILE), 'r') as f:
+            with open(os.path.join(self.project_dir, INPUT_FILES, IDEA_FILE), "r") as f:
                 self.research.idea = f.read()
 
         if self.research.methodology == "":
-            with open(os.path.join(self.project_dir, INPUT_FILES, METHOD_FILE), 'r') as f:
+            with open(
+                os.path.join(self.project_dir, INPUT_FILES, METHOD_FILE), "r"
+            ) as f:
                 self.research.methodology = f.read()
 
         # Iter-22 — executor resolution order (highest priority first):
@@ -850,30 +1043,41 @@ class Plato:
         #   3. The active ``DomainProfile.executor`` (registry default).
         if executor is not None:
             executor_name = executor
-        elif getattr(self, "_cli_executor_override", None):
+        elif self._cli_executor_override:
             executor_name = self._cli_executor_override
         else:
             executor_name = self.domain.executor
         executor_obj = get_executor(executor_name)
+        if getattr(executor_obj, "requires_model_credentials", False):
+            self._require_model_credentials(
+                engineer_model.name,
+                researcher_model.name,
+                planner_model.name,
+                plan_reviewer_model.name,
+                orchestration_model.name,
+                formatter_model.name,
+            )
 
-        result = asyncio.run(executor_obj.run(
-            research_idea=self.research.idea,
-            methodology=self.research.methodology,
-            data_description=self.research.data_description,
-            project_dir=self.project_dir,
-            keys=self.keys,
-            involved_agents=involved_agents,
-            engineer_model=engineer_model.name,
-            researcher_model=researcher_model.name,
-            planner_model=planner_model.name,
-            plan_reviewer_model=plan_reviewer_model.name,
-            restart_at_step=restart_at_step,
-            hardware_constraints=hardware_constraints,
-            max_n_attempts=max_n_attempts,
-            max_n_steps=max_n_steps,
-            orchestration_model=orchestration_model.name,
-            formatter_model=formatter_model.name,
-        ))
+        result = self._run_coroutine_sync(
+            executor_obj.run(
+                research_idea=self.research.idea,
+                methodology=self.research.methodology,
+                data_description=self.research.data_description,
+                project_dir=self.project_dir,
+                keys=self.keys,
+                involved_agents=involved_agents,
+                engineer_model=engineer_model.name,
+                researcher_model=researcher_model.name,
+                planner_model=planner_model.name,
+                plan_reviewer_model=plan_reviewer_model.name,
+                restart_at_step=restart_at_step,
+                hardware_constraints=hardware_constraints,
+                max_n_attempts=max_n_attempts,
+                max_n_steps=max_n_steps,
+                orchestration_model=orchestration_model.name,
+                formatter_model=formatter_model.name,
+            )
+        )
 
         self.research.results = result.results
         self.research.plot_paths = list(result.plot_paths)
@@ -909,10 +1113,12 @@ class Plato:
 
         # Write results to file
         results_path = os.path.join(self.project_dir, INPUT_FILES, RESULTS_FILE)
-        with open(results_path, 'w') as f:
+        with open(results_path, "w") as f:
             f.write(self.research.results)
-    
-    def get_keywords(self, input_text: str, n_keywords: int = 5, kw_type: str = 'unesco') -> None:
+
+    def get_keywords(
+        self, input_text: str, n_keywords: int = 5, kw_type: str = "unesco"
+    ) -> None:
         """
         Get keywords from input text using cmbagent.
 
@@ -927,18 +1133,21 @@ class Plato:
         # Lazy import — see module-level comment.
         import cmbagent
 
-        keywords = cmbagent.get_keywords(input_text, n_keywords = n_keywords, kw_type = kw_type, api_keys = self.keys)
-        self.research.keywords = keywords # type: ignore
-        print('keywords: ', self.research.keywords)
+        keywords = cmbagent.get_keywords(
+            input_text, n_keywords=n_keywords, kw_type=kw_type, api_keys=self.keys
+        )
+        self.research.keywords = keywords
+        print("keywords: ", self.research.keywords)
 
-    def get_paper(self,
-                  journal: Journal = Journal.NONE,
-                  llm: LLM | str = models["gemini-2.5-flash"],
-                  writer: str = 'scientist',
-                  cmbagent_keywords: bool = False,
-                  add_citations=True,
-                  max_revision_iters: int = 2,
-                  ) -> None:
+    def get_paper(
+        self,
+        journal: Journal = Journal.NONE,
+        llm: LLM | str = models["gemini-2.5-flash"],
+        writer: str = "scientist",
+        cmbagent_keywords: bool = False,
+        add_citations=True,
+        max_revision_iters: int = 2,
+    ) -> None:
         """
         Generate a full paper based on the files in input_files:
 
@@ -970,30 +1179,44 @@ class Plato:
                 ``0`` disables revision entirely; the default of ``2``
                 mirrors what the architectural plan recommends.
         """
-        
+
         # Start timer
         start_time = time.time()
         # Get LLM instance
         llm = llm_parser(llm)
+        self._require_model_credentials(llm.name)
 
         recorder = self._start_manifest(
             "get_paper",
             models={"writer": llm.name},
-            extra={"journal": str(journal), "writer_style": writer,
-                   "add_citations": add_citations,
-                   "cmbagent_keywords": cmbagent_keywords},
+            extra={
+                "journal": str(journal),
+                "writer_style": writer,
+                "add_citations": add_citations,
+                "cmbagent_keywords": cmbagent_keywords,
+            },
         )
-        config = {"configurable": {"thread_id": recorder.manifest.run_id}, "recursion_limit": 100}
-        config["callbacks"] = callbacks_for(recorder.manifest.run_id, recorder.manifest.workflow, recorder=recorder)
+        config = {
+            "configurable": {"thread_id": recorder.manifest.run_id},
+            "recursion_limit": 100,
+        }
+        config["callbacks"] = callbacks_for(
+            recorder.manifest.run_id, recorder.manifest.workflow, recorder=recorder
+        )
 
         # Initialize the state
         input_state = {
-            "files":{"Folder": self.project_dir}, #name of project folder
-            "llm": {"model": llm.name,  #name of the LLM model to use
-                    "temperature": llm.temperature,
-                    "max_output_tokens": llm.max_output_tokens},
-            "paper":{"journal": journal, "add_citations": add_citations,
-                     "cmbagent_keywords": cmbagent_keywords},
+            "files": {"Folder": self.project_dir},  # name of project folder
+            "llm": {
+                "model": llm.name,  # name of the LLM model to use
+                "temperature": llm.temperature,
+                "max_output_tokens": llm.max_output_tokens,
+            },
+            "paper": {
+                "journal": journal,
+                "add_citations": add_citations,
+                "cmbagent_keywords": cmbagent_keywords,
+            },
             "keys": self.keys,
             "writer": writer,
             # R6 — seed the revision loop's bookkeeping so the router
@@ -1003,15 +1226,18 @@ class Plato:
         }
 
         try:
+
             async def _run_graph() -> None:
+                from .paper_agents.agents_graph import build_graph
+
                 async with make_async_checkpointer() as checkpointer:
                     graph = build_graph(
                         mermaid_diagram=False,
                         checkpointer=checkpointer,
                     )
-                    await graph.ainvoke(input_state, config)  # type: ignore
+                    await graph.ainvoke(input_state, config)
 
-            asyncio.run(_run_graph())
+            self._run_coroutine_sync(_run_graph())
             self._publish_paper_artifacts()
             recorder.finish("success")
         except Exception as e:
@@ -1043,50 +1269,66 @@ class Plato:
                 return
         if (paper_dir / "main.tex").is_file() and (paper_dir / "main.pdf").is_file():
             return
-        raise RuntimeError("Paper generation finished without a compiled TeX/PDF artifact")
+        raise RuntimeError(
+            "Paper generation finished without a compiled TeX/PDF artifact"
+        )
 
-    def referee(self,
-                llm: LLM | str = models["gemini-2.5-flash"],
-                verbose=False) -> None:
+    def referee(
+        self, llm: LLM | str = models["gemini-2.5-flash"], verbose=False
+    ) -> None:
         """
         Review a paper, producing a report providing feedback on the quality of the articled and aspects to be improved.
 
         Args:
            llm: the LLM model to be used
-           verbose: whether to stream the LLM response 
+           verbose: whether to stream the LLM response
         """
 
         # Start timer
         start_time = time.time()
         # Get LLM instance
         llm = llm_parser(llm)
+        self._require_model_credentials(llm.name)
+
+        from .langgraph_agents.agents_graph import build_lg_graph
 
         # Build graph
         graph = build_lg_graph(mermaid_diagram=False)
 
         # get name of data description file and referee
-        f_data_description = os.path.join(self.project_dir, INPUT_FILES, DESCRIPTION_FILE)
+        f_data_description = os.path.join(
+            self.project_dir, INPUT_FILES, DESCRIPTION_FILE
+        )
 
         recorder = self._start_manifest("referee", models={"referee": llm.name})
-        config = {"configurable": {"thread_id": recorder.manifest.run_id}, "recursion_limit": 100}
-        config["callbacks"] = callbacks_for(recorder.manifest.run_id, recorder.manifest.workflow, recorder=recorder)
+        config = {
+            "configurable": {"thread_id": recorder.manifest.run_id},
+            "recursion_limit": 100,
+        }
+        config["callbacks"] = callbacks_for(
+            recorder.manifest.run_id, recorder.manifest.workflow, recorder=recorder
+        )
 
         # Initialize the state
         input_state = {
             "task": "referee",
-            "files":{"Folder": self.project_dir,  #name of project folder
-                     "data_description": f_data_description},
-            "llm": {"model": llm.name,                #name of the LLM model to use
-                    "temperature": llm.temperature,
-                    "max_output_tokens": llm.max_output_tokens,
-                    "stream_verbose": verbose},
+            "files": {
+                "Folder": self.project_dir,  # name of project folder
+                "data_description": f_data_description,
+            },
+            "llm": {
+                "model": llm.name,  # name of the LLM model to use
+                "temperature": llm.temperature,
+                "max_output_tokens": llm.max_output_tokens,
+                "stream_verbose": verbose,
+            },
             "keys": self.keys,
             "referee": {"paper_version": 2},
         }
 
         # Run the graph
         try:
-            graph.invoke(input_state, config) # type: ignore
+            graph.invoke(input_state, config)
             recorder.finish("success")
 
             # End timer and report duration in minutes and seconds
@@ -1098,9 +1340,11 @@ class Plato:
 
         except FileNotFoundError as e:
             recorder.finish("error", error=str(e))
-            print('Plato failed to provide a review for the paper. Ensure that a paper in the `paper` folder ex')
-            print(f'Error: {e}')
-        
+            print(
+                "Plato failed to provide a review for the paper. Ensure that a paper in the `paper` folder exists."
+            )
+            print(f"Error: {e}")
+
     def research_pilot(self, data_description: str | None = None) -> None:
         """Full run of Plato. It calls the following methods sequentially:
         ```

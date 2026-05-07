@@ -9,7 +9,7 @@ loop in :func:`plato.paper_agents.routers.revision_router`.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field
@@ -56,7 +56,8 @@ def critique_aggregator(state: GraphState, config: RunnableConfig):
     every reviewer's issues (each tagged with the reviewer name) so the
     redraft node can address them in one pass.
     """
-    critiques = state.get("critiques") or {}
+    raw_critiques = state.get("critiques")
+    critiques = dict(raw_critiques) if isinstance(raw_critiques, dict) else {}
 
     severities: list[int] = []
     issues: list[dict] = []
@@ -77,8 +78,14 @@ def critique_aggregator(state: GraphState, config: RunnableConfig):
             )
 
     max_severity = max(severities) if severities else 0
-    revision_state = state.get("revision_state") or {}
-    iteration = int(revision_state.get("iteration", 0) or 0)
+    raw_revision_state = state.get("revision_state")
+    revision_state = (
+        dict(raw_revision_state) if isinstance(raw_revision_state, dict) else {}
+    )
+    try:
+        iteration = int(revision_state.get("iteration", 0) or 0)
+    except (TypeError, ValueError):
+        iteration = 0
 
     digest = CritiqueDigest(
         max_severity=max_severity,

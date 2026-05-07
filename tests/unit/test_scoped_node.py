@@ -1,4 +1,5 @@
 """Unit tests for the R11 scoped_node decorator (iter 13)."""
+
 from __future__ import annotations
 
 import asyncio

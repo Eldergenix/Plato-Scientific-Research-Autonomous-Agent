@@ -26,11 +26,11 @@ Authentication: E2B uses ``E2B_API_KEY`` env var (or
 ``Sandbox(api_key=...)``). Auth failures bubble up unchanged so the
 caller sees E2B's own error.
 """
+
 from __future__ import annotations
 
 import asyncio
 import base64
-import re
 import textwrap
 from datetime import datetime, timezone
 from pathlib import Path
@@ -41,19 +41,42 @@ from . import ExecutorResult, register_executor
 __all__ = ["E2BExecutor"]
 
 
-_FENCE_RE = re.compile(
-    r"```(?:python|py|ipython)\s*\n(.*?)\n```",
-    re.DOTALL | re.IGNORECASE,
-)
-
-
 def _extract_code_cells(methodology: str) -> list[str]:
     """Same contract as LocalJupyter / Modal — fences first, whole text fallback."""
     if not methodology or not methodology.strip():
         return []
-    fenced = _FENCE_RE.findall(methodology)
-    if fenced:
-        return [block.strip() for block in fenced if block.strip()]
+
+    cells: list[str] = []
+    in_python_fence = False
+    saw_python_fence = False
+    current: list[str] = []
+    for line in methodology.splitlines():
+        stripped = line.strip()
+        if in_python_fence:
+            if stripped == "```":
+                body = "\n".join(current).strip()
+                if body:
+                    cells.append(body)
+                current = []
+                in_python_fence = False
+            else:
+                current.append(line)
+            continue
+
+        if stripped.startswith("```"):
+            language = stripped[3:].strip().lower()
+            if language in {"python", "py", "ipython"}:
+                saw_python_fence = True
+                in_python_fence = True
+                current = []
+
+    if in_python_fence and current:
+        body = "\n".join(current).strip()
+        if body:
+            cells.append(body)
+
+    if saw_python_fence:
+        return cells
     return [methodology.strip()]
 
 
@@ -108,14 +131,6 @@ class E2BExecutor:
         keys: Any,
         **kwargs: Any,
     ) -> ExecutorResult:
-        try:
-            from e2b_code_interpreter import Sandbox  # type: ignore[import-not-found]
-        except ImportError as exc:
-            raise ImportError(
-                "E2BExecutor requires the e2b-code-interpreter SDK. "
-                "Install it with: pip install e2b-code-interpreter"
-            ) from exc
-
         explicit_code = kwargs.get("code")
         if isinstance(explicit_code, str) and explicit_code.strip():
             cells: list[str] = [explicit_code.strip()]
@@ -128,6 +143,14 @@ class E2BExecutor:
                 plot_paths=[],
                 artifacts={"cells_executed": 0, "executor": "e2b"},
             )
+
+        try:
+            from e2b_code_interpreter import Sandbox
+        except ImportError as exc:
+            raise ImportError(
+                "E2BExecutor requires the e2b-code-interpreter SDK. "
+                "Install it with: pip install e2b-code-interpreter"
+            ) from exc
 
         plots_dir = Path(project_dir) / "plots" / "e2b"
         plots_dir.mkdir(parents=True, exist_ok=True)
@@ -158,9 +181,7 @@ class E2BExecutor:
                     }
 
                     try:
-                        execution = sandbox.run_code(
-                            cell_src, timeout=timeout_seconds
-                        )
+                        execution = sandbox.run_code(cell_src, timeout=timeout_seconds)
                     except Exception as exc:
                         cell_record["error"] = {
                             "ename": "E2BSandboxError",
@@ -221,9 +242,7 @@ class E2BExecutor:
             finally:
                 # Sandbox.kill() is the v1+ API; .close() is the legacy
                 # one. Try the modern method first then fall through.
-                kill = getattr(sandbox, "kill", None) or getattr(
-                    sandbox, "close", None
-                )
+                kill = getattr(sandbox, "kill", None) or getattr(sandbox, "close", None)
                 if callable(kill):
                     try:
                         kill()
@@ -251,7 +270,9 @@ class E2BExecutor:
             err = record.get("error")
             if err:
                 sections.append("")
-                sections.append(f"**Error**: `{err.get('ename')}` — {err.get('evalue')}")
+                sections.append(
+                    f"**Error**: `{err.get('ename')}` — {err.get('evalue')}"
+                )
                 tb = err.get("traceback")
                 if tb:
                     sections.append("")

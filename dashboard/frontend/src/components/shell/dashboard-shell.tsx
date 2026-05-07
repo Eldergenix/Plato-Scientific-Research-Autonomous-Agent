@@ -10,6 +10,7 @@ import { CapabilitiesBanner } from "@/components/shell/capabilities-banner";
 import { CreateProjectModal } from "@/components/projects/create-project-modal";
 import { Sheet } from "@/components/ui/sheet";
 import { api } from "@/lib/api";
+import { persistSelectedProjectId, pickPreferredProject } from "@/lib/use-project";
 
 /**
  * Wrap any non-workspace page so it inherits the Linear sidebar + bottom bar.
@@ -43,8 +44,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     api.listProjects()
       .then((projects) => {
         if (cancelled) return;
-        const latest = projects[projects.length - 1];
-        setTeamName(latest?.name?.trim() || undefined);
+        const selected = projects.length > 0 ? pickPreferredProject(projects) : null;
+        setTeamName(selected?.name?.trim() || undefined);
       })
       .catch(() => !cancelled && setTeamName(undefined));
     return () => {
@@ -126,6 +127,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
         <div className="flex-1 min-h-0 flex flex-col p-1.5 md:pl-0">
           <main
+            id="main-content"
             className="flex-1 min-h-0 flex flex-col bg-(--color-bg-card) overflow-hidden"
             style={{
               "--color-bg-page": "var(--color-bg-card)",
@@ -140,9 +142,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
           <BottomBar
             onAskAi={() => setCmdOpen(true)}
-            onOpenHistory={() => {
-              /* run history panel — Phase 4 */
-            }}
+            onOpenHistory={() => router.push("/history")}
           />
         </div>
       </div>
@@ -156,7 +156,11 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       <CreateProjectModal
         open={createOpen}
         onOpenChange={setCreateOpen}
-        onCreated={() => router.push("/")}
+        onCreated={(project) => {
+          persistSelectedProjectId(project.id);
+          setTeamName(project.name.trim() || undefined);
+          router.push("/");
+        }}
       />
     </div>
   );
