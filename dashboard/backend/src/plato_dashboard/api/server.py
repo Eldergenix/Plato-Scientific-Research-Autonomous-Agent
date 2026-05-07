@@ -17,6 +17,7 @@ from ..domain.models import (
     Capabilities,
     CreateProjectRequest,
     KeysPayload,
+    PublicationSettings,
     Project,
     Run,
     StageContent,
@@ -59,6 +60,7 @@ from .novelty import router as novelty_router
 from .research_signals import router as research_signals_router
 from .retrieval_summary import router as retrieval_summary_router
 from .scientific_capabilities import router as scientific_capabilities_router
+from .scientific_scores import router as scientific_scores_router
 from .tooling import router as tooling_router
 from .user_preferences import router as user_preferences_router
 from .idea_history import router as idea_history_router
@@ -109,7 +111,7 @@ def _get_keys(settings: Settings = Depends(get_settings)) -> KeyStore:
     return KeyStore(settings.keys_path)
 
 
-_LLM_KEY_PROVIDERS = ("OPENAI", "GEMINI", "ANTHROPIC", "PERPLEXITY")
+_LLM_KEY_PROVIDERS = ("OPENAI", "GEMINI", "ANTHROPIC", "HUGGINGFACE", "PERPLEXITY")
 _LLM_REQUIRED_STAGES: set[StageId] = {
     "idea",
     "literature",
@@ -444,6 +446,7 @@ def create_app() -> FastAPI:
     app.include_router(research_signals_router, prefix="/api/v1", tags=["research_signals"])
     app.include_router(retrieval_summary_router, prefix="/api/v1", tags=["retrieval"])
     app.include_router(scientific_capabilities_router, prefix="/api/v1", tags=["scientific_capabilities"])
+    app.include_router(scientific_scores_router, prefix="/api/v1", tags=["scientific_scores"])
     app.include_router(tooling_router, prefix="/api/v1", tags=["tooling"])
     app.include_router(user_preferences_router, prefix="/api/v1", tags=["preferences"])
     app.include_router(idea_history_router, prefix="/api/v1", tags=["idea_history"])
@@ -501,6 +504,34 @@ def create_app() -> FastAPI:
     ) -> None:
         _enforce_project_tenant(store, pid, _get_user_id(request))
         store.delete(pid)
+
+    @app.get("/api/v1/projects/{pid}/publication_settings", response_model=PublicationSettings)
+    def get_publication_settings(
+        pid: str,
+        request: Request,
+        store: ProjectStore = Depends(_get_store),
+    ) -> PublicationSettings:
+        _enforce_project_tenant(store, pid, _get_user_id(request))
+        try:
+            return store.load(pid).publication_settings
+        except FileNotFoundError as exc:
+            raise HTTPException(404, detail={"code": "project_not_found"}) from exc
+
+    @app.put("/api/v1/projects/{pid}/publication_settings", response_model=PublicationSettings)
+    def update_publication_settings(
+        pid: str,
+        body: PublicationSettings,
+        request: Request,
+        store: ProjectStore = Depends(_get_store),
+    ) -> PublicationSettings:
+        _enforce_project_tenant(store, pid, _get_user_id(request))
+        try:
+            project = store.load(pid)
+        except FileNotFoundError as exc:
+            raise HTTPException(404, detail={"code": "project_not_found"}) from exc
+        project.publication_settings = body
+        store.save(project)
+        return project.publication_settings
 
     # ------------------------------------------------------------ stages
     @app.get("/api/v1/projects/{pid}/state/{stage}", response_model=StageContent | None)
@@ -757,6 +788,42 @@ def create_app() -> FastAPI:
         keys.save(payload)
         return keys.status().model_dump()
 
+    @app.get("/api/v1/keys/huggingface/account")
+    async def huggingface_account(keys: KeyStore = Depends(_get_keys)) -> dict:
+        key = keys.resolve("HUGGINGFACE")
+        if not key:
+            return {"connected": False, "account": None, "error": "no key configured"}
+
+        probe = _PROVIDER_PROBES["HUGGINGFACE"]
+        timeout = httpx.Timeout(8.0)
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await _send_probe(client, probe, key)
+        except httpx.TimeoutException:
+            return {"connected": False, "account": None, "error": "timeout"}
+        except httpx.HTTPError as exc:
+            return {
+                "connected": False,
+                "account": None,
+                "error": f"network error: {exc.__class__.__name__}: {exc}"[:200],
+            }
+
+        if not 200 <= resp.status_code < 300:
+            return {
+                "connected": False,
+                "account": None,
+                "error": _extract_provider_error(resp),
+            }
+        try:
+            body = resp.json()
+        except ValueError:
+            return {
+                "connected": False,
+                "account": None,
+                "error": "invalid Hugging Face account response",
+            }
+        return {"connected": True, "account": _shape_huggingface_account(body), "error": None}
+
     @app.get("/api/v1/projects/{pid}/usage")
     def project_usage(
         pid: str, store: ProjectStore = Depends(_get_store)
@@ -881,6 +948,18 @@ _PROVIDER_PROBES: dict[str, dict] = {
             "messages": [{"role": "user", "content": "hi"}],
         },
     },
+    "HUGGINGFACE": {
+        "method": "GET",
+        "url": "https://huggingface.co/api/whoami-v2",
+        "headers_fn": lambda key: {"Authorization": f"Bearer {key}"},
+        "account_fn": lambda body: (
+            body.get("name")
+            or body.get("fullname")
+            or body.get("email")
+            if isinstance(body, dict)
+            else None
+        ),
+    },
     "PERPLEXITY": {
         # Perplexity exposes /models on some accounts; if it 404s we fall back
         # to a 1-token chat completion so we still get an auth signal.
@@ -910,6 +989,34 @@ _PROVIDER_PROBES: dict[str, dict] = {
         "headers_fn": lambda key: {"x-api-key": key},
     },
 }
+
+
+def _shape_huggingface_account(body: Any) -> dict[str, Any]:
+    if not isinstance(body, dict):
+        return {}
+
+    orgs = []
+    for org in body.get("orgs") or body.get("organizations") or []:
+        if not isinstance(org, dict):
+            continue
+        orgs.append(
+            {
+                "name": org.get("name") or org.get("displayName"),
+                "fullname": org.get("fullname"),
+                "role": org.get("role") or org.get("roleInOrg"),
+                "type": org.get("type"),
+            }
+        )
+
+    return {
+        "name": body.get("name"),
+        "fullname": body.get("fullname"),
+        "email": body.get("email"),
+        "type": body.get("type"),
+        "isPro": body.get("isPro"),
+        "avatarUrl": body.get("avatarUrl"),
+        "orgs": orgs,
+    }
 
 
 def _extract_provider_error(resp: httpx.Response) -> str:
@@ -967,7 +1074,16 @@ async def _probe_provider(provider: str, key: str) -> dict:
 
     latency = int((time.perf_counter() - started) * 1000)
     if 200 <= resp.status_code < 300:
-        return {"ok": True, "latency_ms": latency, "error": None}
+        result: dict[str, object] = {"ok": True, "latency_ms": latency, "error": None}
+        account_fn = probe.get("account_fn")
+        if callable(account_fn):
+            try:
+                account = account_fn(resp.json())
+            except ValueError:
+                account = None
+            if account:
+                result["account"] = account
+        return result
     return {
         "ok": False,
         "latency_ms": latency,

@@ -20,7 +20,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Sheet } from "@/components/ui/sheet";
 import { useProject } from "@/lib/use-project";
 import { api } from "@/lib/api";
-import type { RunRecord } from "@/lib/api";
+import type { RunRecord, ScientificScores } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 import {
@@ -88,7 +88,13 @@ export default function Home() {
       .getKeysStatus()
       .then((s) => {
         if (cancelled) return;
-        const llmStates = [s.OPENAI, s.GEMINI, s.ANTHROPIC, s.PERPLEXITY];
+        const llmStates = [
+          s.OPENAI,
+          s.GEMINI,
+          s.ANTHROPIC,
+          s.HUGGINGFACE,
+          s.PERPLEXITY,
+        ];
         setHasAnyLlmKey(llmStates.some((v) => v && v !== "unset"));
       })
       .catch(() => {
@@ -777,6 +783,7 @@ function PaperStagePane({
     pdfUrl?: string;
     sections: import("@/components/stages/paper-preview").PaperSection[];
   }>({ sections: [] });
+  const [scores, setScores] = React.useState<ScientificScores | undefined>();
 
   // Re-fetch when the paper stage's lastRunAt changes — the worker writes
   // paper/main.{tex,pdf} as the last step of the run, so the new artifacts
@@ -806,6 +813,21 @@ function PaperStagePane({
     };
   }, [projectId, lastRunAt]);
 
+  React.useEffect(() => {
+    let cancelled = false;
+    api
+      .getScientificScores(projectId)
+      .then((r) => {
+        if (!cancelled) setScores(r);
+      })
+      .catch(() => {
+        if (!cancelled) setScores(undefined);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, lastRunAt]);
+
   // Single synthesized version pill — the file route doesn't expose git
   // history and parsing it would be overkill for this view. Keyed on
   // updatedAt so the pill identity changes when the project changes.
@@ -814,7 +836,14 @@ function PaperStagePane({
     [updatedAt],
   );
 
-  return <PaperPreview pdfUrl={artifacts.pdfUrl} sections={artifacts.sections} versions={versions} />;
+  return (
+    <PaperPreview
+      pdfUrl={artifacts.pdfUrl}
+      sections={artifacts.sections}
+      scores={scores}
+      versions={versions}
+    />
+  );
 }
 
 function OfflineBanner() {

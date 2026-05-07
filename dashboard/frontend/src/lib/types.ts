@@ -28,7 +28,13 @@ export interface Stage {
 
 export type Mode = "fast" | "cmbagent";
 
-export type Provider = "openai" | "gemini" | "anthropic" | "perplexity" | "semantic_scholar";
+export type Provider =
+  | "openai"
+  | "gemini"
+  | "anthropic"
+  | "huggingface"
+  | "perplexity"
+  | "semantic_scholar";
 
 export interface ModelDef {
   id: string;
@@ -43,6 +49,44 @@ export interface ModelDef {
 
 export type Journal = "NONE" | "AAS" | "APS" | "ICML" | "JHEP" | "NeurIPS" | "PASJ";
 
+export type PublicationTaskKind = "section" | "review" | "completion" | "other";
+export type PublicationTaskStatus = "todo" | "in_progress" | "blocked" | "done";
+
+export interface PublicationAuthor {
+  id: string;
+  name: string;
+  email?: string | null;
+  affiliation?: string | null;
+  role: string;
+  order: number;
+}
+
+export interface PublicationDates {
+  target?: string | null;
+  submitted?: string | null;
+  accepted?: string | null;
+  published?: string | null;
+}
+
+export interface PublicationTask {
+  id: string;
+  title: string;
+  kind: PublicationTaskKind;
+  section?: string | null;
+  assignee?: string | null;
+  assignee_email?: string | null;
+  status: PublicationTaskStatus;
+  due_at?: string | null;
+  completed_at?: string | null;
+  notes?: string | null;
+}
+
+export interface PublicationSettings {
+  authors: PublicationAuthor[];
+  dates: PublicationDates;
+  tasks: PublicationTask[];
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -53,6 +97,7 @@ export interface Project {
   activeRun?: ActiveRun | null;
   totalTokens: number;
   totalCostCents: number;
+  publicationSettings?: PublicationSettings;
   // Iter-27: per-project approvals carried alongside the Project shape
   // so synchronous gate evaluation (``getBlockingApproval``) doesn't
   // have to await an extra round trip per stage. ``null`` / undefined

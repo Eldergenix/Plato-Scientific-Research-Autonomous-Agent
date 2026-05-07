@@ -7,7 +7,13 @@ import type { ModelDef, Provider } from "@/lib/types";
 import { MODELS, MODEL_GROUPS, MODELS_BY_ID } from "@/lib/models";
 import { cn } from "@/lib/utils";
 
-type AvailableProvider = "openai" | "gemini" | "anthropic" | "perplexity" | "semantic_scholar";
+type AvailableProvider =
+  | "openai"
+  | "gemini"
+  | "anthropic"
+  | "huggingface"
+  | "perplexity"
+  | "semantic_scholar";
 
 export interface ModelPickerProps {
   value: string;
@@ -35,6 +41,7 @@ const PROVIDER_DOT: Record<Provider, string> = {
   anthropic: "#f0bf00",
   openai: "#27a644",
   gemini: "#4ea7fc",
+  huggingface: "#ff9d00",
   perplexity: "#bb87fc",
   semantic_scholar: "#ff7236",
 };
@@ -43,6 +50,7 @@ const PROVIDER_ADD_KEY_LABEL: Record<Provider, string> = {
   anthropic: "Add Anthropic key",
   openai: "Add OpenAI key",
   gemini: "Add Google key",
+  huggingface: "Add Hugging Face token",
   perplexity: "Add Perplexity key",
   semantic_scholar: "Add Semantic Scholar key",
 };
