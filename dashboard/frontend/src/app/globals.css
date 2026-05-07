@@ -41,11 +41,14 @@
   --color-bg-tag-pill: #0f1010;
   --color-bg-button-glass: #1d1d1e;
   --color-bg-button-glass-hover: #232325;
+  --color-bg-field: #141415;
 
   /* Borders */
   --color-border-card: #1d1d1f;
   --color-border-pill: #262628;
   --color-border-button-glass: rgba(255, 255, 255, 0.136);
+  --color-border-field: #262628;
+  --color-border-field-hover: #34343a;
 
   /* Text */
   --color-text-primary-strong: #ffffff;
@@ -560,6 +563,7 @@
   --color-bg-row-active: #eef0f3;
   --color-bg-button-glass: #ffffff;
   --color-bg-button-glass-hover: #edf0f4;
+  --color-bg-field: #ffffff;
   --color-bg-tag-pill: #ffffff;
   --color-bg-marketing: #f8fafb;
   --color-bg-panel: #ffffff;
@@ -572,6 +576,8 @@
   --color-border-strong: #c8cdd5;
   --color-border-pill: #e2e5ea;
   --color-border-button-glass: rgba(10, 10, 11, 0.12);
+  --color-border-field: #d8dde5;
+  --color-border-field-hover: #b9c0cb;
 
   --color-text-primary-strong: #0a0a0a;
   --color-text-primary: #0a0a0b;
