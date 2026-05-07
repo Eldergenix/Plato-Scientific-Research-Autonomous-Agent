@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field
 
-from .auth import auth_required, extract_user_id
+from .auth import USER_COOKIE, USER_HEADER, auth_required, extract_user_id
 from .settings import Settings
 
 McpTransport = Literal["stdio", "http", "sse"]
@@ -113,7 +113,7 @@ def resolve_user_id(request) -> str | None:  # noqa: ANN001 - FastAPI Request at
             status_code=401,
             detail={
                 "code": "auth_required",
-                "message": "Missing required header 'X-Plato-User'.",
+                "message": f"Missing required header '{USER_HEADER}' or cookie '{USER_COOKIE}'.",
             },
         )
     return user_id

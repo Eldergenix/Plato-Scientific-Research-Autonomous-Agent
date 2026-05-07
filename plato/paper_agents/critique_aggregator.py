@@ -56,7 +56,7 @@ def critique_aggregator(state: GraphState, config: RunnableConfig):
     every reviewer's issues (each tagged with the reviewer name) so the
     redraft node can address them in one pass.
     """
-    raw_critiques = state.get("critiques")
+    raw_critiques = cast(Any, state.get("critiques"))
     critiques = dict(raw_critiques) if isinstance(raw_critiques, dict) else {}
 
     severities: list[int] = []
@@ -78,7 +78,7 @@ def critique_aggregator(state: GraphState, config: RunnableConfig):
             )
 
     max_severity = max(severities) if severities else 0
-    raw_revision_state = state.get("revision_state")
+    raw_revision_state = cast(Any, state.get("revision_state"))
     revision_state = (
         dict(raw_revision_state) if isinstance(raw_revision_state, dict) else {}
     )

@@ -43,7 +43,7 @@ def _install_stub_license_audit(monkeypatch, dists: list[_StubDist]) -> None:
     scripts_pkg = sys.modules.get("scripts")
     if scripts_pkg is None:
         scripts_pkg = types.ModuleType("scripts")
-        scripts_pkg.__path__ = []  # type: ignore[attr-defined]
+        scripts_pkg.__path__ = []
         monkeypatch.setitem(sys.modules, "scripts", scripts_pkg)
     monkeypatch.setitem(sys.modules, "scripts.license_audit", fake)
 
@@ -116,7 +116,7 @@ def test_license_audit_caches_for_five_minutes(monkeypatch: pytest.MonkeyPatch) 
     fake.collect_distributions = _spy  # type: ignore[attr-defined]
     if "scripts" not in sys.modules:
         scripts_pkg = types.ModuleType("scripts")
-        scripts_pkg.__path__ = []  # type: ignore[attr-defined]
+        scripts_pkg.__path__ = []
         monkeypatch.setitem(sys.modules, "scripts", scripts_pkg)
     monkeypatch.setitem(sys.modules, "scripts.license_audit", fake)
 
@@ -143,7 +143,7 @@ def test_license_audit_500_when_script_missing(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setitem(sys.modules, "scripts.license_audit", broken)
     if "scripts" not in sys.modules:
         scripts_pkg = types.ModuleType("scripts")
-        scripts_pkg.__path__ = []  # type: ignore[attr-defined]
+        scripts_pkg.__path__ = []
         monkeypatch.setitem(sys.modules, "scripts", scripts_pkg)
 
     client = _build_client(monkeypatch)

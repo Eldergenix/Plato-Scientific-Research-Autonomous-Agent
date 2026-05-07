@@ -6,6 +6,7 @@ import pytest
 
 from plato.tools import call, get, list_tools
 from plato.tools.builtin import ScientificAnalysisInput
+from plato.tools.scientific_analysis import ScientificOperation
 
 
 @pytest.mark.parametrize(
@@ -47,7 +48,7 @@ from plato.tools.builtin import ScientificAnalysisInput
 )
 def test_scientific_analysis_operations_emit_publication_artifacts(
     tmp_path: Path,
-    operation: str,
+    operation: ScientificOperation,
     data: dict[str, object],
     required_values: set[str],
 ):

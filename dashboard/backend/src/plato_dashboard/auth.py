@@ -2,8 +2,9 @@
 
 The dashboard ships single-user by default — a no-op auth shim until you
 flip ``PLATO_DASHBOARD_AUTH_REQUIRED=1``. In required-mode every request
-must carry an ``X-Plato-User`` header; the value scopes the project
-directory and the run-manifest tenant id.
+must carry an ``X-Plato-User`` header or the dashboard-managed
+``plato_user`` cookie; the value scopes the project directory and the
+run-manifest tenant id.
 
 We deliberately avoid any signed-token plumbing here: the dashboard does
 not own identity. The header is meant to be set by the upstream proxy
@@ -20,6 +21,7 @@ import re
 from fastapi import HTTPException, Request, status
 
 USER_HEADER = "X-Plato-User"
+USER_COOKIE = "plato_user"
 AUTH_REQUIRED_ENV = "PLATO_DASHBOARD_AUTH_REQUIRED"
 
 # A user id is used directly as a path segment under
@@ -53,17 +55,10 @@ def _is_safe_user_id(value: str) -> bool:
     return True
 
 
-def extract_user_id(request: Request) -> str | None:
-    """Return the requester's user id, or ``None`` when unauthenticated.
-
-    The returned value has been validated against :data:`_USER_ID_RE`
-    so callers can use it directly as a filesystem path segment without
-    additional sanitization. An invalid value is treated as missing.
-    """
-    raw = request.headers.get(USER_HEADER)
-    if raw is None:
+def _clean_user_id(value: str | None) -> str | None:
+    if value is None:
         return None
-    cleaned = raw.strip()
+    cleaned = value.strip()
     if not cleaned:
         return None
     if not _is_safe_user_id(cleaned):
@@ -71,13 +66,28 @@ def extract_user_id(request: Request) -> str | None:
     return cleaned
 
 
+def extract_user_id(request: Request) -> str | None:
+    """Return the requester's user id, or ``None`` when unauthenticated.
+
+    Header wins when both are present so upstream authenticated proxies
+    can override the dashboard cookie. The returned value has been
+    validated against :data:`_USER_ID_RE` so callers can use it directly
+    as a filesystem path segment without additional sanitization. An
+    invalid value is treated as missing.
+    """
+    header_user_id = _clean_user_id(request.headers.get(USER_HEADER))
+    if header_user_id:
+        return header_user_id
+    return _clean_user_id(request.cookies.get(USER_COOKIE))
+
+
 def require_user_id(request: Request) -> str:
     """Return the requester's user id, or raise 401 in required-mode.
 
-    - Required-mode + missing header → ``HTTPException(401)``.
+    - Required-mode + missing identity → ``HTTPException(401)``.
     - Required-mode + header present → return its value.
     - Not-required mode + header present → return its value.
-    - Not-required mode + missing header → return ``""`` (legacy
+    - Not-required mode + missing identity → return ``""`` (legacy
       single-user fallback). Routes can branch on truthiness.
     """
     user_id = extract_user_id(request)
@@ -89,8 +99,9 @@ def require_user_id(request: Request) -> str:
             detail={
                 "code": "auth_required",
                 "message": (
-                    f"Missing required header '{USER_HEADER}'. The dashboard "
-                    "is configured for multi-tenant mode."
+                    f"Missing required header '{USER_HEADER}' or cookie "
+                    f"'{USER_COOKIE}'. The dashboard is configured for "
+                    "multi-tenant mode."
                 ),
             },
         )
@@ -99,6 +110,7 @@ def require_user_id(request: Request) -> str:
 
 __all__ = [
     "AUTH_REQUIRED_ENV",
+    "USER_COOKIE",
     "USER_HEADER",
     "auth_required",
     "extract_user_id",

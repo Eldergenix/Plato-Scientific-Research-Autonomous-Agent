@@ -166,7 +166,7 @@ async def test_run_with_stub_modal_returns_envelope(
             # "-c". Capture it so the test can verify the user code
             # made it into the sandbox.
             captured_runners.append(args[-1] if args else "")
-            envelope = {
+            envelope: dict[str, Any] = {
                 "stdout": "ran cell 1",
                 "stderr": "",
                 "figures": [],
@@ -195,9 +195,9 @@ async def test_run_with_stub_modal_returns_envelope(
     import types as _types
 
     fake = _types.ModuleType("modal")
-    fake.Sandbox = _StubSandboxFactory
-    fake.App = _StubAppNamespace
-    fake.Image = _StubImageNamespace
+    setattr(fake, "Sandbox", _StubSandboxFactory)
+    setattr(fake, "App", _StubAppNamespace)
+    setattr(fake, "Image", _StubImageNamespace)
     monkeypatch.setitem(sys.modules, "modal", fake)
 
     executor = ModalExecutor()

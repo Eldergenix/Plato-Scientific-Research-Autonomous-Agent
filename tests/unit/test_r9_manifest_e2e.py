@@ -29,7 +29,7 @@ from plato.state.manifest import ManifestRecorder
 def _build_state(
     project_dir: Path,
     *,
-    recorder: ManifestRecorder | None,
+    recorder: Any | None,
     fake_llm: Any,
 ) -> dict[str, Any]:
     """Build the minimal state dict the LLM_call helpers expect.

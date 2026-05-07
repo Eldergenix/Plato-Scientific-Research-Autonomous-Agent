@@ -224,7 +224,8 @@ class ProjectStore:
         async with aiofiles.open(path, "r") as f:
             text = await f.read()
         mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
-        origin = proj.stages.get(stage).origin if proj.stages.get(stage) else "ai"
+        stage_record = proj.stages.get(stage)
+        origin = stage_record.origin if stage_record is not None else "ai"
         return StageContent(stage=stage, markdown=text, updated_at=mtime, origin=origin or "ai")
 
     async def write_stage(self, pid: str, stage: StageId, markdown: str, origin: str = "edited") -> StageContent:

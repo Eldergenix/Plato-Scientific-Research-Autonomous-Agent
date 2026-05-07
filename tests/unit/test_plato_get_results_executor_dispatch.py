@@ -203,7 +203,7 @@ def test_cli_executor_override_used_when_kwarg_omitted(
     _seed_inputs(plato, idea="i", method="m", description="d")
 
     # Simulate the CLI's iter-21 write.
-    plato._cli_executor_override = recording_executor.name  # type: ignore[attr-defined]
+    plato._cli_executor_override = recording_executor.name
 
     plato.get_results()  # no executor kwarg → override should win
 
@@ -220,7 +220,7 @@ def test_explicit_executor_kwarg_beats_cli_override(
     try:
         plato = Plato(project_dir=str(tmp_path))
         _seed_inputs(plato, idea="i", method="m", description="d")
-        plato._cli_executor_override = other.name  # type: ignore[attr-defined]
+        plato._cli_executor_override = other.name
 
         # Explicit kwarg points at recording_executor; should win over override.
         plato.get_results(executor=recording_executor.name)
@@ -243,7 +243,7 @@ def test_cli_executor_override_beats_domain_default(
     plato = Plato(project_dir=str(tmp_path), domain=domain)
     _seed_inputs(plato, idea="i", method="m", description="d")
 
-    plato._cli_executor_override = recording_executor.name  # type: ignore[attr-defined]
+    plato._cli_executor_override = recording_executor.name
     plato.get_results()  # no kwarg → override beats domain default
 
     assert len(recording_executor.calls) == 1
@@ -262,7 +262,7 @@ def test_cli_executor_override_falsy_is_ignored(
     _seed_inputs(plato, idea="i", method="m", description="d")
 
     # Override deliberately falsy → should fall through to domain default.
-    plato._cli_executor_override = ""  # type: ignore[attr-defined]
+    plato._cli_executor_override = ""
     plato.get_results()
 
     assert len(recording_executor.calls) == 1

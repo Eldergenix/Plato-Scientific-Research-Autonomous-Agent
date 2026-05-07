@@ -74,7 +74,7 @@ def test_postgres_backend_requires_dsn():
 
 def test_unknown_backend_raises():
     with pytest.raises(ValueError, match="Unknown checkpointer backend"):
-        make_checkpointer("oracle")  # type: ignore[arg-type]
+        make_checkpointer("oracle")
 
 
 # --- helpers --------------------------------------------------------------

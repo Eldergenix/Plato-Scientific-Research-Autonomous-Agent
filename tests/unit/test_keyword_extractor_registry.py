@@ -70,10 +70,10 @@ def test_register_keyword_extractor_collision_requires_overwrite() -> None:
             return {}
 
     with pytest.raises(ValueError):
-        register_keyword_extractor(_Stub())  # type: ignore[arg-type]
+        register_keyword_extractor(_Stub())
 
     # ``overwrite=True`` must succeed and replace the entry.
-    register_keyword_extractor(_Stub(), overwrite=True)  # type: ignore[arg-type]
+    register_keyword_extractor(_Stub(), overwrite=True)
     try:
         assert KEYWORD_EXTRACTOR_REGISTRY["default"].extract("anything") == {}
     finally:

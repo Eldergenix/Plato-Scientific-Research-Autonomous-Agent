@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -49,7 +49,7 @@ def _response(payload: dict[str, Any], url: str = "https://api.openalex.org/work
     return httpx.Response(200, json=payload, request=httpx.Request("GET", url))
 
 
-def _make_get_mock(url_to_payload: dict[str, dict[str, Any]]) -> AsyncMock:
+def _make_get_mock(url_to_payload: dict[str, Any]) -> AsyncMock:
     """Return an AsyncMock whose response depends on the requested URL.
 
     Matches by *substring* so callers can express the intent ("URL contains
@@ -59,7 +59,7 @@ def _make_get_mock(url_to_payload: dict[str, dict[str, Any]]) -> AsyncMock:
     async def _fake_get(url: str, *args: Any, **kwargs: Any) -> httpx.Response:
         for needle, payload in url_to_payload.items():
             if needle in url:
-                return _response(payload, url=url)
+                return _response(cast(dict[str, Any], payload), url=url)
         raise AssertionError(f"Unexpected URL in mocked client: {url}")
 
     return AsyncMock(side_effect=_fake_get)
