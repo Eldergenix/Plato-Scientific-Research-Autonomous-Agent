@@ -31,6 +31,9 @@ dependencies = [
   "pymupdf",
   "pillow",
   "jsonschema",
+  "jupyter-client>=8.6",
+  "ipykernel>=6.29",
+  "defusedxml>=0.7.1",
   "futurehouse-client",
   "json5",
   "pip",
@@ -63,6 +66,10 @@ docs = [
   "mkdocs-jupyter>=0.25.1",
   "mkdocs-git-committers-plugin-2>=2.5.0",
 ]
+test = [
+  "pytest>=8.0",
+  "pytest-asyncio>=0.23",
+]
 # README's "Install" section advertises ``pip install "plato[dashboard]"``;
 # without this extra, that install command 404s. The dashboard backend is its
 # own package under ``dashboard/backend`` with a separate pyproject — we
@@ -80,6 +87,7 @@ dashboard = [
   "aiofiles>=24.1",
   "fakeredis>=2.26",
   "cryptography>=43.0",
+  "mcp>=1.12,<2.0",
 ]
 
 [build-system]

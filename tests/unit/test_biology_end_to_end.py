@@ -11,6 +11,7 @@ Mirrors the _FakePlato pattern from test_eval_runner.py, but:
    (``pubmed`` / ``openalex`` / ``semantic_scholar``) — never astro
    adapters like ``arxiv`` or ``ads``.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -123,7 +124,12 @@ def test_biology_profile_journal_presets_match_spec():
     """Sanity-check the §5.5 journal preset list at the source of truth."""
     biology = get_domain("biology")
     assert biology.journal_presets == [
-        "NATURE", "CELL", "SCIENCE", "PLOS_BIO", "ELIFE", "NONE",
+        "NATURE",
+        "CELL",
+        "SCIENCE",
+        "PLOS_BIO",
+        "ELIFE",
+        "NONE",
     ]
 
 
@@ -133,7 +139,9 @@ def test_protein_structure_task_has_biology_domain():
     assert task.domain == "biology"
     assert "AlphaFold" in task.expected_idea_keywords
     # Gold sources must include the AlphaFold paper DOI (per spec).
-    assert "10.1038/s41586-021-03819-2" in task.gold_sources
+    assert any(
+        source.doi == "10.1038/s41586-021-03819-2" for source in task.gold_sources
+    )
 
 
 def test_eval_runner_biology_end_to_end_writes_manifest_with_biology_domain(
@@ -205,9 +213,7 @@ def test_eval_runner_biology_run_only_uses_biology_adapters(tmp_path: Path) -> N
     assert sources == {"pubmed", "openalex", "semantic_scholar"}
     # And critically: no astro-only adapter ever got asked.
     leaked = sources & ASTRO_ONLY_ADAPTERS
-    assert not leaked, (
-        f"biology run leaked into astro-only adapters: {leaked}"
-    )
+    assert not leaked, f"biology run leaked into astro-only adapters: {leaked}"
 
 
 def test_summary_json_includes_biology_task(tmp_path: Path) -> None:

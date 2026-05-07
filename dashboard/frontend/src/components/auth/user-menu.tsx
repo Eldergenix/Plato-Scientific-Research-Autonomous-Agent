@@ -2,9 +2,17 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import {
+  OrganizationSwitcher,
+  Show,
+  SignInButton,
+  SignUpButton,
+  UserButton,
+} from "@clerk/nextjs";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { LogIn, LogOut, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { isClerkAuthEnabled } from "@/lib/auth-mode";
 import { useAuth } from "./auth-context";
 
 /**
@@ -16,6 +24,56 @@ import { useAuth } from "./auth-context";
  * - Signed out, auth required: redirects to /login on mount.
  */
 export function UserMenu() {
+  if (isClerkAuthEnabled()) {
+    return <ClerkUserMenu />;
+  }
+  return <TenantUserMenu />;
+}
+
+function ClerkUserMenu() {
+  return (
+    <div className="flex items-center gap-2" data-testid="clerk-user-menu">
+      <Show when="signed-out">
+        <SignInButton mode="modal">
+          <button
+            type="button"
+            data-testid="clerk-signin"
+            className={cn(
+              "inline-flex h-7 items-center gap-1.5 rounded-[6px] px-2 text-[12px]",
+              "text-(--color-text-secondary) hover:bg-(--color-ghost-bg-hover) hover:text-(--color-text-primary)",
+              "transition-colors",
+            )}
+          >
+            <LogIn size={12} strokeWidth={1.75} />
+            Sign in
+          </button>
+        </SignInButton>
+        <SignUpButton mode="modal">
+          <button
+            type="button"
+            data-testid="clerk-signup"
+            className={cn(
+              "inline-flex h-7 items-center rounded-[6px] bg-(--color-brand-interactive) px-2 text-[12px] text-white",
+              "transition-colors hover:bg-(--color-brand-hover)",
+            )}
+          >
+            Sign up
+          </button>
+        </SignUpButton>
+      </Show>
+      <Show when="signed-in">
+        <OrganizationSwitcher
+          createOrganizationMode="modal"
+          organizationProfileMode="modal"
+          skipInvitationScreen={false}
+        />
+        <UserButton />
+      </Show>
+    </div>
+  );
+}
+
+function TenantUserMenu() {
   const router = useRouter();
   const { user_id, authRequired, loading, logout } = useAuth();
 

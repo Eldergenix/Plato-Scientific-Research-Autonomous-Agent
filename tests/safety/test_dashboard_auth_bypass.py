@@ -17,6 +17,7 @@ bypass shapes:
 Stream C may or may not be merged when this test runs — gate everything
 behind ``importorskip``.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -93,30 +94,21 @@ def test_crlf_in_header_does_not_smuggle_a_second_header():
 
     A naive implementation could let an attacker pass
     ``"alice\\r\\nX-Forwarded-For: bob"`` and have ``X-Forwarded-For``
-    show up as a second logical header. Confirm Starlette folds the
-    raw bytes into a single header value.
+    show up as a second logical header. The dashboard rejects the poisoned
+    identity outright and Starlette does not expose a forged second header.
     """
     poisoned = "alice\nX-Forwarded-For: bob"
     req = _make_request({"X-Plato-User": poisoned})
 
-    # The value comes back exactly as supplied (modulo strip), and no
-    # second logical header was created.
-    user_id = auth.extract_user_id(req)
-    assert user_id is not None
-    assert "alice" in user_id
+    assert auth.extract_user_id(req) is None
     assert req.headers.get("X-Forwarded-For") is None
 
 
-def test_crlf_in_header_value_is_returned_verbatim_after_strip():
-    """We don't validate the *content* of the header — that's the proxy's
-    job — but we must not crash and must not silently drop the value."""
+def test_crlf_in_header_value_is_rejected_after_strip():
+    """A value that still contains CRLF after strip is not a safe user id."""
     poisoned = "  alice\r\nX-Forwarded-For: bob  "
     req = _make_request({"X-Plato-User": poisoned})
-    user_id = auth.extract_user_id(req)
-    assert user_id is not None
-    # Leading/trailing whitespace was stripped.
-    assert not user_id.startswith(" ")
-    assert not user_id.endswith(" ")
+    assert auth.extract_user_id(req) is None
 
 
 # ---------------------------------------------------------------------------

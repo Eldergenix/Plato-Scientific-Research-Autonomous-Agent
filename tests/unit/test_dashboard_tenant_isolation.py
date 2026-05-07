@@ -9,6 +9,7 @@ queued-run fixture from the dashboard suite — and write the
 ``runs/<run_id>/manifest.json`` files by hand to exercise just the
 tenant-boundary logic.
 """
+
 from __future__ import annotations
 
 import json
@@ -19,9 +20,7 @@ from pathlib import Path
 import pytest
 
 # Make the dashboard backend src importable.
-_DASHBOARD_SRC = (
-    Path(__file__).resolve().parents[2] / "dashboard" / "backend" / "src"
-)
+_DASHBOARD_SRC = Path(__file__).resolve().parents[2] / "dashboard" / "backend" / "src"
 if str(_DASHBOARD_SRC) not in sys.path:
     sys.path.insert(0, str(_DASHBOARD_SRC))
 
@@ -75,11 +74,14 @@ def app_client(required_mode: Path):
 
     # Reset stale module-level run state between tests.
     from plato_dashboard.worker import run_manager
+
     run_manager._active_runs.clear()
     run_manager._run_tasks.clear()
     run_manager._subprocesses.clear()
+    run_manager._run_dirs.clear()
 
     from plato_dashboard.events import bus as bus_mod
+
     bus_mod._bus = None
 
     from plato_dashboard.api.server import create_app
@@ -151,6 +153,7 @@ def test_user_b_cannot_fetch_user_a_run(
     # subprocess-spawning path in a unit test, so reach in directly.
     from plato_dashboard.domain.models import Run, utcnow
     from plato_dashboard.worker import run_manager
+
     run_manager._active_runs["r_alice_1"] = Run(
         id="r_alice_1",
         project_id=pid_a,
@@ -197,6 +200,7 @@ def test_legacy_unauth_path_unaffected(
 
     from fastapi.testclient import TestClient
     from plato_dashboard.worker import run_manager
+
     run_manager._active_runs.clear()
     run_manager._run_tasks.clear()
     run_manager._subprocesses.clear()
@@ -227,11 +231,12 @@ def test_required_mode_run_self_access_works(
         headers={"X-Plato-User": "alice"},
     )
     pid = a_resp.json()["id"]
-    project_dir = _user_root(plato_home.parent, "alice") / pid
+    project_dir = _user_root(plato_home, "alice") / pid
     _write_manifest(project_dir, run_id="r_alice_2", user_id="alice")
 
     from plato_dashboard.domain.models import Run, utcnow
     from plato_dashboard.worker import run_manager
+
     run_manager._active_runs["r_alice_2"] = Run(
         id="r_alice_2",
         project_id=pid,

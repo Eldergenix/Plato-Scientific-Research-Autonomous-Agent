@@ -35,6 +35,7 @@ from ..domain.models import ActiveRun, Project, Run, StageId, utcnow
 from ..events.bus import EventBus
 from ..settings import get_settings
 from ..storage.key_store import ENV_KEYS, KeyStore
+from ..tooling import disabled_tool_names_for_project_dir
 
 # In-memory state. Promoted to Redis in Phase 2.
 _active_runs: dict[str, Run] = {}
@@ -667,6 +668,14 @@ def _child_main(
             kwargs = {"mode": lit_provider}
             if models_cfg.get("llm"):
                 kwargs["llm"] = models_cfg["llm"]
+            max_iterations = _config_or_extra(
+                config,
+                extra,
+                "max_iterations",
+                _config_or_extra(config, extra, "iterations", None),
+            )
+            if max_iterations is not None:
+                kwargs["max_iterations"] = int(max_iterations)
             plato.check_idea(**kwargs)
 
         else:
@@ -937,6 +946,12 @@ async def start_run(
     events_file.write_text("")
 
     env_keys = _resolve_keys()
+    disabled_tools = disabled_tool_names_for_project_dir(
+        resolved_project_dir,
+        get_settings().project_root,
+    )
+    if disabled_tools:
+        env_keys["PLATO_DISABLED_TOOLS"] = ",".join(disabled_tools)
     config = _normalize_model_config_for_keys(config, env_keys)
     run.config = config
 

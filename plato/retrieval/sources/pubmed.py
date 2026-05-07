@@ -12,6 +12,7 @@ Auto-registers itself in the adapter registry on import.
 An optional ``NCBI_API_KEY`` environment variable raises the per-IP rate
 limit from 3 req/s to 10 req/s. The endpoint works without a key.
 """
+
 from __future__ import annotations
 
 import os
@@ -160,9 +161,10 @@ def _extract_abstracts_from_efetch(xml_text: str) -> dict[str, str]:
     out: dict[str, str] = {}
     for article in root.iter("PubmedArticle"):
         pmid_el = article.find(".//MedlineCitation/PMID")
-        if pmid_el is None or not (pmid_el.text or "").strip():
+        pmid_text = pmid_el.text if pmid_el is not None else None
+        if not pmid_text or not pmid_text.strip():
             continue
-        pmid = pmid_el.text.strip()
+        pmid = pmid_text.strip()
         parts: list[str] = []
         for at in article.iter("AbstractText"):
             label = (at.attrib.get("Label") or "").strip()
@@ -270,7 +272,7 @@ def _extract_pmids(payload: dict[str, Any]) -> list[str]:
 
 
 def _map_esummary_payload(
-    payload: dict[str, Any],
+    payload: Any,
     pmids: list[str],
     abstracts: dict[str, str] | None = None,
 ) -> list[Source]:

@@ -150,6 +150,7 @@ class GraphState(TypedDict):
     sources: list[Any]                     # Source objects threaded through the validator
     references: list[Any]                  # Reference rows extracted by ``citations_node``
     validation_report: Optional[dict]      # populated by ``citation_validator_node``
+    scientific_verification_report: Optional[dict]  # publication provenance + repeatability gate
     store: Optional[Any]                   # SQLite store handle when persistence is wired
     # Phase 2 — R5 claim/evidence matrix
     claims: list[Any]                      # Claim objects produced by ``claim_extractor``

@@ -8,6 +8,8 @@ import { test, expect } from "./fixtures";
  * sidebar) so it's verified separately.
  */
 test.describe("navigation", () => {
+  test.describe.configure({ mode: "serial" });
+
   test("sidebar links navigate to Projects, Models, Costs", async ({ page }) => {
     await page.goto("/");
 

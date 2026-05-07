@@ -24,6 +24,7 @@ package. With this registry they just call
 ``register_journal_preset("MY_JOURNAL", LatexPresets(...))`` from a
 side-module.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -41,7 +42,44 @@ __all__ = [
 ]
 
 
-JOURNAL_PRESET_REGISTRY: dict[str, "LatexPresets"] = {}
+class _JournalPresetRegistry(dict[str, "LatexPresets"]):
+    def _load(self) -> None:
+        _ensure_builtins_registered()
+
+    def __contains__(self, key: object) -> bool:
+        self._load()
+        return dict.__contains__(self, key)
+
+    def __getitem__(self, key: str) -> "LatexPresets":
+        self._load()
+        return dict.__getitem__(self, key)
+
+    def keys(self):
+        self._load()
+        return dict.keys(self)
+
+    def get(self, key, default=None):
+        self._load()
+        return dict.get(self, key, default)
+
+    def values(self):
+        self._load()
+        return dict.values(self)
+
+    def items(self):
+        self._load()
+        return dict.items(self)
+
+    def __len__(self):
+        self._load()
+        return dict.__len__(self)
+
+    def __iter__(self):
+        self._load()
+        return dict.__iter__(self)
+
+
+JOURNAL_PRESET_REGISTRY: dict[str, "LatexPresets"] = _JournalPresetRegistry()
 
 
 def register_journal_preset(
@@ -59,7 +97,8 @@ def register_journal_preset(
     key = (name or "").upper()
     if not key:
         raise ValueError("Journal preset name must be a non-empty string.")
-    if not overwrite and key in JOURNAL_PRESET_REGISTRY:
+    _ensure_builtins_registered()
+    if not overwrite and dict.__contains__(JOURNAL_PRESET_REGISTRY, key):
         raise ValueError(
             f"Journal preset {key!r} is already registered; pass overwrite=True to replace."
         )
@@ -70,12 +109,12 @@ def get_journal_preset(name: str) -> "LatexPresets":
     """Look up a registered preset by name (lazy-loads the built-ins on first call)."""
     _ensure_builtins_registered()
     key = (name or "").upper()
-    if key not in JOURNAL_PRESET_REGISTRY:
+    if not dict.__contains__(JOURNAL_PRESET_REGISTRY, key):
         raise KeyError(
             f"Unknown journal preset {name!r}. "
             f"Registered: {sorted(JOURNAL_PRESET_REGISTRY)}"
         )
-    return JOURNAL_PRESET_REGISTRY[key]
+    return dict.__getitem__(JOURNAL_PRESET_REGISTRY, key)
 
 
 def list_journal_presets() -> list[str]:
@@ -116,4 +155,4 @@ def _ensure_builtins_registered() -> None:
             name = str(journal_key.value)
         else:
             name = "NONE"
-        register_journal_preset(name, preset, overwrite=True)
+        dict.__setitem__(JOURNAL_PRESET_REGISTRY, name.upper(), preset)

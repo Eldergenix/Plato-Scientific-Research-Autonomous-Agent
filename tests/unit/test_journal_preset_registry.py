@@ -13,6 +13,7 @@ What we pin:
    and normalises names to upper-case.
 4. The bundled `LatexPresets` instances are passed through unchanged.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -30,8 +31,18 @@ def test_lazy_load_seeds_all_journal_dict_entries() -> None:
     # These are the 12 journals shipped via journal_dict; the registry must
     # mirror every one of them.
     expected = {
-        "NONE", "AAS", "APS", "ICML", "JHEP", "NeurIPS".upper(),
-        "PASJ", "NATURE", "CELL", "SCIENCE", "PLOS_BIO", "ELIFE",
+        "NONE",
+        "AAS",
+        "APS",
+        "ICML",
+        "JHEP",
+        "NeurIPS".upper(),
+        "PASJ",
+        "NATURE",
+        "CELL",
+        "SCIENCE",
+        "PLOS_BIO",
+        "ELIFE",
     }
     assert expected.issubset(names)
 
@@ -66,7 +77,7 @@ def test_get_unknown_preset_raises_keyerror() -> None:
 def test_register_journal_preset_collision_requires_overwrite() -> None:
     from plato.paper_agents.journal import LatexPresets
 
-    stub = LatexPresets(article="article")  # smallest valid preset
+    stub = LatexPresets(article="article", abstract=lambda x: x)
 
     with pytest.raises(ValueError):
         register_journal_preset("AAS", stub)
@@ -78,13 +89,14 @@ def test_register_journal_preset_collision_requires_overwrite() -> None:
     finally:
         # Restore the real AAS preset so other tests aren't poisoned.
         from plato.paper_agents.latex_presets import latex_aas
+
         register_journal_preset("AAS", latex_aas, overwrite=True)
 
 
 def test_register_journal_preset_normalises_name_to_upper() -> None:
     from plato.paper_agents.journal import LatexPresets
 
-    stub = LatexPresets(article="article")
+    stub = LatexPresets(article="article", abstract=lambda x: x)
     register_journal_preset("My_Custom_Journal", stub, overwrite=True)
     try:
         assert get_journal_preset("MY_CUSTOM_JOURNAL") is stub
@@ -98,4 +110,6 @@ def test_register_rejects_empty_name() -> None:
     from plato.paper_agents.journal import LatexPresets
 
     with pytest.raises(ValueError):
-        register_journal_preset("", LatexPresets(article="article"))
+        register_journal_preset(
+            "", LatexPresets(article="article", abstract=lambda x: x)
+        )

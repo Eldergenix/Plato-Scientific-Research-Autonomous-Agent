@@ -20,11 +20,11 @@ The execution loop runs in a worker thread via ``asyncio.to_thread`` so
 the protocol's ``async def run`` stays awaitable without blocking the
 caller's event loop on ``KernelClient.get_iopub_msg``.
 """
+
 from __future__ import annotations
 
 import asyncio
 import base64
-import re
 import textwrap
 import traceback
 from datetime import datetime, timezone
@@ -34,16 +34,6 @@ from typing import Any
 from . import ExecutorResult, register_executor
 
 __all__ = ["LocalJupyterExecutor"]
-
-
-# Capture both fenced styles: ``` ```python ... ``` ``` and the bare
-# ``` ``` ... ``` ``` form. We only collect the python-tagged blocks; bare
-# fences are ambiguous (could be shell, JSON, ...) and skipped to avoid
-# silently feeding non-python content to the kernel.
-_FENCE_RE = re.compile(
-    r"```(?:python|py|ipython)\s*\n(.*?)\n```",
-    re.DOTALL | re.IGNORECASE,
-)
 
 
 def _extract_code_cells(methodology: str) -> list[str]:
@@ -56,9 +46,38 @@ def _extract_code_cells(methodology: str) -> list[str]:
     """
     if not methodology or not methodology.strip():
         return []
-    fenced = _FENCE_RE.findall(methodology)
-    if fenced:
-        return [block.strip() for block in fenced if block.strip()]
+
+    cells: list[str] = []
+    in_python_fence = False
+    saw_python_fence = False
+    current: list[str] = []
+    for line in methodology.splitlines():
+        stripped = line.strip()
+        if in_python_fence:
+            if stripped == "```":
+                body = "\n".join(current).strip()
+                if body:
+                    cells.append(body)
+                current = []
+                in_python_fence = False
+            else:
+                current.append(line)
+            continue
+
+        if stripped.startswith("```"):
+            language = stripped[3:].strip().lower()
+            if language in {"python", "py", "ipython"}:
+                saw_python_fence = True
+                in_python_fence = True
+                current = []
+
+    if in_python_fence and current:
+        body = "\n".join(current).strip()
+        if body:
+            cells.append(body)
+
+    if saw_python_fence:
+        return cells
     return [methodology.strip()]
 
 
@@ -84,18 +103,6 @@ class LocalJupyterExecutor:
         keys: Any,
         **kwargs: Any,
     ) -> ExecutorResult:
-        # Lazy import — keeps the module cheap when jupyter-client isn't
-        # installed in the active environment. The clean error message is
-        # the same one the iter-17 stub used so anyone scripting against
-        # ``ImportError`` doesn't see a regression.
-        try:
-            from jupyter_client.manager import KernelManager  # type: ignore[import-not-found]
-        except ImportError as exc:
-            raise ImportError(
-                "LocalJupyterExecutor requires jupyter-client. "
-                "Install it with: pip install jupyter-client"
-            ) from exc
-
         explicit_code = kwargs.get("code")
         if isinstance(explicit_code, str) and explicit_code.strip():
             cells: list[str] = [explicit_code.strip()]
@@ -110,6 +117,18 @@ class LocalJupyterExecutor:
                 plot_paths=[],
                 artifacts={"cells_executed": 0},
             )
+
+        # Lazy import — keeps the module cheap when jupyter-client isn't
+        # installed in the active environment. The clean error message is
+        # the same one the iter-17 stub used so anyone scripting against
+        # ``ImportError`` doesn't see a regression.
+        try:
+            from jupyter_client.manager import KernelManager
+        except ImportError as exc:
+            raise ImportError(
+                "LocalJupyterExecutor requires jupyter-client. "
+                "Install it with: pip install jupyter-client"
+            ) from exc
 
         kernel_name = kwargs.get("kernel_name") or "python3"
         execute_timeout = float(kwargs.get("execute_timeout") or 120.0)
@@ -183,9 +202,10 @@ class LocalJupyterExecutor:
                                 "evalue": content.get("evalue") or "",
                                 "traceback": content.get("traceback") or [],
                             }
-                        elif msg_type == "status" and content.get(
-                            "execution_state"
-                        ) == "idle":
+                        elif (
+                            msg_type == "status"
+                            and content.get("execution_state") == "idle"
+                        ):
                             # Kernel finished this cell. Done.
                             break
 
@@ -236,7 +256,9 @@ class LocalJupyterExecutor:
             err = record.get("error")
             if err:
                 sections.append("")
-                sections.append(f"**Error**: `{err.get('ename')}` — {err.get('evalue')}")
+                sections.append(
+                    f"**Error**: `{err.get('ename')}` — {err.get('evalue')}"
+                )
                 tb_text = _format_traceback(err)
                 if tb_text:
                     sections.append("")

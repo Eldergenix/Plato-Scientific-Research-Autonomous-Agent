@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 import pytest
 
 from plato.retrieval import (
-    ADAPTER_REGISTRY,
     SourceAdapter,
     get_adapter,
     list_adapters,

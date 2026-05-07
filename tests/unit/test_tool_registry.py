@@ -15,8 +15,10 @@ from plato.tools.registry import (
     _REGISTRY,
     call,
     get,
+    get_disabled_tools,
     list_tools,
     register,
+    set_disabled_tools,
 )
 
 
@@ -48,6 +50,7 @@ def _make_tool(
 def _isolate_registry():
     """Snapshot and restore the global tool registry around each test."""
     saved = dict(_REGISTRY)
+    saved_disabled = get_disabled_tools()
     _REGISTRY.clear()
     # Re-register built-ins so tests that probe them have a clean baseline.
     _REGISTRY.update(saved)
@@ -56,6 +59,7 @@ def _isolate_registry():
     finally:
         _REGISTRY.clear()
         _REGISTRY.update(saved)
+        set_disabled_tools(saved_disabled)
 
 
 def test_register_and_get_round_trip():
@@ -138,6 +142,15 @@ def test_call_no_permission_check_when_allowed_is_none():
     # allowed_permissions=None disables the gate.
     out = call("trusted", _Echo(msg="y"))
     assert out.msg == "x"
+
+
+def test_call_blocks_disabled_tool():
+    tool = _make_tool("disabled_tool", fn=lambda p: _Echo(msg="x"))
+    register(tool)
+    set_disabled_tools({"disabled_tool"})
+
+    with pytest.raises(PermissionError, match="disabled"):
+        call("disabled_tool", _Echo(msg="y"))
 
 
 def test_sync_tool_returns_value_directly():

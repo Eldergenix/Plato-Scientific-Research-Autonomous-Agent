@@ -113,18 +113,6 @@ export default function Home() {
     setCancelConfirmOpen(true);
   }, [project.activeRun]);
 
-  const handleSidebarStage = React.useCallback((stage: string) => {
-    if (stage === "history") {
-      setLogHeight((h) => (h === 0 ? 30 : 0));
-      return;
-    }
-    if (stage === "stages") {
-      setOpenStage("idea");
-      return;
-    }
-    setOpenStage(stage as StageId);
-  }, []);
-
   const [gateToast, setGateToast] = React.useState<{
     target: StageId;
     blockedBy: StageId;
@@ -181,8 +169,6 @@ export default function Home() {
           onOpenCommand={() => setCmdOpen(true)}
           onCreateProject={() => setCreateOpen(true)}
           projectName={loading ? "" : project.name}
-          activeStage={openStage ?? undefined}
-          onSelectStage={handleSidebarStage}
         />
       </div>
 
@@ -207,11 +193,6 @@ export default function Home() {
             setCreateOpen(true);
           }}
           projectName={loading ? "" : project.name}
-          activeStage={openStage ?? undefined}
-          onSelectStage={(stage) => {
-            setMobileNavOpen(false);
-            handleSidebarStage(stage);
-          }}
         />
       </Sheet>
 

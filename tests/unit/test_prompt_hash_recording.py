@@ -2,10 +2,8 @@
 from __future__ import annotations
 
 import hashlib
-from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
 
 from plato.paper_agents.tools import _record_prompt_hash
 

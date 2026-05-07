@@ -1,12 +1,11 @@
 import hashlib
 import re
-import sys
 import json
 import json5
 from pathlib import Path
+from typing import Any
 
 from .prompts import fixer_prompt, LaTeX_prompt
-from .parameters import GraphState
 from .journal import LatexPresets
 from .latex_presets import journal_dict
 
@@ -44,18 +43,21 @@ def LLM_call(prompt, state, *, node_name: str | None = None):
     """
     state["_last_prompt"] = prompt
     _record_prompt_hash(state, node_name)
-    message = state['llm']['llm'].invoke(prompt)
-    input_tokens  = message.usage_metadata['input_tokens']
-    output_tokens = message.usage_metadata['output_tokens']
-    if output_tokens>state['llm']['max_output_tokens']:
-        print('WARNING!! Max output tokens reach!')
-    state['tokens']['ti'] += input_tokens
-    state['tokens']['to'] += output_tokens
-    state['tokens']['i'] = input_tokens
-    state['tokens']['o'] = output_tokens
-    with open(state['files']['LLM_calls'], 'a') as f:
-        f.write(f"{state['tokens']['i']} {state['tokens']['o']} {state['tokens']['ti']} {state['tokens']['to']}\n")
-    
+    message = state["llm"]["llm"].invoke(prompt)
+    usage_metadata = message.usage_metadata or {}
+    input_tokens = usage_metadata.get("input_tokens", 0)
+    output_tokens = usage_metadata.get("output_tokens", 0)
+    if output_tokens > state["llm"]["max_output_tokens"]:
+        print("WARNING!! Max output tokens reach!")
+    state["tokens"]["ti"] += input_tokens
+    state["tokens"]["to"] += output_tokens
+    state["tokens"]["i"] = input_tokens
+    state["tokens"]["o"] = output_tokens
+    with open(state["files"]["LLM_calls"], "a") as f:
+        f.write(
+            f"{state['tokens']['i']} {state['tokens']['o']} {state['tokens']['ti']} {state['tokens']['to']}\n"
+        )
+
     return state, message.content
 
 
@@ -68,39 +70,40 @@ def LLM_call_stream(prompt, state, *, node_name: str | None = None):
     """
     state["_last_prompt"] = prompt
     _record_prompt_hash(state, node_name)
-    output_file_path = state['files']['f_stream']
-    
+    output_file_path = state["files"]["f_stream"]
+
     # Start streaming and writing/printing immediately
-    full_content = ''
-    state['tokens']['i'] = 0
-    state['tokens']['o'] = 0
-    with open(output_file_path, 'a') as f:
-        for chunk in state['llm']['llm'].stream(prompt):
+    full_content = ""
+    state["tokens"]["i"] = 0
+    state["tokens"]["o"] = 0
+    with open(output_file_path, "a") as f:
+        for chunk in state["llm"]["llm"].stream(prompt):
             text = chunk.content
             f.write(text)
             f.flush()  # Immediate file write
-            if state['llm']['stream_verbose']:
-                print(text, end='', flush=True)  # Immediate terminal output
+            if state["llm"]["stream_verbose"]:
+                print(text, end="", flush=True)  # Immediate terminal output
             full_content += text
 
             # After streaming, get token usage
-            usage = chunk.usage_metadata if hasattr(chunk, 'usage_metadata') else None
+            usage = chunk.usage_metadata if hasattr(chunk, "usage_metadata") else None
             if usage:
-                input_tokens = usage.get('input_tokens', 0)
-                output_tokens = usage.get('output_tokens', 0)
-                if output_tokens > state['llm']['max_output_tokens']:
-                    print('WARNING!! Max output tokens reached!')
+                input_tokens = usage.get("input_tokens", 0)
+                output_tokens = usage.get("output_tokens", 0)
+                if output_tokens > state["llm"]["max_output_tokens"]:
+                    print("WARNING!! Max output tokens reached!")
 
-                state['tokens']['ti'] += input_tokens
-                state['tokens']['to'] += output_tokens
-                state['tokens']['i'] += input_tokens
-                state['tokens']['o'] += output_tokens
-        f.write('\n\n')
-    with open(state['files']['LLM_calls'], 'a') as f:
-        f.write(f"{state['tokens']['i']} {state['tokens']['o']} {state['tokens']['ti']} {state['tokens']['to']}\n")
+                state["tokens"]["ti"] += input_tokens
+                state["tokens"]["to"] += output_tokens
+                state["tokens"]["i"] += input_tokens
+                state["tokens"]["o"] += output_tokens
+        f.write("\n\n")
+    with open(state["files"]["LLM_calls"], "a") as f:
+        f.write(
+            f"{state['tokens']['i']} {state['tokens']['o']} {state['tokens']['ti']} {state['tokens']['to']}\n"
+        )
 
     return state, full_content
-
 
 
 def temp_file(state, fin, action, text=None, json_file=False):
@@ -111,19 +114,20 @@ def temp_file(state, fin, action, text=None, json_file=False):
     text: when action is 'write', the text to write
     json: whether the file is json or not
     """
-    
-    journaldict: LatexPresets = journal_dict[state['paper']['journal']]
 
-    if action=='read':
-        with open(fin, 'r', encoding='utf-8') as f:
+    journaldict: LatexPresets = journal_dict[state["paper"]["journal"]]
+
+    if action == "read":
+        with open(fin, "r", encoding="utf-8") as f:
             if json_file:
                 return json.load(f)
             else:
                 latex_text = f.read()
-                
+
                 # Extract content between \begin{document} and \end{document}
-                match = re.search(r'\\begin{document}(.*?)\\end{document}',
-                                  latex_text, re.DOTALL)
+                match = re.search(
+                    r"\\begin{document}(.*?)\\end{document}", latex_text, re.DOTALL
+                )
 
                 if match:
                     extracted_text = match.group(1).strip()
@@ -131,15 +135,17 @@ def temp_file(state, fin, action, text=None, json_file=False):
                 else:
                     raise Exception("Text not found on file!")
 
-    elif action=='write':
-        with open(fin, 'w', encoding='utf-8') as f:
+    elif action == "write":
+        with open(fin, "w", encoding="utf-8") as f:
             if json_file:
                 json.dump(text, f, indent=2)
             else:
                 latex_text = rf"""\documentclass[{journaldict.layout}]{{{journaldict.article}}}
 
 \usepackage{{amsmath}}
+\usepackage{{amssymb}}
 \usepackage{{multirow}}
+\usepackage{{booktabs}}
 \usepackage{{natbib}}
 \usepackage{{graphicx}} 
 {journaldict.usepackage}
@@ -159,21 +165,20 @@ def json_parser(text):
     """
     This function extracts the text between ```json ```
     """
-    
+
     json_pattern = r"```json(.*)```"
     match = re.findall(json_pattern, text, re.DOTALL)
     json_string = match[0].strip()
-    json_string = json_string.replace("\\", "\\\\") #deal with unescaped backslashes
     try:
         parsed_json = json.loads(json_string)
     except json.decoder.JSONDecodeError:
         try:
-            json_string = json_string.replace("'", "\"")
+            json_string = re.sub(r'\\(?!["\\/bfnrtu])', r"\\\\", json_string)
+            json_string = json_string.replace("'", '"')
             parsed_json = json.loads(json_string)
         except Exception as e:
             raise ValueError(f"Failed to parse JSON: {e}")
     return parsed_json
-
 
 
 def json_parser2(text: str):
@@ -192,15 +197,16 @@ def json_parser2(text: str):
         return json.loads(json_string)
     except json.JSONDecodeError as e:
         # Helpful error to see exactly where it failed
-        snippet = json_string[max(0, e.pos-40):e.pos+40]
-        raise ValueError(f"JSON parse error at pos {e.pos}: {e.msg}\n…{snippet}…")
+        pos = e.pos if e.pos is not None else 0
+        snippet = json_string[max(0, pos - 40) : pos + 40]
+        raise ValueError(f"JSON parse error at pos {pos}: {e.msg}\n…{snippet}…")
 
-    
+
 def json_parser3(text: str):
     """
     This function extracts a json data from a text
     """
-    
+
     m = re.search(r"```json\s*(\{.*?\})\s*```", text, re.DOTALL | re.IGNORECASE)
     if not m:
         # fallback: any fenced block
@@ -215,7 +221,7 @@ def json_parser3(text: str):
     return data
 
 
-def extract_latex_block(state: GraphState, text: str, block: str) -> str:
+def extract_latex_block(state: Any, text: object, block: str) -> str:
     r"""
     This function takes some text and extracts the TEXT located between
     \begin{block}
@@ -228,15 +234,17 @@ def extract_latex_block(state: GraphState, text: str, block: str) -> str:
         # Join the list items into a single string
         # Use str(item) to ensure all list elements can be joined
         text = "".join([str(item) for item in text])
+    elif not isinstance(text, str):
+        text = str(text)
 
     pattern = rf"\\begin{{{block}}}(.*?)\\end{{{block}}}"
     match = re.search(pattern, text, re.DOTALL)
 
     if match:
         return match.group(1).strip()
-    
+
     # in case it fails
-    with open(state['files']['Error'], 'w', encoding='utf-8') as f:
+    with open(state["files"]["Error"], "w", encoding="utf-8") as f:
         f.write(text)
 
     # try to fix it using fixed
@@ -245,39 +253,37 @@ def extract_latex_block(state: GraphState, text: str, block: str) -> str:
     except ValueError:
         raise ValueError(f"Failed to extract {block}")
 
-    
 
-def fixer(state: GraphState, section_name):
+def fixer(state: Any, section_name: str) -> str:
     """
     This function will try to fix the errors with automatic parsing
     """
 
-    path = Path(state['files']['Error'])
+    path = Path(state["files"]["Error"])
     with path.open("r", encoding="utf-8") as f:
         Text = f.read()
-    
+
     PROMPT = fixer_prompt(Text, section_name)
     state, result = LLM_call(PROMPT, state, node_name="fixer")
-    #result = llm.invoke(PROMPT).content
-    
+    # result = llm.invoke(PROMPT).content
+
     # Extract caption
     pattern = rf"\\begin{{{section_name}}}(.*?)\\end{{{section_name}}}"
     match = re.search(pattern, result, re.DOTALL)
     if match:
         return match.group(1).strip()
     else:
-        with open(state['files']['Error'], 'w', encoding='utf-8') as f:
+        with open(state["files"]["Error"], "w", encoding="utf-8") as f:
             f.write(result)
-        print("Fixer failed to extract block")
-        sys.exit()
-
+        message = f"Fixer failed to extract {section_name} block"
+        print(message)
+        raise RuntimeError(message)
 
 
 def LaTeX_checker(state, text):
-
     PROMPT = LaTeX_prompt(text)
     state, result = LLM_call(PROMPT, state, node_name="latex_checker")
-    #result = llm.invoke(PROMPT).content
+    # result = llm.invoke(PROMPT).content
     text = extract_latex_block(state, result, "Text")
     return text
 
@@ -290,10 +296,10 @@ def clean_section(text, section):
     text = text.replace(r"\documentclass{article}", "")
     text = text.replace(r"\begin{document}", "")
     text = text.replace(r"\end{document}", "")
-    text = text.replace(fr"\section{{{section}}}", "")
-    text = text.replace(fr"\section*{{{section}}}", "")
-    text = text.replace(fr"\begin{{{section}}}", "")
-    text = text.replace(fr"\end{{{section}}}", "")
+    text = text.replace(rf"\section{{{section}}}", "")
+    text = text.replace(rf"\section*{{{section}}}", "")
+    text = text.replace(rf"\begin{{{section}}}", "")
+    text = text.replace(rf"\end{{{section}}}", "")
     text = text.replace(r"\maketitle", "")
     text = text.replace(r"<PARAGRAPH>", "")
     text = text.replace(r"</PARAGRAPH>", "")
@@ -313,7 +319,6 @@ def check_images_in_text(state, images):
 
     # Check that the images are in the text
     for key, value in images.items():
-        if value["name"] not in state['paper']['Results']:
+        if value["name"] not in state["paper"]["Results"]:
             return False
     return True
-

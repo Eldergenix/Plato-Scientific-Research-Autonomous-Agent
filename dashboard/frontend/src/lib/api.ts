@@ -131,12 +131,7 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
     });
   }
   if (!r.ok) {
-    let detail: unknown;
-    try {
-      detail = await r.json();
-    } catch {
-      detail = await r.text();
-    }
+    const detail = await readErrorDetail(r);
     throw new ApiError(r.status, detail);
   }
   if (r.status === 204) return undefined as T;
@@ -147,10 +142,37 @@ export class ApiError extends Error {
   status: number;
   detail: unknown;
   constructor(status: number, detail: unknown) {
-    super(`API error ${status}`);
+    super(errorMessageForDetail(status, detail));
     this.status = status;
     this.detail = detail;
   }
+}
+
+async function readErrorDetail(response: Response): Promise<unknown> {
+  const body = await response.text();
+  if (!body) return null;
+  try {
+    return JSON.parse(body);
+  } catch {
+    return body;
+  }
+}
+
+function errorMessageForDetail(status: number, detail: unknown): string {
+  if (typeof detail === "string" && detail.trim()) {
+    return detail;
+  }
+  if (detail && typeof detail === "object") {
+    const message = (detail as { message?: unknown; detail?: unknown }).message;
+    if (typeof message === "string" && message.trim()) {
+      return message;
+    }
+    const nestedDetail = (detail as { detail?: unknown }).detail;
+    if (typeof nestedDetail === "string" && nestedDetail.trim()) {
+      return nestedDetail;
+    }
+  }
+  return `API error ${status}`;
 }
 
 // ---------------------------------------------------------------- shape
@@ -371,6 +393,44 @@ export interface PaperArtifacts {
   sections: PaperSectionArtifact[];
 }
 
+export type McpTransport = "stdio" | "http" | "sse";
+export type McpStatus = "untested" | "ok" | "error" | "inactive";
+
+export interface ToolInfo {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  permissions: string[];
+  enabled: boolean;
+  input_schema: Record<string, unknown>;
+  output_schema: Record<string, unknown>;
+}
+
+export interface McpServerInfo {
+  id: string;
+  name: string;
+  description: string;
+  transport: McpTransport;
+  target: string;
+  enabled: boolean;
+  built_in: boolean;
+  auth_configured: boolean;
+  status: McpStatus;
+  status_message?: string | null;
+  tools: string[];
+  tool_count: number;
+  created_at?: string | null;
+  updated_at?: string | null;
+  last_checked_at?: string | null;
+}
+
+export interface ToolingState {
+  tools: ToolInfo[];
+  mcp_servers: McpServerInfo[];
+  custom_mcp_servers: McpServerInfo[];
+}
+
 // Parse top-level section commands out of a LaTeX source so the Sections
 // gutter has something honest to render. We only look at the document
 // body; anything before begin{document} is preamble and section refs
@@ -446,6 +506,67 @@ export const api = {
     notes: string[];
   }> {
     return fetchJson("/capabilities");
+  },
+
+  async getTooling(): Promise<ToolingState> {
+    return fetchJson<ToolingState>("/tooling");
+  },
+
+  async setToolEnabled(toolId: string, enabled: boolean): Promise<ToolInfo> {
+    return fetchJson<ToolInfo>(`/tooling/tools/${encodeURIComponent(toolId)}`, {
+      method: "PUT",
+      body: JSON.stringify({ enabled }),
+    });
+  },
+
+  async setMcpEnabled(serverId: string, enabled: boolean): Promise<McpServerInfo> {
+    return fetchJson<McpServerInfo>(`/tooling/mcp/${encodeURIComponent(serverId)}`, {
+      method: "PUT",
+      body: JSON.stringify({ enabled }),
+    });
+  },
+
+  async testMcpServer(serverId: string): Promise<McpServerInfo> {
+    return fetchJson<McpServerInfo>(`/tooling/mcp/${encodeURIComponent(serverId)}/test`, {
+      method: "POST",
+    });
+  },
+
+  async createCustomMcpServer(body: {
+    name: string;
+    description?: string;
+    transport: McpTransport;
+    target: string;
+    auth?: string;
+    enabled?: boolean;
+  }): Promise<McpServerInfo> {
+    return fetchJson<McpServerInfo>("/tooling/mcp/custom", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+
+  async updateCustomMcpServer(
+    serverId: string,
+    body: Partial<{
+      name: string;
+      description: string;
+      transport: McpTransport;
+      target: string;
+      auth: string;
+      enabled: boolean;
+    }>,
+  ): Promise<McpServerInfo> {
+    return fetchJson<McpServerInfo>(`/tooling/mcp/custom/${encodeURIComponent(serverId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+  },
+
+  async deleteCustomMcpServer(serverId: string): Promise<void> {
+    await fetchJson(`/tooling/mcp/custom/${encodeURIComponent(serverId)}`, {
+      method: "DELETE",
+    });
   },
 
   async listProjects(): Promise<Project[]> {

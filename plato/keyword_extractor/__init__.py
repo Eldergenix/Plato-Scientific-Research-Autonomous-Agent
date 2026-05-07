@@ -20,6 +20,7 @@ path in `paper_node.py`. With this registry in place the domain profile
 controls which extractor runs, and third-party domains can register their
 own without touching Plato.
 """
+
 from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
@@ -57,7 +58,28 @@ class KeywordExtractor(Protocol):
         ...
 
 
-KEYWORD_EXTRACTOR_REGISTRY: dict[str, KeywordExtractor] = {}
+class _KeywordExtractorRegistry(dict[str, KeywordExtractor]):
+    def _load(self) -> None:
+        _ensure_builtins_registered()
+
+    def __contains__(self, key: object) -> bool:
+        self._load()
+        return dict.__contains__(self, key)
+
+    def __getitem__(self, key: str) -> KeywordExtractor:
+        self._load()
+        return dict.__getitem__(self, key)
+
+    def keys(self):
+        self._load()
+        return dict.keys(self)
+
+    def __iter__(self):
+        self._load()
+        return dict.__iter__(self)
+
+
+KEYWORD_EXTRACTOR_REGISTRY: dict[str, KeywordExtractor] = _KeywordExtractorRegistry()
 
 
 def register_keyword_extractor(
@@ -66,7 +88,8 @@ def register_keyword_extractor(
     overwrite: bool = False,
 ) -> None:
     """Register a `KeywordExtractor`. Raises if the name collides unless `overwrite=True`."""
-    if not overwrite and extractor.name in KEYWORD_EXTRACTOR_REGISTRY:
+    _ensure_builtins_registered()
+    if not overwrite and dict.__contains__(KEYWORD_EXTRACTOR_REGISTRY, extractor.name):
         raise ValueError(
             f"KeywordExtractor {extractor.name!r} is already registered; "
             "pass overwrite=True to replace."
@@ -77,12 +100,12 @@ def register_keyword_extractor(
 def get_keyword_extractor(name: str) -> KeywordExtractor:
     """Look up a registered extractor by name (lazy-loads built-ins on first call)."""
     _ensure_builtins_registered()
-    if name not in KEYWORD_EXTRACTOR_REGISTRY:
+    if not dict.__contains__(KEYWORD_EXTRACTOR_REGISTRY, name):
         raise KeyError(
             f"Unknown keyword extractor {name!r}. "
             f"Registered: {sorted(KEYWORD_EXTRACTOR_REGISTRY)}"
         )
-    return KEYWORD_EXTRACTOR_REGISTRY[name]
+    return dict.__getitem__(KEYWORD_EXTRACTOR_REGISTRY, name)
 
 
 def list_keyword_extractors() -> list[str]:
