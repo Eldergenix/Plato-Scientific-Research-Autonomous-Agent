@@ -5,12 +5,14 @@ import Link from "next/link";
 import {
   ChevronRight,
   Atom,
+  Building2,
   CreditCard,
   Globe2,
   Monitor,
   Moon,
   ScrollText,
   Server,
+  ShieldCheck,
   Sun,
   Trash2,
   CheckCircle2,
@@ -45,6 +47,22 @@ const SETTINGS_SECTIONS: Array<{
   icon: LucideIcon;
   testId: string;
 }> = [
+  {
+    href: "/settings/account",
+    label: "Account",
+    description:
+      "Manage profile, email addresses, password, verification, and security settings.",
+    icon: ShieldCheck,
+    testId: "settings-link-account",
+  },
+  {
+    href: "/settings/organization",
+    label: "Organization",
+    description:
+      "Manage Clerk Labs, memberships, invitations, and organization profile settings.",
+    icon: Building2,
+    testId: "settings-link-organization",
+  },
   {
     href: "/settings/domains",
     label: "Domains",
