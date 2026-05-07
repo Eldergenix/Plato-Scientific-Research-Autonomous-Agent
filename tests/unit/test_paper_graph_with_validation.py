@@ -7,7 +7,6 @@ keep both branches (citations on/off) routable.
 """
 from __future__ import annotations
 
-import pytest
 from langgraph.checkpoint.memory import MemorySaver
 
 from plato.paper_agents.agents_graph import build_graph
@@ -21,6 +20,7 @@ def test_graph_compiles_with_validation_and_evidence_nodes():
         "claim_evidence_fanout",
         "claim_extractor",
         "evidence_matrix_node",
+        "scientific_verifier_node",
     }
     assert expected_new.issubset(nodes), f"missing nodes: {expected_new - nodes}"
 
@@ -68,6 +68,7 @@ def test_citations_node_predecessor_to_validator():
     graph = build_graph(checkpointer=MemorySaver())
     edges = graph.get_graph().edges
     edge_pairs = {(e.source, e.target) for e in edges}
+    assert ("refine_results", "scientific_verifier_node") in edge_pairs
     assert ("citations_node", "citation_validator_node") in edge_pairs
     assert ("citation_validator_node", "claim_evidence_fanout") in edge_pairs
     assert ("claim_evidence_fanout", "claim_extractor") in edge_pairs

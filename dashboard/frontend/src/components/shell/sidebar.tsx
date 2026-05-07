@@ -15,13 +15,8 @@ import {
   Search,
   ChevronDown,
   ChevronRight,
-  FlaskConical,
   History,
   Stamp,
-  Lightbulb,
-  BookMarked,
-  ClipboardList,
-  Newspaper,
   Activity,
   KeyRound,
   LineChart,
@@ -29,6 +24,7 @@ import {
   Sun,
   Monitor,
   Repeat,
+  Wrench,
   Settings as SettingsIcon,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -40,8 +36,6 @@ interface SidebarProps {
   onToggle: () => void;
   onOpenCommand: () => void;
   projectName?: string;
-  activeStage?: string;
-  onSelectStage?: (stage: string) => void;
   onCreateProject?: () => void;
 }
 
@@ -64,6 +58,7 @@ const WORKSPACE_LINKS: NavLink[] = [
   { href: "/loop", label: "Loop", icon: Repeat },
   { href: "/evals", label: "Evals", icon: LineChart },
   { href: "/keys", label: "Keys", icon: KeyRound },
+  { href: "/tools", label: "Tools", icon: Wrench },
   // Settings is also reachable via the bottom-bar gear, but keeping a
   // labelled nav entry here ensures /settings can be a destination
   // search results route to and that the active-state highlighting in
@@ -71,17 +66,10 @@ const WORKSPACE_LINKS: NavLink[] = [
   { href: "/settings", label: "Settings", icon: SettingsIcon },
 ];
 
-const TEAM_LINKS: { id: string; label: string; icon: LucideIcon }[] = [
-  { id: "stages", label: "Stages", icon: FlaskConical },
-  { id: "history", label: "History", icon: History },
-  { id: "referee", label: "Referee", icon: Stamp },
+const TEAM_LINKS: NavLink[] = [
+  { href: "/history", label: "History", icon: History },
+  { href: "/referee", label: "Referee", icon: Stamp },
 ];
-
-// Suppress unused-import warnings — these are part of the public icon set referenced by the spec.
-void Lightbulb;
-void BookMarked;
-void ClipboardList;
-void Newspaper;
 
 // Cycle order: dark → light → system → dark.
 function nextTheme(t: "dark" | "light" | "system"): "dark" | "light" | "system" {
@@ -122,8 +110,6 @@ export function Sidebar({
   onToggle,
   onOpenCommand,
   projectName,
-  activeStage,
-  onSelectStage,
   onCreateProject,
 }: SidebarProps) {
   const pathname = usePathname();
@@ -221,8 +207,6 @@ export function Sidebar({
           className="flex flex-col"
           style={{
             padding: "0 12px",
-            backgroundColor: "var(--color-ghost-bg)",
-            borderRadius: 8,
           }}
         >
           {/* Top section: 57px, gap 1px */}
@@ -327,40 +311,9 @@ export function Sidebar({
 
           {teamOpen && (
             <div className="flex flex-col" style={{ paddingLeft: 19, gap: 1, marginTop: 1 }}>
-              {TEAM_LINKS.map((item) => {
-                const Icon = item.icon;
-                const active = activeStage === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => onSelectStage?.(item.id)}
-                    className={cn(
-                      "flex items-center rounded-[8px] transition-colors",
-                      active
-                        ? "bg-(--color-bg-row-active) text-(--color-text-primary-strong)"
-                        : "text-(--color-text-row-meta) hover:bg-(--color-ghost-bg-hover) hover:text-(--color-text-primary)",
-                    )}
-                    style={{
-                      width: 201,
-                      height: 28,
-                      padding: "0 9px 0 6px",
-                      gap: 6,
-                    }}
-                  >
-                    <Icon size={14} strokeWidth={1.75} />
-                    <span
-                      className="truncate"
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 500,
-                      }}
-                    >
-                      {item.label}
-                    </span>
-                  </button>
-                );
-              })}
+              {TEAM_LINKS.map((item) => (
+                <SidebarTeamLink key={item.href} item={item} pathname={pathname} />
+              ))}
             </div>
           )}
         </div>
@@ -454,6 +407,43 @@ function SidebarLink({ item, pathname }: { item: NavLink; pathname: string }) {
     >
       <Icon size={14} strokeWidth={1.75} />
       <span className="min-w-0 truncate" style={{ fontSize: 13, fontWeight: 500 }}>{item.label}</span>
+    </Link>
+  );
+}
+
+function SidebarTeamLink({ item, pathname }: { item: NavLink; pathname: string }) {
+  const Icon = item.icon;
+  const active =
+    item.href === "/" ? pathname === "/" : pathname === item.href || pathname.startsWith(`${item.href}/`);
+
+  return (
+    <Link
+      href={item.href}
+      prefetch={false}
+      className={cn(
+        "flex items-center rounded-[8px] transition-colors",
+        active
+          ? "bg-(--color-bg-row-active) text-(--color-text-primary-strong)"
+          : "text-(--color-text-row-meta) hover:bg-(--color-ghost-bg-hover) hover:text-(--color-text-primary)",
+      )}
+      style={{
+        width: 201,
+        height: 28,
+        padding: "0 9px 0 6px",
+        gap: 6,
+      }}
+      aria-current={active ? "page" : undefined}
+    >
+      <Icon size={14} strokeWidth={1.75} />
+      <span
+        className="truncate"
+        style={{
+          fontSize: 13,
+          fontWeight: 500,
+        }}
+      >
+        {item.label}
+      </span>
     </Link>
   );
 }
@@ -582,7 +572,7 @@ function CollapsedSidebar({
         className="flex flex-col items-center"
         style={{ gap: 4, marginTop: 12 }}
       >
-        {[...TOP_LINKS, ...WORKSPACE_LINKS].map((item) => {
+        {[...TOP_LINKS, ...WORKSPACE_LINKS, ...TEAM_LINKS].map((item) => {
           const Icon = item.icon;
           const active =
             item.href === "/"

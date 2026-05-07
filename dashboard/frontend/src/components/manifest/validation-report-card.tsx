@@ -7,7 +7,10 @@ import {
   ChevronDown,
   ChevronRight,
   Clipboard,
+  FileText,
+  Folder,
   Search,
+  Tags,
   XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -22,10 +25,29 @@ export type ValidationStatus = "ok" | "warn" | "fail";
 
 export interface ValidationFailure {
   source_id: string;
-  reason: string;
+  reason?: string | null;
   detail?: string | null;
   /** Coarse-grained category for grouping (e.g. "schema", "fetch", "parser"). */
   source_type?: string | null;
+  title?: string | null;
+  verdict?: "LIKELY" | "UNCERTAIN" | "UNLIKELY" | string | null;
+  confidence?: number | null;
+  folder?: string | null;
+  tags?: string[];
+  notes?: { markdown?: string; plain_text?: string } | null;
+  corrections?: {
+    bibtex?: string;
+    plain_text?: string;
+    bibitem?: string;
+  } | null;
+  hallucination_assessment?: {
+    verdict?: string;
+    explanation?: string;
+    link?: string | null;
+    found_title?: string | null;
+    found_authors?: string | null;
+    found_year?: string | null;
+  } | null;
 }
 
 /**
@@ -35,8 +57,17 @@ export interface ValidationFailure {
  */
 export interface ValidationReport {
   validation_rate: number; // 0..1
-  total_references: number;
-  verified_references: number;
+  total_references?: number;
+  verified_references?: number;
+  total?: number;
+  passed?: number;
+  unverified_count?: number;
+  likely_hallucinations?: number;
+  accuracy_gate?: {
+    threshold?: number;
+    passed?: boolean;
+    reason?: string | null;
+  };
   failures: ValidationFailure[];
 }
 
@@ -61,6 +92,7 @@ export interface ValidationReportCardProps {
 }
 
 type GroupBy = "none" | "reason" | "source_type";
+type ValidationFailureNote = NonNullable<ValidationFailure["notes"]>;
 
 /* -----------------------------------------------------------------------------
  * Helpers
@@ -102,9 +134,11 @@ function failuresToCsv(rows: ValidationFailure[]): string {
   const header = "source_id,reason,detail";
   const body = rows
     .map((f) =>
-      [csvEscape(f.source_id), csvEscape(f.reason), csvEscape(f.detail ?? "")].join(
-        ",",
-      ),
+      [
+        csvEscape(f.source_id),
+        csvEscape(f.reason ?? ""),
+        csvEscape(f.detail ?? ""),
+      ].join(","),
     )
     .join("\n");
   return body.length > 0 ? `${header}\n${body}` : header;
@@ -116,25 +150,168 @@ function groupKey(failure: ValidationFailure, by: GroupBy): string {
   return "all";
 }
 
+function referenceTotals(report: ValidationReport) {
+  return {
+    total: report.total_references ?? report.total ?? 0,
+    verified: report.verified_references ?? report.passed ?? 0,
+  };
+}
+
 /* -----------------------------------------------------------------------------
  * Subcomponents
  * ---------------------------------------------------------------------------*/
 
-function FailureRow({ failure }: { failure: ValidationFailure }) {
+function FailureRow({
+  failure,
+  onUpdateFailureNote,
+}: {
+  failure: ValidationFailure;
+  onUpdateFailureNote?: (sourceId: string, notes: ValidationFailureNote) => void;
+}) {
+  const [noteFormat, setNoteFormat] = React.useState<"markdown" | "plain_text">(
+    "markdown",
+  );
+  const [note, setNote] = React.useState(
+    failure.notes?.markdown ?? failure.notes?.plain_text ?? "",
+  );
+  const assessment = failure.hallucination_assessment;
+  const verdict = failure.verdict ?? assessment?.verdict;
+  const correction =
+    failure.corrections?.bibtex ??
+    failure.corrections?.plain_text ??
+    failure.corrections?.bibitem;
+  const switchNoteFormat = React.useCallback(
+    (nextFormat: "markdown" | "plain_text") => {
+      if (nextFormat === noteFormat) return;
+      const updatedNotes = {
+        ...(failure.notes ?? {}),
+        [noteFormat]: note,
+      };
+      onUpdateFailureNote?.(failure.source_id, updatedNotes);
+      setNoteFormat(nextFormat);
+      setNote(updatedNotes[nextFormat] ?? "");
+    },
+    [failure.notes, failure.source_id, note, noteFormat, onUpdateFailureNote],
+  );
+
   return (
     <li
       data-testid="validation-failure-row"
       className="flex flex-col gap-0.5 rounded-[6px] border border-[#262628] bg-[#141415] px-2.5 py-2"
     >
       <div className="flex items-center justify-between gap-3">
-        <span className="font-mono text-[12px] text-(--color-text-primary)">
-          {failure.source_id}
-        </span>
-        <span className="text-[11px] text-(--color-status-red)">{failure.reason}</span>
+        <div className="min-w-0">
+          <div className="truncate font-mono text-[12px] text-(--color-text-primary)">
+            {failure.source_id}
+          </div>
+          {failure.title ? (
+            <div className="truncate text-[11px] text-(--color-text-tertiary-spec)">
+              {failure.title}
+            </div>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {verdict ? (
+            <span className="rounded-[999px] border border-[#34343a] px-1.5 py-0.5 text-[10.5px] text-(--color-text-secondary-spec)">
+              {verdict}
+            </span>
+          ) : null}
+          <span className="text-[11px] text-(--color-status-red)">
+            {failure.reason ?? "failed"}
+          </span>
+        </div>
       </div>
       {failure.detail ? (
         <div className="text-[11px] leading-[1.4] text-(--color-text-tertiary-spec)">
           {failure.detail}
+        </div>
+      ) : null}
+      {assessment?.explanation ? (
+        <div className="text-[11px] leading-[1.4] text-(--color-text-secondary-spec)">
+          {assessment.explanation}
+          {assessment.link ? (
+            <>
+              {" "}
+              <a
+                href={assessment.link}
+                target="_blank"
+                rel="noreferrer"
+                className="underline"
+              >
+                source
+              </a>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+        {failure.folder ? (
+          <span className="inline-flex items-center gap-1 rounded-[6px] bg-[#1b1b1d] px-1.5 py-0.5 text-[10.5px] text-(--color-text-tertiary-spec)">
+            <Folder size={10} strokeWidth={1.75} />
+            {failure.folder}
+          </span>
+        ) : null}
+        {(failure.tags ?? []).map((tag) => (
+          <span
+            key={tag}
+            className="inline-flex items-center gap-1 rounded-[6px] bg-[#1b1b1d] px-1.5 py-0.5 text-[10.5px] text-(--color-text-tertiary-spec)"
+          >
+            <Tags size={10} strokeWidth={1.75} />
+            {tag}
+          </span>
+        ))}
+      </div>
+      {correction ? (
+        <details className="mt-1">
+          <summary className="flex cursor-pointer items-center gap-1 text-[11px] text-(--color-text-secondary-spec)">
+            <FileText size={11} strokeWidth={1.75} />
+            Correction
+          </summary>
+          <pre className="mt-1 max-h-36 overflow-auto rounded-[6px] border border-[#262628] bg-[#101011] p-2 text-[10.5px] leading-[1.45] text-(--color-text-tertiary-spec)">
+            {correction}
+          </pre>
+        </details>
+      ) : null}
+      {failure.notes ? (
+        <div className="mt-1 flex flex-col gap-1">
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => switchNoteFormat("markdown")}
+              className={cn(
+                "h-6 rounded-[6px] px-1.5 text-[10.5px]",
+                noteFormat === "markdown"
+                  ? "bg-[#27272a] text-(--color-text-primary)"
+                  : "text-(--color-text-tertiary-spec)",
+              )}
+            >
+              Markdown
+            </button>
+            <button
+              type="button"
+              onClick={() => switchNoteFormat("plain_text")}
+              className={cn(
+                "h-6 rounded-[6px] px-1.5 text-[10.5px]",
+                noteFormat === "plain_text"
+                  ? "bg-[#27272a] text-(--color-text-primary)"
+                  : "text-(--color-text-tertiary-spec)",
+              )}
+            >
+              Plain text
+            </button>
+          </div>
+          <textarea
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            onBlur={() =>
+              onUpdateFailureNote?.(failure.source_id, {
+                ...(failure.notes ?? {}),
+                [noteFormat]: note,
+              })
+            }
+            className="min-h-20 rounded-[6px] border border-[#262628] bg-[#101011] p-2 text-[11px] leading-[1.45] text-(--color-text-secondary-spec) focus-visible:border-(--color-brand-indigo) focus-visible:outline-none"
+            data-testid="validation-note-editor"
+          />
         </div>
       ) : null}
     </li>
@@ -145,10 +322,12 @@ function GroupedSection({
   title,
   rows,
   defaultOpen = true,
+  onUpdateFailureNote,
 }: {
   title: string;
   rows: ValidationFailure[];
   defaultOpen?: boolean;
+  onUpdateFailureNote?: (sourceId: string, notes: ValidationFailureNote) => void;
 }) {
   const [open, setOpen] = React.useState(defaultOpen);
   return (
@@ -174,7 +353,11 @@ function GroupedSection({
       {open ? (
         <ul className="flex flex-col gap-1 pl-4">
           {rows.map((f, i) => (
-            <FailureRow key={`${f.source_id}-${i}`} failure={f} />
+            <FailureRow
+              key={`${f.source_id}-${i}`}
+              failure={f}
+              onUpdateFailureNote={onUpdateFailureNote}
+            />
           ))}
         </ul>
       ) : null}
@@ -195,16 +378,45 @@ export function ValidationReportCard({
   const [search, setSearch] = React.useState("");
   const [groupBy, setGroupBy] = React.useState<GroupBy>("none");
   const [copied, setCopied] = React.useState(false);
+  const [noteOverrides, setNoteOverrides] = React.useState<
+    Record<string, ValidationFailureNote>
+  >({});
+
+  const failuresWithNotes = React.useMemo(
+    () =>
+      report.failures.map((failure) => {
+        const override = noteOverrides[failure.source_id];
+        if (!override) return failure;
+        return {
+          ...failure,
+          notes: { ...(failure.notes ?? {}), ...override },
+        };
+      }),
+    [noteOverrides, report.failures],
+  );
+
+  const handleUpdateFailureNote = React.useCallback(
+    (sourceId: string, notes: ValidationFailureNote) => {
+      setNoteOverrides((current) => ({
+        ...current,
+        [sourceId]: { ...(current[sourceId] ?? {}), ...notes },
+      }));
+    },
+    [],
+  );
 
   const filtered = React.useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return report.failures;
-    return report.failures.filter(
+    if (!q) return failuresWithNotes;
+    return failuresWithNotes.filter(
       (f) =>
         f.source_id.toLowerCase().includes(q) ||
-        f.reason.toLowerCase().includes(q),
+        (f.reason ?? "").toLowerCase().includes(q) ||
+        (f.title ?? "").toLowerCase().includes(q) ||
+        (f.verdict ?? "").toLowerCase().includes(q) ||
+        (f.tags ?? []).some((tag) => tag.toLowerCase().includes(q)),
     );
-  }, [report.failures, search]);
+  }, [failuresWithNotes, search]);
 
   const grouped = React.useMemo(() => {
     if (groupBy === "none") return null;
@@ -231,6 +443,7 @@ export function ValidationReportCard({
 
   const hasFailures = report.failures.length > 0;
   const status = deriveStatus(report.validation_rate);
+  const totals = referenceTotals(report);
 
   return (
     <section
@@ -254,7 +467,7 @@ export function ValidationReportCard({
             {formatPct(report.validation_rate)}
           </span>
           <span className="text-[11.5px] text-(--color-text-tertiary-spec)">
-            {report.verified_references} / {report.total_references} references verified
+            {totals.verified} / {totals.total} references verified
           </span>
         </div>
         {hasFailures ? (
@@ -357,7 +570,12 @@ export function ValidationReportCard({
           ) : grouped ? (
             <div className="flex flex-col gap-2">
               {grouped.map(([key, rows]) => (
-                <GroupedSection key={key} title={key} rows={rows} />
+                <GroupedSection
+                  key={key}
+                  title={key}
+                  rows={rows}
+                  onUpdateFailureNote={handleUpdateFailureNote}
+                />
               ))}
             </div>
           ) : (
@@ -366,7 +584,11 @@ export function ValidationReportCard({
               data-testid="validation-failure-list"
             >
               {filtered.map((f, i) => (
-                <FailureRow key={`${f.source_id}-${i}`} failure={f} />
+                <FailureRow
+                  key={`${f.source_id}-${i}`}
+                  failure={f}
+                  onUpdateFailureNote={handleUpdateFailureNote}
+                />
               ))}
             </ul>
           )}

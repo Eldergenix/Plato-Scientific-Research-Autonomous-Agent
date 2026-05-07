@@ -119,6 +119,36 @@ const NODE_EVENTS_MAX = 500;
 // can be sizable (full source + stdout). 200 covers typical results
 // runs; older cells fall off the front when exceeded.
 const CODE_EVENTS_MAX = 200;
+const SELECTED_PROJECT_STORAGE_KEY = "plato:selected-project-id";
+
+export function persistSelectedProjectId(projectId: string | null): void {
+  if (typeof window === "undefined") return;
+  if (projectId) {
+    window.localStorage.setItem(SELECTED_PROJECT_STORAGE_KEY, projectId);
+  } else {
+    window.localStorage.removeItem(SELECTED_PROJECT_STORAGE_KEY);
+  }
+}
+
+function readSelectedProjectId(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(SELECTED_PROJECT_STORAGE_KEY);
+}
+
+export function pickPreferredProject(projects: Project[]): Project | undefined {
+  if (projects.length === 0) return undefined;
+  const selectedProjectId = readSelectedProjectId();
+  const selectedProject = projects.find((project) => project.id === selectedProjectId);
+  if (selectedProject) return selectedProject;
+
+  return projects.reduce((latest, project) => {
+    const latestTime = Date.parse(latest.updatedAt);
+    const projectTime = Date.parse(project.updatedAt);
+    if (!Number.isFinite(projectTime)) return latest;
+    if (!Number.isFinite(latestTime)) return project;
+    return projectTime > latestTime ? project : latest;
+  });
+}
 
 function coerceCodeEvent(evt: RunEventCodeExecute): CodeEventEntry {
   const tsMs = (() => {
@@ -218,6 +248,7 @@ export function useProject(): ProjectState {
 
   const selectProject = React.useCallback((nextProject: Project) => {
     projectIdRef.current = nextProject.id;
+    persistSelectedProjectId(nextProject.id);
     setProject(nextProject);
     setLog([]);
     setPlots([]);
@@ -246,9 +277,12 @@ export function useProject(): ProjectState {
         const list = await api.listProjects();
         let active: Project;
         if (list.length > 0) {
-          active = list[list.length - 1];
+          const preferred = pickPreferredProject(list);
+          if (!preferred) throw new Error("No project available.");
+          active = preferred;
         } else {
           active = await api.createProject("New project");
+          persistSelectedProjectId(active.id);
         }
         if (cancelled) return;
         projectIdRef.current = active.id;

@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 
 /**
- * Cmd/Ctrl+K opens the command palette. Typing filters the list,
+ * The topbar trigger opens the command palette. Typing filters the list,
  * Escape closes it.
  *
  * The placeholder is "Search projects, run a stage, switch model…"
@@ -9,12 +9,12 @@ import { test, expect } from "./fixtures";
  * substring match so the test stays resilient to copy tweaks.
  */
 test.describe("command palette", () => {
-  test("opens with Cmd+K, filters on input, closes on Escape", async ({ page, browserName }) => {
+  test("opens from the topbar trigger, filters on input, closes on Escape", async ({ page }) => {
     await page.goto("/");
 
-    const isMac = process.platform === "darwin";
-    const modifier = browserName === "webkit" || isMac ? "Meta" : "Control";
-    await page.keyboard.press(`${modifier}+KeyK`);
+    const trigger = page.getByRole("button", { name: "Open command palette" });
+    await expect(trigger).toBeVisible();
+    await trigger.click();
 
     // Input — placeholder mentions "Search projects".
     const input = page.getByPlaceholder(/Search projects/i);

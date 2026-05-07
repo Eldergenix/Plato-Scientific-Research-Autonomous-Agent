@@ -11,7 +11,6 @@ All network is mocked. Sleeps are mocked too so the suite stays fast.
 """
 from __future__ import annotations
 
-import asyncio
 from email.utils import format_datetime
 from datetime import datetime, timedelta, timezone
 from typing import Any

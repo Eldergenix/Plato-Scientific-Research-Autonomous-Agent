@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   ChevronRight,
   Atom,
+  CreditCard,
   Globe2,
   Monitor,
   Moon,
@@ -75,6 +76,14 @@ const SETTINGS_SECTIONS: Array<{
       "Review optional analysis stacks, artifact contracts, and repeatability checks.",
     icon: Atom,
     testId: "settings-link-scientific-analysis",
+  },
+  {
+    href: "/settings/billing",
+    label: "Labs & billing",
+    description:
+      "Manage Clerk Labs, individual plans, Lab subscriptions, seats, trials, and usage policy.",
+    icon: CreditCard,
+    testId: "settings-link-billing",
   },
 ];
 

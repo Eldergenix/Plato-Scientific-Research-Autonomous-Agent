@@ -20,6 +20,7 @@ single-process research database, not a multi-tenant deployment).
 WAL mode is enabled on every ``connect`` so concurrent readers (e.g. a
 dashboard inspecting an in-flight run) don't block the writer.
 """
+
 from __future__ import annotations
 
 import json
@@ -59,7 +60,7 @@ _DEFAULT_DB_PATH = "~/.plato/research.db"
 
 
 @event.listens_for(Engine, "connect")
-def _set_sqlite_pragma(dbapi_connection, connection_record):  # type: ignore[no-untyped-def]
+def _set_sqlite_pragma(dbapi_connection: Any, connection_record: Any) -> None:
     """Turn WAL on so concurrent readers don't block the writer."""
     # The listener is registered on the abstract Engine class; bail early
     # for any non-sqlite dialects that may have been instantiated elsewhere.
@@ -324,9 +325,7 @@ class Store:
         # Update everything except the conflict column on conflict so
         # late-arriving fields (e.g. an abstract fetched in a second pass)
         # are persisted.
-        update_cols = {
-            k: v for k, v in row.items() if k not in conflict_cols
-        }
+        update_cols = {k: v for k, v in row.items() if k not in conflict_cols}
 
         stmt = sqlite_insert(_SourceRow).values(**row)
         stmt = stmt.on_conflict_do_update(
@@ -344,9 +343,7 @@ class Store:
                 return None
             return _row_to_source(row)
 
-    def list_sources(
-        self, run_id: str | None = None, limit: int = 100
-    ) -> list[Source]:
+    def list_sources(self, run_id: str | None = None, limit: int = 100) -> list[Source]:
         """
         List sources. When ``run_id`` is given, scope to sources cited by
         a claim recorded under that run (sources themselves are not
@@ -389,9 +386,7 @@ class Store:
     def add_evidence(self, e: EvidenceLink) -> None:
         row = _evidence_to_row(e)
         update_cols = {
-            k: v
-            for k, v in row.items()
-            if k not in {"claim_id", "source_id"}
+            k: v for k, v in row.items() if k not in {"claim_id", "source_id"}
         }
         stmt = sqlite_insert(_EvidenceLinkRow).values(**row)
         stmt = stmt.on_conflict_do_update(

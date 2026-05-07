@@ -27,6 +27,25 @@ const MOCK_REPORT: ValidationReport = {
       reason: "missing_abstract",
       detail: "Abstract field empty after parse.",
       source_type: "arxiv",
+      title: "Efficient Neural Network Pruning Using Iterative Sparse Retraining",
+      verdict: "LIKELY",
+      folder: "References/Likely Hallucinations",
+      tags: ["needs-review", "likely-hallucination", "author-mismatch"],
+      hallucination_assessment: {
+        verdict: "LIKELY",
+        explanation: "No dedicated page with matching title and authors was found.",
+        link: null,
+      },
+      corrections: {
+        bibtex:
+          "@article{verified2024,\n  author = {Ada Lovelace and Grace Hopper},\n  title = {Verified replacement paper},\n  year = {2024}\n}",
+      },
+      notes: {
+        markdown:
+          "### Efficient Neural Network Pruning Using Iterative Sparse Retraining\n\n- Verdict: LIKELY\n- Folder: References/Likely Hallucinations\n- Tags: needs-review, likely-hallucination, author-mismatch",
+        plain_text:
+          "Efficient Neural Network Pruning Using Iterative Sparse Retraining\nVerdict: LIKELY\nFolder: References/Likely Hallucinations\nTags: needs-review, likely-hallucination, author-mismatch",
+      },
     },
     {
       source_id: "arxiv:2403.00002",
