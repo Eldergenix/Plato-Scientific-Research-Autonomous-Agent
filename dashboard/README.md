@@ -1,6 +1,6 @@
 # Plato Dashboard
 
-> A Linear-themed web dashboard for [Plato](https://github.com/AstroPilot-AI/Plato), the multi-agent scientific research assistant. Replaces the legacy Streamlit `PlatoApp` with a real-time, IDE-style workspace.
+> A Linear-themed web dashboard for [Plato](https://github.com/Eldergenix/Plato-Scientific-Research-Autonomous-Agent), the multi-agent scientific research assistant. It provides a real-time, IDE-style workspace for research runs.
 
 This repo lives at `dashboard/` inside the Plato monorepo. It is published as a separate Python package (`plato-dashboard`) and JavaScript app, but they're developed side-by-side here.
 
@@ -9,19 +9,19 @@ This repo lives at `dashboard/` inside the Plato monorepo. It is published as a 
 A two-process app:
 
 - **`backend/`** — FastAPI gateway that wraps Plato's Python class, runs each long-running stage (`get_idea`, `get_method`, `get_results`, `get_paper`, `referee`) in a subprocess worker, and streams agent reasoning + token usage to the frontend over Server-Sent Events.
-- **`frontend/`** — Next.js 15 + React 19 + Tailwind v4, themed with [Linear's `DESIGN.md` tokens](https://github.com/Eldergenix/SUPER-DESIGN/blob/main/super-design-md/linear.app/DESIGN.md) via the [SUPER-DESIGN skill](https://github.com/Eldergenix/SUPER-DESIGN). Five core primitives (`StageCard`, `AgentLogStream`, `PlotGrid`, `PaperPreview`, `CitationChip`) plus power components (`ModelPicker`, `RunMonitor`).
+- **`frontend/`** — Next.js 15 + React 19 + Tailwind v4, themed with the local `DESIGN.md` tokens. Five core primitives (`StageCard`, `AgentLogStream`, `PlotGrid`, `PaperPreview`, `CitationChip`) plus power components (`ModelPicker`, `RunMonitor`).
 
 Two first-class deployment shapes share one codebase:
 
 | Shape | Mode | Auth | Use |
 |---|---|---|---|
 | Local desktop (default) | `PLATO_DEMO_MODE=disabled` | none | scientists running on their laptop |
-| Public demo | `PLATO_DEMO_MODE=enabled` | session cookie | HuggingFace Spaces / Railway / Vercel showcase |
+| Public demo | `PLATO_DEMO_MODE=enabled` | session cookie | Railway showcase |
 | Self-hosted lab (stretch) | `PLATO_AUTH=enabled` | bearer cookie | small team via Docker Compose |
 
 In demo mode, code-executing stages (`results`, `cmbagent`, paper generation with citations) are locked, the session enforces a hard $-budget cap, and projects are auto-cleaned after 30 min idle. See `backend/src/plato_dashboard/api/capabilities.py`.
 
-**One-click hosted demo:** see [`RAILWAY.md`](RAILWAY.md) for deploying the public-demo image to Railway. The repo's [`railway.json`](../railway.json) already points Railway at `dashboard/spaces/Dockerfile`; the only thing you need to add is a provider API key.
+**Hosted demo:** [plato-production-9fea.up.railway.app](https://plato-production-9fea.up.railway.app). See [`RAILWAY.md`](RAILWAY.md) for deploying the public-demo image to Railway. The repo's [`railway.json`](../railway.json) already points Railway at `dashboard/spaces/Dockerfile`; the only thing you need to add is a provider API key.
 
 ## Screenshots
 
@@ -125,13 +125,13 @@ plato dashboard --port 8080  # different port
 plato dashboard --no-browser # don't auto-open
 ```
 
-This lives at `plato/cli.py` and runs alongside the legacy `plato run` (Streamlit) command.
+This lives at `plato/cli.py`.
 
 ## Project layout
 
 ```
 dashboard/
-├── DESIGN.md                  # Linear design tokens (verbatim from SUPER-DESIGN)
+├── DESIGN.md                  # Dashboard design tokens
 ├── backend/
 │   ├── pyproject.toml         # FastAPI + arq + watchfiles + pydantic
 │   └── src/plato_dashboard/
@@ -234,14 +234,14 @@ Why subprocesses, not threads: cmbagent holds its own subprocess for code execut
 - ✅ `CostMeterPanel` with live token + dollar tracking against budget cap
 - ✅ `ApprovalCheckpoints` for stage gating in demo mode
 - ✅ `Activity` timeline reading from event bus
-- ✅ Docker Compose + HuggingFace Spaces deploy targets
+- ✅ Docker Compose + Railway deploy target
 - ✅ 32 pytest tests passing on the backend
 - ✅ 5 Playwright specs covering smoke, navigation, palette, stage flow, keys
 
 ### Phase 4 — Loose ends
 
 - [ ] Real LLM run with API keys (requires user-side credentials)
-- [ ] Public Vercel / HuggingFace Spaces deployment
+- [ ] Production deployment hardening
 - [ ] Multi-tenant SaaS (sandboxing for cmbagent code execution)
 
 ## Test plan
