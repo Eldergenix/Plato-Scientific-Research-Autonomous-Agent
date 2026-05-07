@@ -14,7 +14,7 @@ import base64
 import os
 import stat
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
@@ -26,6 +26,7 @@ ENV_KEYS = {
     "OPENAI": "OPENAI_API_KEY",
     "GEMINI": "GOOGLE_API_KEY",
     "ANTHROPIC": "ANTHROPIC_API_KEY",
+    "HUGGINGFACE": "HUGGINGFACE_API_KEY",
     "PERPLEXITY": "PERPLEXITY_API_KEY",
     "SEMANTIC_SCHOLAR": "SEMANTIC_SCHOLAR_KEY",
     # R8 — observability. The dashboard's Langfuse integration reads
@@ -35,6 +36,29 @@ ENV_KEYS = {
     "LANGFUSE_SECRET": "LANGFUSE_SECRET_KEY",
     "LANGFUSE_HOST": "LANGFUSE_HOST",
 }
+
+ENV_KEY_ALIASES = {
+    "HUGGINGFACE": (
+        "HUGGINGFACE_API_KEY",
+        "HUGGINGFACE_HUB_TOKEN",
+        "HF_TOKEN",
+    ),
+}
+
+
+def _env_names(provider: str) -> tuple[str, ...]:
+    if provider in ENV_KEY_ALIASES:
+        return ENV_KEY_ALIASES[provider]
+    env_var = ENV_KEYS.get(provider)
+    return (env_var,) if env_var else ()
+
+
+def _env_value(provider: str) -> str | None:
+    for env_var in _env_names(provider):
+        value = os.environ.get(env_var)
+        if value:
+            return value
+    return None
 
 
 def _derive_key(salt: bytes) -> bytes:
@@ -97,9 +121,9 @@ class KeyStore:
 
     def status(self) -> KeysStatus:
         stored = self.load()
-        result: dict[str, str] = {}
-        for k, env_var in ENV_KEYS.items():
-            if os.environ.get(env_var):
+        result: dict[str, Literal["unset", "from_env", "in_app"]] = {}
+        for k in ENV_KEYS:
+            if _env_value(k):
                 result[k] = "from_env"
             elif getattr(stored, k):
                 result[k] = "in_app"
@@ -108,8 +132,8 @@ class KeyStore:
         return KeysStatus(**result)
 
     def resolve(self, provider: str) -> Optional[str]:
-        env_var = ENV_KEYS.get(provider)
-        if env_var and os.environ.get(env_var):
-            return os.environ[env_var]
+        env_value = _env_value(provider)
+        if env_value:
+            return env_value
         stored = self.load()
         return getattr(stored, provider, None)

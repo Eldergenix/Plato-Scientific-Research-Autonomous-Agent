@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Check, X, Loader2, Eye, EyeOff, Copy, Trash2 } from "lucide-react";
-import { api, type KeyState, type KeysStatus } from "@/lib/api";
+import { api, type HuggingFaceAccountStatus, type KeyState, type KeysStatus } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Pill } from "@/components/ui/pill";
 import { cn } from "@/lib/utils";
@@ -36,6 +36,13 @@ const PROVIDERS: ProviderSpec[] = [
     id: "GEMINI",
     name: "Google",
     description: "Gemini models",
+    testable: true,
+    group: "models",
+  },
+  {
+    id: "HUGGINGFACE",
+    name: "Hugging Face",
+    description: "HF account, models, and Inference Providers",
     testable: true,
     group: "models",
   },
@@ -112,6 +119,7 @@ interface TestResult {
   ok: boolean;
   latencyMs?: number;
   error?: string;
+  account?: string;
 }
 
 export default function KeysPage() {
@@ -123,6 +131,8 @@ export default function KeysPage() {
   const [saving, setSaving] = React.useState<Partial<Record<ProviderId, boolean>>>({});
   const [testing, setTesting] = React.useState<Partial<Record<ProviderId, boolean>>>({});
   const [tests, setTests] = React.useState<Partial<Record<ProviderId, TestResult>>>({});
+  const [huggingFaceAccount, setHuggingFaceAccount] =
+    React.useState<HuggingFaceAccountStatus | null>(null);
   const [revealed, setRevealed] = React.useState<Partial<Record<ProviderId, boolean>>>({});
   const [copied, setCopied] = React.useState<Partial<Record<ProviderId, boolean>>>({});
 
@@ -180,6 +190,32 @@ export default function KeysPage() {
     refresh();
   }, [refresh]);
 
+  React.useEffect(() => {
+    if (!status || status.HUGGINGFACE === "unset") {
+      setHuggingFaceAccount(null);
+      return;
+    }
+    let cancelled = false;
+    api
+      .getHuggingFaceAccount()
+      .then((account) => {
+        if (!cancelled) setHuggingFaceAccount(account);
+      })
+      .catch((err) => {
+        console.error("getHuggingFaceAccount failed", err);
+        if (!cancelled) {
+          setHuggingFaceAccount({
+            connected: false,
+            account: null,
+            error: err instanceof Error ? err.message : "account lookup failed",
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [status]);
+
   const onSave = async (id: ProviderId) => {
     const value = drafts[id];
     if (!value) return;
@@ -197,14 +233,27 @@ export default function KeysPage() {
   };
 
   const onTest = async (id: ProviderId) => {
-    if (id !== "OPENAI" && id !== "GEMINI" && id !== "ANTHROPIC") return;
+    if (
+      id !== "OPENAI" &&
+      id !== "GEMINI" &&
+      id !== "ANTHROPIC" &&
+      id !== "HUGGINGFACE"
+    ) return;
     setTesting((t) => ({ ...t, [id]: true }));
     setTests((t) => ({ ...t, [id]: undefined }));
     try {
       const r = await api.testKey(id);
+      if (id === "HUGGINGFACE" && r.ok) {
+        void api.getHuggingFaceAccount().then(setHuggingFaceAccount).catch(() => undefined);
+      }
       setTests((t) => ({
         ...t,
-        [id]: { ok: r.ok, latencyMs: r.latency_ms, error: r.error },
+        [id]: {
+          ok: r.ok,
+          latencyMs: r.latency_ms,
+          error: r.error,
+          account: r.account,
+        },
       }));
     } finally {
       setTesting((t) => ({ ...t, [id]: false }));
@@ -358,6 +407,27 @@ export default function KeysPage() {
                       )}
                     </div>
 
+                    {p.id === "HUGGINGFACE" && huggingFaceAccount?.account ? (
+                      <div className="rounded-[6px] border border-(--color-border-card) bg-(--color-bg-pill-inactive) p-2 text-[11px] text-(--color-text-tertiary-spec)">
+                        <div className="truncate text-(--color-text-primary)">
+                          {huggingFaceAccount.account.fullname ||
+                            huggingFaceAccount.account.name ||
+                            "Connected account"}
+                        </div>
+                        {huggingFaceAccount.account.email ? (
+                          <div className="mt-0.5 truncate">{huggingFaceAccount.account.email}</div>
+                        ) : null}
+                        {huggingFaceAccount.account.orgs.length ? (
+                          <div className="mt-1 truncate">
+                            {huggingFaceAccount.account.orgs
+                              .map((org) => org.name)
+                              .filter(Boolean)
+                              .join(", ")}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+
                     <div className="flex flex-wrap items-center gap-2 pt-1">
                       {p.testable ? (
                         <Button
@@ -391,7 +461,7 @@ export default function KeysPage() {
                         test.ok ? (
                           <span className="inline-flex min-w-0 items-center gap-1 text-[11px] text-(--color-status-emerald)">
                             <Check className="size-3" />
-                            {test.latencyMs ? `${test.latencyMs}ms` : "ok"}
+                            {test.account ?? (test.latencyMs ? `${test.latencyMs}ms` : "ok")}
                           </span>
                         ) : (
                           <span

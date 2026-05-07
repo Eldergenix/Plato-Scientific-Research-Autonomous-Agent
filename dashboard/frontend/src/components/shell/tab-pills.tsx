@@ -1,11 +1,72 @@
 "use client";
 
 import * as React from "react";
+import {
+  BooksIcon,
+  CheckCircleIcon,
+  CircleNotchIcon,
+  ClockCounterClockwiseIcon,
+  CodeIcon,
+  CoinsIcon,
+  CrownIcon,
+  DatabaseIcon,
+  FileTextIcon,
+  FunnelIcon,
+  ListChecksIcon,
+  MicroscopeIcon,
+  NewspaperIcon,
+  PlugsConnectedIcon,
+  RowsIcon,
+  SparkleIcon,
+  StampIcon,
+  StackIcon,
+  TestTubeIcon,
+  WarningCircleIcon,
+  WrenchIcon,
+} from "@phosphor-icons/react";
+import type { Icon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 
 export interface TabPillItem {
   id: string;
   label: string;
+  icon?: Icon;
+}
+
+const TAB_ICON_BY_KEY: Record<string, Icon> = {
+  active: CircleNotchIcon,
+  "all events": RowsIcon,
+  "all time": ClockCounterClockwiseIcon,
+  all: StackIcon,
+  backlog: ListChecksIcon,
+  cheap: CoinsIcon,
+  completed: CheckCircleIcon,
+  "custom mcp": CodeIcon,
+  data: DatabaseIcon,
+  edits: SparkleIcon,
+  errors: WarningCircleIcon,
+  experiments: TestTubeIcon,
+  mcp: PlugsConnectedIcon,
+  month: ClockCounterClockwiseIcon,
+  papers: FileTextIcon,
+  premium: CrownIcon,
+  references: BooksIcon,
+  research: MicroscopeIcon,
+  runs: CircleNotchIcon,
+  stamp: StampIcon,
+  summary: NewspaperIcon,
+  today: ClockCounterClockwiseIcon,
+  tools: WrenchIcon,
+  week: ClockCounterClockwiseIcon,
+};
+
+function resolveTabIcon(tab: TabPillItem): Icon {
+  return (
+    tab.icon ??
+    TAB_ICON_BY_KEY[tab.id] ??
+    TAB_ICON_BY_KEY[tab.label.toLowerCase()] ??
+    FunnelIcon
+  );
 }
 
 export interface TabPillsProps {
@@ -61,6 +122,7 @@ export function TabPills({
     >
       {tabs.map((tab, i) => {
         const isActive = tab.id === activeId;
+        const Icon = resolveTabIcon(tab);
         return (
           <button
             key={tab.id}
@@ -86,6 +148,12 @@ export function TabPills({
             )}
             style={{ paddingTop: "6.25px", paddingBottom: "6.25px" }}
           >
+            <Icon
+              aria-hidden
+              size={12}
+              weight={isActive ? "fill" : "regular"}
+              className="mr-1.5 shrink-0"
+            />
             {tab.label}
           </button>
         );

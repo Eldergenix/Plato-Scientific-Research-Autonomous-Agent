@@ -90,6 +90,7 @@ const PROVIDER_AVATAR: Record<
   anthropic: { letter: "A", bg: "#2A6F6A", fg: "#E6F8F5" },
   openai: { letter: "O", bg: "#10A37F", fg: "#E7FFF7" },
   gemini: { letter: "G", bg: "#4EA7FC", fg: "#0B1B33" },
+  huggingface: { letter: "H", bg: "#FF9D00", fg: "#231400" },
   perplexity: { letter: "P", bg: "#1F8FA3", fg: "#E5FBFF" },
   semantic_scholar: { letter: "S", bg: "#5E6AD2", fg: "#F2F3FF" },
 };
@@ -104,6 +105,7 @@ const PROVIDER_DOT_COLOR: Record<Provider, string> = {
   anthropic: "purple",
   openai: "green",
   gemini: "blue",
+  huggingface: "amber",
   perplexity: "teal",
   semantic_scholar: "purple",
 };

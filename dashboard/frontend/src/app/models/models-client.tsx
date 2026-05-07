@@ -28,6 +28,7 @@ const PROVIDER_LABEL: Record<Provider, string> = {
   anthropic: "Anthropic",
   openai: "OpenAI",
   gemini: "Google",
+  huggingface: "Hugging Face",
   perplexity: "Perplexity",
   semantic_scholar: "Semantic Scholar",
 };
@@ -86,6 +87,7 @@ const PROVIDER_COLOR: Record<Provider, string> = {
   anthropic: "#00738E",
   openai: "#27A644",
   gemini: "#4EA7FC",
+  huggingface: "#ff9d00",
   perplexity: "#bb87fc",
   semantic_scholar: "#ff7236",
 };
@@ -94,6 +96,7 @@ const PROVIDER_KEY_FIELD: Record<Provider, keyof KeysStatus | undefined> = {
   anthropic: "ANTHROPIC",
   openai: "OPENAI",
   gemini: "GEMINI",
+  huggingface: "HUGGINGFACE",
   perplexity: "PERPLEXITY",
   semantic_scholar: "SEMANTIC_SCHOLAR",
 };

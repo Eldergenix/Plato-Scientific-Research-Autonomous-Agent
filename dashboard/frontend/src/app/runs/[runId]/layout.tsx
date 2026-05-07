@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { DashboardShell } from "@/components/shell/dashboard-shell";
 
 interface Params {
   runId: string;
@@ -30,5 +31,5 @@ export default function RunDetailLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return children;
+  return <DashboardShell>{children}</DashboardShell>;
 }

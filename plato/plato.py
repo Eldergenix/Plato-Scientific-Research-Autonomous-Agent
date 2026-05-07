@@ -43,6 +43,17 @@ _MODEL_PROVIDER_ENV: tuple[tuple[tuple[str, ...], str, str], ...] = (
     (("gpt", "o3"), "OPENAI", "OPENAI_API_KEY"),
     (("gemini",), "GEMINI", "GOOGLE_API_KEY"),
     (("claude", "anthropic"), "ANTHROPIC", "ANTHROPIC_API_KEY"),
+    (
+        (
+            "deepseek-ai/",
+            "qwen/",
+            "meta-llama/",
+            "moonshotai/",
+            "nvidia/",
+        ),
+        "HUGGINGFACE",
+        "HUGGINGFACE_API_KEY or HUGGINGFACE_HUB_TOKEN or HF_TOKEN",
+    ),
 )
 
 
