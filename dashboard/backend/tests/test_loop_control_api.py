@@ -240,8 +240,10 @@ def test_list_returns_started_loops(client: TestClient) -> None:
     assert {a["loop_id"], b["loop_id"]} <= ids
 
 
-def test_auth_required_blocks_missing_header(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """In auth-required mode, every endpoint requires X-Plato-User."""
+def test_auth_required_blocks_missing_identity(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """In auth-required mode, every endpoint requires header or cookie identity."""
     monkeypatch.setenv("PLATO_AUTH", "enabled")
 
     # Rebuild the app inside the auth-required env.
@@ -268,6 +270,41 @@ def test_auth_required_blocks_missing_header(monkeypatch: pytest.MonkeyPatch, tm
             headers={"X-Plato-User": "alice"},
         )
         assert resp_ok.status_code == 200
+
+    loop_control.reset_registry()
+
+
+def test_auth_required_accepts_dashboard_cookie(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The production dashboard login cookie must authorize loop endpoints."""
+    monkeypatch.setenv("PLATO_AUTH", "enabled")
+
+    from plato_dashboard.api import loop_control
+
+    loop_control.reset_registry()
+    monkeypatch.setattr(
+        loop_control,
+        "_build_loop",
+        lambda req: _FakeLoop(project_dir=req.project_dir, tsv_path=tmp_path / "r.tsv"),
+    )
+    app = FastAPI()
+    app.include_router(loop_control.router)
+
+    with TestClient(app) as c:
+        c.cookies.set("plato_user", "alice")
+        resp = c.post(
+            "/api/v1/loop/start",
+            json=_start_payload(),
+        )
+        assert resp.status_code == 200
+        started = resp.json()
+
+        status_resp = c.get(
+            f"/api/v1/loop/{started['loop_id']}/status",
+        )
+        assert status_resp.status_code == 200
+        assert status_resp.json()["loop_id"] == started["loop_id"]
 
     loop_control.reset_registry()
 
