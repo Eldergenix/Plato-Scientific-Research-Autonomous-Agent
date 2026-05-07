@@ -45,6 +45,7 @@ const PROVIDER_DOT: Record<Provider, string> = {
   anthropic: "var(--color-status-orange)",
   openai: "var(--color-status-green-spec)",
   gemini: "var(--color-status-blue)",
+  huggingface: "#ff9d00",
   perplexity: "var(--color-status-purple)",
   semantic_scholar: "var(--color-status-teal)",
 };

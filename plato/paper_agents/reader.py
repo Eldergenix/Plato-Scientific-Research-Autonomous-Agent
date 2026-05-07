@@ -43,6 +43,17 @@ def preprocess_node(state: GraphState, config: RunnableConfig):
             openai_api_key=state["keys"].OPENAI,
         )
 
+    elif any(
+        key in state["llm"]["model"]
+        for key in ["deepseek-ai/", "Qwen/", "meta-llama/", "moonshotai/", "nvidia/"]
+    ):
+        state["llm"]["llm"] = cast(Any, ChatOpenAI)(
+            model=state["llm"]["model"],
+            temperature=state["llm"]["temperature"],
+            openai_api_key=state["keys"].HUGGINGFACE,
+            openai_api_base="https://router.huggingface.co/v1",
+        )
+
     elif "claude" in state["llm"]["model"] or "anthropic" in state["llm"]["model"]:
         state["llm"]["llm"] = cast(Any, ChatAnthropic)(
             model=state["llm"]["model"],

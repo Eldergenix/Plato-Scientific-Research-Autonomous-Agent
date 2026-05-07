@@ -44,6 +44,7 @@ from .latex import (
     compile_tex_document,
     fix_latex,
     fix_percent,
+    sanitize_latex_section,
 )
 from .journal import LatexPresets
 from .latex_presets import journal_dict
@@ -82,7 +83,7 @@ def _wrap_latex_section(state: GraphState, text: str) -> str:
 
 \begin{{document}}
 
-{text}
+{sanitize_latex_section(text)}
 
 \end{{document}}
                 """
@@ -521,7 +522,14 @@ def plots_node(state: GraphState, config: RunnableConfig):
         )
 
         if f_temp.exists():
-            state["paper"]["Results"] = temp_file(state, f_temp, "read")
+            state["paper"]["Results"] = sanitize_latex_section(
+                temp_file(state, f_temp, "read")
+            )
+            writer = ScopedWriter(state["files"]["Paper_folder"], PLOTS_SCOPE)
+            writer.write(
+                f"temp/{f_temp.name}",
+                _wrap_latex_section(state, state["paper"]["Results"]),
+            )
 
         else:
             # sometimes it may not include the images. Give it three chances
@@ -536,7 +544,9 @@ def plots_node(state: GraphState, config: RunnableConfig):
                 results = LaTeX_checker(state, results)
 
                 # --- Remove unwanted LaTeX wrappers ---
-                state["paper"]["Results"] = clean_section(results, "Results")
+                state["paper"]["Results"] = sanitize_latex_section(
+                    clean_section(results, "Results")
+                )
 
                 # check if the names of the images are the correct ones
                 images_in_text = check_images_in_text(state, images)
@@ -732,7 +742,13 @@ async def citations_node(state: GraphState, config: RunnableConfig):
     tasks = [
         add_citations_async(state, paper[section], section) for section in sections
     ]
-    results = await asyncio.gather(*tasks)
+    try:
+        results = await asyncio.gather(*tasks)
+    except Exception as exc:
+        paper["References"] = paper.get("References", "")
+        paper["citation_error"] = str(exc)
+        print(f"⚠️ Citation enrichment skipped: {exc}")
+        return {"paper": state["paper"], "tokens": state["tokens"]}
 
     # Deduplicate full BibTeX entries
     bib_entries_set: set[str] = set()

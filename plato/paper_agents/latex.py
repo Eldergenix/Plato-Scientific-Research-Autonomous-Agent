@@ -28,6 +28,35 @@ special_chars = {
 }
 
 
+def sanitize_latex_section(text: str) -> str:
+    """Normalize common LLM-generated LaTeX mistakes before compilation."""
+    if not text:
+        return text
+
+    sanitized = text.replace("</figure>", r"\end{figure}")
+    sanitized = sanitized.replace(r"\ensuremath{\_}", r"\_")
+
+    def escape_command_underscores(match: re.Match[str]) -> str:
+        prefix, body, suffix = match.groups()
+        body = re.sub(r"(?<!\\)_", r"\\_", body)
+        return f"{prefix}{body}{suffix}"
+
+    sanitized = re.sub(
+        r"(\\(?:text|texttt|textit|textbf|emph)\{)([^{}]*)(\})",
+        escape_command_underscores,
+        sanitized,
+    )
+
+    def clean_label(match: re.Match[str]) -> str:
+        label = match.group(1)
+        label = label.replace(r"\_", "_")
+        label = re.sub(r"\\[A-Za-z]+\{([^{}]*)\}", r"\1", label)
+        label = re.sub(r"[^A-Za-z0-9:._-]+", "-", label).strip("-")
+        return rf"\label{{{label or 'fig:generated'}}}"
+
+    return re.sub(r"\\label\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}", clean_label, sanitized)
+
+
 def _latex_engine() -> tuple[str, str]:
     xelatex = shutil.which("xelatex")
     if xelatex:
@@ -323,25 +352,25 @@ def save_paper(state: GraphState, paper_name: str):
 {journaldict.author(author)}
 {journaldict.affiliation(affiliation)}
 
-{journaldict.abstract(state["paper"].get("Abstract", ""))}
-{journaldict.keywords(state["paper"].get("Keywords", ""))}
+{journaldict.abstract(sanitize_latex_section(state["paper"].get("Abstract", "")))}
+{journaldict.keywords(sanitize_latex_section(state["paper"].get("Keywords", "")))}
 
 
 \section{{Introduction}}
 \label{{sec:intro}}
-{state["paper"].get("Introduction", "")}
+{sanitize_latex_section(state["paper"].get("Introduction", ""))}
 
 \section{{Methods}}
 \label{{sec:methods}}
-{state["paper"].get("Methods", "")}
+{sanitize_latex_section(state["paper"].get("Methods", ""))}
 
 \section{{Results}}
 \label{{sec:results}}
-{state["paper"].get("Results", "")}
+{sanitize_latex_section(state["paper"].get("Results", ""))}
 
 \section{{Conclusions}}
 \label{{sec:conclusions}}
-{state["paper"].get("Conclusions", "")}
+{sanitize_latex_section(state["paper"].get("Conclusions", ""))}
 
 \bibliography{{bibliography}}{{}}
 {journaldict.bibliographystyle}
