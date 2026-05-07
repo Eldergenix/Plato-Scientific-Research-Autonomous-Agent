@@ -4,7 +4,7 @@ import logging
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, cast
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from ..auth import auth_required, extract_user_id
+from ..auth import USER_COOKIE, USER_HEADER, auth_required, extract_user_id
 from ..domain.models import (
     Capabilities,
     CreateProjectRequest,
@@ -67,6 +67,14 @@ from .idea_history import router as idea_history_router
 from .cost_caps import router as cost_caps_router
 from .approvals import router as approvals_router, compute_blocking_approval
 
+_SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+    "Cross-Origin-Opener-Policy": "same-origin",
+}
+
 
 def _resolve_project_root(settings: Settings, user_id: str | None) -> Path:
     """Per-user namespace under ``<project_root>/users/<user_id>/`` when authed.
@@ -95,7 +103,7 @@ def _get_store(
             status_code=401,
             detail={
                 "code": "auth_required",
-                "message": "Missing required header 'X-Plato-User'.",
+                "message": f"Missing required header '{USER_HEADER}' or cookie '{USER_COOKIE}'.",
             },
         )
     root = _resolve_project_root(settings, user_id)
@@ -113,6 +121,15 @@ def _get_keys(settings: Settings = Depends(get_settings)) -> KeyStore:
 
 _LLM_KEY_PROVIDERS = ("OPENAI", "GEMINI", "ANTHROPIC", "HUGGINGFACE", "PERPLEXITY")
 _LLM_REQUIRED_STAGES: set[StageId] = {
+    "idea",
+    "literature",
+    "method",
+    "results",
+    "paper",
+    "referee",
+}
+_STAGE_IDS: set[str] = {
+    "data",
     "idea",
     "literature",
     "method",
@@ -193,11 +210,15 @@ def _load_run_status_from_disk(run_dir: Path) -> Run | None:
         return None
 
     config = _load_run_config_from_events(run_dir)
+    raw_stage = raw.get("stage")
+    if not isinstance(raw_stage, str) or raw_stage not in _STAGE_IDS:
+        return None
+    stage = cast(StageId, raw_stage)
     try:
         return Run(
             id=str(raw.get("id") or raw.get("run_id") or run_dir.name),
             project_id=str(raw.get("project_id") or ""),
-            stage=raw.get("stage"),
+            stage=stage,
             mode=config.get("mode", "fast"),
             status=raw.get("status", "queued"),
             started_at=raw.get("started_at"),
@@ -410,6 +431,14 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def _apply_security_headers(request: Request, call_next):  # noqa: ANN001
+        response = await call_next(request)
+        for key, value in _SECURITY_HEADERS.items():
+            if key not in response.headers:
+                response.headers[key] = value
+        return response
 
     # Per-request run_id correlation. Reads ``X-Plato-Run-Id`` (set by
     # the frontend on every fetch via use-project / loop-api) and binds

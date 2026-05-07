@@ -10,6 +10,7 @@ from pydantic import BaseModel
 import plato.tools as tools_pkg
 from plato.tools import builtin as tools_builtin
 from plato.tools.registry import (
+    Permission,
     Tool,
     ToolMetadata,
     _REGISTRY,
@@ -30,7 +31,7 @@ def _make_tool(
     name: str,
     *,
     fn,
-    permissions: set[str] | None = None,
+    permissions: set[Permission] | None = None,
     category: str = "generic",
 ) -> Tool:
     return Tool(

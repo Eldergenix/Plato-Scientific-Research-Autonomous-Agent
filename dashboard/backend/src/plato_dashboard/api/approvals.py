@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from ..domain.models import ApprovalsState, Project
+from ..domain.models import ApprovalsState, Project, StageId
 from ..settings import Settings, get_settings
 from ..storage.project_store import ProjectStore
 
@@ -36,14 +36,14 @@ router = APIRouter()
 # Iter-27: blocker-chain definition. Source of truth for both the
 # /approvals endpoint's gate evaluation and the run_stage gate.
 # Mirror of approval-checkpoints.tsx::guardOrder.
-_BLOCKER_CHAIN: tuple[tuple[str, tuple[str, ...]], ...] = (
+_BLOCKER_CHAIN: tuple[tuple[StageId, tuple[StageId, ...]], ...] = (
     ("idea", ("literature", "method", "results", "paper", "referee")),
     ("literature", ("method", "results", "paper", "referee")),
     ("method", ("results", "paper", "referee")),
 )
 
 
-def compute_blocking_approval(project: Project, target_stage: str) -> str | None:
+def compute_blocking_approval(project: Project, target_stage: StageId) -> StageId | None:
     """Return the upstream gate stage that's blocking ``target_stage``.
 
     Returns ``None`` when:

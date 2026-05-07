@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 import pytest
 from fastapi import HTTPException
 
@@ -12,8 +14,12 @@ from plato_dashboard.api.capabilities import (
 from plato_dashboard.domain.models import Capabilities
 
 
-def _local_caps(**overrides) -> Capabilities:
-    base = dict(
+def _detail(exc: HTTPException) -> dict[str, Any]:
+    return cast(dict[str, Any], exc.detail)
+
+
+def _local_caps(**overrides: Any) -> Capabilities:
+    base: dict[str, Any] = dict(
         is_demo=False,
         allowed_stages=["data", "idea", "literature", "method", "results", "paper", "referee"],
         max_concurrent_runs=2,
@@ -23,8 +29,8 @@ def _local_caps(**overrides) -> Capabilities:
     return Capabilities(**base)
 
 
-def _demo_caps(**overrides) -> Capabilities:
-    base = dict(
+def _demo_caps(**overrides: Any) -> Capabilities:
+    base: dict[str, Any] = dict(
         is_demo=True,
         allowed_stages=["data", "idea", "method", "literature"],
         max_concurrent_runs=1,
@@ -43,15 +49,16 @@ def test_require_stage_allowed_rejects_results_in_demo() -> None:
     with pytest.raises(HTTPException) as exc:
         require_stage_allowed("results", _demo_caps())
     assert exc.value.status_code == 403
-    assert exc.value.detail["code"] == "stage_locked"
-    assert exc.value.detail["is_demo"] is True
+    detail = _detail(exc.value)
+    assert detail["code"] == "stage_locked"
+    assert detail["is_demo"] is True
 
 
 def test_require_stage_allowed_rejects_paper_in_demo() -> None:
     with pytest.raises(HTTPException) as exc:
         require_stage_allowed("paper", _demo_caps())
     assert exc.value.status_code == 403
-    assert exc.value.detail["code"] == "stage_locked"
+    assert _detail(exc.value)["code"] == "stage_locked"
 
 
 def test_require_under_budget_noop_when_no_cap() -> None:
@@ -67,4 +74,4 @@ def test_require_under_budget_blocks_when_exhausted() -> None:
     with pytest.raises(HTTPException) as exc:
         require_under_budget(caps, projected_cents=1)
     assert exc.value.status_code == 402
-    assert exc.value.detail["code"] == "budget_exhausted"
+    assert _detail(exc.value)["code"] == "budget_exhausted"

@@ -1,10 +1,11 @@
 # Deploying Plato Dashboard to Railway
 
 Railway runs the **same single-container image** the dashboard ships to
-HuggingFace Spaces with (`dashboard/spaces/Dockerfile`). The image embeds
-the statically-exported Next.js frontend inside the FastAPI gateway, so
-one Railway service hosts the whole app. No separate frontend service,
-no Redis, no Postgres needed.
+HuggingFace Spaces with (`dashboard/spaces/Dockerfile`). The image runs
+Next.js as the public process on Railway's injected `$PORT`, while the
+FastAPI backend runs on localhost and receives `/api/v1` traffic through
+the Next proxy. One Railway service hosts the whole app. No separate
+frontend service, no Redis, no Postgres needed.
 
 The repo's [`railway.json`](../railway.json) at the root tells Railway
 which Dockerfile to use and where the healthcheck lives — Railway picks
@@ -42,7 +43,8 @@ that up automatically when you point a service at this repo.
    | `ANTHROPIC_API_KEY` | recommended | `sk-ant-...` |
    | `OPENAI_API_KEY` | optional | only if you want users to pick GPT models |
    | `GOOGLE_API_KEY` | optional | only if you want Gemini models |
-   | `PLATO_DEMO_MODE` | leave unset | defaults to `enabled` from the Dockerfile — only override to `disabled` if you've put auth in front |
+   | `PLATO_DEMO_MODE` | leave unset | defaults to `enabled` from the Dockerfile; only override to `disabled` if you've put auth in front |
+   | `PLATO_BACKEND_PORT` | leave unset | defaults to `7878`; FastAPI listens here inside the container |
    | `PLATO_AUTH` | optional | set to `enabled` + `PLATO_AUTH_TOKEN=...` to gate the dashboard behind a bearer cookie |
    | `PLATO_USE_FAKEREDIS` | leave unset | already `true` in the Dockerfile; no Redis service needed |
 
@@ -112,7 +114,8 @@ limits comfortably.
 |---|---|---|
 | Build times out at ~10 min | First build is slow; cmbagent compile | Re-run; subsequent builds use the layer cache |
 | `Healthcheck failed: /api/v1/health` after green build | App still booting (LangChain imports) | Bump `healthcheckTimeout` in `railway.json` to `600` |
-| `502 Bad Gateway` on first request | Cold start | Wait ~10s, refresh — happens once per idle-restart |
+| `502 Bad Gateway` on first request | Cold start or Next waiting for FastAPI | Wait ~10s, refresh; then check `railway logs` if it persists |
+| `Error: spawn npm ENOENT` during boot | Runtime pruned TypeScript while `next.config.ts` still needs it | Keep the built frontend `node_modules` from the builder stage; do not run `npm prune --omit=dev` unless the config is compiled or converted |
 | `"No models configured"` in the UI | Forgot to set provider keys | Set `ANTHROPIC_API_KEY` (or another) in Variables → Redeploy |
 | Demo mode banner won't go away | `PLATO_DEMO_MODE=enabled` is the default | Set `PLATO_DEMO_MODE=disabled` **only if you've also enabled `PLATO_AUTH`** |
 
@@ -120,11 +123,16 @@ limits comfortably.
 
 ## Why one container, not two services?
 
-The repo's [`dashboard/Dockerfile`](Dockerfile) is a multi-stage build
-that runs `next build --turbopack` with `output: "export"` to produce a
-pure-static `out/` directory, then copies that into the Python image
-where FastAPI serves it at `/`. The frontend has no Node runtime in
-production — it's just HTML + JS files served by uvicorn. So:
+The repo's [`dashboard/Dockerfile`](Dockerfile) and
+[`dashboard/spaces/Dockerfile`](spaces/Dockerfile) are multi-stage builds.
+The builder runs `next build`, then the runtime image starts two local
+processes under `tini`:
+
+1. FastAPI on `PLATO_BACKEND_PORT` for `/api/v1`
+2. Next.js on Railway's public `$PORT`
+
+This avoids static-export limitations around dynamic run pages and the
+Next API proxy, while still keeping operations simple:
 
 - **One origin** → zero CORS, zero proxy config
 - **One service** → simpler env vars, no internal-DNS plumbing

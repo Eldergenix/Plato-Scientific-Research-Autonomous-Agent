@@ -149,7 +149,7 @@ async def test_run_with_stub_sandbox_captures_logs_and_results(
     import types as _types
 
     fake = _types.ModuleType("e2b_code_interpreter")
-    fake.Sandbox = _StubSandbox
+    setattr(fake, "Sandbox", _StubSandbox)
     monkeypatch.setitem(sys.modules, "e2b_code_interpreter", fake)
 
     executor = E2BExecutor()
@@ -187,7 +187,7 @@ async def test_run_propagates_sandbox_error(
     import types as _types
 
     fake = _types.ModuleType("e2b_code_interpreter")
-    fake.Sandbox = _StubSandbox
+    setattr(fake, "Sandbox", _StubSandbox)
     monkeypatch.setitem(sys.modules, "e2b_code_interpreter", fake)
 
     executor = E2BExecutor()

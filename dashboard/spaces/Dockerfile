@@ -7,7 +7,7 @@
 #   * Demo mode ON by default — code-execution stages locked, $0.50 cap
 #   * Trimmed LaTeX install (HF Spaces enforces a ~50GB image cap and a
 #     ~16GB persistent storage budget on the free tier)
-#   * No bundled redis — fakeredis only (HF Spaces is single-process)
+#   * No bundled redis — fakeredis only (HF Spaces gets one container)
 #
 # Build context MUST be the repo root:
 #   docker build -t plato-spaces -f dashboard/spaces/Dockerfile .
@@ -17,7 +17,7 @@
 # -----------------------------------------------------------------------------
 # Stage 1 — Frontend builder (identical to the prod Dockerfile)
 # -----------------------------------------------------------------------------
-FROM node:22-alpine AS frontend-builder
+FROM node:22-slim AS frontend-builder
 
 WORKDIR /build
 
@@ -38,31 +38,21 @@ COPY dashboard/frontend/ ./
 ENV NEXT_PUBLIC_API_BASE=/api/v1
 ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN cat > next.config.ts <<'EOF'
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
-  output: "export",
-  images: { unoptimized: true },
-  trailingSlash: true,
-};
-
-export default nextConfig;
-EOF
-
-# <<< Use webpack-based `next build` directly. The package.json script is
-# `next build --turbopack`, but Next.js 15 Turbopack does not yet resolve
-# tsconfig.json `paths` aliases (e.g. "@/*") under `output: "export"` mode,
-# which causes module-not-found errors on every `@/components/...` import.
-# `npx next build` invokes the binary without --turbopack, falling back to
-# webpack which resolves paths correctly.
-RUN npx next build
+RUN npm run build
 
 
 # -----------------------------------------------------------------------------
-# Stage 2 — Runtime
+# Stage 2 — Node runtime donor
+# -----------------------------------------------------------------------------
+FROM node:22-slim AS node-runtime
+
+
+# -----------------------------------------------------------------------------
+# Stage 3 — Runtime
 # -----------------------------------------------------------------------------
 FROM python:3.13-slim AS runtime
+
+COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -70,7 +60,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PLATO_HOST=0.0.0.0 \
-    PLATO_PORT=7860 \
+    PLATO_PORT=7878 \
+    PLATO_BACKEND_PORT=7878 \
     PLATO_DEMO_MODE=enabled \
     PLATO_AUTH=disabled \
     PLATO_USE_FAKEREDIS=true \
@@ -109,8 +100,14 @@ COPY dashboard/backend/pyproject.toml /app/dashboard/backend/
 COPY dashboard/backend/src/ /app/dashboard/backend/src/
 RUN pip install -e /app/dashboard/backend
 
-# <<< Pull the static frontend build.
-COPY --from=frontend-builder /build/out /app/dashboard/frontend/out
+# <<< Pull the Next.js production build. The public process is Next; the
+# FastAPI gateway runs on an internal localhost port and handles /api/v1.
+COPY --from=frontend-builder /build/package.json /app/dashboard/frontend/package.json
+COPY --from=frontend-builder /build/package-lock.json /app/dashboard/frontend/package-lock.json
+COPY --from=frontend-builder /build/next.config.ts /app/dashboard/frontend/next.config.ts
+COPY --from=frontend-builder /build/public /app/dashboard/frontend/public
+COPY --from=frontend-builder /build/.next /app/dashboard/frontend/.next
+COPY --from=frontend-builder /build/node_modules /app/dashboard/frontend/node_modules
 
 # <<< HF-specific entrypoint script. Lives alongside the Dockerfile so users
 # can tweak it without rebuilding. See dashboard/spaces/start.sh.

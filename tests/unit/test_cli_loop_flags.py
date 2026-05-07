@@ -123,7 +123,7 @@ def test_loop_factory_stashes_executor_override(
         from plato import Plato
         plato_obj = Plato(project_dir=args.project_dir, domain=args.domain)
         if args.executor:
-            plato_obj._cli_executor_override = args.executor  # type: ignore[attr-defined]
+            plato_obj._cli_executor_override = args.executor
         return plato_obj
 
     instance = _factory()

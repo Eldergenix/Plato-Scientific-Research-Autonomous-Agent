@@ -34,11 +34,11 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
+from ..auth import USER_COOKIE, _is_safe_user_id
 from ..settings import get_settings
 
 router = APIRouter()
 
-_COOKIE_NAME = "plato_user"
 # 30-day cookie. Keeps the user signed in across browser restarts without
 # being so long-lived that a stale tenant id sticks around forever.
 _COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30
@@ -54,7 +54,7 @@ def _read_user_id(request: Request) -> str | None:
     header = request.headers.get("X-Plato-User")
     if header and header.strip():
         return header.strip()
-    cookie = request.cookies.get(_COOKIE_NAME)
+    cookie = request.cookies.get(USER_COOKIE)
     if cookie and cookie.strip():
         return cookie.strip()
     return None
@@ -68,7 +68,7 @@ def _auth_required() -> bool:
     works on a fresh worktree.
     """
     try:
-        from .. import auth  # type: ignore[attr-defined]
+        from .. import auth
 
         helper = getattr(auth, "auth_required", None)
         if callable(helper):
@@ -81,25 +81,28 @@ def _auth_required() -> bool:
 class LoginRequest(BaseModel):
     """Body for ``POST /auth/login``.
 
-    The 128-char cap blocks pathological values that would also fail
+    The 64-char cap blocks pathological values that would also fail
     silently when written to the ``plato_user`` httponly cookie (most
     browsers cap cookie values around 4 KiB).
     """
 
-    user_id: str | None = Field(default=None, max_length=128)
+    user_id: str | None = Field(default=None, max_length=64)
 
 
 @router.post("/auth/login")
 def login(response: Response, body: LoginRequest) -> dict[str, Any]:
     """Set the ``plato_user`` cookie and echo the chosen user id back."""
     user_id = body.user_id.strip() if isinstance(body.user_id, str) else ""
-    if not user_id:
+    if not user_id or not _is_safe_user_id(user_id):
         raise HTTPException(
             status_code=400,
-            detail={"code": "invalid_user_id", "message": "user_id must be a non-empty string"},
+            detail={
+                "code": "invalid_user_id",
+                "message": "user_id must match [A-Za-z0-9._-] and be safe as a path segment",
+            },
         )
     response.set_cookie(
-        key=_COOKIE_NAME,
+        key=USER_COOKIE,
         value=user_id,
         max_age=_COOKIE_MAX_AGE_SECONDS,
         httponly=True,
@@ -114,7 +117,7 @@ def login(response: Response, body: LoginRequest) -> dict[str, Any]:
 @router.post("/auth/logout")
 def logout(response: Response) -> dict[str, Any]:
     """Clear the ``plato_user`` cookie."""
-    response.delete_cookie(key=_COOKIE_NAME, path="/")
+    response.delete_cookie(key=USER_COOKIE, path="/")
     return {"ok": True}
 
 

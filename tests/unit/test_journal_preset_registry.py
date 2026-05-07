@@ -50,7 +50,7 @@ def test_lazy_load_seeds_all_journal_dict_entries() -> None:
 def test_none_journal_lands_as_string_key() -> None:
     """``Journal.NONE.value`` is ``None`` — must not poison the registry."""
     assert "NONE" in JOURNAL_PRESET_REGISTRY
-    assert None not in JOURNAL_PRESET_REGISTRY  # type: ignore[operator]
+    assert None not in JOURNAL_PRESET_REGISTRY
 
 
 def test_get_journal_preset_returns_underlying_latex_presets() -> None:
