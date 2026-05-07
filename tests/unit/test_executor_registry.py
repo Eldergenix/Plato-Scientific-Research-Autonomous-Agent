@@ -29,7 +29,7 @@ class _StubExecutor:
     def __init__(self, name: str) -> None:
         self.name = name
 
-    async def run(self, **kwargs):  # type: ignore[override]
+    async def run(self, **kwargs):
         return ExecutorResult(results="stub")
 
 

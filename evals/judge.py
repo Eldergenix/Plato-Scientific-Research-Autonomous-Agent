@@ -119,23 +119,62 @@ class LLMJudge:
         """Concrete LLM invocation — split out so the public method can wrap it
         in a single try/except without tangling the happy-path logic."""
         import json
+        import os
         import re
+        from typing import Any, cast
 
         # Lazy import so ``evals`` stays importable on installs that
         # haven't pulled the LLM provider extras.
-        from plato.llm import models as _models, llm_parser
+        from plato.llm import models as _models
+        from plato.utils import llm_parser
 
         if model not in _models:
             raise KeyError(
                 f"Unknown judge model {model!r}. "
                 f"Add it to plato.llm.models or pick one of {sorted(_models)}."
             )
-        client = llm_parser(model)
-        # ``client`` is a BaseChatModel — ainvoke is async and returns
-        # a Message; .content is the raw string.
         from langchain_core.messages import HumanMessage
+        from langchain_anthropic import ChatAnthropic
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        from langchain_openai import ChatOpenAI
 
-        result = await client.llm.ainvoke([HumanMessage(content=prompt)])
+        llm_config = llm_parser(model)
+        if "gemini" in llm_config.name:
+            client = ChatGoogleGenerativeAI(
+                model=llm_config.name,
+                temperature=llm_config.temperature,
+                google_api_key=os.environ.get("GOOGLE_API_KEY"),
+            )
+        elif any(key in llm_config.name for key in ["gpt", "o3"]):
+            client = cast(Any, ChatOpenAI)(
+                model=llm_config.name,
+                temperature=llm_config.temperature,
+                openai_api_key=os.environ.get("OPENAI_API_KEY"),
+            )
+        elif "claude" in llm_config.name or "anthropic" in llm_config.name:
+            client = cast(Any, ChatAnthropic)(
+                model=llm_config.name,
+                temperature=llm_config.temperature,
+                anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY"),
+            )
+        elif any(
+            key in llm_config.name
+            for key in ["deepseek-ai/", "Qwen/", "meta-llama/", "moonshotai/", "nvidia/"]
+        ):
+            client = cast(Any, ChatOpenAI)(
+                model=llm_config.name,
+                temperature=llm_config.temperature,
+                openai_api_key=(
+                    os.environ.get("HUGGINGFACE_API_KEY")
+                    or os.environ.get("HUGGINGFACE_HUB_TOKEN")
+                    or os.environ.get("HF_TOKEN")
+                ),
+                openai_api_base="https://router.huggingface.co/v1",
+            )
+        else:
+            raise ValueError(f"No chat provider configured for judge model {llm_config.name!r}.")
+
+        result = await cast(Any, client).ainvoke([HumanMessage(content=prompt)])
         text = getattr(result, "content", "") or ""
 
         # Find the trailing JSON object — the prompt asks for prose

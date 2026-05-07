@@ -22,7 +22,7 @@ class _FixedEmbeddingScorer(EmbeddingScorer):
         self._fixed_score = score
         self._fixed_max_sim = 1.0 - score if max_sim is None else max_sim
 
-    async def score(self, idea: str, corpus: list[Source]) -> NoveltyResult:  # type: ignore[override]
+    async def score(self, idea: str, corpus: list[Source]) -> NoveltyResult:
         return NoveltyResult(
             score=self._fixed_score,
             max_similarity=self._fixed_max_sim,

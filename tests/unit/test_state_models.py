@@ -36,7 +36,7 @@ def test_source_rejects_unknown_retrieved_via():
         Source(
             id="x",
             title="t",
-            retrieved_via="nasa-grants",  # type: ignore[arg-type]
+            retrieved_via="nasa-grants",
             fetched_at=datetime.now(timezone.utc),
         )
 
@@ -59,7 +59,7 @@ def test_evidence_link_supports_label_validation():
         EvidenceLink(
             claim_id="c1",
             source_id="s1",
-            support="maybe",  # type: ignore[arg-type]
+            support="maybe",
             strength="strong",
         )
 

@@ -9,10 +9,12 @@ toolchain so the test stays hermetic.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import cast
 from unittest.mock import patch
 
 import pytest
+from langchain_core.runnables import RunnableConfig
+from plato.paper_agents.parameters import GraphState
 
 
 def test_three_nodes_importable() -> None:
@@ -28,7 +30,7 @@ def test_three_nodes_importable() -> None:
     )
 
 
-def _make_state(project_dir: Path) -> dict[str, Any]:
+def _make_state(project_dir: Path) -> GraphState:
     """Minimal `GraphState`-shaped dict pointing at a real temp project dir."""
     from plato.paper_agents.journal import Journal
 
@@ -37,7 +39,7 @@ def _make_state(project_dir: Path) -> dict[str, Any]:
     temp_dir.mkdir(parents=True, exist_ok=True)
     llm_calls = paper_folder / "LLM_calls.txt"
 
-    return {
+    return cast(GraphState, {
         "messages": [],
         "files": {
             "Folder": str(paper_folder),
@@ -77,7 +79,7 @@ def _make_state(project_dir: Path) -> dict[str, Any]:
         "critiques": {},
         "critique_digest": None,
         "revision_state": {"iteration": 0, "max_iterations": 2},
-    }
+    })
 
 
 @pytest.fixture
@@ -120,7 +122,7 @@ def test_abstract_node_runs_with_scoped_writer(project_dir: Path) -> None:
         patch.object(paper_node, "save_paper", return_value=None),
         patch.object(paper_node, "fix_latex", side_effect=lambda s, f: (s, True)),
     ):
-        out = paper_node.abstract_node(state, config=None)
+        out = paper_node.abstract_node(state, config=cast(RunnableConfig, {}))
 
     assert "paper" in out
     assert out["paper"]["Title"] == "T"
@@ -154,7 +156,7 @@ def test_methods_node_runs_with_scoped_writer(project_dir: Path) -> None:
         patch.object(paper_node, "save_paper", return_value=None),
         patch.object(paper_node, "fix_latex", side_effect=lambda s, f: (s, True)),
     ):
-        out = paper_node.methods_node(state, config=None)
+        out = paper_node.methods_node(state, config=cast(RunnableConfig, {}))
 
     assert "paper" in out
     assert "Some Methods text." in out["paper"]["Methods"]
@@ -179,7 +181,7 @@ def test_conclusions_node_runs_with_scoped_writer(project_dir: Path) -> None:
         patch.object(paper_node, "save_paper", return_value=None),
         patch.object(paper_node, "fix_latex", side_effect=lambda s, f: (s, True)),
     ):
-        out = paper_node.conclusions_node(state, config=None)
+        out = paper_node.conclusions_node(state, config=cast(RunnableConfig, {}))
 
     assert "paper" in out
     assert "Some Conclusions text." in out["paper"]["Conclusions"]

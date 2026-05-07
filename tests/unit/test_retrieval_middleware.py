@@ -323,16 +323,16 @@ class TestCircuitBreaker:
         )
         cb.record_failure()
         cb.record_failure()
-        assert cb.is_open is True
+        assert bool(cb.is_open) is True
 
         clock["t"] = 4.99
-        assert cb.is_open is True
+        assert bool(cb.is_open) is True
 
         clock["t"] = 5.0
-        assert cb.is_open is False
+        assert bool(cb.is_open) is False
         # And after re-closing, fresh failures need to hit the threshold again.
         cb.record_failure()
-        assert cb.is_open is False
+        assert bool(cb.is_open) is False
 
     def test_invalid_args(self) -> None:
         with pytest.raises(ValueError):

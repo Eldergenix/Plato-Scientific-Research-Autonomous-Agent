@@ -38,6 +38,7 @@ from pydantic import BaseModel, Field
 from ..settings import Settings, get_settings
 
 logger = logging.getLogger(__name__)
+LoopRunStatus = Literal["running", "stopped", "interrupted", "error"]
 
 
 # --------------------------------------------------------------------------- #
@@ -71,7 +72,7 @@ class LoopStatus(BaseModel):
     # Discriminated by Literal so a typo in _supervise (e.g. "errored")
     # would fail validation at write-time rather than silently
     # producing a value the frontend can't match.
-    status: Literal["running", "stopped", "interrupted", "error"]
+    status: LoopRunStatus
     iterations: int
     kept: int
     discarded: int
@@ -114,7 +115,7 @@ class LoopRecord:
         self.task: Optional[asyncio.Task[Any]] = None
         self.started_at = started_at
         self.owner = owner
-        self.status: str = "running"
+        self.status: LoopRunStatus = "running"
         self.error: Optional[str] = None
 
     def snapshot(self) -> LoopStatus:

@@ -29,7 +29,7 @@ def _write_manifest(project_dir: Path, run_id: str, user_id: str | None) -> Path
     """Drop a minimal-but-valid ``runs/<run_id>/manifest.json``."""
     runs_dir = project_dir / "runs" / run_id
     runs_dir.mkdir(parents=True, exist_ok=True)
-    payload = {
+    payload: dict[str, object] = {
         "run_id": run_id,
         "workflow": "test_workflow",
         "started_at": datetime.now(timezone.utc).isoformat(),

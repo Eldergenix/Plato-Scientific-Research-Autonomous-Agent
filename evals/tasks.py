@@ -64,7 +64,7 @@ class GoldenTask(BaseModel):
     domain: str = "astro"
 
     @classmethod
-    def model_validate(cls, obj, *args, **kwargs):  # type: ignore[override]
+    def model_validate(cls, obj, *args, **kwargs):
         """Coerce ``gold_sources`` entries via :meth:`GoldSource.from_any`.
 
         Override the default Pydantic validator so legacy JSON files with
