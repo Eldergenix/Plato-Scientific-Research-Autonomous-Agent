@@ -235,6 +235,7 @@ function RefereeContent() {
             onClick={() => void runReferee()}
             disabled={!canRunReferee || running}
             title={!canRunReferee ? "Complete the paper stage before running referee." : undefined}
+            data-run-button="true"
           >
             <Sparkles size={13} />
             Run referee
