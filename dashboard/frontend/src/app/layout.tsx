@@ -6,6 +6,8 @@ import { ErrorBoundary } from "@/components/shell/error-boundary";
 import { ThemeProvider } from "@/components/shell/theme-provider";
 import { isClerkAuthEnabled } from "@/lib/auth-mode";
 import "./globals.css";
+import "react-pdf/dist/Page/AnnotationLayer.css";
+import "react-pdf/dist/Page/TextLayer.css";
 
 const inter = Inter({
   variable: "--font-sans-loaded",

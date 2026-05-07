@@ -34,6 +34,14 @@ export const MODELS: ModelDef[] = [
     notes: "Strong reasoning",
   },
   {
+    id: "gemini-3.1-pro",
+    label: "Gemini 3.1 Pro",
+    provider: "gemini",
+    maxOutputTokens: 65536,
+    temperature: 0.7,
+    notes: "Frontier reasoning",
+  },
+  {
     id: "o3-mini",
     label: "o3-mini",
     provider: "openai",
@@ -113,6 +121,22 @@ export const MODELS: ModelDef[] = [
     notes: "Cheap · long output",
   },
   {
+    id: "gpt-5.5",
+    label: "GPT-5.5",
+    provider: "openai",
+    maxOutputTokens: 128000,
+    temperature: null,
+    notes: "Availability depends on account",
+  },
+  {
+    id: "gpt-5.5-pro",
+    label: "GPT-5.5 Pro",
+    provider: "openai",
+    maxOutputTokens: 128000,
+    temperature: null,
+    notes: "Availability depends on account",
+  },
+  {
     id: "claude-3.7-sonnet",
     label: "Claude 3.7 Sonnet",
     provider: "anthropic",
@@ -141,6 +165,62 @@ export const MODELS: ModelDef[] = [
     costOutputPer1k: 0.075,
     notes: "Recommended for retries",
   },
+  {
+    id: "claude-4.7-opus",
+    label: "Claude 4.7 Opus",
+    provider: "anthropic",
+    maxOutputTokens: 32000,
+    temperature: null,
+    notes: "Premium reasoning",
+  },
+  {
+    id: "deepseek-v4",
+    label: "DeepSeek V4 Flash",
+    provider: "huggingface",
+    maxOutputTokens: 65536,
+    temperature: 0.7,
+    notes: "HF Inference Providers",
+  },
+  {
+    id: "deepseek-v4-pro",
+    label: "DeepSeek V4 Pro",
+    provider: "huggingface",
+    maxOutputTokens: 65536,
+    temperature: 0.7,
+    notes: "HF Inference Providers",
+  },
+  {
+    id: "Qwen/Qwen3.6-27B",
+    label: "Qwen3.6 27B",
+    provider: "huggingface",
+    maxOutputTokens: 65536,
+    temperature: 0.7,
+    notes: "HF Inference Providers",
+  },
+  {
+    id: "meta-llama/Llama-3.3-70B-Instruct",
+    label: "Llama 3.3 70B Instruct",
+    provider: "huggingface",
+    maxOutputTokens: 32768,
+    temperature: 0.7,
+    notes: "HF gated access may apply",
+  },
+  {
+    id: "moonshotai/Kimi-K2.6",
+    label: "Kimi K2.6",
+    provider: "huggingface",
+    maxOutputTokens: 65536,
+    temperature: 0.7,
+    notes: "HF Inference Providers",
+  },
+  {
+    id: "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4",
+    label: "Nemotron 3 Super 120B",
+    provider: "huggingface",
+    maxOutputTokens: 32768,
+    temperature: 0.7,
+    notes: "HF Inference Providers",
+  },
 ];
 
 export const MODELS_BY_ID = Object.fromEntries(MODELS.map((m) => [m.id, m]));
@@ -149,6 +229,7 @@ export const MODEL_GROUPS = [
   { provider: "anthropic" as const, label: "Anthropic" },
   { provider: "openai" as const, label: "OpenAI" },
   { provider: "gemini" as const, label: "Google" },
+  { provider: "huggingface" as const, label: "Hugging Face" },
 ];
 
 export function modelsForProvider(provider: ModelDef["provider"]): ModelDef[] {

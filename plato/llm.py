@@ -65,6 +65,16 @@ gpt5mini = LLM(name="gpt-5-mini",
                temperature=None)
 """`gpt-5-mini` model."""
 
+gpt55 = LLM(name="gpt-5.5",
+            max_output_tokens=128000,
+            temperature=None)
+"""`gpt-5.5` model."""
+
+gpt55pro = LLM(name="gpt-5.5-pro",
+               max_output_tokens=128000,
+               temperature=None)
+"""`gpt-5.5-pro` model."""
+
 claude37sonnet = LLM(name="claude-3-7-sonnet-20250219",
                      max_output_tokens=64000,
                      temperature=0)
@@ -80,6 +90,46 @@ claude41opus = LLM(name="claude-opus-4-1-20250805",
                    temperature=0)
 """`claude-4.1-Opus` model."""
 
+claude47opus = LLM(name="claude-opus-4-7",
+                   max_output_tokens=32000,
+                   temperature=None)
+"""`claude-4.7-Opus` model."""
+
+deepseekv4 = LLM(name="deepseek-ai/DeepSeek-V4-Flash",
+                 max_output_tokens=65536,
+                 temperature=0.7)
+"""`deepseek-ai/DeepSeek-V4-Flash` model served through Hugging Face."""
+
+deepseekv4pro = LLM(name="deepseek-ai/DeepSeek-V4-Pro",
+                    max_output_tokens=65536,
+                    temperature=0.7)
+"""`deepseek-ai/DeepSeek-V4-Pro` model served through Hugging Face."""
+
+qwen36_27b = LLM(name="Qwen/Qwen3.6-27B",
+                 max_output_tokens=65536,
+                 temperature=0.7)
+"""`Qwen/Qwen3.6-27B` model served through Hugging Face."""
+
+llama33_70b = LLM(name="meta-llama/Llama-3.3-70B-Instruct",
+                  max_output_tokens=32768,
+                  temperature=0.7)
+"""`meta-llama/Llama-3.3-70B-Instruct` model served through Hugging Face."""
+
+kimi_k26 = LLM(name="moonshotai/Kimi-K2.6",
+               max_output_tokens=65536,
+               temperature=0.7)
+"""`moonshotai/Kimi-K2.6` model served through Hugging Face."""
+
+nemotron3_super = LLM(name="nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4",
+                      max_output_tokens=32768,
+                      temperature=0.7)
+"""`nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4` model served through Hugging Face."""
+
+gemini31pro = LLM(name="gemini-3.1-pro",
+                  max_output_tokens=65536,
+                  temperature=0.7)
+"""`gemini-3.1-pro` model."""
+
 models : Dict[str, LLM] = {
                             "gemini-2.0-flash" : gemini20flash,
                             "gemini-2.5-flash" : gemini25flash,
@@ -92,8 +142,22 @@ models : Dict[str, LLM] = {
                             "gpt-4.5" : gpt45,
                             "gpt-5" : gpt5,
                             "gpt-5-mini" : gpt5mini,
+                            "gpt-5.5" : gpt55,
+                            "gpt-5.5-pro" : gpt55pro,
                             "claude-3.7-sonnet" : claude37sonnet,
                             "claude-4-opus" : claude4opus,
                             "claude-4.1-opus" : claude41opus,
+                            "claude-4.7-opus" : claude47opus,
+                            "deepseek-v4" : deepseekv4,
+                            "deepseek-v4-pro" : deepseekv4pro,
+                            "Qwen/Qwen3.6-27B" : qwen36_27b,
+                            "qwen3.6-27b" : qwen36_27b,
+                            "meta-llama/Llama-3.3-70B-Instruct" : llama33_70b,
+                            "llama-3.3-70b-instruct" : llama33_70b,
+                            "moonshotai/Kimi-K2.6" : kimi_k26,
+                            "kimi-k2.6" : kimi_k26,
+                            "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4" : nemotron3_super,
+                            "nemotron-3-super" : nemotron3_super,
+                            "gemini-3.1-pro" : gemini31pro,
                            }
 """Dictionary with the available models."""

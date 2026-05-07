@@ -1,5 +1,6 @@
 import type {
   Journal,
+  PublicationSettings,
   Project,
   StageId,
 } from "./types";
@@ -177,13 +178,14 @@ function errorMessageForDetail(status: number, detail: unknown): string {
 
 // ---------------------------------------------------------------- shape
 // The backend uses snake_case; the frontend uses camelCase. Translate.
-type RawProject = Omit<Project, "totalTokens" | "totalCostCents" | "createdAt" | "updatedAt" | "stages" | "activeRun" | "approvals"> & {
+type RawProject = Omit<Project, "totalTokens" | "totalCostCents" | "createdAt" | "updatedAt" | "stages" | "activeRun" | "approvals" | "publicationSettings"> & {
   total_tokens: number;
   total_cost_cents: number;
   created_at: string;
   updated_at: string;
   stages: Record<string, RawStage>;
   active_run: RawActiveRun | null;
+  publication_settings?: PublicationSettings | null;
   // Iter-27: approvals come along on every Project read so
   // ``getBlockingApproval`` can evaluate the gate synchronously without
   // an extra round trip per stage.
@@ -209,6 +211,10 @@ type RawActiveRun = {
   total_attempts?: number | null;
 };
 
+function defaultPublicationSettings(): PublicationSettings {
+  return { authors: [], dates: {}, tasks: [] };
+}
+
 function adaptProject(p: RawProject): Project {
   const stages = Object.fromEntries(
     Object.entries(p.stages).map(([k, s]) => [
@@ -233,6 +239,7 @@ function adaptProject(p: RawProject): Project {
     updatedAt: p.updated_at,
     totalTokens: p.total_tokens,
     totalCostCents: p.total_cost_cents,
+    publicationSettings: p.publication_settings ?? defaultPublicationSettings(),
     stages,
     activeRun: p.active_run
       ? {
@@ -391,6 +398,39 @@ export interface PaperSectionArtifact {
 export interface PaperArtifacts {
   pdfUrl?: string;
   sections: PaperSectionArtifact[];
+}
+
+export interface ScientificScoreAxis {
+  score: number;
+  label: string;
+  summary: string;
+  signals: string[];
+  cautions: string[];
+}
+
+export interface ScientificScores {
+  overall: {
+    score: number;
+    label: string;
+    summary: string;
+  };
+  axes: {
+    originality: ScientificScoreAxis;
+    impact: ScientificScoreAxis;
+    findings: ScientificScoreAxis;
+  };
+  inputs: {
+    has_data: boolean;
+    has_idea: boolean;
+    has_literature: boolean;
+    has_method: boolean;
+    has_results: boolean;
+    has_paper_tex: boolean;
+    has_paper_pdf: boolean;
+    plot_count: number;
+    metric_mentions: number;
+  };
+  updated_at: string;
 }
 
 export type McpTransport = "stdio" | "http" | "sse";
@@ -606,6 +646,20 @@ export const api = {
    */
   async deleteProject(pid: string): Promise<void> {
     await fetchJson(`/projects/${pid}`, { method: "DELETE" });
+  },
+
+  async getPublicationSettings(pid: string): Promise<PublicationSettings> {
+    return fetchJson<PublicationSettings>(`/projects/${pid}/publication_settings`);
+  },
+
+  async updatePublicationSettings(
+    pid: string,
+    body: PublicationSettings,
+  ): Promise<PublicationSettings> {
+    return fetchJson<PublicationSettings>(`/projects/${pid}/publication_settings`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
   },
 
   async readStage(pid: string, stage: StageId): Promise<{ markdown: string; origin: string } | null> {
@@ -841,11 +895,16 @@ export const api = {
     return fetchJson<KeysStatus>("/keys/status");
   },
 
+  async getHuggingFaceAccount(): Promise<HuggingFaceAccountStatus> {
+    return fetchJson<HuggingFaceAccountStatus>("/keys/huggingface/account");
+  },
+
   async updateKeys(
     payload: Partial<{
       OPENAI: string;
       GEMINI: string;
       ANTHROPIC: string;
+      HUGGINGFACE: string;
       PERPLEXITY: string;
       SEMANTIC_SCHOLAR: string;
       // Iter-3: Langfuse triplet was missing from this Partial despite the
@@ -902,11 +961,20 @@ export const api = {
     };
   },
 
+  async getScientificScores(pid: string): Promise<ScientificScores> {
+    return fetchJson<ScientificScores>(`/projects/${pid}/scientific-scores`);
+  },
+
   async testKey(
-    provider: "OPENAI" | "GEMINI" | "ANTHROPIC",
-  ): Promise<{ ok: boolean; latency_ms?: number; error?: string }> {
+    provider: "OPENAI" | "GEMINI" | "ANTHROPIC" | "HUGGINGFACE",
+  ): Promise<{ ok: boolean; latency_ms?: number; error?: string; account?: string }> {
     try {
-      return await fetchJson<{ ok: boolean; latency_ms?: number; error?: string }>(
+      return await fetchJson<{
+        ok: boolean;
+        latency_ms?: number;
+        error?: string;
+        account?: string;
+      }>(
         `/keys/test/${provider}`,
         { method: "POST" },
       );
@@ -926,6 +994,7 @@ export interface KeysStatus {
   OPENAI: KeyState;
   GEMINI: KeyState;
   ANTHROPIC: KeyState;
+  HUGGINGFACE: KeyState;
   PERPLEXITY: KeyState;
   SEMANTIC_SCHOLAR: KeyState;
   // R8 — observability keys are stored alongside LLM provider keys.
@@ -936,4 +1005,27 @@ export interface KeysStatus {
   LANGFUSE_PUBLIC: KeyState;
   LANGFUSE_SECRET: KeyState;
   LANGFUSE_HOST: KeyState;
+}
+
+export interface HuggingFaceOrg {
+  name?: string | null;
+  fullname?: string | null;
+  role?: string | null;
+  type?: string | null;
+}
+
+export interface HuggingFaceAccount {
+  name?: string | null;
+  fullname?: string | null;
+  email?: string | null;
+  type?: string | null;
+  isPro?: boolean | null;
+  avatarUrl?: string | null;
+  orgs: HuggingFaceOrg[];
+}
+
+export interface HuggingFaceAccountStatus {
+  connected: boolean;
+  account: HuggingFaceAccount | null;
+  error?: string | null;
 }
