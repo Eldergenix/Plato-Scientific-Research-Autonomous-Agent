@@ -37,9 +37,9 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 }
 
 const inputClass = cn(
-  "h-8 w-full rounded-[6px] border border-[#262628] bg-[#141415] px-2.5",
+  "h-8 w-full rounded-[6px] border border-(--color-border-field) bg-(--color-bg-field) px-2.5",
   "text-[13px] text-(--color-text-primary) placeholder:text-(--color-text-quaternary-spec)",
-  "transition-colors hover:border-[#34343a]",
+  "transition-colors hover:border-(--color-border-field-hover)",
   "focus-visible:border-(--color-brand-indigo) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--color-brand-indigo)",
   "disabled:opacity-50",
 );
