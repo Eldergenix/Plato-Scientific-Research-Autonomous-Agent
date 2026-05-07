@@ -18,6 +18,7 @@ To run locally: ``docker run -p 5432:5432 -e POSTGRES_PASSWORD=plato postgres:16
 from __future__ import annotations
 
 import os
+from collections.abc import Generator
 from typing import TypedDict
 
 import pytest
@@ -39,6 +40,7 @@ if not DSN:
         "checkpointer integration suite (see module docstring).",
         allow_module_level=True,
     )
+POSTGRES_DSN: str = DSN
 
 
 class _CounterState(TypedDict, total=False):
@@ -90,16 +92,16 @@ def _drop_checkpoint_tables(dsn: str) -> None:
 
 
 @pytest.fixture(scope="module")
-def postgres_dsn() -> str:
+def postgres_dsn() -> Generator[str, None, None]:
     """The validated DSN for the test session.
 
     Wipes checkpoint tables before AND after the module runs so a partial
     run from a previous invocation doesn't poison this one and we leave
     the database clean for the next caller.
     """
-    _drop_checkpoint_tables(DSN)
-    yield DSN
-    _drop_checkpoint_tables(DSN)
+    _drop_checkpoint_tables(POSTGRES_DSN)
+    yield POSTGRES_DSN
+    _drop_checkpoint_tables(POSTGRES_DSN)
 
 
 @pytest.fixture

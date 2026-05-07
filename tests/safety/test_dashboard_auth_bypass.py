@@ -21,16 +21,10 @@ behind ``importorskip``.
 from __future__ import annotations
 
 import pytest
+from starlette.requests import Request
 
 # Skip the entire module if the dashboard auth shim isn't available yet.
 auth = pytest.importorskip("plato_dashboard.auth")
-
-
-# ``starlette.requests.Request`` is the easiest way to fabricate a
-# FastAPI ``Request`` with custom headers — the dashboard imports it
-# transitively, so it's already in the env.
-starlette_requests = pytest.importorskip("starlette.requests")
-Request = starlette_requests.Request
 
 
 def _make_request(headers: dict[str, str] | None = None) -> Request:
@@ -183,7 +177,8 @@ def test_optional_mode_present_header_is_honored(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Header is a single source of truth — no fallback to query string / cookie
+# Header/cookie identity is explicit — no fallback to query string or
+# misleading cookie names
 # ---------------------------------------------------------------------------
 
 
@@ -201,7 +196,18 @@ def test_query_string_user_param_is_ignored():
     assert auth.extract_user_id(req) is None
 
 
-def test_cookie_is_ignored():
+def test_header_named_cookie_is_ignored():
     """A cookie named ``X-Plato-User`` must not impersonate the header."""
     req = _make_request({"Cookie": "X-Plato-User=alice"})
+    assert auth.extract_user_id(req) is None
+
+
+def test_dashboard_user_cookie_is_honored():
+    """The dashboard login flow stores the tenant id in ``plato_user``."""
+    req = _make_request({"Cookie": "plato_user=alice"})
+    assert auth.extract_user_id(req) == "alice"
+
+
+def test_unsafe_dashboard_user_cookie_is_rejected():
+    req = _make_request({"Cookie": "plato_user=../alice"})
     assert auth.extract_user_id(req) is None

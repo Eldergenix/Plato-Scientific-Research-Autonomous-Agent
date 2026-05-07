@@ -39,7 +39,7 @@ import time
 from collections.abc import Awaitable, Callable
 from email.utils import parsedate_to_datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 from urllib.parse import urlparse
 
 import httpx
@@ -147,6 +147,10 @@ class RateLimitBackoff:
 # ---------------------------------------------------------------------------
 
 
+class AsyncGetClient(Protocol):
+    async def get(self, url: str, **kwargs: Any) -> httpx.Response: ...
+
+
 def _default_cache_dir() -> Path:
     return Path.home() / ".plato" / "cache" / "retrieval"
 
@@ -196,7 +200,7 @@ class ETagCache:
 
     async def get(
         self,
-        client: httpx.AsyncClient,
+        client: AsyncGetClient,
         url: str,
         *,
         headers: dict[str, str] | None = None,

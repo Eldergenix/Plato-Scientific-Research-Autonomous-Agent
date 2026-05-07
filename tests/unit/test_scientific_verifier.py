@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -9,19 +10,20 @@ from plato.paper_agents.scientific_verifier import (
     build_scientific_verification_report,
     scientific_verifier_node,
 )
+from plato.paper_agents.parameters import GraphState
 
 
-def _state(tmp_path: Path, *, methods: str, results: str) -> dict:
+def _state(tmp_path: Path, *, methods: str, results: str) -> GraphState:
     project = tmp_path / "project"
     paper = project / "paper"
     artifacts = project / "input_files" / "analysis_artifacts"
     paper.mkdir(parents=True)
     artifacts.mkdir(parents=True)
     (artifacts / "metrics.csv").write_text("x,y\n1,2\n", encoding="utf-8")
-    return {
+    return cast(GraphState, {
         "files": {"Folder": str(project), "Paper_folder": str(paper)},
         "paper": {"Methods": methods, "Results": results},
-    }
+    })
 
 
 def test_scientific_verification_passes_when_provenance_is_present(tmp_path: Path):
@@ -98,7 +100,7 @@ def test_scientific_verification_accepts_executor_artifacts(tmp_path: Path):
     )
     (figure_artifacts / "roc_auc_by_scenario.png").write_bytes(b"png")
 
-    state = {
+    state = cast(GraphState, {
         "files": {"Folder": str(project), "Paper_folder": str(paper)},
         "paper": {
             "Methods": (
@@ -110,7 +112,7 @@ def test_scientific_verification_accepts_executor_artifacts(tmp_path: Path):
                 "figures were exported as PNG and CSV artifacts."
             ),
         },
-    }
+    })
 
     report = build_scientific_verification_report(state)
 

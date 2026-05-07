@@ -28,6 +28,7 @@ import sys
 import time
 import traceback
 from datetime import datetime, timezone
+from multiprocessing.process import BaseProcess
 from pathlib import Path
 from typing import Any, Optional
 
@@ -40,7 +41,7 @@ from ..tooling import disabled_tool_names_for_project_dir
 # In-memory state. Promoted to Redis in Phase 2.
 _active_runs: dict[str, Run] = {}
 _run_tasks: dict[str, asyncio.Task[None]] = {}
-_subprocesses: dict[str, mp.Process] = {}
+_subprocesses: dict[str, BaseProcess] = {}
 
 # Iter-25 defense-in-depth: per-run project_dir override.
 #
@@ -429,9 +430,7 @@ class _LogStream(io.TextIOBase):
     def writable(self) -> bool:  # noqa: D401
         return True
 
-    def write(self, s: str) -> int:  # type: ignore[override]
-        if not isinstance(s, str):
-            s = str(s)
+    def write(self, s: str) -> int:
         self._buf += s
         while "\n" in self._buf:
             line, self._buf = self._buf.split("\n", 1)
@@ -628,9 +627,9 @@ def _child_main(
                 journal = Journal[journal_name] if isinstance(journal_name, str) else Journal(journal_name)
             except (KeyError, ValueError):
                 journal = Journal.NONE
-            kwargs: dict[str, Any] = {}
+            paper_kwargs: dict[str, Any] = {}
             if models_cfg.get("llm"):
-                kwargs["llm"] = models_cfg["llm"]
+                paper_kwargs["llm"] = models_cfg["llm"]
             max_revision_iters = int(
                 _config_or_extra(
                     config,
@@ -652,22 +651,22 @@ def _child_main(
                     default=False,
                 ),
                 max_revision_iters=max_revision_iters,
-                **kwargs,
+                **paper_kwargs,
             )
 
         elif stage == "referee":
-            kwargs = {}
+            referee_kwargs: dict[str, Any] = {}
             if models_cfg.get("referee"):
-                kwargs["llm"] = models_cfg["referee"]
+                referee_kwargs["llm"] = models_cfg["referee"]
             elif models_cfg.get("llm"):
-                kwargs["llm"] = models_cfg["llm"]
-            plato.referee(**kwargs)
+                referee_kwargs["llm"] = models_cfg["llm"]
+            plato.referee(**referee_kwargs)
 
         elif stage == "literature":
             lit_provider = config.get("lit_provider") or extra.get("lit_provider") or "semantic_scholar"
-            kwargs = {"mode": lit_provider}
+            literature_kwargs: dict[str, Any] = {"mode": lit_provider}
             if models_cfg.get("llm"):
-                kwargs["llm"] = models_cfg["llm"]
+                literature_kwargs["llm"] = models_cfg["llm"]
             max_iterations = _config_or_extra(
                 config,
                 extra,
@@ -675,8 +674,8 @@ def _child_main(
                 _config_or_extra(config, extra, "iterations", None),
             )
             if max_iterations is not None:
-                kwargs["max_iterations"] = int(max_iterations)
-            plato.check_idea(**kwargs)
+                literature_kwargs["max_iterations"] = int(max_iterations)
+            plato.check_idea(**literature_kwargs)
 
         else:
             raise ValueError(f"Unknown stage: {stage}")
@@ -698,8 +697,8 @@ def _child_main(
         writer.emit("stage.finished", run_id=run_id, project_id=project_id, stage=stage, status="failed")
     finally:
         try:
-            sys.stdout.flush()  # type: ignore[union-attr]
-            sys.stderr.flush()  # type: ignore[union-attr]
+            sys.stdout.flush()
+            sys.stderr.flush()
         except Exception:  # noqa: BLE001
             pass
         writer.close()
@@ -869,7 +868,7 @@ async def _supervise(run: Run, bus: EventBus, events_file: Path) -> None:
         _run_dirs.pop(run.id, None)
 
 
-async def _terminate_process(run_id: str, proc: mp.Process) -> None:
+async def _terminate_process(run_id: str, proc: BaseProcess) -> None:
     """SIGTERM the child's process group, escalate to SIGKILL after grace."""
     pid = proc.pid
     if pid is None:

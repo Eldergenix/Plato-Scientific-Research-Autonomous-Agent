@@ -8,6 +8,7 @@ counters the snapshot logic reads. Tests stay sub-second.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncGenerator, Generator
 from pathlib import Path
 
 import httpx
@@ -58,7 +59,7 @@ class _FakeLoop:
 # Fixtures
 # --------------------------------------------------------------------------- #
 @pytest.fixture
-def loop_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FastAPI:
+def loop_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[FastAPI, None, None]:
     """Build a minimal FastAPI app with only the loop router mounted.
 
     The test app stays decoupled from server.py so the spec's "do not
@@ -89,13 +90,13 @@ def loop_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FastAPI:
 
 
 @pytest.fixture
-def client(loop_app: FastAPI) -> TestClient:
+def client(loop_app: FastAPI) -> Generator[TestClient, None, None]:
     with TestClient(loop_app) as c:
         yield c
 
 
 @pytest.fixture
-async def async_client(loop_app: FastAPI):
+async def async_client(loop_app: FastAPI) -> AsyncGenerator[httpx.AsyncClient, None]:
     transport = httpx.ASGITransport(app=loop_app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as ac:
         yield ac
