@@ -42,7 +42,7 @@ const PROVIDER_DOT: Record<Provider, string> = {
   openai: "#27a644",
   gemini: "#4ea7fc",
   huggingface: "#ff9d00",
-  perplexity: "#bb87fc",
+  perplexity: "var(--color-status-purple)",
   semantic_scholar: "#ff7236",
 };
 
@@ -84,7 +84,10 @@ function ModelBadge({ kind }: { kind: "Recommended" | "Cheap" | "Strong" }) {
   const style: Record<typeof kind, { bg: string; fg: string }> = {
     Recommended: { bg: "rgba(94,106,210,0.15)", fg: "#828fff" },
     Cheap: { bg: "rgba(39,166,68,0.12)", fg: "#27a644" },
-    Strong: { bg: "rgba(187,135,252,0.12)", fg: "#bb87fc" },
+    Strong: {
+      bg: "color-mix(in srgb, var(--color-status-purple) 12%, transparent)",
+      fg: "var(--color-status-purple)",
+    },
   };
   const s = style[kind];
   return (

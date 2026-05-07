@@ -106,7 +106,7 @@ const STAGE_LABELS: Record<StageId, string> = {
   referee: "Referee",
 };
 
-const FOLDER_COLORS = ["#5E6AD2", "#10A37F", "#BB87FC", "#4EA7FC", "#F0BF00", "#FF7236"];
+const FOLDER_COLORS = ["#5E6AD2", "#10A37F", "var(--color-status-purple)", "#4EA7FC", "#F0BF00", "#FF7236"];
 const TASK_KINDS: Array<{ id: PublicationTaskKind; label: string }> = [
   { id: "section", label: "Section" },
   { id: "review", label: "Review" },

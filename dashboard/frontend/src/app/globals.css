@@ -65,7 +65,8 @@
   --color-status-green-spec: #27a644;
   --color-status-amber-spec: #f0bf00;
   --color-status-red-spec: #eb5757;
-  --color-status-purple: #bb87fc;
+  --color-status-purple: #D5FF50;
+  --color-status-purple-foreground: #0a0a0b;
   --color-status-blue: #4ea7fc;
   --color-status-orange: #ff7236;
   --color-accent-row-progress: #24302a;
@@ -497,6 +498,25 @@
   .glow-indigo {
     box-shadow: 0 0 0 1px var(--color-brand-indigo), 0 0 24px -4px rgba(94, 106, 210, 0.4);
   }
+
+  [data-run-button="true"],
+  [data-testid="run-pipeline-button"],
+  [data-testid="workspace-empty-run-pipeline"] {
+    border-radius: 9999px !important;
+    background: linear-gradient(180deg, #E5E5E5 0%, #E2E2E2 100%) !important;
+    color: #121212 !important;
+    box-shadow:
+      0 3px 4px -1px rgba(0, 0, 0, 0.15),
+      0 0 0 1px #D4D4D4,
+      inset 0 1px 0 rgba(255, 255, 255, 0.33) !important;
+  }
+
+  [data-run-button="true"]:hover:not(:disabled),
+  [data-testid="run-pipeline-button"]:hover:not(:disabled),
+  [data-testid="workspace-empty-run-pipeline"]:hover:not(:disabled) {
+    background: linear-gradient(180deg, #E5E5E5 0%, #E2E2E2 100%) !important;
+    color: #121212 !important;
+  }
 }
 
 /* =============================================================================
@@ -567,6 +587,9 @@
   --color-text-progress-meta: #2f7a46;
   --color-text-backlog-meta: #8a6514;
   --color-text-workspace: #0a0a0b;
+
+  --color-status-purple: #006BFF;
+  --color-status-purple-foreground: #ffffff;
 
   --color-ghost-bg: rgba(0, 0, 0, 0.02);
   --color-ghost-bg-hover: rgba(0, 0, 0, 0.05);

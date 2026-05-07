@@ -260,7 +260,13 @@ function SidePanel({
         <Field label="Summarizer model" value="gpt-4.1-mini" />
         <Field label="Formatter model" value="o3-mini" />
       </div>
-      <Button variant="ghost" size="md" className="mt-3 w-full" onClick={onEnhanceClick}>
+      <Button
+        variant="ghost"
+        size="md"
+        className="mt-3 w-full"
+        onClick={onEnhanceClick}
+        data-run-button="true"
+      >
         <Sparkles size={13} strokeWidth={1.5} />
         Run enhance
       </Button>
