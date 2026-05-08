@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ChevronRight, PlayCircle, Plus, Signal } from "lucide-react";
+import { ChevronRight, PlayCircle, Plus, Signal, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn, formatRelativeTime, formatTokens } from "@/lib/utils";
 import { MODELS_BY_ID } from "@/lib/models";
@@ -21,6 +21,7 @@ interface WorkspaceListProps {
   onSelectStage: (stage: StageId) => void;
   onRunStage: (stage: StageId) => void;
   onCancelRun: () => void;
+  pipelineStage?: StageId;
 }
 
 const STAGE_ORDER: StageId[] = [
@@ -172,16 +173,20 @@ interface IssueRowProps {
   project: Project;
   onSelect: () => void;
   onRun: () => void;
+  onCancelRun: () => void;
 }
 
-function IssueRow({ stage, project, onSelect }: IssueRowProps) {
+function IssueRow({ stage, project, onSelect, onRun, onCancelRun }: IssueRowProps) {
   const idx = STAGE_INDEX[stage.id];
   const issueId = `PLATO-${idx}`;
   const model = stage.model ? MODELS_BY_ID[stage.model] : undefined;
   const provider = (model?.provider ?? null) as Provider | null;
   const showJournal = stage.id === "paper" && project.journal !== "NONE";
+  const activeRun = project.activeRun;
+  const isActiveRun = activeRun?.stage === stage.id;
+  const isBlockedByOtherRun = Boolean(activeRun && !isActiveRun);
   const tokens =
-    stage.id === project.activeRun?.stage ? project.totalTokens : 0;
+    stage.id === activeRun?.stage ? project.totalTokens : 0;
   const priorityColor =
     stage.status === "failed"
       ? "var(--color-status-orange)"
@@ -280,6 +285,41 @@ function IssueRow({ stage, project, onSelect }: IssueRowProps) {
       >
         {stage.lastRunAt ? formatRelativeTime(stage.lastRunAt) : "—"}
       </span>
+
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          if (isActiveRun) {
+            onCancelRun();
+            return;
+          }
+          onRun();
+        }}
+        disabled={isBlockedByOtherRun}
+        title={
+          isBlockedByOtherRun
+            ? `Wait for the ${activeRun?.stage} run to finish or cancel it first.`
+            : undefined
+        }
+        aria-label={isActiveRun ? `Cancel ${stage.label} run` : `Run ${stage.label}`}
+        data-testid={`stage-run-button-${stage.id}`}
+        className={cn(
+          "ml-auto inline-flex h-7 flex-none items-center gap-1.5 rounded-[6px] border px-2",
+          "text-[12px] font-medium transition-colors",
+          isActiveRun
+            ? "border-(--color-status-red-spec) text-(--color-status-red-spec) hover:bg-(--color-status-red-spec)/10"
+            : "border-(--color-border-card) text-(--color-text-secondary) hover:bg-(--color-ghost-bg-hover) hover:text-(--color-text-primary)",
+          "disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent",
+        )}
+      >
+        {isActiveRun ? (
+          <Square size={11} strokeWidth={1.75} />
+        ) : (
+          <PlayCircle size={12} strokeWidth={1.75} />
+        )}
+        {isActiveRun ? "Stop" : "Run"}
+      </button>
     </div>
   );
 }
@@ -297,6 +337,7 @@ interface GroupSectionProps {
   project: Project;
   onSelectStage: (id: StageId) => void;
   onRunStage: (id: StageId) => void;
+  onCancelRun: () => void;
 }
 
 function GroupSection({
@@ -311,6 +352,7 @@ function GroupSection({
   project,
   onSelectStage,
   onRunStage,
+  onCancelRun,
 }: GroupSectionProps) {
   if (stages.length === 0) return null;
 
@@ -379,6 +421,7 @@ function GroupSection({
               project={project}
               onSelect={() => onSelectStage(stage.id)}
               onRun={() => onRunStage(stage.id)}
+              onCancelRun={onCancelRun}
             />
           ))}
         </div>
@@ -391,6 +434,8 @@ export function WorkspaceList({
   project,
   onSelectStage,
   onRunStage,
+  onCancelRun,
+  pipelineStage = "idea",
 }: WorkspaceListProps) {
   const groups = React.useMemo(() => groupStages(project), [project]);
   const [collapsed, setCollapsed] = React.useState<Record<GroupKey, boolean>>({
@@ -434,7 +479,7 @@ export function WorkspaceList({
           <Button
             variant="primary"
             size="sm"
-            onClick={() => onRunStage("idea")}
+            onClick={() => onRunStage(pipelineStage)}
             data-testid="workspace-empty-run-pipeline"
           >
             <PlayCircle size={12} strokeWidth={1.75} />
@@ -462,6 +507,7 @@ export function WorkspaceList({
           project={project}
           onSelectStage={onSelectStage}
           onRunStage={onRunStage}
+          onCancelRun={onCancelRun}
         />
       ))}
     </div>

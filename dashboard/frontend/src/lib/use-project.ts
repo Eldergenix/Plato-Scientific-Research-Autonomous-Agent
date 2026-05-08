@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { api, setActiveRunId } from "./api";
-import type { RunEventCodeExecute } from "./api";
+import type { RunEventCodeExecute, StageRunBody } from "./api";
 import type { LogLine, Project, Stage, StageId } from "./types";
 
 export interface PlotEntry {
@@ -63,7 +63,7 @@ interface ProjectState {
     allowed_stages: StageId[];
     notes: string[];
   } | null;
-  startRun: (stage: StageId, body?: { mode?: "fast" | "cmbagent" }) => Promise<void>;
+  startRun: (stage: StageId, body?: StageRunBody) => Promise<void>;
   cancelRun: () => Promise<void>;
   selectProject: (project: Project) => void;
   refresh: () => Promise<void>;
@@ -178,6 +178,30 @@ function coerceCodeEvent(evt: RunEventCodeExecute): CodeEventEntry {
         ? (evt.error as CodeEventEntry["error"])
         : undefined,
   };
+}
+
+const STEP_RE = /\bStep\s+(\d+)\s*(?:\/|of)\s*(\d+)\b/i;
+const ATTEMPT_RE = /\bAttempt\s+(\d+)\s*(?:\/|of)\s*(\d+)\b/i;
+
+function progressFromLogLine(text: string): Pick<
+  NonNullable<Project["activeRun"]>,
+  "step" | "totalSteps" | "attempt" | "totalAttempts"
+> | null {
+  const next: Pick<
+    NonNullable<Project["activeRun"]>,
+    "step" | "totalSteps" | "attempt" | "totalAttempts"
+  > = {};
+  const step = STEP_RE.exec(text);
+  if (step) {
+    next.step = Number(step[1]);
+    next.totalSteps = Number(step[2]);
+  }
+  const attempt = ATTEMPT_RE.exec(text);
+  if (attempt) {
+    next.attempt = Number(attempt[1]);
+    next.totalAttempts = Number(attempt[2]);
+  }
+  return Object.keys(next).length > 0 ? next : null;
 }
 
 export function useProject(): ProjectState {
@@ -333,12 +357,34 @@ export function useProject(): ProjectState {
         setNodeEvents([]);
         // Iter-30: same logic for code events.
         setCodeEvents([]);
+        setProject((prev) => {
+          const currentStage = prev.stages[stage];
+          return {
+            ...prev,
+            activeRun: {
+              runId: run.id,
+              stage,
+              startedAt: run.started_at ?? new Date().toISOString(),
+            },
+            stages: {
+              ...prev.stages,
+              [stage]: currentStage
+                ? {
+                    ...currentStage,
+                    status: "running",
+                    progressLabel: "Running",
+                  }
+                : currentStage,
+            },
+          };
+        });
         sseUnsubRef.current?.();
         sseUnsubRef.current = api.subscribeRunEvents(
           projectIdRef.current,
           run.id,
           (evt) => {
             if (evt.kind === "log.line") {
+              const text = String(evt.text ?? "");
               // Ring-buffer cap: keep at most LOG_MAX entries so a long
               // run can't grow the log array (and the rendered DOM)
               // without bound. Visualization layer should still pair
@@ -354,14 +400,52 @@ export function useProject(): ProjectState {
                     level:
                       (evt.level as "info" | "warn" | "error" | "tool") ??
                       "info",
-                    text: String(evt.text ?? ""),
+                    text,
                   },
                 ];
                 return next.length > LOG_MAX ? next.slice(-LOG_MAX) : next;
               });
+              const progress = progressFromLogLine(text);
+              if (progress) {
+                setProject((prev) =>
+                  prev.activeRun?.runId === run.id
+                    ? {
+                        ...prev,
+                        activeRun: { ...prev.activeRun, ...progress },
+                      }
+                    : prev,
+                );
+              }
             } else if (evt.kind === "plot.created") {
               // Live plot file watcher: a new plot file appeared on disk.
               void refreshPlots();
+            } else if (evt.kind === "stage.heartbeat") {
+              setProject((prev) =>
+                prev.activeRun?.runId === run.id
+                  ? {
+                      ...prev,
+                      activeRun: {
+                        ...prev.activeRun,
+                        step:
+                          typeof evt.step === "number"
+                            ? evt.step
+                            : prev.activeRun.step,
+                        totalSteps:
+                          typeof evt.total_steps === "number"
+                            ? evt.total_steps
+                            : prev.activeRun.totalSteps,
+                        attempt:
+                          typeof evt.attempt === "number"
+                            ? evt.attempt
+                            : prev.activeRun.attempt,
+                        totalAttempts:
+                          typeof evt.total_attempts === "number"
+                            ? evt.total_attempts
+                            : prev.activeRun.totalAttempts,
+                      },
+                    }
+                  : prev,
+              );
             } else if (evt.kind === "code.execute") {
               // Iter-30: fan out to CodePane via codeEvents. Same ring-
               // buffer treatment as nodeEvents — bounded so a long run
@@ -416,6 +500,7 @@ export function useProject(): ProjectState {
         );
       } catch (e) {
         console.error("Failed to start run", e);
+        throw e;
       }
     },
     [isLive, refresh, refreshHistoricalResultsEvents, refreshPlots],
@@ -423,8 +508,31 @@ export function useProject(): ProjectState {
 
   const cancelRun = React.useCallback<ProjectState["cancelRun"]>(async () => {
     if (!isLive || !projectIdRef.current || !project.activeRun) return;
+    const cancelledStage = project.activeRun.stage;
     await api.cancelRun(projectIdRef.current, project.activeRun.runId);
-  }, [isLive, project.activeRun]);
+    setActiveRunId(null);
+    sseUnsubRef.current?.();
+    sseUnsubRef.current = null;
+    setProject((prev) => {
+      if (prev.activeRun?.stage !== cancelledStage) return prev;
+      const currentStage = prev.stages[cancelledStage];
+      return {
+        ...prev,
+        activeRun: null,
+        stages: {
+          ...prev.stages,
+          [cancelledStage]: currentStage
+            ? {
+                ...currentStage,
+                status: "empty",
+                progressLabel: undefined,
+              }
+            : currentStage,
+        },
+      };
+    });
+    await refresh();
+  }, [isLive, project.activeRun, refresh]);
 
   return {
     project,

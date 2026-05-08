@@ -1,5 +1,6 @@
 import type {
   Journal,
+  Mode,
   PublicationSettings,
   Project,
   StageId,
@@ -27,6 +28,16 @@ export interface RunEventStageFinished {
   ts: number | string;
   stage: StageId;
   ok?: boolean;
+}
+
+export interface RunEventStageHeartbeat {
+  kind: "stage.heartbeat";
+  ts?: number | string;
+  stage?: StageId;
+  step?: number;
+  total_steps?: number;
+  attempt?: number;
+  total_attempts?: number;
 }
 
 export interface RunEventPlotCreated {
@@ -89,6 +100,7 @@ export interface RunEventUnknown {
 export type RunEvent =
   | RunEventLogLine
   | RunEventStageFinished
+  | RunEventStageHeartbeat
   | RunEventPlotCreated
   | RunEventNodeEntered
   | RunEventNodeExited
@@ -350,6 +362,15 @@ export interface RunRecord {
   pid?: number | null;
   tokenInput: number;
   tokenOutput: number;
+}
+
+export interface StageRunBody {
+  mode?: Mode;
+  models?: Record<string, string>;
+  journal?: Journal | null;
+  add_citations?: boolean;
+  iterations?: number | null;
+  extra?: Record<string, unknown>;
 }
 
 interface RawRun {
@@ -679,23 +700,8 @@ export const api = {
   async startRun(
     pid: string,
     stage: StageId,
-    body: {
-      mode?: "fast" | "cmbagent";
-      models?: Record<string, string>;
-      // Iter-3: backend StageRunRequest (models.py:169) accepts an
-      // optional `iterations` budget. The idea-stage UI exposes a
-      // numeric input for this; previously the value was collected and
-      // dropped on the floor by this client. Forwarding it lets the
-      // user-set iteration budget actually reach the worker.
-      iterations?: number | null;
-      // Iter-3: same story for `journal` and `add_citations` — backend
-      // accepts both, frontend never sent either through the start-run
-      // body. Adding them here makes the picker controls in the new
-      // run-config drawer wire-able without further client changes.
-      journal?: Journal | null;
-      add_citations?: boolean;
-    } = {},
-  ): Promise<{ id: string; project_id: string; stage: StageId; status: string }> {
+    body: StageRunBody = {},
+  ): Promise<RawRun> {
     return fetchJson(`/projects/${pid}/stages/${stage}/run`, {
       method: "POST",
       body: JSON.stringify(body),
