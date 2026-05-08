@@ -181,7 +181,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-(--color-bg-page) px-6 py-8">
+    <div className="h-full min-h-0 overflow-y-auto bg-(--color-bg-page) px-6 py-8">
       <div className="mx-auto max-w-4xl space-y-6">
         {/* Header card */}
         <header className="surface-linear-card p-5">

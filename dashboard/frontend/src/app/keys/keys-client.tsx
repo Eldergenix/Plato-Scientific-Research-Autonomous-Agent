@@ -261,7 +261,7 @@ export default function KeysPage() {
   };
 
   return (
-    <div className="min-h-screen bg-(--color-bg-page) px-3 py-4 sm:px-6 sm:py-8">
+    <div className="h-full min-h-0 overflow-y-auto bg-(--color-bg-page) px-3 py-4 sm:px-6 sm:py-8">
       <div className="mx-auto max-w-6xl space-y-5">
         <header className="surface-linear-card p-4 sm:p-5">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">

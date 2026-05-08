@@ -19,7 +19,6 @@ import { MODELS, MODEL_GROUPS } from "@/lib/models";
 import type { ModelDef, Provider } from "@/lib/types";
 import { Pill } from "@/components/ui/pill";
 import { TabPills } from "@/components/shell/tab-pills";
-import { ModelPickerCompact } from "@/components/ui/model-picker";
 import { cn } from "@/lib/utils";
 
 // ----------------------------------------------------------------- constants
@@ -80,6 +79,14 @@ function saveStageOverrides(overrides: Partial<Record<StageId, string>>) {
     // localStorage full or disabled — silent fail is acceptable here since
     // the next render will fall back to recommended defaults.
   }
+}
+
+function clearStageOverride(
+  overrides: Partial<Record<StageId, string>>,
+  stage: StageId,
+): Partial<Record<StageId, string>> {
+  const { [stage]: _drop, ...rest } = overrides;
+  return rest;
 }
 
 // Provider colors per spec (anthropic teal, openai green, google blue).
@@ -319,13 +326,21 @@ export default function ModelsPage() {
     setStageOverrides((prev) => {
       const next: Partial<Record<StageId, string>> =
         model === RECOMMENDED_BY_STAGE[stage]
-          ? // Reverting to the recommended default — clear the override entry
-            // so the user's preference structure stays minimal.
-            (() => {
-              const { [stage]: _drop, ...rest } = prev;
-              return rest;
-            })()
+          ? clearStageOverride(prev, stage)
           : { ...prev, [stage]: model };
+      saveStageOverrides(next);
+      return next;
+    });
+  }, []);
+
+  const normalizeStageModel = React.useCallback((stage: StageId) => {
+    setStageOverrides((prev) => {
+      const value = prev[stage];
+      const normalized = value?.trim() ?? "";
+      const next: Partial<Record<StageId, string>> =
+        normalized === "" || normalized === RECOMMENDED_BY_STAGE[stage]
+          ? clearStageOverride(prev, stage)
+          : { ...prev, [stage]: normalized };
       saveStageOverrides(next);
       return next;
     });
@@ -395,7 +410,7 @@ export default function ModelsPage() {
   }, [filter, query, sortKey, sortDir]);
 
   return (
-    <div className="min-h-screen bg-(--color-bg-page) px-3 py-4 sm:px-6 sm:py-8">
+    <div className="h-full min-h-0 overflow-y-auto bg-(--color-bg-page) px-3 py-4 sm:px-6 sm:py-8">
       <div className="mx-auto max-w-7xl space-y-4">
         {/* ------------------------------------------------------- header */}
         <header className="surface-linear-card flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
@@ -609,16 +624,34 @@ export default function ModelsPage() {
                     {label}
                   </span>
                   <span className="text-[12px] text-(--color-text-quaternary-spec)">→</span>
-                  <div className="min-w-0 flex-1">
-                    <ModelPickerCompact
+                  <label className="min-w-[180px] flex-1">
+                    <span className="sr-only">{label} model</span>
+                    <input
+                      type="text"
+                      list="plato-model-assignment-options"
                       value={modelId}
-                      onChange={(next) => setStageModel(id, next)}
+                      onChange={(e) => setStageModel(id, e.target.value)}
+                      onBlur={() => normalizeStageModel(id)}
+                      placeholder={RECOMMENDED_BY_STAGE[id]}
+                      className={cn(
+                        "h-7 w-full rounded-[6px] border px-2 font-mono text-[12px]",
+                        "border-(--color-border-card) bg-(--color-bg-pill-inactive) text-(--color-text-primary)",
+                        "placeholder:text-(--color-text-quaternary-spec)",
+                        "focus:outline-none focus:border-(--color-brand-indigo)",
+                      )}
                     />
-                  </div>
+                  </label>
                 </div>
               );
             })}
           </div>
+          <datalist id="plato-model-assignment-options">
+            {MODELS.map((model) => (
+              <option key={model.id} value={model.id}>
+                {model.label}
+              </option>
+            ))}
+          </datalist>
         </section>
       </div>
     </div>
