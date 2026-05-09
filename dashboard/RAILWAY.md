@@ -5,7 +5,11 @@ HuggingFace Spaces with (`dashboard/spaces/Dockerfile`). The image runs
 Next.js as the public process on Railway's injected `$PORT`, while the
 FastAPI backend runs on localhost and receives `/api/v1` traffic through
 the Next proxy. One Railway service hosts the whole app. No separate
-frontend service, no Redis, no Postgres needed.
+frontend service and no Redis are needed. The research-publication feed
+does need Postgres for durable posts, comments, likes, shares, author
+tags, and RSS items; without `DATABASE_URL` or
+`PLATO_PUBLICATIONS_DATABASE_URL`, publications fall back to a local
+SQLite file that is not safe for production deploys.
 
 The repo's [`railway.json`](../railway.json) at the root tells Railway
 which Dockerfile to use and where the healthcheck lives — Railway picks
@@ -32,7 +36,21 @@ that up automatically when you point a service at this repo.
      starts building. First build takes **~6–10 minutes** (cmbagent +
      LangChain + LaTeX install dominate).
 
-2. **Set environment variables** (Service → **Variables** tab)
+2. **Add Postgres for the publication feed**
+
+   Add a Postgres database service in the same Railway project. Then set
+   the app service variables to reference that database:
+
+   | Variable | Value |
+   |---|---|
+   | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` |
+   | `PLATO_PUBLICATIONS_DATABASE_URL` | `${{Postgres.DATABASE_URL}}` |
+
+   `PLATO_PUBLICATIONS_DATABASE_URL` is read first by the publication
+   store, while `DATABASE_URL` keeps the deployment compatible with
+   standard Railway/Postgres conventions.
+
+3. **Set environment variables** (Service → **Variables** tab)
 
    At least one LLM provider key is required for the demo to actually
    generate anything. `ANTHROPIC_API_KEY` is the safest single choice
@@ -47,10 +65,12 @@ that up automatically when you point a service at this repo.
    | `PLATO_BACKEND_PORT` | leave unset | defaults to `7878`; FastAPI listens here inside the container |
    | `PLATO_AUTH` | optional | set to `enabled` + `PLATO_AUTH_TOKEN=...` to gate the dashboard behind a bearer cookie |
    | `PLATO_USE_FAKEREDIS` | leave unset | already `true` in the Dockerfile; no Redis service needed |
+   | `DATABASE_URL` | required for publications | `${{Postgres.DATABASE_URL}}` from the Railway Postgres service |
+   | `PLATO_PUBLICATIONS_DATABASE_URL` | required for publications | same value; publication store reads this before `DATABASE_URL` |
 
    Do **not** set `PORT` yourself — Railway injects it.
 
-3. **Generate a public domain** (Service → **Settings** → **Networking** →
+4. **Generate a public domain** (Service → **Settings** → **Networking** →
    **Generate Domain**). Open the URL. The first request after a cold
    start can take ~10s while the Python process imports the world.
 
@@ -65,9 +85,14 @@ If you'd rather drive it from your laptop:
 railway login
 railway link            # pick or create the project
 
+# one-time production variables
+railway add --database postgres
+railway variables --service plato --set 'DATABASE_URL=${{Postgres.DATABASE_URL}}'
+railway variables --service plato --set 'PLATO_PUBLICATIONS_DATABASE_URL=${{Postgres.DATABASE_URL}}'
+railway variables --service plato --set ANTHROPIC_API_KEY=sk-ant-...
+
 # every deploy after that
 railway up              # builds + deploys from current branch
-railway variables --set ANTHROPIC_API_KEY=sk-ant-...
 railway domain          # creates and prints the public URL
 railway logs            # tail
 ```
@@ -79,7 +104,8 @@ automatically — no need to pass `-d dashboard/spaces/Dockerfile`.
 
 ## Persistence (optional)
 
-By default the container's project state lives at
+Project artifacts still live on the container filesystem. By default the
+container's project state lives at
 `/home/plato/.plato/projects` and is **wiped every redeploy**. That's
 fine for a stateless demo, but if you want runs to survive across
 deploys:
@@ -90,6 +116,13 @@ deploys:
 
 The `30-min idle cleanup` in demo mode still runs over the volume, so
 you won't fill it up unattended.
+
+Publication feed data is separate from project artifacts. Posts,
+comments, likes, shares, author tags, and RSS metadata are stored in
+Postgres when `PLATO_PUBLICATIONS_DATABASE_URL` or `DATABASE_URL` is set.
+The app creates the `publications`, `publication_comments`,
+`publication_likes`, and `publication_shares` tables idempotently on
+startup or first feed access.
 
 ---
 
@@ -118,6 +151,8 @@ limits comfortably.
 | `Error: spawn npm ENOENT` during boot | Runtime pruned TypeScript while `next.config.ts` still needs it | Keep the built frontend `node_modules` from the builder stage; do not run `npm prune --omit=dev` unless the config is compiled or converted |
 | `"No models configured"` in the UI | Forgot to set provider keys | Set `ANTHROPIC_API_KEY` (or another) in Variables → Redeploy |
 | Demo mode banner won't go away | `PLATO_DEMO_MODE=enabled` is the default | Set `PLATO_DEMO_MODE=disabled` **only if you've also enabled `PLATO_AUTH`** |
+| Publication feed resets after redeploy | App fell back to local SQLite | Add Railway Postgres and set `PLATO_PUBLICATIONS_DATABASE_URL=${{Postgres.DATABASE_URL}}` on the app service |
+| `postgres.railway.internal` does not resolve from `railway run` on your laptop | Railway private networking only resolves inside Railway services | Verify with a deployed service, or use the Postgres `DATABASE_PUBLIC_URL` only for local one-off database checks |
 
 ---
 

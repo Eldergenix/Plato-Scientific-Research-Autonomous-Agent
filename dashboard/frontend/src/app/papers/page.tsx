@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import {
   Activity,
+  AtSign,
   BarChart3,
   BookOpen,
   CalendarDays,
@@ -12,12 +13,19 @@ import {
   FileText,
   FlaskConical,
   GitBranch,
+  Heart,
+  LayoutGrid,
   Library,
+  MessageCircle,
   Plus,
   RefreshCw,
+  Rss,
   Search,
+  Send,
+  Share2,
   Trash2,
   UserRound,
+  Users,
   X,
 } from "lucide-react";
 import { DashboardShell } from "@/components/shell/dashboard-shell";
@@ -27,11 +35,13 @@ import { Button } from "@/components/ui/button";
 import { api, type PaperArtifacts, type RunRecord } from "@/lib/api";
 import type {
   Project,
+  PublicationFeedAuthor,
   PublicationAuthor,
   PublicationSettings,
   PublicationTask,
   PublicationTaskKind,
   PublicationTaskStatus,
+  ResearchPublication,
   StageId,
 } from "@/lib/types";
 import { cn, formatRelativeTime } from "@/lib/utils";
@@ -40,6 +50,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
 
 type FilterId = "all" | "papers" | "data" | "research" | "experiments" | "references";
 type ArtifactKind = Exclude<FilterId, "all">;
+type ViewMode = "feed" | "library";
 
 interface PlotRecord {
   name: string;
@@ -94,6 +105,11 @@ const FILTERS: Array<{ id: FilterId; label: string }> = [
   { id: "research", label: "Research" },
   { id: "experiments", label: "Experiments" },
   { id: "references", label: "References" },
+];
+
+const VIEW_TABS: Array<{ id: ViewMode; label: string }> = [
+  { id: "feed", label: "Feed" },
+  { id: "library", label: "Library" },
 ];
 
 const STAGE_LABELS: Record<StageId, string> = {
@@ -383,6 +399,63 @@ function filterItems(entry: ProjectLibrary, filter: FilterId, query: string): Li
   return items.filter((item) => item.searchText.includes(q));
 }
 
+function splitListInput(value: string): string[] {
+  return value
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function publicationSearchText(publication: ResearchPublication): string {
+  return searchable([
+    publication.title,
+    publication.description,
+    publication.creatorName,
+    publication.creatorAffiliation,
+    publication.authors.map((author) => `${author.name} ${author.affiliation ?? ""}`).join(" "),
+    publication.taggedAuthors.map((author) => `${author.name} ${author.affiliation ?? ""}`).join(" "),
+    publication.tags.join(" "),
+  ]);
+}
+
+function filterPublications(
+  publications: ResearchPublication[],
+  filter: FilterId,
+  query: string,
+): ResearchPublication[] {
+  if (filter !== "all" && filter !== "papers") return [];
+  const q = query.trim().toLowerCase();
+  if (!q) return publications;
+  return publications.filter((publication) => publicationSearchText(publication).includes(q));
+}
+
+function mergePublication(
+  publications: ResearchPublication[],
+  next: ResearchPublication,
+): ResearchPublication[] {
+  const found = publications.some((publication) => publication.id === next.id);
+  if (!found) return [next, ...publications];
+  return publications.map((publication) => (publication.id === next.id ? next : publication));
+}
+
+function displayAuthors(publication: ResearchPublication): PublicationFeedAuthor[] {
+  return publication.authors.length > 0
+    ? publication.authors
+    : [
+        {
+          name: publication.creatorName,
+          affiliation: publication.creatorAffiliation,
+          avatarUrl: publication.creatorAvatarUrl,
+          userId: publication.creatorUserId,
+        },
+      ];
+}
+
+function initialsFor(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return (parts[0]?.[0] ?? "P") + (parts[1]?.[0] ?? "");
+}
+
 export default function PapersPage() {
   return (
     <DashboardShell>
@@ -393,19 +466,30 @@ export default function PapersPage() {
 
 function PapersContent() {
   const [entries, setEntries] = React.useState<ProjectLibrary[]>([]);
+  const [publications, setPublications] = React.useState<ResearchPublication[]>([]);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [filter, setFilter] = React.useState<FilterId>("all");
+  const [view, setView] = React.useState<ViewMode>("feed");
   const [query, setQuery] = React.useState("");
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [feedError, setFeedError] = React.useState<string | null>(null);
 
   const refresh = React.useCallback(async () => {
     setLoading(true);
     setError(null);
+    setFeedError(null);
     try {
-      const projects = await api.listProjects();
+      const [projects, feed] = await Promise.all([
+        api.listProjects(),
+        api.listPublications({ limit: 100 }).catch((err) => {
+          setFeedError(err instanceof Error ? err.message : "Failed to load publication feed.");
+          return [] as ResearchPublication[];
+        }),
+      ]);
       const loaded = await Promise.all(projects.map(loadProjectLibrary));
       setEntries(loaded);
+      setPublications(feed);
       setSelectedId((current) => current ?? loaded[0]?.project.id ?? null);
     } catch (err) {
       setEntries([]);
@@ -434,10 +518,17 @@ function PapersContent() {
 
   const selected = filteredEntries.find((entry) => entry.project.id === selectedId) ?? filteredEntries[0] ?? null;
   const selectedItems = selected ? filterItems(selected, filter, query) : [];
+  const filteredPublications = React.useMemo(
+    () => filterPublications(publications, filter, query),
+    [publications, filter, query],
+  );
   const visibleArtifactCount = React.useMemo(
     () => filteredEntries.reduce((sum, entry) => sum + filterItems(entry, filter, query).length, 0),
     [filteredEntries, filter, query],
   );
+  const handlePublicationChanged = React.useCallback((publication: ResearchPublication) => {
+    setPublications((current) => mergePublication(current, publication));
+  }, []);
   const handlePublicationSettingsUpdated = React.useCallback(
     (projectId: string, settings: PublicationSettings) => {
       setEntries((current) =>
@@ -468,14 +559,22 @@ function PapersContent() {
               Papers
             </h1>
             <p className="mt-0.5 text-[12px] text-(--color-text-tertiary-spec)">
-              Project folders for generated manuscripts, data, experiments, and references.
+              Research feed and project folders for generated manuscripts.
             </p>
           </div>
         </div>
-        <Button className="w-full sm:w-auto" variant="ghost" size="sm" onClick={() => void refresh()} disabled={loading}>
-          <RefreshCw size={13} className={cn(loading && "animate-spin")} />
-          Refresh
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <TabPills
+            tabs={VIEW_TABS}
+            activeId={view}
+            onSelect={(id) => setView(id as ViewMode)}
+            ariaLabel="Papers view"
+          />
+          <Button className="w-full sm:w-auto" variant="ghost" size="sm" onClick={() => void refresh()} disabled={loading}>
+            <RefreshCw size={13} className={cn(loading && "animate-spin")} />
+            Refresh
+          </Button>
+        </div>
       </header>
 
       <section className="hairline-b flex flex-none flex-col gap-3 px-4 py-3">
@@ -514,6 +613,9 @@ function PapersContent() {
           <span className="rounded-full border border-(--color-border-pill) bg-(--color-bg-pill-inactive) px-2 py-1">
             {visibleArtifactCount} {visibleArtifactCount === 1 ? "artifact" : "artifacts"}
           </span>
+          <span className="rounded-full border border-(--color-border-pill) bg-(--color-bg-pill-inactive) px-2 py-1">
+            {filteredPublications.length} {filteredPublications.length === 1 ? "post" : "posts"}
+          </span>
           {query ? (
             <span className="min-w-0 truncate rounded-full border border-(--color-border-pill) bg-(--color-bg-pill-inactive) px-2 py-1 font-mono">
               query: {query}
@@ -528,42 +630,77 @@ function PapersContent() {
         </div>
       ) : null}
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:grid lg:grid-cols-[minmax(300px,0.82fr)_minmax(0,1.18fr)] lg:overflow-hidden xl:grid-cols-[minmax(420px,0.9fr)_minmax(0,1.1fr)]">
-        <section className="flex-none px-4 py-4 lg:min-h-0 lg:overflow-y-auto lg:px-5 lg:py-5">
-          {loading ? (
-            <FolderSkeleton />
-          ) : filteredEntries.length === 0 ? (
-            <EmptyLibrary />
-          ) : (
-            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,190px),1fr))] gap-3 lg:grid-cols-[repeat(auto-fit,minmax(190px,1fr))] xl:gap-4">
-              {filteredEntries.map((entry, index) => (
-                <ProjectFolderCard
-                  key={entry.project.id}
-                  entry={entry}
-                  active={selected?.project.id === entry.project.id}
-                  color={FOLDER_COLORS[index % FOLDER_COLORS.length]}
-                  onSelect={() => setSelectedId(entry.project.id)}
-                />
-              ))}
-            </div>
-          )}
-        </section>
+      {view === "feed" ? (
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:overflow-hidden xl:grid-cols-[minmax(0,1fr)_400px]">
+          <section className="flex-none px-4 py-4 lg:min-h-0 lg:overflow-y-auto lg:px-5 lg:py-5" data-testid="publication-feed">
+            {feedError ? (
+              <div className="mb-3 rounded-[8px] border border-(--color-status-amber-spec) px-3 py-2 text-[12px] text-(--color-status-amber-spec)">
+                {feedError}
+              </div>
+            ) : null}
+            {loading ? (
+              <PublicationFeedSkeleton />
+            ) : filteredPublications.length === 0 ? (
+              <EmptyPublicationFeed />
+            ) : (
+              <div className="mx-auto flex w-full max-w-[760px] flex-col">
+                {filteredPublications.map((publication) => (
+                  <PublicationPost
+                    key={publication.id}
+                    publication={publication}
+                    onChanged={handlePublicationChanged}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
 
-        <section className="hairline-t flex-none px-4 py-4 lg:min-h-0 lg:border-l lg:border-t-0 lg:border-(--color-border-standard) lg:overflow-y-auto lg:px-5 lg:py-5">
-          {selected ? (
-            <ProjectDetail
+          <aside className="hairline-t flex-none px-4 py-4 lg:min-h-0 lg:border-l lg:border-t-0 lg:border-(--color-border-standard) lg:overflow-y-auto lg:px-5 lg:py-5">
+            <PublishPanel
               entry={selected}
-              items={selectedItems}
-              filter={filter}
-              query={query}
-              onFilter={setFilter}
-              onPublicationSettingsUpdated={handlePublicationSettingsUpdated}
+              onPublished={handlePublicationChanged}
+              onOpenLibrary={() => setView("library")}
             />
-          ) : (
-            <EmptyLibrary />
-          )}
-        </section>
-      </div>
+          </aside>
+        </div>
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:grid lg:grid-cols-[minmax(300px,0.82fr)_minmax(0,1.18fr)] lg:overflow-hidden xl:grid-cols-[minmax(420px,0.9fr)_minmax(0,1.1fr)]">
+          <section className="flex-none px-4 py-4 lg:min-h-0 lg:overflow-y-auto lg:px-5 lg:py-5">
+            {loading ? (
+              <FolderSkeleton />
+            ) : filteredEntries.length === 0 ? (
+              <EmptyLibrary />
+            ) : (
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,190px),1fr))] gap-3 lg:grid-cols-[repeat(auto-fit,minmax(190px,1fr))] xl:gap-4">
+                {filteredEntries.map((entry, index) => (
+                  <ProjectFolderCard
+                    key={entry.project.id}
+                    entry={entry}
+                    active={selected?.project.id === entry.project.id}
+                    color={FOLDER_COLORS[index % FOLDER_COLORS.length]}
+                    onSelect={() => setSelectedId(entry.project.id)}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="hairline-t flex-none px-4 py-4 lg:min-h-0 lg:border-l lg:border-t-0 lg:border-(--color-border-standard) lg:overflow-y-auto lg:px-5 lg:py-5">
+            {selected ? (
+              <ProjectDetail
+                entry={selected}
+                items={selectedItems}
+                filter={filter}
+                query={query}
+                onFilter={setFilter}
+                onPublicationSettingsUpdated={handlePublicationSettingsUpdated}
+              />
+            ) : (
+              <EmptyLibrary />
+            )}
+          </section>
+        </div>
+      )}
     </div>
   );
 }
@@ -643,6 +780,388 @@ function MiniMetric({
       <Icon size={11} strokeWidth={1.7} />
       {label}
     </span>
+  );
+}
+
+function PublishPanel({
+  entry,
+  onPublished,
+  onOpenLibrary,
+}: {
+  entry: ProjectLibrary | null;
+  onPublished: (publication: ResearchPublication) => void;
+  onOpenLibrary: () => void;
+}) {
+  const [description, setDescription] = React.useState("");
+  const [tags, setTags] = React.useState("");
+  const [taggedAuthors, setTaggedAuthors] = React.useState("");
+  const [publishing, setPublishing] = React.useState(false);
+  const [message, setMessage] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const hasPaper = Boolean(entry?.paper.pdfUrl || entry?.paper.sections.length);
+
+  React.useEffect(() => {
+    setDescription(entry ? buildItems(entry).find((item) => item.kind === "papers")?.description ?? "" : "");
+    setTags("");
+    setTaggedAuthors("");
+    setMessage(null);
+    setError(null);
+  }, [entry?.project.id]);
+
+  const publish = async () => {
+    if (!entry) return;
+    setPublishing(true);
+    setMessage(null);
+    setError(null);
+    try {
+      const publication = await api.publishProjectPublication(entry.project.id, {
+        title: entry.project.name,
+        description: description.trim() || undefined,
+        tags: splitListInput(tags),
+        tagged_authors: splitListInput(taggedAuthors).map((name) => ({ name })),
+      });
+      onPublished(publication);
+      setMessage("Published to the research feed.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to publish this paper.");
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <section className="surface-linear-card flex flex-col gap-3 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="flex items-center gap-2 text-[13px] font-medium text-(--color-text-primary-strong)">
+            <Rss size={14} strokeWidth={1.75} className="text-(--color-brand-hover)" />
+            Publish
+          </h2>
+          <Button size="sm" variant="ghost" onClick={onOpenLibrary}>
+            <LayoutGrid size={13} />
+            Library
+          </Button>
+        </div>
+        {entry ? (
+          <>
+            <div className="rounded-[8px] border border-(--color-border-card) bg-(--color-bg-card) px-3 py-2">
+              <p className="truncate text-[12px] font-medium text-(--color-text-primary-strong)">
+                {entry.project.name}
+              </p>
+              <p className="mt-0.5 text-[11px] text-(--color-text-row-meta)">
+                {entry.paper.pdfUrl ? "PDF ready" : entry.paper.sections.length ? "Paper sections ready" : "No paper artifact"}
+              </p>
+            </div>
+            <TextAreaField
+              label="Description"
+              value={description}
+              onChange={setDescription}
+            />
+            <TextField
+              label="Tags"
+              value={tags}
+              onChange={setTags}
+            />
+            <TextField
+              label="Tag authors"
+              value={taggedAuthors}
+              onChange={setTaggedAuthors}
+            />
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={() => void publish()}
+              disabled={publishing || !hasPaper}
+            >
+              <Send size={13} />
+              {publishing ? "Publishing" : "Publish paper"}
+            </Button>
+          </>
+        ) : (
+          <EmptySettingsRow label="Select a project from the library before publishing." />
+        )}
+        {error ? (
+          <p className="rounded-[7px] border border-(--color-status-red-spec) px-3 py-2 text-[12px] text-(--color-status-red-spec)">
+            {error}
+          </p>
+        ) : message ? (
+          <p className="rounded-[7px] border border-(--color-status-green-spec) px-3 py-2 text-[12px] text-(--color-status-green-spec)">
+            {message}
+          </p>
+        ) : null}
+      </section>
+      <section className="surface-linear-card flex flex-col gap-2 p-3">
+        <h2 className="flex items-center gap-2 text-[13px] font-medium text-(--color-text-primary-strong)">
+          <Users size={14} strokeWidth={1.75} className="text-(--color-brand-hover)" />
+          Authors
+        </h2>
+        {entry?.project.publicationSettings?.authors.length ? (
+          <div className="flex flex-col gap-2">
+            {entry.project.publicationSettings.authors.map((author) => (
+              <div key={author.id} className="flex min-w-0 items-center gap-2">
+                <Avatar name={author.name || "Author"} />
+                <div className="min-w-0">
+                  <p className="truncate text-[12px] font-medium text-(--color-text-primary)">
+                    {author.name || "Unnamed author"}
+                  </p>
+                  <p className="truncate text-[11px] text-(--color-text-row-meta)">
+                    {author.affiliation || author.role}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptySettingsRow label="No authors assigned yet." />
+        )}
+      </section>
+    </div>
+  );
+}
+
+function PublicationPost({
+  publication,
+  onChanged,
+}: {
+  publication: ResearchPublication;
+  onChanged: (publication: ResearchPublication) => void;
+}) {
+  const [liked, setLiked] = React.useState(false);
+  const [comment, setComment] = React.useState("");
+  const [tagAuthors, setTagAuthors] = React.useState("");
+  const [busyAction, setBusyAction] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const authors = displayAuthors(publication);
+  const lead = authors[0];
+  const previewUrl = publication.firstPagePreviewUrl.includes("#")
+    ? publication.firstPagePreviewUrl
+    : `${publication.firstPagePreviewUrl}#page=1&toolbar=0&navpanes=0`;
+
+  const runAction = async (action: string, fn: () => Promise<void>) => {
+    setBusyAction(action);
+    setError(null);
+    try {
+      await fn();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Action failed.");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const submitComment = () =>
+    runAction("comment", async () => {
+      const text = comment.trim();
+      if (!text) return;
+      const saved = await api.commentOnPublication(publication.id, { body: text });
+      onChanged({
+        ...publication,
+        commentCount: publication.commentCount + 1,
+        comments: [...publication.comments, saved],
+      });
+      setComment("");
+    });
+
+  const toggleLike = () =>
+    runAction("like", async () => {
+      const next = liked
+        ? await api.unlikePublication(publication.id)
+        : await api.likePublication(publication.id);
+      setLiked(!liked);
+      onChanged(next);
+    });
+
+  const share = () =>
+    runAction("share", async () => {
+      const next = await api.sharePublication(publication.id, "link");
+      onChanged(next);
+      if (navigator.clipboard?.writeText) {
+        try {
+          await navigator.clipboard.writeText(`${window.location.origin}/papers?publication=${publication.id}`);
+        } catch {
+          // Sharing has already succeeded; clipboard writes can be blocked by browser policy.
+        }
+      }
+    });
+
+  const tag = () =>
+    runAction("tag", async () => {
+      const authorsToTag = splitListInput(tagAuthors).map((name) => ({ name }));
+      if (authorsToTag.length === 0) return;
+      const next = await api.tagPublicationAuthors(publication.id, authorsToTag);
+      onChanged(next);
+      setTagAuthors("");
+    });
+
+  return (
+    <article className="hairline-b bg-(--color-bg-base) px-1 py-4 sm:px-3" data-testid="publication-post">
+      <div className="flex gap-3">
+        <Avatar name={publication.creatorName} src={publication.creatorAvatarUrl ?? undefined} />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <h2 className="text-[13px] font-semibold text-(--color-text-primary-strong)">
+              {publication.creatorName}
+            </h2>
+            <span className="text-[11px] text-(--color-text-quaternary)">
+              {formatRelativeTime(publication.publishedAt)}
+            </span>
+          </div>
+          <p className="mt-0.5 truncate text-[12px] text-(--color-text-row-meta)">
+            {publication.creatorAffiliation || lead?.affiliation || "Independent research"}
+          </p>
+
+          <h3 className="mt-3 text-[18px] font-medium leading-[1.25] tracking-[-0.01em] text-(--color-text-primary-strong)">
+            {publication.title}
+          </h3>
+          <div className="mt-3 overflow-hidden rounded-[8px] border border-(--color-border-card) bg-[#f7f7f4]">
+            <iframe
+              title={`${publication.title} first page preview`}
+              src={previewUrl}
+              className="h-[280px] w-full bg-white"
+            />
+          </div>
+          <p className="mt-3 text-[13px] leading-6 text-(--color-text-secondary)">
+            {publication.description}
+          </p>
+
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {publication.tags.map((tagValue) => (
+              <span
+                key={tagValue}
+                className="rounded-full border border-(--color-border-pill) bg-(--color-bg-pill-inactive) px-2 py-1 font-mono text-[11px] text-(--color-text-row-meta)"
+              >
+                #{tagValue}
+              </span>
+            ))}
+          </div>
+
+          {publication.taggedAuthors.length > 0 ? (
+            <p className="mt-2 flex items-center gap-1.5 text-[12px] text-(--color-text-row-meta)">
+              <AtSign size={12} />
+              {publication.taggedAuthors.map((author) => author.name).join(", ")}
+            </p>
+          ) : null}
+
+          <div className="mt-3 grid grid-cols-3 gap-2 border-y border-(--color-border-card) py-2">
+            <FeedAction
+              icon={MessageCircle}
+              label={`${publication.commentCount} Comment`}
+              disabled={busyAction !== null}
+              onClick={() => document.getElementById(`comment-${publication.id}`)?.focus()}
+            />
+            <FeedAction
+              icon={Heart}
+              label={`${publication.likeCount} Like`}
+              active={liked}
+              disabled={busyAction !== null}
+              onClick={() => void toggleLike()}
+            />
+            <FeedAction
+              icon={Share2}
+              label={`${publication.shareCount} Share`}
+              disabled={busyAction !== null}
+              onClick={() => void share()}
+            />
+          </div>
+
+          <div className="mt-3 grid gap-2 md:grid-cols-[1fr_auto]">
+            <input
+              id={`comment-${publication.id}`}
+              value={comment}
+              onChange={(event) => setComment(event.target.value)}
+              placeholder="Write a comment"
+              aria-label={`Comment on ${publication.title}`}
+              className="h-9 rounded-[7px] border border-(--color-border-pill) bg-(--color-bg-pill-inactive) px-3 text-[12px] text-(--color-text-primary) outline-none placeholder:text-(--color-text-quaternary) focus:border-(--color-brand-indigo)"
+            />
+            <Button size="sm" variant="ghost" onClick={() => void submitComment()} disabled={busyAction !== null}>
+              <MessageCircle size={13} />
+              Comment
+            </Button>
+          </div>
+
+          <div className="mt-2 grid gap-2 md:grid-cols-[1fr_auto]">
+            <input
+              value={tagAuthors}
+              onChange={(event) => setTagAuthors(event.target.value)}
+              placeholder="Tag authors by name"
+              aria-label={`Tag authors on ${publication.title}`}
+              className="h-9 rounded-[7px] border border-(--color-border-pill) bg-(--color-bg-pill-inactive) px-3 text-[12px] text-(--color-text-primary) outline-none placeholder:text-(--color-text-quaternary) focus:border-(--color-brand-indigo)"
+            />
+            <Button size="sm" variant="ghost" onClick={() => void tag()} disabled={busyAction !== null}>
+              <AtSign size={13} />
+              Tag
+            </Button>
+          </div>
+
+          {publication.comments.length > 0 ? (
+            <div className="mt-3 flex flex-col gap-2">
+              {publication.comments.slice(-2).map((item) => (
+                <div key={item.id} className="rounded-[8px] bg-(--color-bg-pill-inactive) px-3 py-2">
+                  <p className="text-[12px] font-medium text-(--color-text-primary)">
+                    {item.userName}
+                  </p>
+                  <p className="mt-0.5 text-[12px] leading-5 text-(--color-text-row-meta)">
+                    {item.body}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {error ? (
+            <p className="mt-3 rounded-[7px] border border-(--color-status-red-spec) px-3 py-2 text-[12px] text-(--color-status-red-spec)">
+              {error}
+            </p>
+          ) : null}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function FeedAction({
+  icon: Icon,
+  label,
+  active,
+  disabled,
+  onClick,
+}: {
+  icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
+  label: string;
+  active?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "inline-flex h-8 items-center justify-center gap-1.5 rounded-[7px] text-[12px] transition-colors",
+        active
+          ? "bg-(--color-brand-indigo)/10 text-(--color-brand-hover)"
+          : "text-(--color-text-row-meta) hover:bg-(--color-ghost-bg-hover) hover:text-(--color-text-primary)",
+        "disabled:cursor-not-allowed disabled:opacity-50",
+      )}
+    >
+      <Icon size={13} strokeWidth={1.75} />
+      <span className="truncate">{label}</span>
+    </button>
+  );
+}
+
+function Avatar({ name, src }: { name: string; src?: string | null }) {
+  return src ? (
+    <img
+      src={src}
+      alt=""
+      className="size-10 flex-none rounded-full border border-(--color-border-card) object-cover"
+    />
+  ) : (
+    <div className="flex size-10 flex-none items-center justify-center rounded-full border border-(--color-border-card) bg-(--color-bg-pill-inactive) font-mono text-[12px] text-(--color-text-primary)">
+      {initialsFor(name).toUpperCase()}
+    </div>
   );
 }
 
@@ -1262,6 +1781,36 @@ function FolderSkeleton() {
       {Array.from({ length: 6 }).map((_, index) => (
         <div key={index} className="surface-linear-card h-[184px] animate-shimmer" />
       ))}
+    </div>
+  );
+}
+
+function PublicationFeedSkeleton() {
+  return (
+    <div className="mx-auto flex w-full max-w-[760px] flex-col gap-0">
+      {Array.from({ length: 3 }).map((_, index) => (
+        <div key={index} className="hairline-b flex gap-3 px-1 py-4 sm:px-3">
+          <div className="size-10 flex-none rounded-full bg-(--color-bg-pill-inactive) animate-shimmer" />
+          <div className="flex flex-1 flex-col gap-3">
+            <div className="h-4 w-48 rounded bg-(--color-bg-pill-inactive) animate-shimmer" />
+            <div className="h-6 w-3/4 rounded bg-(--color-bg-pill-inactive) animate-shimmer" />
+            <div className="h-[240px] rounded-[8px] bg-(--color-bg-pill-inactive) animate-shimmer" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EmptyPublicationFeed() {
+  return (
+    <div className="mx-auto flex h-64 max-w-[520px] flex-col items-center justify-center gap-3 text-center">
+      <div className="flex size-10 items-center justify-center rounded-full bg-(--color-bg-pill-inactive) text-(--color-text-tertiary)">
+        <Rss size={18} />
+      </div>
+      <p className="max-w-sm text-[13px] text-(--color-text-row-meta)">
+        No published research papers match this view yet.
+      </p>
     </div>
   );
 }
