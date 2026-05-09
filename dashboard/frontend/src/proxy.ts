@@ -14,6 +14,21 @@ function isPublicPath(pathname: string): boolean {
   return pathname.startsWith("/_next/") || pathname.includes(".");
 }
 
+function isPublicApiRequest(request: NextRequest): boolean {
+  const { pathname } = request.nextUrl;
+  if (pathname === "/api/v1/health" || pathname === "/api/v1/capabilities") {
+    return true;
+  }
+  if (!["GET", "HEAD"].includes(request.method)) {
+    return false;
+  }
+  return (
+    pathname === "/api/v1/publications" ||
+    pathname === "/api/v1/publications/rss.xml" ||
+    /^\/api\/v1\/publications\/[^/]+$/.test(pathname)
+  );
+}
+
 function passthroughProxy(_request: NextRequest) {
   return NextResponse.next();
 }
@@ -21,6 +36,9 @@ function passthroughProxy(_request: NextRequest) {
 const clerkProxy = clerkAuthEnabled ? clerkMiddleware(async (auth, request) => {
   const pathname = request.nextUrl.pathname;
   const isApiRequest = pathname.startsWith(API_PREFIX);
+  if (isApiRequest && isPublicApiRequest(request)) {
+    return NextResponse.next();
+  }
 
   const session = await auth();
   if (!session.userId) {
