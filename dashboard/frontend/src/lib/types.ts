@@ -87,6 +87,51 @@ export interface PublicationSettings {
   tasks: PublicationTask[];
 }
 
+export interface PublicationFeedAuthor {
+  id?: string | null;
+  userId?: string | null;
+  name: string;
+  affiliation?: string | null;
+  avatarUrl?: string | null;
+  role?: string | null;
+}
+
+export interface PublicationComment {
+  id: string;
+  publicationId: string;
+  userId: string;
+  userName: string;
+  userAffiliation?: string | null;
+  userAvatarUrl?: string | null;
+  body: string;
+  taggedAuthors: PublicationFeedAuthor[];
+  createdAt: string;
+}
+
+export interface ResearchPublication {
+  id: string;
+  projectId: string;
+  creatorUserId: string;
+  creatorName: string;
+  creatorAffiliation?: string | null;
+  creatorAvatarUrl?: string | null;
+  title: string;
+  description: string;
+  paperPdfUrl: string;
+  firstPagePreviewUrl: string;
+  sourceRunId?: string | null;
+  sourceStage: string;
+  authors: PublicationFeedAuthor[];
+  taggedAuthors: PublicationFeedAuthor[];
+  tags: string[];
+  publishedAt: string;
+  updatedAt: string;
+  likeCount: number;
+  commentCount: number;
+  shareCount: number;
+  comments: PublicationComment[];
+}
+
 export interface Project {
   id: string;
   name: string;

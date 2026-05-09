@@ -1,8 +1,10 @@
 import type {
   Journal,
   Mode,
+  PublicationFeedAuthor,
   PublicationSettings,
   Project,
+  ResearchPublication,
   StageId,
 } from "./types";
 
@@ -266,6 +268,132 @@ function adaptProject(p: RawProject): Project {
       : null,
     approvals: p.approvals ?? null,
   };
+}
+
+type RawPublicationFeedAuthor = {
+  id?: string | null;
+  user_id?: string | null;
+  name: string;
+  affiliation?: string | null;
+  avatar_url?: string | null;
+  role?: string | null;
+};
+
+type RawPublicationComment = {
+  id: string;
+  publication_id: string;
+  user_id: string;
+  user_name: string;
+  user_affiliation?: string | null;
+  user_avatar_url?: string | null;
+  body: string;
+  tagged_authors?: RawPublicationFeedAuthor[];
+  created_at: string;
+};
+
+type RawResearchPublication = {
+  id: string;
+  project_id: string;
+  creator_user_id: string;
+  creator_name: string;
+  creator_affiliation?: string | null;
+  creator_avatar_url?: string | null;
+  title: string;
+  description: string;
+  paper_pdf_url: string;
+  first_page_preview_url: string;
+  source_run_id?: string | null;
+  source_stage: string;
+  authors?: RawPublicationFeedAuthor[];
+  tagged_authors?: RawPublicationFeedAuthor[];
+  tags?: string[];
+  published_at: string;
+  updated_at: string;
+  like_count: number;
+  comment_count: number;
+  share_count: number;
+  comments?: RawPublicationComment[];
+};
+
+function adaptFeedAuthor(author: RawPublicationFeedAuthor): PublicationFeedAuthor {
+  return {
+    id: author.id ?? null,
+    userId: author.user_id ?? null,
+    name: author.name,
+    affiliation: author.affiliation ?? null,
+    avatarUrl: author.avatar_url ?? null,
+    role: author.role ?? null,
+  };
+}
+
+function adaptPublicationComment(comment: RawPublicationComment) {
+  return {
+    id: comment.id,
+    publicationId: comment.publication_id,
+    userId: comment.user_id,
+    userName: comment.user_name,
+    userAffiliation: comment.user_affiliation ?? null,
+    userAvatarUrl: comment.user_avatar_url ?? null,
+    body: comment.body,
+    taggedAuthors: (comment.tagged_authors ?? []).map(adaptFeedAuthor),
+    createdAt: comment.created_at,
+  };
+}
+
+function adaptResearchPublication(publication: RawResearchPublication): ResearchPublication {
+  return {
+    id: publication.id,
+    projectId: publication.project_id,
+    creatorUserId: publication.creator_user_id,
+    creatorName: publication.creator_name,
+    creatorAffiliation: publication.creator_affiliation ?? null,
+    creatorAvatarUrl: publication.creator_avatar_url ?? null,
+    title: publication.title,
+    description: publication.description,
+    paperPdfUrl: publication.paper_pdf_url,
+    firstPagePreviewUrl: publication.first_page_preview_url,
+    sourceRunId: publication.source_run_id ?? null,
+    sourceStage: publication.source_stage,
+    authors: (publication.authors ?? []).map(adaptFeedAuthor),
+    taggedAuthors: (publication.tagged_authors ?? []).map(adaptFeedAuthor),
+    tags: publication.tags ?? [],
+    publishedAt: publication.published_at,
+    updatedAt: publication.updated_at,
+    likeCount: publication.like_count,
+    commentCount: publication.comment_count,
+    shareCount: publication.share_count,
+    comments: (publication.comments ?? []).map(adaptPublicationComment),
+  };
+}
+
+function toRawFeedAuthor(author: PublicationFeedAuthor): RawPublicationFeedAuthor {
+  return {
+    id: author.id ?? undefined,
+    user_id: author.userId ?? undefined,
+    name: author.name,
+    affiliation: author.affiliation ?? undefined,
+    avatar_url: author.avatarUrl ?? undefined,
+    role: author.role ?? undefined,
+  };
+}
+
+export interface PublishPublicationBody {
+  title?: string;
+  description?: string;
+  creator_name?: string;
+  creator_affiliation?: string;
+  creator_avatar_url?: string;
+  source_run_id?: string;
+  tagged_authors?: PublicationFeedAuthor[];
+  tags?: string[];
+}
+
+export interface PublicationCommentBody {
+  body: string;
+  user_name?: string;
+  user_affiliation?: string;
+  user_avatar_url?: string;
+  tagged_authors?: PublicationFeedAuthor[];
 }
 
 // ---------------------------------------------------------------- iter-23
@@ -681,6 +809,83 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(body),
     });
+  },
+
+  async listPublications(params: {
+    tag?: string;
+    q?: string;
+    author?: string;
+    limit?: number;
+  } = {}): Promise<ResearchPublication[]> {
+    const search = new URLSearchParams();
+    if (params.tag) search.set("tag", params.tag);
+    if (params.q) search.set("q", params.q);
+    if (params.author) search.set("author", params.author);
+    if (params.limit) search.set("limit", String(params.limit));
+    const suffix = search.size ? `?${search.toString()}` : "";
+    const raw = await fetchJson<{ publications: RawResearchPublication[] }>(`/publications${suffix}`);
+    return raw.publications.map(adaptResearchPublication);
+  },
+
+  async publishProjectPublication(
+    pid: string,
+    body: PublishPublicationBody,
+  ): Promise<ResearchPublication> {
+    const raw = await fetchJson<RawResearchPublication>(`/projects/${pid}/publications`, {
+      method: "POST",
+      body: JSON.stringify({
+        ...body,
+        tagged_authors: body.tagged_authors?.map(toRawFeedAuthor),
+      }),
+    });
+    return adaptResearchPublication(raw);
+  },
+
+  async commentOnPublication(
+    publicationId: string,
+    body: PublicationCommentBody,
+  ): Promise<ResearchPublication["comments"][number]> {
+    const raw = await fetchJson<RawPublicationComment>(`/publications/${publicationId}/comments`, {
+      method: "POST",
+      body: JSON.stringify({
+        ...body,
+        tagged_authors: body.tagged_authors?.map(toRawFeedAuthor),
+      }),
+    });
+    return adaptPublicationComment(raw);
+  },
+
+  async likePublication(publicationId: string): Promise<ResearchPublication> {
+    const raw = await fetchJson<RawResearchPublication>(`/publications/${publicationId}/likes/me`, {
+      method: "PUT",
+    });
+    return adaptResearchPublication(raw);
+  },
+
+  async unlikePublication(publicationId: string): Promise<ResearchPublication> {
+    const raw = await fetchJson<RawResearchPublication>(`/publications/${publicationId}/likes/me`, {
+      method: "DELETE",
+    });
+    return adaptResearchPublication(raw);
+  },
+
+  async sharePublication(publicationId: string, target = "link"): Promise<ResearchPublication> {
+    const raw = await fetchJson<RawResearchPublication>(`/publications/${publicationId}/shares`, {
+      method: "POST",
+      body: JSON.stringify({ target }),
+    });
+    return adaptResearchPublication(raw);
+  },
+
+  async tagPublicationAuthors(
+    publicationId: string,
+    authors: PublicationFeedAuthor[],
+  ): Promise<ResearchPublication> {
+    const raw = await fetchJson<RawResearchPublication>(`/publications/${publicationId}/author-tags`, {
+      method: "POST",
+      body: JSON.stringify({ authors: authors.map(toRawFeedAuthor) }),
+    });
+    return adaptResearchPublication(raw);
   },
 
   async readStage(pid: string, stage: StageId): Promise<{ markdown: string; origin: string } | null> {
