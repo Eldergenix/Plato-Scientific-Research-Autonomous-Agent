@@ -70,6 +70,16 @@ function isPublicationRun(path: string[], request: Request): boolean {
   );
 }
 
+function isPublicApiRequest(path: string[], request: Request): boolean {
+  if (path.length === 1 && ["health", "capabilities"].includes(path[0])) {
+    return true;
+  }
+  if (!["GET", "HEAD"].includes(request.method)) {
+    return false;
+  }
+  return path[0] === "publications";
+}
+
 function weekKey(date = new Date()): string {
   const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
   const day = d.getUTCDay() || 7;
@@ -159,6 +169,15 @@ function forwardedHeaders(request: Request): Headers {
       headers.set(key, value);
     }
   });
+  const incoming = new URL(request.url);
+  headers.set(
+    "x-forwarded-host",
+    request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? incoming.host,
+  );
+  headers.set(
+    "x-forwarded-proto",
+    request.headers.get("x-forwarded-proto") ?? incoming.protocol.replace(":", ""),
+  );
   return headers;
 }
 
@@ -176,8 +195,9 @@ async function proxyRequest(request: Request, context: RouteContext): Promise<Re
   const { path = [] } = await context.params;
   const tenant = tenantFromHeaders(request);
   const publicationRun = isPublicationRun(path, request);
+  const publicApiRequest = isPublicApiRequest(path, request);
 
-  if (CLERK_AUTH_ENABLED && !tenant) {
+  if (CLERK_AUTH_ENABLED && !tenant && !publicApiRequest) {
     return Response.json(
       { code: "auth_required", message: "Sign in with Clerk before accessing Plato." },
       { status: 401 },

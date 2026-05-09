@@ -59,6 +59,7 @@ from .loop_control import router as loop_router
 from .novelty import router as novelty_router
 from .research_signals import router as research_signals_router
 from .retrieval_summary import router as retrieval_summary_router
+from .publications import router as publications_router
 from .scientific_capabilities import router as scientific_capabilities_router
 from .scientific_scores import router as scientific_scores_router
 from .tooling import router as tooling_router
@@ -472,6 +473,7 @@ def create_app() -> FastAPI:
     app.include_router(license_audit_router, prefix="/api/v1", tags=["licenses"])
     app.include_router(loop_router)  # already prefixed with /api/v1/loop
     app.include_router(novelty_router, prefix="/api/v1", tags=["novelty"])
+    app.include_router(publications_router, prefix="/api/v1", tags=["publications"])
     app.include_router(research_signals_router, prefix="/api/v1", tags=["research_signals"])
     app.include_router(retrieval_summary_router, prefix="/api/v1", tags=["retrieval"])
     app.include_router(scientific_capabilities_router, prefix="/api/v1", tags=["scientific_capabilities"])
