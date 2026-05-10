@@ -36,15 +36,15 @@ const USER_PLANS = [
 const LAB_PLANS = [
   {
     name: "Lab Standard",
-    price: "$99/mo + $10/scientist",
+    price: "$99/mo",
     description: "Shared Lab workspace for members, colleagues, and outside collaborators.",
-    details: ["Organization billing", "Seat-based members", "Credit usage billing"],
+    details: ["Organization billing", "20 scientist limit", "Hosted usage policy"],
   },
   {
     name: "Lab BYOK",
-    price: "Monthly base fee",
+    price: "$99/mo",
     description: "Shared Lab membership and collaboration without hosted usage billing.",
-    details: ["Bring lab-owned keys", "No usage billing", "1 month free"],
+    details: ["Bring lab-owned keys", "No usage billing", "Flat Lab fee"],
   },
 ];
 
@@ -212,7 +212,7 @@ export default async function BillingSettingsPage() {
                     Plato-managed
                   </h3>
                   <ul className="mt-3 flex flex-wrap gap-1.5">
-                    <li><Pill tone="amber">$10 / scientist estimate</Pill></li>
+                    <li><Pill tone="amber">Seat usage estimate</Pill></li>
                     <li><Pill tone="amber">BYOK detection</Pill></li>
                     <li><Pill tone="amber">Trial publication cap</Pill></li>
                     <li><Pill tone="amber">Hosted usage accounting</Pill></li>
