@@ -9,8 +9,9 @@ export const dynamic = "force-dynamic";
 const API_PROXY_TARGET =
   process.env.PLATO_API_PROXY_TARGET?.trim() || "http://127.0.0.1:7878";
 const CLERK_AUTH_ENABLED =
-  process.env.PLATO_AUTH_PROVIDER === "clerk" ||
-  process.env.NEXT_PUBLIC_PLATO_AUTH_PROVIDER === "clerk";
+  (process.env.PLATO_AUTH_PROVIDER === "clerk" ||
+    process.env.NEXT_PUBLIC_PLATO_AUTH_PROVIDER === "clerk") &&
+  Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 const TRIAL_PUBLICATION_LIMIT = Number(
   process.env.PLATO_HOSTED_TRIAL_PUBLICATIONS_PER_WEEK ?? "2",
 );
@@ -72,6 +73,13 @@ function isPublicationRun(path: string[], request: Request): boolean {
 
 function isPublicApiRequest(path: string[], request: Request): boolean {
   if (path.length === 1 && ["health", "capabilities"].includes(path[0])) {
+    return true;
+  }
+  if (
+    path[0] === "auth" &&
+    path.length === 2 &&
+    ["me", "login", "logout"].includes(path[1] ?? "")
+  ) {
     return true;
   }
   if (!["GET", "HEAD"].includes(request.method)) {

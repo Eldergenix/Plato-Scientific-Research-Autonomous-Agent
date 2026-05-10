@@ -37,7 +37,13 @@ function redirectToLogin(request: NextRequest): NextResponse {
 
 function isPublicApiRequest(request: NextRequest): boolean {
   const { pathname } = request.nextUrl;
-  if (pathname === "/api/v1/health" || pathname === "/api/v1/capabilities") {
+  if (
+    pathname === "/api/v1/health" ||
+    pathname === "/api/v1/capabilities" ||
+    pathname === "/api/v1/auth/me" ||
+    pathname === "/api/v1/auth/login" ||
+    pathname === "/api/v1/auth/logout"
+  ) {
     return true;
   }
   if (!["GET", "HEAD"].includes(request.method)) {
