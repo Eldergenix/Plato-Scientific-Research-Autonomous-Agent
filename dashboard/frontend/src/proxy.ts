@@ -6,7 +6,8 @@ import type { NextRequest } from "next/server";
 const clerkAuthEnabled =
   (process.env.PLATO_AUTH_PROVIDER === "clerk" ||
     process.env.NEXT_PUBLIC_PLATO_AUTH_PROVIDER === "clerk") &&
-  Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+  Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) &&
+  Boolean(process.env.CLERK_SECRET_KEY);
 
 const tenantAuthRequired =
   process.env.PLATO_AUTH === "enabled" ||
@@ -15,10 +16,18 @@ const tenantAuthRequired =
 const TENANT_COOKIE = "plato_user";
 
 const API_PREFIX = "/api/v1";
-const PUBLIC_PATHS = new Set(["/login", "/login/validation-demo"]);
+const PUBLIC_PATHS = new Set([
+  "/login",
+  "/login/validation-demo",
+  "/sign-in",
+  "/sign-up",
+]);
 
 function isPublicPath(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true;
+  if (pathname.startsWith("/sign-in/") || pathname.startsWith("/sign-up/")) {
+    return true;
+  }
   return pathname.startsWith("/_next/") || pathname.includes(".");
 }
 
@@ -104,7 +113,7 @@ const clerkProxy = clerkAuthEnabled ? clerkMiddleware(async (auth, request) => {
       );
     }
     if (!isPublicPath(pathname)) {
-      return redirectToLogin(request);
+      return session.redirectToSignIn({ returnBackUrl: request.url });
     }
     return NextResponse.next();
   }
@@ -134,5 +143,6 @@ export const config = {
   matcher: [
     "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
     "/(api|trpc)(.*)",
+    "/__clerk/(.*)",
   ],
 };
