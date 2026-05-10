@@ -82,7 +82,7 @@ const USER_RESEARCHER_FEE_CENTS = parseEnvNumber(
   9999,
 );
 const LAB_BASE_FEE_CENTS = parseEnvNumber("PLATO_HOSTED_LAB_BASE_FEE_CENTS", 9900);
-const LAB_SEAT_FEE_CENTS = parseEnvNumber("PLATO_HOSTED_LAB_SEAT_FEE_CENTS", 1000);
+const LAB_SEAT_FEE_CENTS = parseEnvNumber("PLATO_HOSTED_LAB_SEAT_FEE_CENTS", 0);
 
 async function fetchTenantJson<T>(tenantId: string, path: string): Promise<T | null> {
   const response = await fetch(new URL(path, API_PROXY_TARGET), {
