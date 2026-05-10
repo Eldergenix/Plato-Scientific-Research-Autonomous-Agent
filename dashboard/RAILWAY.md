@@ -5,7 +5,10 @@ HuggingFace Spaces with (`dashboard/spaces/Dockerfile`). The image runs
 Next.js as the public process on Railway's injected `$PORT`, while the
 FastAPI backend runs on localhost and receives `/api/v1` traffic through
 the Next proxy. One Railway service hosts the whole app. No separate
-frontend service and no Redis are needed. The research-publication feed
+frontend service is needed. Production deployments can use a Railway Redis
+database by setting `PLATO_REDIS_URL` and `PLATO_USE_FAKEREDIS=false`; when
+`PLATO_REDIS_URL` is absent the image can still run with fakeredis or its
+bundled local Redis fallback. The research-publication feed
 does need Postgres for durable posts, comments, likes, shares, author
 tags, and RSS items; without `DATABASE_URL` or
 `PLATO_PUBLICATIONS_DATABASE_URL`, publications fall back to a local
@@ -64,7 +67,8 @@ that up automatically when you point a service at this repo.
    | `PLATO_DEMO_MODE` | leave unset | defaults to `enabled` from the Dockerfile; only override to `disabled` if you've put auth in front |
    | `PLATO_BACKEND_PORT` | leave unset | defaults to `7878`; FastAPI listens here inside the container |
    | `PLATO_AUTH` | optional | set to `enabled` + `PLATO_AUTH_TOKEN=...` to gate the dashboard behind a bearer cookie |
-   | `PLATO_USE_FAKEREDIS` | leave unset | already `true` in the Dockerfile; no Redis service needed |
+   | `PLATO_REDIS_URL` | recommended for production | `${{Redis.REDIS_URL}}` from a Railway Redis database |
+   | `PLATO_USE_FAKEREDIS` | recommended for production | set `false` when `PLATO_REDIS_URL` points at Railway Redis |
    | `DATABASE_URL` | required for publications | `${{Postgres.DATABASE_URL}}` from the Railway Postgres service |
    | `PLATO_PUBLICATIONS_DATABASE_URL` | required for publications | same value; publication store reads this before `DATABASE_URL` |
 
@@ -87,8 +91,11 @@ railway link            # pick or create the project
 
 # one-time production variables
 railway add --database postgres
+railway add --database redis
 railway variables --service plato --set 'DATABASE_URL=${{Postgres.DATABASE_URL}}'
 railway variables --service plato --set 'PLATO_PUBLICATIONS_DATABASE_URL=${{Postgres.DATABASE_URL}}'
+railway variables --service plato --set 'PLATO_REDIS_URL=${{Redis.REDIS_URL}}'
+railway variables --service plato --set 'PLATO_USE_FAKEREDIS=false'
 railway variables --service plato --set ANTHROPIC_API_KEY=sk-ant-...
 
 # every deploy after that
