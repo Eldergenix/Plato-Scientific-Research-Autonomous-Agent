@@ -11,7 +11,8 @@ const API_PROXY_TARGET =
 const CLERK_AUTH_ENABLED =
   (process.env.PLATO_AUTH_PROVIDER === "clerk" ||
     process.env.NEXT_PUBLIC_PLATO_AUTH_PROVIDER === "clerk") &&
-  Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+  Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) &&
+  Boolean(process.env.CLERK_SECRET_KEY);
 const TRIAL_PUBLICATION_LIMIT = Number(
   process.env.PLATO_HOSTED_TRIAL_PUBLICATIONS_PER_WEEK ?? "2",
 );
