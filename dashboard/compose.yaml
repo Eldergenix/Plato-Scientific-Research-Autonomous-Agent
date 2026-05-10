@@ -36,8 +36,9 @@ services:
       - PLATO_DEMO_MODE=${PLATO_DEMO_MODE:-disabled}
       - PLATO_AUTH=${PLATO_AUTH:-disabled}
       # fakeredis keeps the container single-process; flip to "false" to
-      # use the bundled redis-server (started by the entrypoint).
+      # use PLATO_REDIS_URL when set, or the bundled redis-server otherwise.
       - PLATO_USE_FAKEREDIS=true
+      - PLATO_REDIS_URL=${PLATO_REDIS_URL:-}
       # Provider keys — leave blank to enter them via the dashboard UI.
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}

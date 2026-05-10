@@ -128,9 +128,10 @@ BACKEND_PORT="${PLATO_BACKEND_PORT:-7879}"
 export PLATO_PORT="${BACKEND_PORT}"
 export PLATO_API_PROXY_TARGET="${PLATO_API_PROXY_TARGET:-http://127.0.0.1:${BACKEND_PORT}}"
 
-# Only spin up a real Redis when explicitly requested. The default
-# (PLATO_USE_FAKEREDIS=true) keeps the container single-process.
-if [[ "${PLATO_USE_FAKEREDIS:-true}" == "false" || "${PLATO_USE_FAKEREDIS:-true}" == "disabled" ]]; then
+# Only spin up the bundled Redis when explicitly requested and no external
+# Redis URL was provided. Production Railway deploys should set
+# PLATO_REDIS_URL to the Redis service's private URL instead.
+if [[ -z "${PLATO_REDIS_URL:-}" && ("${PLATO_USE_FAKEREDIS:-true}" == "false" || "${PLATO_USE_FAKEREDIS:-true}" == "disabled") ]]; then
     echo "[entrypoint] Starting redis-server in background"
     redis-server --daemonize yes --bind 127.0.0.1 --port 6379 --save "" --appendonly no
 fi
