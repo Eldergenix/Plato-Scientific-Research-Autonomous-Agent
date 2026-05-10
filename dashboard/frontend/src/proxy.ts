@@ -44,6 +44,18 @@ function redirectToLogin(request: NextRequest): NextResponse {
   return NextResponse.redirect(redirectUrl);
 }
 
+function publicRequestUrl(request: NextRequest): string {
+  const forwardedHost =
+    request.headers.get("x-forwarded-host") ??
+    request.headers.get("host") ??
+    request.nextUrl.host;
+  const forwardedProto =
+    request.headers.get("x-forwarded-proto") ??
+    (forwardedHost.includes("localhost") ? "http" : "https");
+
+  return `${forwardedProto}://${forwardedHost}${request.nextUrl.pathname}${request.nextUrl.search}`;
+}
+
 function isPublicApiRequest(request: NextRequest): boolean {
   const { pathname } = request.nextUrl;
   if (
@@ -113,7 +125,7 @@ const clerkProxy = clerkAuthEnabled ? clerkMiddleware(async (auth, request) => {
       );
     }
     if (!isPublicPath(pathname)) {
-      return session.redirectToSignIn({ returnBackUrl: request.url });
+      return session.redirectToSignIn({ returnBackUrl: publicRequestUrl(request) });
     }
     return NextResponse.next();
   }
