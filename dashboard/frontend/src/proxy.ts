@@ -4,8 +4,15 @@ import { toPlatoTenantId } from "@/lib/plato-tenant";
 import type { NextRequest } from "next/server";
 
 const clerkAuthEnabled =
-  process.env.PLATO_AUTH_PROVIDER === "clerk" ||
-  process.env.NEXT_PUBLIC_PLATO_AUTH_PROVIDER === "clerk";
+  (process.env.PLATO_AUTH_PROVIDER === "clerk" ||
+    process.env.NEXT_PUBLIC_PLATO_AUTH_PROVIDER === "clerk") &&
+  Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+
+const tenantAuthRequired =
+  process.env.PLATO_AUTH === "enabled" ||
+  process.env.PLATO_DASHBOARD_AUTH_REQUIRED === "1";
+
+const TENANT_COOKIE = "plato_user";
 
 const API_PREFIX = "/api/v1";
 const PUBLIC_PATHS = new Set(["/login", "/login/validation-demo"]);
@@ -43,7 +50,32 @@ function isPublicApiRequest(request: NextRequest): boolean {
   );
 }
 
-function passthroughProxy(_request: NextRequest) {
+function tenantProxy(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+  const isApiRequest = pathname.startsWith(API_PREFIX);
+
+  if (isApiRequest && isPublicApiRequest(request)) {
+    return NextResponse.next();
+  }
+
+  if (!tenantAuthRequired || request.cookies.has(TENANT_COOKIE)) {
+    return NextResponse.next();
+  }
+
+  if (isApiRequest) {
+    return NextResponse.json(
+      {
+        code: "auth_required",
+        message: "Sign in before accessing Plato.",
+      },
+      { status: 401 },
+    );
+  }
+
+  if (!isPublicPath(pathname)) {
+    return redirectToLogin(request);
+  }
+
   return NextResponse.next();
 }
 
@@ -88,7 +120,7 @@ const clerkProxy = clerkAuthEnabled ? clerkMiddleware(async (auth, request) => {
       headers: requestHeaders,
     },
   });
-}) : passthroughProxy;
+}) : tenantProxy;
 
 export default clerkProxy;
 
