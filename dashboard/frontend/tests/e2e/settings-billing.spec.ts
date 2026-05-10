@@ -20,7 +20,8 @@ test.describe("settings/billing", () => {
     await page.goto("/settings/account");
     await expect(page.getByRole("heading", { level: 1, name: "Account" })).toBeVisible();
     await expect(page.getByTestId("account-settings-fallback")).toBeVisible();
-    await expect(page.getByText("Password changes, email changes")).toBeVisible();
+    await expect(page.getByText("Local sign-in is active")).toBeVisible();
+    await expect(page.getByText("Your User ID scopes projects")).toBeVisible();
 
     await page.goto("/settings/organization");
     await expect(page.getByRole("heading", { level: 1, name: "Organization" })).toBeVisible();
