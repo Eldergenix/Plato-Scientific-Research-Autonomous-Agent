@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Show, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
 import { useAuth } from "@/components/auth/auth-context";
 import { LoginForm } from "@/components/auth/login-form";
@@ -13,14 +14,50 @@ import { isClerkAuthEnabled } from "@/lib/auth-mode";
 // previous version of this file double-wrapped, which caused two
 // independent /api/v1/auth/me fetches per render.
 export default function LoginPage() {
-  if (isClerkAuthEnabled()) {
-    return <ClerkLoginPage />;
-  }
-
-  return <TenantLoginPage />;
+  return (
+    <React.Suspense fallback={<LoginPageShell />}>
+      <LoginPageContent />
+    </React.Suspense>
+  );
 }
 
-function TenantLoginPage() {
+function LoginPageContent() {
+  const redirectTo = useLoginRedirectPath();
+
+  if (isClerkAuthEnabled()) {
+    return <ClerkLoginPage redirectTo={redirectTo} />;
+  }
+
+  return <TenantLoginPage redirectTo={redirectTo} />;
+}
+
+function LoginPageShell() {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-(--color-bg-page) p-6">
+      <div
+        className="surface-linear-card h-[192px] w-full max-w-[420px]"
+        data-testid="login-card"
+      />
+    </main>
+  );
+}
+
+function useLoginRedirectPath(): string {
+  const searchParams = useSearchParams();
+  const next = searchParams.get("next");
+
+  if (!next || !next.startsWith("/") || next.startsWith("//")) {
+    return "/";
+  }
+
+  if (next === "/login" || next.startsWith("/login?")) {
+    return "/";
+  }
+
+  return next;
+}
+
+function TenantLoginPage({ redirectTo }: { redirectTo: string }) {
   const { user_id } = useAuth();
   return (
     <main className="flex min-h-screen items-center justify-center bg-(--color-bg-page) p-6">
@@ -42,14 +79,14 @@ function TenantLoginPage() {
         </header>
 
         <div className="px-5 py-5">
-          <LoginForm redirectTo="/" />
+          <LoginForm redirectTo={redirectTo} />
         </div>
       </div>
     </main>
   );
 }
 
-function ClerkLoginPage() {
+function ClerkLoginPage({ redirectTo }: { redirectTo: string }) {
   return (
     <main className="flex min-h-screen items-center justify-center bg-(--color-bg-page) p-6">
       <div
@@ -72,12 +109,12 @@ function ClerkLoginPage() {
 
         <div className="flex flex-col gap-3 px-5 py-5">
           <Show when="signed-out">
-            <SignInButton mode="modal">
+            <SignInButton mode="modal" forceRedirectUrl={redirectTo}>
               <Button type="button" variant="primary" size="md">
                 Sign in
               </Button>
             </SignInButton>
-            <SignUpButton mode="modal">
+            <SignUpButton mode="modal" forceRedirectUrl={redirectTo}>
               <Button type="button" variant="ghost" size="md">
                 Create account
               </Button>
@@ -85,7 +122,7 @@ function ClerkLoginPage() {
           </Show>
           <Show when="signed-in">
             <Button asChild variant="primary" size="md">
-              <Link href="/">Continue to workspace</Link>
+              <Link href={redirectTo}>Continue to workspace</Link>
             </Button>
           </Show>
         </div>
