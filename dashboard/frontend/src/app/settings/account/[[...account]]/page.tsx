@@ -49,7 +49,7 @@ function SelfHostedAccountFallback() {
       <div className="mx-auto max-w-4xl space-y-6">
         <SettingsHeader
           title="Account"
-          subtitle="Self-hosted Plato is using tenant-id auth, not hosted Clerk account management."
+          subtitle="This deployment uses local Plato sign-in for workspace access."
         />
         <section className="surface-linear-card p-5" data-testid="account-settings-fallback">
           <div className="flex items-start gap-3">
@@ -58,16 +58,12 @@ function SelfHostedAccountFallback() {
             </div>
             <div>
               <h2 className="text-[15px] font-[510] text-(--color-text-primary-strong)">
-                Hosted account controls are disabled
+                Local sign-in is active
               </h2>
               <p className="mt-1 text-[12px] text-(--color-text-tertiary-spec)">
-                Password changes, email changes, identity verification, and account privacy
-                controls are provided by Clerk when{" "}
-                <code className="font-mono text-[11px]">
-                  NEXT_PUBLIC_PLATO_AUTH_PROVIDER=clerk
-                </code>{" "}
-                is enabled. In self-hosted mode, Plato only receives a tenant identity
-                from the configured auth proxy or local login cookie.
+                Your User ID scopes projects, settings, and workspace data in this
+                dashboard. Passwords, email changes, and privacy controls are managed
+                outside Plato by the configured identity provider.
               </p>
             </div>
           </div>
