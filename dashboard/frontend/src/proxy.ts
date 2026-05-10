@@ -9,9 +9,23 @@ const clerkAuthEnabled =
 
 const API_PREFIX = "/api/v1";
 const PUBLIC_PATHS = new Set(["/login", "/login/validation-demo"]);
+
 function isPublicPath(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true;
   return pathname.startsWith("/_next/") || pathname.includes(".");
+}
+
+function redirectToLogin(request: NextRequest): NextResponse {
+  const redirectUrl = request.nextUrl.clone();
+  const nextPath = `${request.nextUrl.pathname}${request.nextUrl.search}`;
+
+  redirectUrl.pathname = "/login";
+  redirectUrl.search = "";
+  if (nextPath !== "/login") {
+    redirectUrl.searchParams.set("next", nextPath);
+  }
+
+  return NextResponse.redirect(redirectUrl);
 }
 
 function isPublicApiRequest(request: NextRequest): boolean {
@@ -52,7 +66,7 @@ const clerkProxy = clerkAuthEnabled ? clerkMiddleware(async (auth, request) => {
       );
     }
     if (!isPublicPath(pathname)) {
-      return session.redirectToSignIn();
+      return redirectToLogin(request);
     }
     return NextResponse.next();
   }

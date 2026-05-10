@@ -94,6 +94,17 @@ test.describe("auth /login", () => {
     await page.waitForURL("**/", { timeout: 5000 });
     expect(new URL(page.url()).pathname).toBe("/");
   });
+
+  test("next query redirects back to the requested app route", async ({ page }) => {
+    await setupMocks(page);
+    await page.goto("/login?next=%2Fpapers");
+
+    await page.getByTestId("login-user-id").fill("alice");
+    await page.getByTestId("login-submit").click();
+
+    await page.waitForURL("**/papers", { timeout: 5000 });
+    expect(new URL(page.url()).pathname).toBe("/papers");
+  });
 });
 
 test.describe("auth user menu", () => {
