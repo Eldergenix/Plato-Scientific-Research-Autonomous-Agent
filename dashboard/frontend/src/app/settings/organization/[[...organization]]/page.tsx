@@ -7,11 +7,13 @@ import {
   SignInButton,
 } from "@clerk/nextjs";
 import { Building2, LogIn } from "lucide-react";
+import { useAuthMode } from "@/components/auth/auth-mode-provider";
 import { Button } from "@/components/ui/button";
-import { isClerkAuthEnabled } from "@/lib/auth-mode";
 
 export default function OrganizationSettingsPage() {
-  if (!isClerkAuthEnabled()) {
+  const { clerkAuthEnabled } = useAuthMode();
+
+  if (!clerkAuthEnabled) {
     return <SelfHostedOrganizationFallback />;
   }
 
