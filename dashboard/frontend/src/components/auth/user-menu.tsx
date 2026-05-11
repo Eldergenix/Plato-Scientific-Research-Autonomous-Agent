@@ -12,8 +12,8 @@ import {
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { LogIn, LogOut, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { isClerkAuthEnabled } from "@/lib/auth-mode";
 import { useAuth } from "./auth-context";
+import { useAuthMode } from "./auth-mode-provider";
 
 /**
  * Avatar + dropdown for the signed-in user.
@@ -24,7 +24,9 @@ import { useAuth } from "./auth-context";
  * - Signed out, auth required: redirects to /login on mount.
  */
 export function UserMenu() {
-  if (isClerkAuthEnabled()) {
+  const { clerkAuthEnabled } = useAuthMode();
+
+  if (clerkAuthEnabled) {
     return <ClerkUserMenu />;
   }
   return <TenantUserMenu />;
