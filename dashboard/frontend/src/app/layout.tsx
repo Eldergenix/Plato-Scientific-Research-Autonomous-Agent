@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { AuthProvider } from "@/components/auth/auth-context";
+import { AuthModeProvider } from "@/components/auth/auth-mode-provider";
 import { ErrorBoundary } from "@/components/shell/error-boundary";
 import { ThemeProvider } from "@/components/shell/theme-provider";
 import { isClerkAuthEnabled } from "@/lib/auth-mode";
@@ -45,12 +46,15 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const clerkAuthEnabled = isClerkAuthEnabled();
   const app = (
-    <ThemeProvider>
-      <AuthProvider>
-        <ErrorBoundary>{children}</ErrorBoundary>
-      </AuthProvider>
-    </ThemeProvider>
+    <AuthModeProvider clerkAuthEnabled={clerkAuthEnabled}>
+      <ThemeProvider>
+        <AuthProvider>
+          <ErrorBoundary>{children}</ErrorBoundary>
+        </AuthProvider>
+      </ThemeProvider>
+    </AuthModeProvider>
   );
 
   // suppressHydrationWarning on <html> is required because the inline
@@ -70,7 +74,7 @@ export default function RootLayout({
         >
           Skip to main content
         </a>
-        {isClerkAuthEnabled() ? <ClerkProvider>{app}</ClerkProvider> : app}
+        {clerkAuthEnabled ? <ClerkProvider>{app}</ClerkProvider> : app}
       </body>
     </html>
   );

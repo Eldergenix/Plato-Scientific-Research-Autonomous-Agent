@@ -2,11 +2,13 @@
 
 import { Show, SignInButton, UserProfile } from "@clerk/nextjs";
 import { LogIn, ShieldCheck } from "lucide-react";
+import { useAuthMode } from "@/components/auth/auth-mode-provider";
 import { Button } from "@/components/ui/button";
-import { isClerkAuthEnabled } from "@/lib/auth-mode";
 
 export default function AccountSettingsPage() {
-  if (!isClerkAuthEnabled()) {
+  const { clerkAuthEnabled } = useAuthMode();
+
+  if (!clerkAuthEnabled) {
     return <SelfHostedAccountFallback />;
   }
 
