@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { Show, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
 import { useAuth } from "@/components/auth/auth-context";
+import { useAuthMode } from "@/components/auth/auth-mode-provider";
 import { LoginForm } from "@/components/auth/login-form";
 import { UserMenu } from "@/components/auth/user-menu";
 import { Button } from "@/components/ui/button";
-import { isClerkAuthEnabled } from "@/lib/auth-mode";
 
 export function LoginPageClient({ redirectTo }: { redirectTo: string }) {
-  if (isClerkAuthEnabled()) {
+  const { clerkAuthEnabled } = useAuthMode();
+
+  if (clerkAuthEnabled) {
     return <ClerkLoginPage redirectTo={redirectTo} />;
   }
 
