@@ -33,7 +33,7 @@ import {
   Newspaper,
   Stamp,
 } from "lucide-react";
-import type { StageId, Stage } from "@/lib/types";
+import type { Project, StageId, Stage } from "@/lib/types";
 
 const PIPELINE_STAGE_ORDER: StageId[] = [
   "idea",
@@ -1121,7 +1121,9 @@ function StagePane({
       );
     case "literature":
       return (
-        <EmptyStage
+        <GeneratedMarkdownStage
+          project={project}
+          stage="literature"
           icon={BookMarked}
           title="Literature review"
           description="Discovered papers, novelty verdict, and reasoning trail. Run a Semantic Scholar / FutureHouse novelty check to populate this view."
@@ -1130,7 +1132,9 @@ function StagePane({
       );
     case "method":
       return (
-        <EmptyStage
+        <GeneratedMarkdownStage
+          project={project}
+          stage="method"
           icon={ClipboardList}
           title="Methodology"
           description="A structured ~500-word methodology describing how the experiment will be performed. Generate from the idea, or upload a markdown file."
@@ -1154,7 +1158,9 @@ function StagePane({
       );
     case "referee":
       return (
-        <EmptyStage
+        <GeneratedMarkdownStage
+          project={project}
+          stage="referee"
           icon={Stamp}
           title="Peer review"
           description="A 0–9 scored review across originality, clarity, methodology, results, and significance — produced from the rendered PDF."
@@ -1164,6 +1170,86 @@ function StagePane({
     default:
       return null;
   }
+}
+
+function GeneratedMarkdownStage({
+  project,
+  stage,
+  icon: Icon,
+  title,
+  description,
+  onGenerate,
+}: {
+  project: Project;
+  stage: Exclude<StageId, "data" | "idea" | "results" | "paper">;
+  icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
+  title: string;
+  description: string;
+  onGenerate: () => void | Promise<void>;
+}) {
+  const [markdown, setMarkdown] = React.useState<string | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const stageState = project.stages[stage];
+  const refetchKey = `${project.id}|${stage}|${stageState.status}|${stageState.lastRunAt ?? ""}|${project.activeRun?.runId ?? "idle"}`;
+
+  React.useEffect(() => {
+    if (!project.id) {
+      setMarkdown(null);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    void (async () => {
+      try {
+        const r = await api.readStage(project.id, stage);
+        if (cancelled) return;
+        const body = r?.markdown?.trim();
+        setMarkdown(body ? (r?.markdown ?? null) : null);
+      } catch (e: unknown) {
+        if (cancelled) return;
+        const message = e instanceof Error ? e.message : String(e);
+        setError(message.includes("404") ? null : message);
+        setMarkdown(null);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [project.id, stage, refetchKey]);
+
+  if (!markdown) {
+    return (
+      <EmptyStage
+        icon={Icon}
+        title={title}
+        description={
+          error
+            ? `Could not load this stage artifact: ${error}`
+            : description
+        }
+        onGenerate={onGenerate}
+      />
+    );
+  }
+
+  return (
+    <article className="flex h-full flex-col overflow-auto">
+      <header className="hairline-b flex items-baseline gap-3 px-6 pb-4 pt-6">
+        <Icon size={20} strokeWidth={1.5} className="text-(--color-brand-hover)" />
+        <h2 className="font-h1 tracking-[-0.704px]">{title}</h2>
+        <span className="text-[12px] text-(--color-text-tertiary)">
+          {loading ? "Refreshing" : stageState.model ? `AI · ${stageState.model}` : "AI generated"}
+        </span>
+      </header>
+      <pre className="whitespace-pre-wrap px-6 py-5 text-[13.5px] leading-[1.7] text-(--color-text-primary)">
+        {markdown}
+      </pre>
+    </article>
+  );
 }
 
 function PaperStagePane({
