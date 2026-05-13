@@ -5,8 +5,7 @@
 # A leaner cousin of dashboard/Dockerfile that targets HF Spaces:
 #   * EXPOSE 7860 (HF Spaces convention)
 #   * Demo mode ON by default — code-execution stages locked, $0.50 cap
-#   * Trimmed LaTeX install (HF Spaces enforces a ~50GB image cap and a
-#     ~16GB persistent storage budget on the free tier)
+#   * LaTeX install includes xelatex so hosted paper generation can compile PDFs
 #   * No bundled redis — fakeredis only (HF Spaces gets one container)
 #
 # Build context MUST be the repo root:
@@ -67,10 +66,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PLATO_USE_FAKEREDIS=true \
     HOME=/home/plato
 
-# <<< Slimmer apt set than the self-hosted image:
-# only texlive-latex-recommended (no -extra, no -bibtex-extra, no -xetex).
-# Demo mode disables paper-stage execution, so most BibTeX styles are dead
-# weight on Spaces. tini stays for clean shutdown on SIGTERM.
+# <<< Keep the LaTeX stack aligned with dashboard/Dockerfile. Production
+# Railway uses this image too, and paper-stage execution requires xelatex.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         tini \
@@ -79,6 +76,10 @@ RUN apt-get update && \
         git \
         build-essential \
         texlive-latex-recommended \
+        texlive-latex-extra \
+        texlive-fonts-recommended \
+        texlive-bibtex-extra \
+        texlive-xetex \
         lmodern && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
