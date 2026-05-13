@@ -1,5 +1,13 @@
+# ruff: noqa: E402
 from pathlib import Path
 from typing import Any, cast
+import warnings
+
+warnings.filterwarnings(
+    "ignore",
+    message=r"The default value of `allowed_objects` will change in a future version\..*",
+    category=Warning,
+)
 
 from langgraph.graph import START, StateGraph, END
 
