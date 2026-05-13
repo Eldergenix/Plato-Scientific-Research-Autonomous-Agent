@@ -16,6 +16,7 @@ const tenantAuthRequired =
 const TENANT_COOKIE = "plato_user";
 
 const API_PREFIX = "/api/v1";
+const CLERK_PROXY_PREFIX = "/__clerk";
 const PUBLIC_PATHS = new Set([
   "/login",
   "/login/validation-demo",
@@ -25,6 +26,7 @@ const PUBLIC_PATHS = new Set([
 
 function isPublicPath(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true;
+  if (pathname.startsWith(CLERK_PROXY_PREFIX)) return true;
   if (pathname.startsWith("/sign-in/") || pathname.startsWith("/sign-up/")) {
     return true;
   }
@@ -106,48 +108,56 @@ function tenantProxy(request: NextRequest) {
   return NextResponse.next();
 }
 
-const clerkProxy = clerkAuthEnabled ? clerkMiddleware(async (auth, request) => {
-  const pathname = request.nextUrl.pathname;
-  const isApiRequest = pathname.startsWith(API_PREFIX);
-  if (isApiRequest && isPublicApiRequest(request)) {
-    return NextResponse.next();
-  }
+const clerkProxy = clerkAuthEnabled
+  ? clerkMiddleware(
+      async (auth, request) => {
+        const pathname = request.nextUrl.pathname;
+        const isApiRequest = pathname.startsWith(API_PREFIX);
+        if (pathname.startsWith(CLERK_PROXY_PREFIX)) {
+          return NextResponse.next();
+        }
+        if (isApiRequest && isPublicApiRequest(request)) {
+          return NextResponse.next();
+        }
 
-  const session = await auth();
-  if (!session.userId) {
-    if (isApiRequest) {
-      return NextResponse.json(
-        {
-          code: "auth_required",
-          message: "Sign in with Clerk before accessing Plato.",
-        },
-        { status: 401 },
-      );
-    }
-    if (!isPublicPath(pathname)) {
-      return session.redirectToSignIn({ returnBackUrl: publicRequestUrl(request) });
-    }
-    return NextResponse.next();
-  }
+        const session = await auth();
+        if (!session.userId) {
+          if (isApiRequest) {
+            return NextResponse.json(
+              {
+                code: "auth_required",
+                message: "Sign in with Clerk before accessing Plato.",
+              },
+              { status: 401 },
+            );
+          }
+          if (!isPublicPath(pathname)) {
+            return session.redirectToSignIn({ returnBackUrl: publicRequestUrl(request) });
+          }
+          return NextResponse.next();
+        }
 
-  const requestHeaders = new Headers(request.headers);
-  requestHeaders.set(
-    "X-Plato-User",
-    session.orgId
-      ? toPlatoTenantId("lab", session.orgId)
-      : toPlatoTenantId("user", session.userId),
-  );
-  requestHeaders.set("X-Plato-Auth-Provider", "clerk");
-  if (session.orgId) {
-    requestHeaders.set("X-Plato-Lab-Id", session.orgId);
-  }
+        const requestHeaders = new Headers(request.headers);
+        requestHeaders.set(
+          "X-Plato-User",
+          session.orgId
+            ? toPlatoTenantId("lab", session.orgId)
+            : toPlatoTenantId("user", session.userId),
+        );
+        requestHeaders.set("X-Plato-Auth-Provider", "clerk");
+        if (session.orgId) {
+          requestHeaders.set("X-Plato-Lab-Id", session.orgId);
+        }
 
-  return NextResponse.next({
-    request: {
-      headers: requestHeaders,
-    },
-  });
-}) : tenantProxy;
+        return NextResponse.next({
+          request: {
+            headers: requestHeaders,
+          },
+        });
+      },
+      { proxyUrl: process.env.NEXT_PUBLIC_CLERK_PROXY_URL ?? CLERK_PROXY_PREFIX },
+    )
+  : tenantProxy;
 
 export default clerkProxy;
 

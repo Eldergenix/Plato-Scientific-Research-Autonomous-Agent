@@ -40,6 +40,7 @@ export const metadata: Metadata = {
 // src/components/shell/theme-provider.tsx so the class matches what React
 // would set, avoiding a flash of un-themed content.
 const themeBootstrap = `(function(){try{var t=localStorage.getItem("plato:theme")||"dark";var d=t==="system"?(window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"):t;document.documentElement.className=d;}catch(e){document.documentElement.className="dark";}})();`;
+const clerkProxyUrl = process.env.NEXT_PUBLIC_CLERK_PROXY_URL ?? "/__clerk";
 
 export default function RootLayout({
   children,
@@ -74,7 +75,11 @@ export default function RootLayout({
         >
           Skip to main content
         </a>
-        {clerkAuthEnabled ? <ClerkProvider>{app}</ClerkProvider> : app}
+        {clerkAuthEnabled ? (
+          <ClerkProvider proxyUrl={clerkProxyUrl}>{app}</ClerkProvider>
+        ) : (
+          app
+        )}
       </body>
     </html>
   );
