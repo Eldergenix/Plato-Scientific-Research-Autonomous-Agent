@@ -1,3 +1,12 @@
+# ruff: noqa: E402
+import warnings
+
+warnings.filterwarnings(
+    "ignore",
+    message=r"The default value of `allowed_objects` will change in a future version\..*",
+    category=Warning,
+)
+
 from langgraph.graph import START, StateGraph, END
 
 from .parameters import GraphState
