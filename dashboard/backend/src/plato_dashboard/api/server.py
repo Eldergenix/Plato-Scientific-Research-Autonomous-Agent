@@ -410,6 +410,9 @@ def _enforce_project_run_access(
     active = get_run(run_id)
     if active is not None and active.project_id == pid:
         return
+    persisted = _load_run_status_from_disk(store.project_dir(pid) / "runs" / run_id)
+    if persisted is not None and persisted.project_id == pid:
+        return
     _enforce_run_tenant(store.project_dir(pid), run_id, requester_user_id)
 
 
