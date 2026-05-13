@@ -374,13 +374,13 @@ def _resolve_keys() -> dict[str, str]:
 def _normalize_model_config_for_keys(config: dict, env_keys: dict[str, str]) -> dict:
     """Choose an available default LLM when the request omits one.
 
-    Plato's idea workflow defaults its base ``llm`` to Gemini. A local
-    dashboard with only an OpenAI key would otherwise launch a subprocess
-    that fails late with Google ADC / API-key errors. Keep caller-supplied
+    Plato's idea workflow defaults its base ``llm`` to Gemini. Hosted
+    deployments often have multiple provider keys, and the free Gemini quota
+    is easy to exhaust, so prefer OpenAI when available. Keep caller-supplied
     models untouched; only fill the missing base model.
     """
     models = dict(config.get("models") or {})
-    if "llm" not in models and env_keys.get("OPENAI_API_KEY") and not env_keys.get("GOOGLE_API_KEY"):
+    if "llm" not in models and env_keys.get("OPENAI_API_KEY"):
         models["llm"] = "gpt-4.1-mini"
     if models == (config.get("models") or {}):
         return config
