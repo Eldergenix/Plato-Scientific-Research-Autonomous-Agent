@@ -17,6 +17,34 @@ from pathlib import Path
 import pytest
 
 
+def test_normalize_model_config_prefers_openai_when_google_is_present() -> None:
+    from plato_dashboard.worker import run_manager as rm
+
+    config = {"mode": "fast", "models": {}}
+
+    normalized = rm._normalize_model_config_for_keys(
+        config,
+        {"OPENAI_API_KEY": "openai-key", "GOOGLE_API_KEY": "google-key"},
+    )
+
+    assert normalized["models"]["llm"] == "gpt-4.1-mini"
+    assert config["models"] == {}
+
+
+def test_normalize_model_config_preserves_explicit_llm() -> None:
+    from plato_dashboard.worker import run_manager as rm
+
+    config = {"models": {"llm": "gemini-2.5-flash"}}
+
+    normalized = rm._normalize_model_config_for_keys(
+        config,
+        {"OPENAI_API_KEY": "openai-key"},
+    )
+
+    assert normalized is config
+    assert normalized["models"]["llm"] == "gemini-2.5-flash"
+
+
 def test_run_dir_uses_registry_override(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
