@@ -1,7 +1,7 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { toPlatoTenantId } from "@/lib/plato-tenant";
-import type { NextRequest } from "next/server";
+import type { NextFetchEvent, NextRequest } from "next/server";
 
 const clerkAuthEnabled =
   (process.env.PLATO_AUTH_PROVIDER === "clerk" ||
@@ -108,14 +108,17 @@ function tenantProxy(request: NextRequest) {
   return NextResponse.next();
 }
 
+function skipClerkProxyPath(request: NextRequest): NextResponse | undefined {
+  if (request.nextUrl.pathname.startsWith(CLERK_PROXY_PREFIX)) {
+    return NextResponse.next();
+  }
+}
+
 const clerkProxy = clerkAuthEnabled
   ? clerkMiddleware(
       async (auth, request) => {
         const pathname = request.nextUrl.pathname;
         const isApiRequest = pathname.startsWith(API_PREFIX);
-        if (pathname.startsWith(CLERK_PROXY_PREFIX)) {
-          return NextResponse.next();
-        }
         if (isApiRequest && isPublicApiRequest(request)) {
           return NextResponse.next();
         }
@@ -159,7 +162,9 @@ const clerkProxy = clerkAuthEnabled
     )
   : tenantProxy;
 
-export default clerkProxy;
+export default function proxy(request: NextRequest, event: NextFetchEvent) {
+  return skipClerkProxyPath(request) ?? clerkProxy(request, event);
+}
 
 export const config = {
   matcher: [
