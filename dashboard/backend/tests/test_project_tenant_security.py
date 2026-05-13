@@ -31,6 +31,7 @@ from fastapi.testclient import TestClient
 
 from plato_dashboard.api.server import create_app
 from plato_dashboard.auth import AUTH_REQUIRED_ENV
+from plato_dashboard.domain.models import Run, utcnow
 
 
 @pytest.fixture
@@ -122,6 +123,83 @@ def test_list_runs_refuses_cross_tenant(authed_client: TestClient) -> None:
         f"/api/v1/projects/{pid}/runs", headers={"X-Plato-User": "bob"}
     )
     assert resp.status_code in (403, 404)
+
+
+def test_get_active_run_allows_owner_before_manifest(
+    authed_client: TestClient,
+) -> None:
+    """SSE/status can attach before the child has written manifest.json."""
+    from plato_dashboard.worker import run_manager as rm
+
+    pid = _create_project_as(authed_client, "alice")
+    run = Run(
+        id="run_manifestless_active",
+        project_id=pid,
+        stage="idea",
+        status="running",
+        started_at=utcnow(),
+    )
+    rm._active_runs[run.id] = run
+    try:
+        resp = authed_client.get(
+            f"/api/v1/projects/{pid}/runs/{run.id}",
+            headers={"X-Plato-User": "alice"},
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["id"] == run.id
+    finally:
+        rm._active_runs.pop(run.id, None)
+
+
+def test_cancel_active_run_allows_owner_before_manifest(
+    authed_client: TestClient,
+) -> None:
+    """Cancel must not 403 during the early active-run window."""
+    from plato_dashboard.worker import run_manager as rm
+
+    pid = _create_project_as(authed_client, "alice")
+    run = Run(
+        id="run_cancel_manifestless",
+        project_id=pid,
+        stage="literature",
+        status="running",
+        started_at=utcnow(),
+    )
+    rm._active_runs[run.id] = run
+    try:
+        resp = authed_client.post(
+            f"/api/v1/projects/{pid}/runs/{run.id}/cancel",
+            headers={"X-Plato-User": "alice"},
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["cancelled"] is True
+    finally:
+        rm._active_runs.pop(run.id, None)
+
+
+def test_active_run_still_refuses_cross_project_access(
+    authed_client: TestClient,
+) -> None:
+    from plato_dashboard.worker import run_manager as rm
+
+    alice_pid = _create_project_as(authed_client, "alice", name="alice")
+    bob_pid = _create_project_as(authed_client, "bob", name="bob")
+    run = Run(
+        id="run_wrong_project",
+        project_id=alice_pid,
+        stage="idea",
+        status="running",
+        started_at=utcnow(),
+    )
+    rm._active_runs[run.id] = run
+    try:
+        resp = authed_client.get(
+            f"/api/v1/projects/{bob_pid}/runs/{run.id}",
+            headers={"X-Plato-User": "bob"},
+        )
+        assert resp.status_code in (403, 404)
+    finally:
+        rm._active_runs.pop(run.id, None)
 
 
 def test_list_plots_refuses_cross_tenant(authed_client: TestClient) -> None:
