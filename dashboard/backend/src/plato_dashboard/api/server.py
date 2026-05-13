@@ -392,6 +392,27 @@ def _enforce_run_tenant(
         )
 
 
+def _enforce_project_run_access(
+    store: ProjectStore, pid: str, run_id: str, requester_user_id: str | None
+) -> None:
+    """Authorize a project-scoped run endpoint.
+
+    Freshly-started runs can be active before the child process has written
+    ``manifest.json``. In Clerk-required deployments, the older
+    ``_enforce_run_tenant`` check failed closed during that early window,
+    which broke SSE attachment and cancellation for runs that the requester
+    had just launched. Project ownership is the stable boundary for these
+    routes; when the in-memory run belongs to the same project, allow access
+    after project authorization and fall back to the persisted manifest check
+    for historical runs.
+    """
+    _enforce_project_tenant(store, pid, requester_user_id)
+    active = get_run(run_id)
+    if active is not None and active.project_id == pid:
+        return
+    _enforce_run_tenant(store.project_dir(pid), run_id, requester_user_id)
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
     # Single source of truth for the dashboard's logging stack. This
@@ -696,7 +717,7 @@ def create_app() -> FastAPI:
         request: Request,
         store: ProjectStore = Depends(_get_store),
     ) -> Run:
-        _enforce_run_tenant(store.project_dir(pid), run_id, _get_user_id(request))
+        _enforce_project_run_access(store, pid, run_id, _get_user_id(request))
         run = get_run(run_id)
         if run is None:
             run = _load_run_status_from_disk(store.project_dir(pid) / "runs" / run_id)
@@ -711,7 +732,7 @@ def create_app() -> FastAPI:
         request: Request,
         store: ProjectStore = Depends(_get_store),
     ) -> dict:
-        _enforce_run_tenant(store.project_dir(pid), run_id, _get_user_id(request))
+        _enforce_project_run_access(store, pid, run_id, _get_user_id(request))
         ok = await cancel_run(run_id)
         return {"cancelled": ok}
 
@@ -723,7 +744,7 @@ def create_app() -> FastAPI:
         bus: EventBus = Depends(get_bus),
         store: ProjectStore = Depends(_get_store),
     ) -> StreamingResponse:
-        _enforce_run_tenant(store.project_dir(pid), run_id, _get_user_id(request))
+        _enforce_project_run_access(store, pid, run_id, _get_user_id(request))
 
         async def generator() -> AsyncIterator[bytes]:
             yield b": connected\n\n"
@@ -745,7 +766,7 @@ def create_app() -> FastAPI:
         store: ProjectStore = Depends(_get_store),
     ) -> list[dict[str, Any]]:
         project_dir = store.project_dir(pid)
-        _enforce_run_tenant(project_dir, run_id, _get_user_id(request))
+        _enforce_project_run_access(store, pid, run_id, _get_user_id(request))
         return _read_run_events(project_dir, run_id)
 
     @app.get("/api/v1/projects/{pid}/runs", response_model=list[Run])
