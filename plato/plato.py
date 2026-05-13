@@ -1334,6 +1334,7 @@ class Plato:
                 "stream_verbose": verbose,
             },
             "keys": self.keys,
+            "idea": {"total_iterations": 0},
             "referee": {"paper_version": 2},
         }
 
