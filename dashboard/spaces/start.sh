@@ -17,6 +17,13 @@ BACKEND_PORT="${PLATO_BACKEND_PORT:-7878}"
 export PLATO_PORT="${BACKEND_PORT}"
 export PLATO_API_PROXY_TARGET="${PLATO_API_PROXY_TARGET:-http://127.0.0.1:${BACKEND_PORT}}"
 
+LANGGRAPH_ALLOWED_OBJECTS_WARNING='ignore:The default value of `allowed_objects` will change in a future version:Warning'
+if [[ -n "${PYTHONWARNINGS:-}" ]]; then
+    export PYTHONWARNINGS="${PYTHONWARNINGS},${LANGGRAPH_ALLOWED_OBJECTS_WARNING}"
+else
+    export PYTHONWARNINGS="${LANGGRAPH_ALLOWED_OBJECTS_WARNING}"
+fi
+
 uvicorn plato_dashboard.api.server:app \
     --host 0.0.0.0 \
     --port "${BACKEND_PORT}" \
