@@ -151,6 +151,37 @@ def test_get_active_run_allows_owner_before_manifest(
         rm._active_runs.pop(run.id, None)
 
 
+def test_get_persisted_run_allows_owner_without_manifest(
+    authed_client: TestClient, tmp_project_root: Path
+) -> None:
+    """Dashboard run status remains readable after the active registry clears."""
+    pid = _create_project_as(authed_client, "alice")
+    run_dir = tmp_project_root / "users" / "alice" / pid / "runs" / "run_status_only"
+    run_dir.mkdir(parents=True)
+    (run_dir / "status.json").write_text(
+        json.dumps(
+            {
+                "run_id": "run_status_only",
+                "project_id": pid,
+                "stage": "idea",
+                "status": "failed",
+                "started_at": "2026-05-13T20:51:17.901109+00:00",
+                "finished_at": "2026-05-13T20:51:19.661168+00:00",
+                "error": "Data description file not found!",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    resp = authed_client.get(
+        f"/api/v1/projects/{pid}/runs/run_status_only",
+        headers={"X-Plato-User": "alice"},
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["error"] == "Data description file not found!"
+
+
 def test_cancel_active_run_allows_owner_before_manifest(
     authed_client: TestClient,
 ) -> None:

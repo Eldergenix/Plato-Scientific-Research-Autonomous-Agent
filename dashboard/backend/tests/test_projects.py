@@ -17,6 +17,17 @@ def test_create_project_returns_201_with_prj_prefix(client) -> None:
     )
 
 
+def test_create_project_without_description_writes_default_data_file(
+    client, tmp_project_root: Path
+) -> None:
+    created = client.post("/api/v1/projects", json={"name": "Empty project"}).json()
+    data_file = tmp_project_root / created["id"] / "input_files" / "data_description.md"
+
+    assert data_file.exists()
+    assert "No dataset has been uploaded yet" in data_file.read_text()
+    assert created["stages"]["data"]["status"] == "empty"
+
+
 def test_list_projects_returns_created_one(client) -> None:
     created = client.post("/api/v1/projects", json={"name": "Alpha"}).json()
     listed = client.get("/api/v1/projects").json()

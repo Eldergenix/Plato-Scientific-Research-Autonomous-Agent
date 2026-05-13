@@ -416,6 +416,20 @@ export function useProject(): ProjectState {
                     : prev,
                 );
               }
+            } else if (evt.kind === "error") {
+              const text = String(evt.message ?? "Run failed");
+              setLog((prev) => {
+                const next = [
+                  ...prev,
+                  {
+                    ts: String(evt.ts),
+                    source: String(evt.stage ?? stage),
+                    level: "error" as const,
+                    text,
+                  },
+                ];
+                return next.length > 2000 ? next.slice(-2000) : next;
+              });
             } else if (evt.kind === "plot.created") {
               // Live plot file watcher: a new plot file appeared on disk.
               void refreshPlots();

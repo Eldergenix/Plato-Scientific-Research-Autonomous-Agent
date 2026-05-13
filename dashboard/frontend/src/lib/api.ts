@@ -48,6 +48,14 @@ export interface RunEventPlotCreated {
   path?: string;
 }
 
+export interface RunEventError {
+  kind: "error";
+  ts: number | string;
+  stage?: StageId;
+  message?: string;
+  traceback?: string;
+}
+
 // Iter-28 — backend already emits these via langgraph_bridge.py for
 // every node in AGENT_NODE_NAMES. The frontend used to drop them into
 // RunEventUnknown so the AgentSwimlane could never show real activity.
@@ -104,6 +112,7 @@ export type RunEvent =
   | RunEventStageFinished
   | RunEventStageHeartbeat
   | RunEventPlotCreated
+  | RunEventError
   | RunEventNodeEntered
   | RunEventNodeExited
   | RunEventCodeExecute
