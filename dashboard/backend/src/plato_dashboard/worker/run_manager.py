@@ -435,7 +435,7 @@ class _LogStream(io.TextIOBase):
         self._buf += s
         while "\n" in self._buf:
             line, self._buf = self._buf.split("\n", 1)
-            if line.strip():
+            if line.strip() and not _should_drop_log_line(line):
                 self._writer.emit(
                     "log.line",
                     source=self._source,
@@ -446,7 +446,7 @@ class _LogStream(io.TextIOBase):
         return len(s)
 
     def flush(self) -> None:  # noqa: D401
-        if self._buf.strip():
+        if self._buf.strip() and not _should_drop_log_line(self._buf):
             self._writer.emit(
                 "log.line",
                 source=self._source,
@@ -455,6 +455,14 @@ class _LogStream(io.TextIOBase):
                 text=self._buf.rstrip(),
             )
         self._buf = ""
+
+
+def _should_drop_log_line(line: str) -> bool:
+    """Hide noisy third-party warnings that do not require user action."""
+    return (
+        "LangChainPendingDeprecationWarning" in line
+        and "allowed_objects" in line
+    ) or "from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer" in line
 
 
 # --------------------------------------------------------------------------- #
