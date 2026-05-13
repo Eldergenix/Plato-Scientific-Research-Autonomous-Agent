@@ -21,6 +21,12 @@ const STRIPPED_RESPONSE_HEADERS = new Set([
   "transfer-encoding",
 ]);
 
+const STRIPPED_REQUEST_HEADERS = new Set([
+  "host",
+  "x-forwarded-host",
+  "x-forwarded-proto",
+]);
+
 function publicOrigin(request: NextRequest): string {
   const host =
     request.headers.get("x-forwarded-host") ??
@@ -37,7 +43,7 @@ function forwardedHeaders(request: NextRequest): Headers {
   const headers = new Headers();
   request.headers.forEach((value, key) => {
     const lower = key.toLowerCase();
-    if (!HOP_BY_HOP_HEADERS.has(lower) && lower !== "host") {
+    if (!HOP_BY_HOP_HEADERS.has(lower) && !STRIPPED_REQUEST_HEADERS.has(lower)) {
       headers.set(key, value);
     }
   });
