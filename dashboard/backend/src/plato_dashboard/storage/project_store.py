@@ -75,6 +75,11 @@ STAGE_FILES: dict[StageId, str] = {
     "paper": "paper/main.pdf",
 }
 
+DEFAULT_DATA_DESCRIPTION = """No dataset has been uploaded yet.
+
+Generate a literature-first scientific research idea that can be evaluated with public datasets or a clearly described synthetic benchmark. If later stages require data, make the dataset requirement explicit before proposing experiments.
+"""
+
 
 class ProjectStore:
     def __init__(self, root: Path, *, user_id: str | None = None):
@@ -195,6 +200,8 @@ class ProjectStore:
             project.stages["data"].origin = "edited"
             project.stages["data"].last_run_at = utcnow()
             self.save(project)
+        else:
+            self.write_stage_sync(project.id, "data", DEFAULT_DATA_DESCRIPTION)
         return project
 
     def delete(self, pid: str) -> None:
