@@ -4,7 +4,17 @@ import type { NextRequest } from "next/server";
 const CLERK_PROXY_PREFIX = "/__clerk";
 const CLERK_FRONTEND_API = "https://frontend-api.clerk.dev";
 
-const HOP_BY_HOP_HEADERS = new Set([
+const FORWARDED_REQUEST_HEADERS = [
+  "accept",
+  "accept-language",
+  "content-type",
+  "cookie",
+  "origin",
+  "referer",
+  "user-agent",
+];
+
+const HOP_BY_HOP_RESPONSE_HEADERS = new Set([
   "connection",
   "keep-alive",
   "proxy-authenticate",
@@ -21,12 +31,6 @@ const STRIPPED_RESPONSE_HEADERS = new Set([
   "transfer-encoding",
 ]);
 
-const STRIPPED_REQUEST_HEADERS = new Set([
-  "host",
-  "x-forwarded-host",
-  "x-forwarded-proto",
-]);
-
 function publicOrigin(request: NextRequest): string {
   const host =
     request.headers.get("x-forwarded-host") ??
@@ -41,12 +45,12 @@ function publicOrigin(request: NextRequest): string {
 
 function forwardedHeaders(request: NextRequest): Headers {
   const headers = new Headers();
-  request.headers.forEach((value, key) => {
-    const lower = key.toLowerCase();
-    if (!HOP_BY_HOP_HEADERS.has(lower) && !STRIPPED_REQUEST_HEADERS.has(lower)) {
+  for (const key of FORWARDED_REQUEST_HEADERS) {
+    const value = request.headers.get(key);
+    if (value) {
       headers.set(key, value);
     }
-  });
+  }
 
   headers.set("accept-encoding", "identity");
   headers.set("clerk-proxy-url", `${publicOrigin(request)}${CLERK_PROXY_PREFIX}`);
@@ -67,7 +71,7 @@ function responseHeaders(response: Response, proxyOrigin: string): Headers {
   const headers = new Headers();
   response.headers.forEach((value, key) => {
     const lower = key.toLowerCase();
-    if (!STRIPPED_RESPONSE_HEADERS.has(lower) && !HOP_BY_HOP_HEADERS.has(lower)) {
+    if (!STRIPPED_RESPONSE_HEADERS.has(lower) && !HOP_BY_HOP_RESPONSE_HEADERS.has(lower)) {
       headers.append(key, value);
     }
   });
