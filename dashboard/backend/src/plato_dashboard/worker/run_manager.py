@@ -27,6 +27,7 @@ import signal
 import sys
 import time
 import traceback
+import warnings
 from datetime import datetime, timezone
 from multiprocessing.process import BaseProcess
 from pathlib import Path
@@ -469,6 +470,12 @@ def _child_main(
     env_keys: dict[str, str],
 ) -> None:
     """Subprocess entry point. Imports Plato, dispatches on stage, emits events."""
+    warnings.filterwarnings(
+        "ignore",
+        message=r"The default value of `allowed_objects` will change in a future version\..*",
+        category=Warning,
+    )
+
     # Detach: own session/process group so killpg reaps cmbagent grandchildren.
     try:
         os.setsid()
