@@ -108,6 +108,12 @@ function tenantProxy(request: NextRequest) {
   return NextResponse.next();
 }
 
+function skipClerkProxyPath(request: NextRequest): NextResponse | undefined {
+  if (request.nextUrl.pathname.startsWith(CLERK_PROXY_PREFIX)) {
+    return NextResponse.next();
+  }
+}
+
 const clerkProxy = clerkAuthEnabled
   ? clerkMiddleware(
       async (auth, request) => {
@@ -152,12 +158,12 @@ const clerkProxy = clerkAuthEnabled
           },
         });
       },
-      { frontendApiProxy: { enabled: true, path: CLERK_PROXY_PREFIX } },
+      { proxyUrl: process.env.NEXT_PUBLIC_CLERK_PROXY_URL ?? CLERK_PROXY_PREFIX },
     )
   : tenantProxy;
 
 export default function proxy(request: NextRequest, event: NextFetchEvent) {
-  return clerkProxy(request, event);
+  return skipClerkProxyPath(request) ?? clerkProxy(request, event);
 }
 
 export const config = {
