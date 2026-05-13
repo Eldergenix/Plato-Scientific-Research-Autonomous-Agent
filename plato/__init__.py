@@ -1,12 +1,21 @@
-from .config import REPO_DIR
-from .domain import DomainProfile, register_domain, get_domain, list_domains
+import warnings
+
+warnings.filterwarnings(
+    "ignore",
+    message=r"The default value of `allowed_objects` will change in a future version\..*",
+    category=Warning,
+    module=r"langgraph\.cache\.base",
+)
+
+from .config import REPO_DIR  # noqa: E402
+from .domain import DomainProfile, register_domain, get_domain, list_domains  # noqa: E402
 
 __all__ = [
     'Plato', 'Research', 'Journal', 'REPO_DIR', 'LLM', 'models', 'KeyManager',
     'DomainProfile', 'register_domain', 'get_domain', 'list_domains',
 ]
 
-from importlib.metadata import version, PackageNotFoundError
+from importlib.metadata import version, PackageNotFoundError  # noqa: E402
 
 try:
     __version__ = version("plato")

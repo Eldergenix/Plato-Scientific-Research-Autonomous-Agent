@@ -6,6 +6,10 @@ import warnings
 
 from .llm import LLM, models
 
+_NO_DATASET_SENTINELS = (
+    "no dataset has been uploaded yet",
+)
+
 
 def input_check(str_input: str) -> str:
     """Check if the input is a string with the desired content or the path markdown file, in which case reads it to get the content."""
@@ -69,6 +73,9 @@ def check_file_paths(content: str) -> None:
     """Check that file paths indicated in content text have the proper format"""
 
     existing_paths, missing_paths = extract_file_paths(content)
+    allows_no_dataset = any(
+        sentinel in content.lower() for sentinel in _NO_DATASET_SENTINELS
+    )
 
     if len(missing_paths) > 0:
         warnings.warn(
@@ -78,7 +85,7 @@ def check_file_paths(content: str) -> None:
             f"otherwise this may cause hallucinations in the LLMs."
         )
 
-    if len(existing_paths) == 0:
+    if len(existing_paths) == 0 and not allows_no_dataset:
         warnings.warn(
             "No data files paths were found in the data description. If you want to provide input data, ensure that you indicate their path, otherwise this may cause hallucinations in the LLM in the get_results() workflow later on."
         )
