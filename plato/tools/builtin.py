@@ -10,6 +10,7 @@ Both tools are registered at import time with ``overwrite=True`` so that
 re-importing this module (e.g. across test sessions or after a fork) is
 idempotent.
 """
+
 from __future__ import annotations
 
 from typing import cast
@@ -23,6 +24,7 @@ from .citation_validator import CitationValidator
 from .genomics import (
     ExpansionHunterDenovoInput,
     GauchianCallingInput,
+    GenomeKitQueryInput,
     GenomicsPreparedRun,
     GenomicsToolReport,
     GenomicsToolReportInput,
@@ -32,6 +34,7 @@ from .genomics import (
     build_genomics_tool_report,
     prepare_expansionhunter_denovo,
     prepare_gauchian_calling,
+    prepare_genomekit_query,
     prepare_illumina_ica_request,
     prepare_paragraph_genotyping,
     prepare_zippy_pipeline,
@@ -215,9 +218,10 @@ _GENOMICS_TOOL_REPORT_TOOL = Tool(
     metadata=ToolMetadata(
         name="genomics_tool_report",
         description=(
-            "Review optional Illumina genomics adapters for NGS prototyping, "
-            "known structural-variant genotyping, de novo STR expansion discovery, "
-            "WGS GBA calling, and Illumina Connected Analytics orchestration."
+            "Review optional GenomeKit and Illumina genomics adapters for "
+            "genomic resource access, NGS prototyping, known structural-variant "
+            "genotyping, de novo STR expansion discovery, WGS GBA calling, and "
+            "Illumina Connected Analytics orchestration."
         ),
         permissions=set(),
         category="genomics",
@@ -233,6 +237,13 @@ register(_GENOMICS_TOOL_REPORT_TOOL, overwrite=True)
 _GENOMICS_TOOL_DEFINITIONS: list[
     tuple[str, str, type[BaseModel], ToolFn, set[Permission]]
 ] = [
+    (
+        "prepare_genomekit_query",
+        "Prepare or execute GenomeKit reference sequence, annotation, VCF, variant-sequence, motif, or track queries.",
+        GenomeKitQueryInput,
+        cast(ToolFn, prepare_genomekit_query),
+        {"filesystem_read", "code_exec"},
+    ),
     (
         "prepare_zippy_pipeline",
         "Prepare or execute an external ZIPPY NGS pipeline command from JSON workflow inputs.",
@@ -297,6 +308,7 @@ __all__ = [
     "ScientificCapabilityReportInput",
     "ExpansionHunterDenovoInput",
     "GauchianCallingInput",
+    "GenomeKitQueryInput",
     "GenomicsPreparedRun",
     "GenomicsToolReportInput",
     "IlluminaIcaRequestInput",
