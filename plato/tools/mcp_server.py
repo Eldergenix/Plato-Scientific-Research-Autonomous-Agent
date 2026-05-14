@@ -1,4 +1,5 @@
 """Built-in MCP server exposing Plato's local scientific tool registry."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -9,6 +10,7 @@ from pydantic import BaseModel
 from .builtin import (
     ExpansionHunterDenovoInput,
     GauchianCallingInput,
+    GenomeKitQueryInput,
     GenomicsToolReportInput,
     IlluminaIcaRequestInput,
     ParagraphGenotypingInput,
@@ -56,13 +58,15 @@ def scientific_capability_report() -> dict[str, Any]:
 
 @mcp.tool()
 def genomics_tool_report() -> dict[str, Any]:
-    """Return Plato's optional Illumina genomics integration report."""
+    """Return Plato's optional genomics integration report."""
     result = call("genomics_tool_report", GenomicsToolReportInput())
     return result.model_dump(mode="json")
 
 
 @mcp.tool()
-def prepare_genomics_tool_run(tool_name: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+def prepare_genomics_tool_run(
+    tool_name: str, payload: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """Prepare an optional genomics tool run; execute only when payload.execute is true."""
     registry_name, schema, permissions = _genomics_tool_mapping(tool_name)
     result = call(
@@ -97,9 +101,21 @@ def run_scientific_analysis(
     return result.model_dump(mode="json")
 
 
-def _genomics_tool_mapping(tool_name: str) -> tuple[str, type[BaseModel], set[Permission]]:
+def _genomics_tool_mapping(
+    tool_name: str,
+) -> tuple[str, type[BaseModel], set[Permission]]:
     normalized = tool_name.strip().lower().replace("-", "_")
     mappings: dict[str, tuple[str, type[BaseModel], set[Permission]]] = {
+        "genomekit": (
+            "prepare_genomekit_query",
+            GenomeKitQueryInput,
+            {"filesystem_read", "code_exec"},
+        ),
+        "genome_kit": (
+            "prepare_genomekit_query",
+            GenomeKitQueryInput,
+            {"filesystem_read", "code_exec"},
+        ),
         "zippy": (
             "prepare_zippy_pipeline",
             ZippyPipelineInput,
@@ -126,7 +142,11 @@ def _genomics_tool_mapping(tool_name: str) -> tuple[str, type[BaseModel], set[Pe
             {"filesystem_read", "filesystem_write", "code_exec"},
         ),
         "ica": ("prepare_illumina_ica_request", IlluminaIcaRequestInput, {"network"}),
-        "ica_sdk_python": ("prepare_illumina_ica_request", IlluminaIcaRequestInput, {"network"}),
+        "ica_sdk_python": (
+            "prepare_illumina_ica_request",
+            IlluminaIcaRequestInput,
+            {"network"},
+        ),
     }
     if normalized not in mappings:
         raise ValueError(f"Unknown genomics tool {tool_name!r}.")
