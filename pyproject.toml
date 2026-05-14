@@ -70,6 +70,9 @@ test = [
   "pytest>=8.0",
   "pytest-asyncio>=0.23",
 ]
+genomics = [
+  "genomekit>=7.4,<8.0",
+]
 # README's "Install" section advertises ``pip install "plato[dashboard]"``;
 # without this extra, that install command 404s. The dashboard backend is its
 # own package under ``dashboard/backend`` with a separate pyproject — we

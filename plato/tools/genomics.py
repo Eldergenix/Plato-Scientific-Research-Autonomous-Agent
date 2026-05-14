@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import shlex
 import shutil
@@ -149,8 +150,76 @@ class IlluminaIcaRequestInput(BaseModel):
     timeout_seconds: int = Field(default=60, ge=1, le=600)
 
 
+class GenomeKitQueryInput(_CommandInput):
+    """Prepare or execute a GenomeKit resource query."""
+
+    operation: Literal[
+        "sequence",
+        "annotation_overlaps",
+        "vcf_query",
+        "variant_sequence",
+        "motif_scan",
+        "track_query",
+    ] = "sequence"
+    genome: str = "hg38"
+    chrom: str | None = None
+    start: int | None = Field(default=None, ge=0)
+    end: int | None = Field(default=None, ge=0)
+    strand: Literal["+", "-"] = "+"
+    annotation_table: Literal["genes", "transcripts", "exons", "introns", "cdss"] = (
+        "genes"
+    )
+    vcf_path: str | None = None
+    track_path: str | None = None
+    motif: str | None = None
+    variants: list[str] = Field(default_factory=list)
+    info_ids: list[str] = Field(default_factory=list)
+    fmt_ids: list[str] = Field(default_factory=list)
+    max_records: int = Field(default=50, ge=1, le=1000)
+
+
 def build_genomics_tool_report() -> GenomicsToolReport:
     capabilities = [
+        _capability(
+            name="GenomeKit",
+            registry_tool="prepare_genomekit_query",
+            domain="genomic resource access and ML feature extraction",
+            source_url="https://github.com/deepgenomics/GenomeKit",
+            decision="optional_cli_adapter",
+            supported_use=(
+                "Query reference DNA, annotation tables, genomic tracks, VCF "
+                "variants, variant-applied sequences, and motif hits through "
+                "GenomeKit's Python API without importing the native package at "
+                "Plato dashboard startup."
+            ),
+            requirements=[
+                "genomekit Python package",
+                "GenomeKit resource data for the selected assembly or annotation",
+                "Optional VCF, BAM/SAM-backed, or GenomeTrack files for file-backed queries",
+            ],
+            required_inputs=[
+                "sequence/annotation/motif/track: genome, chrom, start, end",
+                "vcf_query: vcf_path plus interval",
+                "variant_sequence: genome, interval, and variants",
+                "track_query: track_path plus interval",
+            ],
+            expected_artifacts=[
+                "JSON stdout with query metadata and result rows",
+                "GenomeKit resource cache entries under GENOMEKIT_DATA_DIR or the platform default",
+                "Optional manuscript-ready sequence/variant/annotation tables copied into Plato run artifacts",
+            ],
+            verification=[
+                "Lazy-import genome_kit only inside the subprocess execution path",
+                "Record GenomeKit version, operation, genome, interval, and resource paths",
+                "Use 0-based exclusive-end intervals and include UCSC coordinates in query output",
+            ],
+            caveats=[
+                "GenomeKit may download prebuilt resources from its configured data source on first use.",
+                "GenomeKit intervals are 0-based with an exclusive end; convert external coordinates before querying.",
+            ],
+            install_hint="conda install -c conda-forge genomekit or pip install genomekit",
+            configured=importlib.util.find_spec("genome_kit") is not None,
+        ),
         _capability(
             name="ZIPPY",
             registry_tool="prepare_zippy_pipeline",
@@ -352,9 +421,10 @@ def build_genomics_tool_report() -> GenomicsToolReport:
     )
     return GenomicsToolReport(
         summary=(
-            "Illumina genomics integrations are registered as optional tools: "
-            "external CLI adapters for local WGS/NGS execution and a network-gated "
-            "ICA request adapter for hosted workflow orchestration."
+            "GenomeKit and Illumina genomics integrations are registered as "
+            "optional tools: a GenomeKit adapter for genomic resource queries, "
+            "external CLI adapters for local WGS/NGS execution, and a "
+            "network-gated ICA request adapter for hosted workflow orchestration."
         ),
         capabilities=capabilities,
         fingerprint=__import__("hashlib")
@@ -691,6 +761,66 @@ def prepare_illumina_ica_request(
     return result
 
 
+def prepare_genomekit_query(payload: GenomeKitQueryInput) -> GenomicsPreparedRun:
+    missing: list[str] = []
+    if importlib.util.find_spec("genome_kit") is None:
+        missing.append("genome_kit package (conda install -c conda-forge genomekit)")
+    _validate_interval(payload, missing)
+    if payload.operation == "vcf_query":
+        _require_path(payload.vcf_path, "vcf_path", missing)
+    if payload.operation == "track_query":
+        _require_path(payload.track_path, "track_path", missing)
+    if payload.operation == "motif_scan" and not payload.motif:
+        missing.append("motif")
+    if payload.operation == "variant_sequence" and not payload.variants:
+        missing.append("variants")
+
+    options = payload.model_dump(
+        exclude={
+            "execute",
+            "timeout_seconds",
+            "extra_args",
+            "output_dir",
+            "executable",
+            "python_executable",
+        },
+    )
+    command = [
+        _resolve_python(payload.python_executable),
+        "-c",
+        _GENOMEKIT_QUERY_SCRIPT,
+        json.dumps(options, sort_keys=True),
+        *payload.extra_args,
+    ]
+    return _finish_command(
+        tool="GenomeKit",
+        operation=payload.operation,
+        command=command,
+        requirements=[
+            "genomekit Python package",
+            "GenomeKit data files for the selected genome/annotation",
+            "0-based exclusive-end interval coordinates",
+        ],
+        missing=missing,
+        expected_artifacts=[
+            "JSON query result on stdout",
+            "GenomeKit resource cache files as needed",
+        ],
+        scientific_scope=[
+            "reference sequence extraction",
+            "genomic annotations",
+            "variant-aware feature extraction",
+            "motif/track/VCF resource queries",
+        ],
+        warnings=[
+            "GenomeKit may fetch remote resource files during first access.",
+            "Coordinate inputs are DNA0: 0-based with an exclusive end.",
+        ],
+        execute=payload.execute,
+        timeout_seconds=payload.timeout_seconds,
+    )
+
+
 def _capability(**kwargs: Any) -> GenomicsCapability:
     return GenomicsCapability.model_validate(kwargs)
 
@@ -749,6 +879,21 @@ def _require_path(value: str | None, label: str, missing: list[str]) -> str | No
     if not path.exists():
         missing.append(f"{label} ({value})")
     return value
+
+
+def _validate_interval(payload: GenomeKitQueryInput, missing: list[str]) -> None:
+    if not payload.chrom:
+        missing.append("chrom")
+    if payload.start is None:
+        missing.append("start")
+    if payload.end is None:
+        missing.append("end")
+    if (
+        payload.start is not None
+        and payload.end is not None
+        and payload.end < payload.start
+    ):
+        missing.append("end must be greater than or equal to start")
 
 
 def _looks_remote(value: str) -> bool:
@@ -928,9 +1073,110 @@ def _execute_ica_request(
         )
 
 
+_GENOMEKIT_QUERY_SCRIPT = r"""
+import json
+import sys
+
+import genome_kit as gk
+
+options = json.loads(sys.argv[1])
+
+
+def interval():
+    return gk.Interval(
+        options["chrom"],
+        options["strand"],
+        int(options["start"]),
+        int(options["end"]),
+        options["genome"],
+    )
+
+
+def summarize(item):
+    data = {"repr": repr(item)}
+    iv = getattr(item, "interval", item if isinstance(item, gk.Interval) else None)
+    if iv is not None:
+        data["interval"] = {
+            "chrom": iv.chrom,
+            "strand": iv.strand,
+            "start": iv.start,
+            "end": iv.end,
+            "ucsc": iv.as_ucsc(),
+        }
+    for attr in ("id", "name", "gene_name", "gene_type", "transcript_type"):
+        if hasattr(item, attr):
+            try:
+                data[attr] = getattr(item, attr)
+            except Exception:
+                pass
+    return data
+
+
+operation = options["operation"]
+genome = gk.Genome(options["genome"])
+iv = interval()
+result = {
+    "genomekit_version": getattr(gk, "__version__", "unknown"),
+    "operation": operation,
+    "genome": options["genome"],
+    "interval": {
+        "chrom": iv.chrom,
+        "strand": iv.strand,
+        "start": iv.start,
+        "end": iv.end,
+        "ucsc": iv.as_ucsc(),
+    },
+}
+
+if operation == "sequence":
+    result["sequence"] = genome.dna(iv)
+elif operation == "annotation_overlaps":
+    table = getattr(genome, options["annotation_table"])
+    rows = table.find_overlapping(iv)
+    result["records"] = [summarize(item) for item in rows[: options["max_records"]]]
+    result["record_count"] = len(rows)
+elif operation == "vcf_query":
+    vcf = gk.VCFTable.from_vcf(
+        options["vcf_path"],
+        genome,
+        info_ids=options["info_ids"],
+        fmt_ids=options["fmt_ids"],
+    )
+    rows = vcf.find_within(iv)
+    result["records"] = [summarize(item) for item in rows[: options["max_records"]]]
+    result["record_count"] = len(rows)
+elif operation == "variant_sequence":
+    variants = [gk.Variant.from_string(value, genome) for value in options["variants"]]
+    result["sequence"] = gk.VariantGenome(genome, variants).dna(iv)
+    result["variants"] = options["variants"]
+elif operation == "motif_scan":
+    matches = []
+    sequence = genome.dna(iv).upper()
+    motif = options["motif"].upper()
+    offset = sequence.find(motif)
+    while offset >= 0 and len(matches) < options["max_records"]:
+        start = iv.start + offset
+        hit = gk.Interval(iv.chrom, iv.strand, start, start + len(motif), options["genome"])
+        matches.append({"start": hit.start, "end": hit.end, "ucsc": hit.as_ucsc(), "motif": motif})
+        offset = sequence.find(motif, offset + 1)
+    result["records"] = matches
+    result["record_count"] = len(matches)
+elif operation == "track_query":
+    track = gk.GenomeTrack(options["track_path"])
+    values = track(iv)
+    result["shape"] = list(getattr(values, "shape", []))
+    result["values"] = values[: options["max_records"]].tolist()
+else:
+    raise ValueError(f"Unsupported GenomeKit operation: {operation}")
+
+print(json.dumps(result, sort_keys=True))
+"""
+
+
 __all__ = [
     "ExpansionHunterDenovoInput",
     "GauchianCallingInput",
+    "GenomeKitQueryInput",
     "GenomicsPreparedRun",
     "GenomicsToolReport",
     "GenomicsToolReportInput",
@@ -940,6 +1186,7 @@ __all__ = [
     "build_genomics_tool_report",
     "prepare_expansionhunter_denovo",
     "prepare_gauchian_calling",
+    "prepare_genomekit_query",
     "prepare_illumina_ica_request",
     "prepare_paragraph_genotyping",
     "prepare_zippy_pipeline",

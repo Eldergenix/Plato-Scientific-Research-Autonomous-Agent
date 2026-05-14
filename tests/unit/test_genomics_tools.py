@@ -3,10 +3,13 @@ from __future__ import annotations
 import stat
 from pathlib import Path
 
+import pytest
+
 from plato.tools import call, get, list_tools
 from plato.tools.builtin import (
     ExpansionHunterDenovoInput,
     GauchianCallingInput,
+    GenomeKitQueryInput,
     GenomicsToolReportInput,
     IlluminaIcaRequestInput,
     ParagraphGenotypingInput,
@@ -19,6 +22,7 @@ def test_genomics_tools_are_registered_as_options():
 
     assert {
         "genomics_tool_report",
+        "prepare_genomekit_query",
         "prepare_zippy_pipeline",
         "prepare_paragraph_genotyping",
         "prepare_expansionhunter_denovo",
@@ -32,9 +36,64 @@ def test_genomics_tool_report_reviews_each_requested_illumina_tool():
     report = call("genomics_tool_report", GenomicsToolReportInput())
     tool_names = {capability.name for capability in report.capabilities}
 
-    assert {"ZIPPY", "Paragraph", "ExpansionHunter Denovo", "Gauchian", "ica-sdk-python"} == tool_names
+    assert {
+        "GenomeKit",
+        "ZIPPY",
+        "Paragraph",
+        "ExpansionHunter Denovo",
+        "Gauchian",
+        "ica-sdk-python",
+    } == tool_names
     assert report.fingerprint
     assert all(capability.expected_artifacts for capability in report.capabilities)
+
+
+def test_genomekit_query_prepares_lazy_sequence_command():
+    result = call(
+        "prepare_genomekit_query",
+        GenomeKitQueryInput(
+            operation="sequence",
+            genome="hg38",
+            chrom="chr7",
+            start=117120016,
+            end=117120201,
+        ),
+        allowed_permissions={"filesystem_read", "code_exec"},
+    )
+
+    assert result.tool == "GenomeKit"
+    assert result.operation == "sequence"
+    assert result.command[1] == "-c"
+    assert "import genome_kit as gk" in result.command[2]
+    assert "GenomeKit may fetch remote resource files" in result.warnings[0]
+
+
+def test_genomekit_variant_sequence_requires_variants():
+    result = call(
+        "prepare_genomekit_query",
+        GenomeKitQueryInput(
+            operation="variant_sequence",
+            genome="hg19",
+            chrom="chr7",
+            start=117120016,
+            end=117120201,
+        ),
+        allowed_permissions={"filesystem_read", "code_exec"},
+    )
+
+    assert result.status == "missing_requirements"
+    assert "variants" in result.missing_requirements
+
+
+def test_genomekit_is_exposed_through_mcp_genomics_alias():
+    pytest.importorskip("mcp")
+    from plato.tools.mcp_server import _genomics_tool_mapping
+
+    registry_name, schema, permissions = _genomics_tool_mapping("genomekit")
+
+    assert registry_name == "prepare_genomekit_query"
+    assert schema is GenomeKitQueryInput
+    assert permissions == {"filesystem_read", "code_exec"}
 
 
 def test_zippy_make_params_builds_external_python27_command(tmp_path: Path):
