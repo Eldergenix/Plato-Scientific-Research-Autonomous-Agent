@@ -28,6 +28,7 @@ dependencies = [
   "flatbuffers>=24.12.23",
   "filelock>=3.17.0",
   "cmbagent>=0.0.1post63",
+  "mistralai>=1.0,<2.0",
   "pymupdf",
   "pillow",
   "jsonschema",
