@@ -64,6 +64,7 @@ def test_astro_payload_matches_registered_profile() -> None:
     assert astro["keyword_extractor"] == "cmbagent"
     assert astro["executor"] == "cmbagent"
     assert astro["novelty_corpus"] == "arxiv:astro-ph"
+    assert "ARXIV" in astro["journal_presets"]
     assert "AAS" in astro["journal_presets"]
     assert "NONE" in astro["journal_presets"]
 
@@ -76,6 +77,8 @@ def test_biology_payload_matches_registered_profile() -> None:
     assert bio["keyword_extractor"] == "mesh"
     assert bio["novelty_corpus"] == "pubmed"
     assert "NATURE" in bio["journal_presets"]
+    assert "NEJM" in bio["journal_presets"]
+    assert "CHEMICAL_REVIEWS" in bio["journal_presets"]
 
 
 def test_domains_listing_is_sorted_alphabetically() -> None:

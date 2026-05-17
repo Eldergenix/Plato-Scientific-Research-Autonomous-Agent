@@ -125,10 +125,17 @@ def test_biology_profile_journal_presets_match_spec():
     biology = get_domain("biology")
     assert biology.journal_presets == [
         "NATURE",
-        "CELL",
         "SCIENCE",
+        "SCIENCE_ADVANCES",
+        "NEJM",
+        "LANCET",
+        "CELL",
+        "JAMA",
+        "NATURE_REVIEWS_MOL_CELL_BIO",
+        "CHEMICAL_REVIEWS",
         "PLOS_BIO",
         "ELIFE",
+        "ARXIV",
         "NONE",
     ]
 

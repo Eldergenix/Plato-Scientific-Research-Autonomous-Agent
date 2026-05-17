@@ -9,6 +9,7 @@ import {
   Wrench,
   SkipForward,
   AlertTriangle,
+  Download,
   Gauge,
   Loader2,
 } from "lucide-react";
@@ -66,6 +67,7 @@ export interface PaperSection {
 
 export interface PaperPreviewProps {
   pdfUrl?: string;
+  submissionZipUrl?: string;
   sections: PaperSection[];
   versions?: Array<{ id: string; label: string; current?: boolean }>;
   scores?: ScientificScores;
@@ -100,6 +102,7 @@ const TABS: Array<{ id: Tab; label: string; icon: React.ComponentType<{ size?: n
 
 export function PaperPreview({
   pdfUrl,
+  submissionZipUrl,
   sections = [],
   versions,
   scores,
@@ -153,9 +156,19 @@ export function PaperPreview({
           })}
         </div>
 
-        {versions && versions.length > 0 && (
+        {(submissionZipUrl || (versions && versions.length > 0)) && (
           <div className="flex items-center gap-1">
-            {versions.map((v) => {
+            {submissionZipUrl ? (
+              <a
+                href={submissionZipUrl}
+                className="tab-pill gap-1.5"
+                download
+              >
+                <Download size={12} strokeWidth={1.75} />
+                Submission ZIP
+              </a>
+            ) : null}
+            {(versions ?? []).map((v) => {
               const active = v.current;
               return (
                 <button

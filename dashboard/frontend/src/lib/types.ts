@@ -47,7 +47,25 @@ export interface ModelDef {
   notes?: string;
 }
 
-export type Journal = "NONE" | "AAS" | "APS" | "ICML" | "JHEP" | "NeurIPS" | "PASJ";
+export type Journal =
+  | "NONE"
+  | "AAS"
+  | "APS"
+  | "ICML"
+  | "JHEP"
+  | "NeurIPS"
+  | "PASJ"
+  | "ARXIV"
+  | "NATURE"
+  | "SCIENCE"
+  | "SCIENCE_ADVANCES"
+  | "NEJM"
+  | "LANCET"
+  | "CELL"
+  | "JAMA"
+  | "NATURE_REVIEWS_MOL_CELL_BIO"
+  | "CHEMICAL_REVIEWS"
+  | "REVIEWS_OF_MODERN_PHYSICS";
 
 export type PublicationTaskKind = "section" | "review" | "completion" | "other";
 export type PublicationTaskStatus = "todo" | "in_progress" | "blocked" | "done";

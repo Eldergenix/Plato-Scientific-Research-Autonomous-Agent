@@ -70,6 +70,11 @@ gpt55 = LLM(name="gpt-5.5",
             temperature=None)
 """`gpt-5.5` model."""
 
+gpt55mini = LLM(name="gpt-5.5-mini",
+                max_output_tokens=128000,
+                temperature=None)
+"""`gpt-5.5-mini` model."""
+
 gpt55pro = LLM(name="gpt-5.5-pro",
                max_output_tokens=128000,
                temperature=None)
@@ -143,6 +148,7 @@ models : Dict[str, LLM] = {
                             "gpt-5" : gpt5,
                             "gpt-5-mini" : gpt5mini,
                             "gpt-5.5" : gpt55,
+                            "gpt-5.5-mini" : gpt55mini,
                             "gpt-5.5-pro" : gpt55pro,
                             "claude-3.7-sonnet" : claude37sonnet,
                             "claude-4-opus" : claude4opus,

@@ -28,7 +28,7 @@ import { cn } from "@/lib/utils";
 // transitive deps into the settings route.
 const DEFAULT_MODELS: Array<{ id: string; label: string; model: string }> = [
   { id: "idea", label: "Idea", model: "gpt-4.1" },
-  { id: "literature", label: "Literature", model: "gpt-4.1-mini" },
+  { id: "literature", label: "Literature", model: "gpt-5.5-mini" },
   { id: "method", label: "Method", model: "claude-4.1-opus" },
   { id: "results", label: "Results", model: "gpt-5" },
   { id: "paper", label: "Paper", model: "claude-4.1-opus" },

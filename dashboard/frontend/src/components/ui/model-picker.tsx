@@ -34,7 +34,7 @@ const RECOMMENDED_BY_STAGE: Record<NonNullable<ModelPickerProps["recommendedFor"
   results: "gpt-5",
   paper: "gpt-4.1",
   referee: "claude-4.1-opus",
-  literature: "gpt-4.1-mini",
+  literature: "gpt-5.5-mini",
 };
 
 const PROVIDER_DOT: Record<Provider, string> = {

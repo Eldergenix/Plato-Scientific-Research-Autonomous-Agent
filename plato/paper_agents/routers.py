@@ -8,16 +8,15 @@ from .parameters import GraphState
 def citation_router(state: GraphState) -> str:
     """Route the post-refine_results stage.
 
-    When ``add_citations`` is true we run the citation pipeline
-    (``citations_node`` -> ``citation_validator_node`` -> claim/evidence
-    matrix); otherwise we skip the BibTeX work but still run claim
-    extraction so the reviewer panel can see an evidence matrix.
+    When ``add_citations`` is true we run the citation pipeline. Otherwise we
+    still route through ``citation_validator_node`` so no-citation drafts cannot
+    bypass the mandatory reference gate.
     """
 
     if state["paper"]["add_citations"] is True:
         return "citations_node"
     elif state["paper"]["add_citations"] is False:
-        return "claim_evidence_fanout"
+        return "citation_validator_node"
     else:
         raise Exception("Wrong add_citations value")
 

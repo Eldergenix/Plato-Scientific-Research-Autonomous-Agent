@@ -3,6 +3,7 @@
 import * as React from "react";
 import { ChevronRight, PlayCircle, Plus, Signal, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { isApprovalNeeded } from "@/components/stages/approval-checkpoints";
 import { cn, formatRelativeTime, formatTokens } from "@/lib/utils";
 import { MODELS_BY_ID } from "@/lib/models";
 import type {
@@ -14,7 +15,7 @@ import type {
 } from "@/lib/types";
 import { StatusIcon } from "./status-icon";
 
-type GroupKey = "in-progress" | "backlog" | "done" | "failed";
+type GroupKey = "approval" | "in-progress" | "backlog" | "done" | "failed";
 
 interface WorkspaceListProps {
   project: Project;
@@ -45,7 +46,7 @@ const STAGE_INDEX: Record<StageId, number> = STAGE_ORDER.reduce(
 const GROUP_DEFS: Array<{
   key: GroupKey;
   label: string;
-  matches: (status: StageStatus) => boolean;
+  matches: (stage: Stage, project: Project) => boolean;
   status: StageStatus;
   styleClass: string;
   metaClass: string;
@@ -53,15 +54,23 @@ const GROUP_DEFS: Array<{
   {
     key: "failed",
     label: "Failed",
-    matches: (s) => s === "failed",
+    matches: (stage) => stage.status === "failed",
     status: "failed",
     styleClass: "group-failed",
     metaClass: "text-(--color-text-row-meta)",
   },
   {
+    key: "approval",
+    label: "Approve",
+    matches: (stage, project) => isApprovalNeeded(project, stage.id),
+    status: "pending",
+    styleClass: "group-progress",
+    metaClass: "text-(--color-status-green-spec)",
+  },
+  {
     key: "in-progress",
     label: "In Progress",
-    matches: (s) => s === "running",
+    matches: (stage) => stage.status === "running",
     status: "running",
     styleClass: "group-progress",
     metaClass: "text-(--color-text-progress-meta)",
@@ -69,7 +78,8 @@ const GROUP_DEFS: Array<{
   {
     key: "backlog",
     label: "Backlog",
-    matches: (s) => s === "empty" || s === "pending" || s === "stale",
+    matches: (stage) =>
+      stage.status === "empty" || stage.status === "pending" || stage.status === "stale",
     status: "empty",
     styleClass: "group-backlog",
     metaClass: "text-(--color-text-backlog-meta)",
@@ -77,7 +87,8 @@ const GROUP_DEFS: Array<{
   {
     key: "done",
     label: "Done",
-    matches: (s) => s === "done",
+    matches: (stage, project) =>
+      stage.status === "done" && !isApprovalNeeded(project, stage.id),
     status: "done",
     styleClass: "group-done",
     metaClass: "text-(--color-text-row-meta)",
@@ -115,13 +126,14 @@ function groupStages(project: Project) {
   const stages = Object.values(project.stages);
   const result: Record<GroupKey, Stage[]> = {
     failed: [],
+    approval: [],
     "in-progress": [],
     backlog: [],
     done: [],
   };
   for (const def of GROUP_DEFS) {
     result[def.key] = stages
-      .filter((s) => def.matches(s.status))
+      .filter((stage) => def.matches(stage, project))
       .sort((a, b) => STAGE_INDEX[a.id] - STAGE_INDEX[b.id]);
   }
   return result;
@@ -440,6 +452,7 @@ export function WorkspaceList({
   const groups = React.useMemo(() => groupStages(project), [project]);
   const [collapsed, setCollapsed] = React.useState<Record<GroupKey, boolean>>({
     failed: false,
+    approval: false,
     "in-progress": false,
     backlog: false,
     done: false,

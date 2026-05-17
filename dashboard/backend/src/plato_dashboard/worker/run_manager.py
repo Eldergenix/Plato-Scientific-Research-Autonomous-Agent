@@ -382,7 +382,7 @@ def _normalize_model_config_for_keys(config: dict, env_keys: dict[str, str]) -> 
     """
     models = dict(config.get("models") or {})
     if "llm" not in models and env_keys.get("OPENAI_API_KEY"):
-        models["llm"] = "gpt-4.1-mini"
+        models["llm"] = "gpt-5.5-mini"
     if models == (config.get("models") or {}):
         return config
     normalized = dict(config)

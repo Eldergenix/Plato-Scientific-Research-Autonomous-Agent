@@ -46,7 +46,7 @@ type StageId =
 
 const RECOMMENDED_BY_STAGE: Record<StageId, string> = {
   idea: "gpt-4.1",
-  literature: "gpt-4.1-mini",
+  literature: "gpt-5.5-mini",
   method: "claude-4.1-opus",
   results: "gpt-5",
   paper: "claude-4.1-opus",

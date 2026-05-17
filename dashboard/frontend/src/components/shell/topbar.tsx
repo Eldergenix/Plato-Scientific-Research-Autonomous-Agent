@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TabPills } from "@/components/shell/tab-pills";
+import { getPendingApprovalStages } from "@/components/stages/approval-checkpoints";
 import { cn, formatCost, formatTokens } from "@/lib/utils";
 import type { Project } from "@/lib/types";
 
@@ -23,7 +24,7 @@ import type { Project } from "@/lib/types";
  * Types
  * ---------------------------------------------------------------------------*/
 
-export type TopBarFilterTab = "active" | "backlog" | "all";
+export type TopBarFilterTab = "active" | "approve" | "backlog" | "failed" | "all";
 
 export interface TopBarProps {
   project: Project;
@@ -49,12 +50,6 @@ export interface TopBarProps {
 /* -----------------------------------------------------------------------------
  * Constants
  * ---------------------------------------------------------------------------*/
-
-const TABS: ReadonlyArray<{ id: TopBarFilterTab; label: string }> = [
-  { id: "active", label: "Active" },
-  { id: "backlog", label: "Backlog" },
-  { id: "all", label: "All" },
-] as const;
 
 const PROJECT_NAME_MAX = 40;
 
@@ -265,6 +260,26 @@ export function TopBar({
   elapsedMs: _elapsedMs,
 }: TopBarProps) {
   const running = project.activeRun;
+  const approvalCount = getPendingApprovalStages(project).length;
+  const failedCount = Object.values(project.stages).filter((stage) => stage.status === "failed").length;
+  const tabs = React.useMemo(
+    () => [
+      { id: "active", label: "Active" },
+      {
+        id: "approve",
+        label: "Approve",
+        indicator: approvalCount > 0 ? "approval" : undefined,
+      },
+      { id: "backlog", label: "Backlog" },
+      {
+        id: "failed",
+        label: "Failed",
+        indicator: failedCount > 0 ? "failed" : undefined,
+      },
+      { id: "all", label: "All" },
+    ] as const,
+    [approvalCount, failedCount],
+  );
 
   const truncatedName =
     project.name.length > PROJECT_NAME_MAX
@@ -382,7 +397,7 @@ export function TopBar({
         {/* Left: tab pills + flexible spacer */}
         <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
           <TabPills
-            tabs={TABS}
+            tabs={tabs}
             activeId={filterTab}
             onSelect={(id) => onChangeFilter(id as TopBarFilterTab)}
             ariaLabel="Issue list filter"

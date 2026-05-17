@@ -71,6 +71,13 @@ latex_pasj = LatexPresets(article="pasj01",
 # to the standard ``article`` class. See LaTeX/README.md for manual-install
 # instructions for the native journal classes.
 
+latex_arxiv = LatexPresets(
+    article="article",
+    abstract=lambda x: f"\\maketitle\n\\begin{{abstract}}\n{x}\n\\end{{abstract}}\n",
+    bibliographystyle=r"\bibliographystyle{unsrt}",
+)
+"""arXiv preset: portable article source plus PDF/figure-friendly package output."""
+
 latex_nature = LatexPresets(
     article="article",
     usepackage="\\usepackage{lineno}\n\\linenumbers",
@@ -95,6 +102,30 @@ latex_science = LatexPresets(
 )
 """Science (AAAS) LaTeX preset (article fallback; no public CTAN class)"""
 
+latex_science_advances = LatexPresets(
+    article="article",
+    usepackage="\\usepackage{lineno}\n\\linenumbers",
+    abstract=lambda x: f"\\maketitle\n\\begin{{abstract}}\n{x}\n\\end{{abstract}}\n",
+    bibliographystyle=r"\bibliographystyle{unsrt}",
+)
+"""Science Advances LaTeX preset (AAAS-style article fallback)"""
+
+latex_nejm = LatexPresets(
+    article="article",
+    usepackage="\\usepackage{lineno}\n\\linenumbers\n\\usepackage{setspace}\n\\doublespacing",
+    abstract=lambda x: f"\\maketitle\n\\begin{{abstract}}\n{x}\n\\end{{abstract}}\n",
+    bibliographystyle=r"\bibliographystyle{unsrt}",
+)
+"""NEJM manuscript preset (double-spaced article fallback)"""
+
+latex_lancet = LatexPresets(
+    article="article",
+    usepackage="\\usepackage{lineno}\n\\linenumbers\n\\usepackage{setspace}\n\\doublespacing",
+    abstract=lambda x: f"\\maketitle\n\\begin{{abstract}}\n{x}\n\\end{{abstract}}\n",
+    bibliographystyle=r"\bibliographystyle{unsrt}",
+)
+"""The Lancet manuscript preset (double-spaced article fallback)"""
+
 latex_plos_bio = LatexPresets(
     article="article",
     usepackage="\\usepackage{lineno}\n\\linenumbers",
@@ -111,6 +142,37 @@ latex_elife = LatexPresets(
 )
 """eLife LaTeX preset (article fallback; install elife.cls via ``tlmgr install elife``)"""
 
+latex_jama = LatexPresets(
+    article="article",
+    usepackage="\\usepackage{lineno}\n\\linenumbers\n\\usepackage{setspace}\n\\doublespacing",
+    abstract=lambda x: f"\\maketitle\n\\begin{{abstract}}\n{x}\n\\end{{abstract}}\n",
+    bibliographystyle=r"\bibliographystyle{unsrt}",
+)
+"""JAMA manuscript preset (double-spaced article fallback)"""
+
+latex_nature_reviews_mcb = LatexPresets(
+    article="article",
+    usepackage="\\usepackage{lineno}\n\\linenumbers",
+    abstract=lambda x: f"\\maketitle\n\\begin{{abstract}}\n{x}\n\\end{{abstract}}\n",
+    bibliographystyle=r"\bibliographystyle{naturemag}",
+)
+"""Nature Reviews Molecular Cell Biology preset (review-style article fallback)"""
+
+latex_chemical_reviews = LatexPresets(
+    article="article",
+    usepackage="\\usepackage{lineno}\n\\linenumbers\n\\usepackage{setspace}\n\\doublespacing",
+    abstract=lambda x: f"\\maketitle\n\\begin{{abstract}}\n{x}\n\\end{{abstract}}\n",
+    bibliographystyle=r"\bibliographystyle{unsrt}",
+)
+"""Chemical Reviews preset (ACS review-style article fallback)"""
+
+latex_reviews_of_modern_physics = LatexPresets(
+    article="revtex4-2",
+    layout="rmp",
+    abstract=lambda x: f"\\begin{{abstract}}\n{x}\n\\end{{abstract}}\n\\maketitle",
+)
+"""Reviews of Modern Physics preset using REVTeX rmp layout"""
+
 #---
 
 journal_dict = {
@@ -121,9 +183,17 @@ journal_dict = {
     Journal.JHEP: latex_jhep,
     Journal.NeurIPS: latex_neurips,
     Journal.PASJ: latex_pasj,
+    Journal.ARXIV: latex_arxiv,
     Journal.NATURE: latex_nature,
     Journal.CELL: latex_cell,
     Journal.SCIENCE: latex_science,
+    Journal.SCIENCE_ADVANCES: latex_science_advances,
+    Journal.NEJM: latex_nejm,
+    Journal.LANCET: latex_lancet,
+    Journal.JAMA: latex_jama,
+    Journal.NATURE_REVIEWS_MOL_CELL_BIO: latex_nature_reviews_mcb,
+    Journal.CHEMICAL_REVIEWS: latex_chemical_reviews,
+    Journal.REVIEWS_OF_MODERN_PHYSICS: latex_reviews_of_modern_physics,
     Journal.PLOS_BIO: latex_plos_bio,
     Journal.ELIFE: latex_elife,
 }
