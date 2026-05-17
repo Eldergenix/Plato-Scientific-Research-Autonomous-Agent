@@ -18,6 +18,7 @@ const TENANT_COOKIE = "plato_user";
 const API_PREFIX = "/api/v1";
 const CLERK_PROXY_PREFIX = "/__clerk";
 const PUBLIC_PATHS = new Set([
+  "/landing",
   "/login",
   "/login/validation-demo",
   "/sign-in",
