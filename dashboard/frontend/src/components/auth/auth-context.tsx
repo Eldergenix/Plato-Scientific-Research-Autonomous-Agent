@@ -56,6 +56,15 @@ function writePersisted(id: string | null): void {
   }
 }
 
+function isPublicAuthPath(pathname: string): boolean {
+  return (
+    pathname === "/landing" ||
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/sign-in") ||
+    pathname.startsWith("/sign-up")
+  );
+}
+
 async function fetchMe(): Promise<{ user_id: string | null; auth_required: boolean }> {
   // Wrap fetch itself in try/catch — when the user is offline, fetch()
   // throws TypeError("Failed to fetch") rather than resolving to a
@@ -153,7 +162,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Client-side guard: when the backend reports auth_required and no
   // user is signed in, send the user to /login. We intentionally
-  // skip this when we're already on /login (avoids a redirect loop)
+  // skip public auth surfaces (avoids a redirect loop)
   // and while the initial /me probe is still in flight (avoids a
   // flash-redirect from the localStorage-seeded null state).
   const router = useRouter();
@@ -162,7 +171,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (loading) return;
     if (!authRequired) return;
     if (user_id) return;
-    if (pathname.startsWith("/login")) return;
+    if (isPublicAuthPath(pathname)) return;
     router.replace(`/login?next=${encodeURIComponent(pathname)}`);
   }, [authRequired, loading, pathname, router, user_id]);
 
