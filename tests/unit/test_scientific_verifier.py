@@ -120,3 +120,60 @@ def test_scientific_verification_accepts_executor_artifacts(tmp_path: Path):
     assert "sklearn_synthetic" in report.detected_operations
     assert "plots/sklearn_synthetic/synthetic_benchmark_metrics.csv" in report.artifact_inventory
     assert "input_files/plots/roc_auc_by_scenario.png" in report.artifact_inventory
+
+
+def test_scientific_verification_accepts_reference_backed_quantitative_claims(
+    tmp_path: Path,
+):
+    project = tmp_path / "project"
+    paper = project / "paper"
+    paper.mkdir(parents=True)
+    state = cast(GraphState, {
+        "files": {"Folder": str(project), "Paper_folder": str(paper)},
+        "paper": {
+            "Methods": "We synthesized the cited clinical trial evidence.",
+            "Results": "Prior work reported a hazard ratio of 0.72 across 421 patients.",
+        },
+        "validation_report": {
+            "total_references": 3,
+            "verified_references": 3,
+            "validation_rate": 1.0,
+            "accuracy_gate": {"passed": True},
+        },
+    })
+
+    report = build_scientific_verification_report(state)
+
+    assert report.passed is True
+    assert report.verified_references == 3
+    assert "verified references" in report.provenance_markers
+    assert report.warnings
+
+
+def test_scientific_verification_finds_scientific_analysis_artifacts(
+    tmp_path: Path,
+):
+    project = tmp_path / "project"
+    paper = project / "paper"
+    artifacts = project / "scientific_analysis_artifacts" / "linear_regression_deadbeef01"
+    paper.mkdir(parents=True)
+    artifacts.mkdir(parents=True)
+    (artifacts / "metrics.json").write_text('{"r2": 0.99}', encoding="utf-8")
+    state = cast(GraphState, {
+        "files": {"Folder": str(project), "Paper_folder": str(paper)},
+        "paper": {
+            "Methods": (
+                "We used run_scientific_analysis linear_regression with CSV JSON "
+                "outputs, reproducibility metadata, validation checks, and random seed 7."
+            ),
+            "Results": "Validation R^2 was 0.99.",
+        },
+    })
+
+    report = build_scientific_verification_report(state)
+
+    assert report.passed is True
+    assert (
+        "scientific_analysis_artifacts/linear_regression_deadbeef01/metrics.json"
+        in report.artifact_inventory
+    )

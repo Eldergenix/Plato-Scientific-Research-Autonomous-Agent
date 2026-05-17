@@ -31,6 +31,7 @@ export interface TabPillItem {
   id: string;
   label: string;
   icon?: Icon;
+  indicator?: "approval" | "failed";
 }
 
 const TAB_ICON_BY_KEY: Record<string, Icon> = {
@@ -38,6 +39,7 @@ const TAB_ICON_BY_KEY: Record<string, Icon> = {
   "all events": RowsIcon,
   "all time": ClockCounterClockwiseIcon,
   all: StackIcon,
+  approve: CheckCircleIcon,
   backlog: ListChecksIcon,
   cheap: CoinsIcon,
   completed: CheckCircleIcon,
@@ -45,6 +47,7 @@ const TAB_ICON_BY_KEY: Record<string, Icon> = {
   data: DatabaseIcon,
   edits: SparkleIcon,
   errors: WarningCircleIcon,
+  failed: WarningCircleIcon,
   experiments: TestTubeIcon,
   mcp: PlugsConnectedIcon,
   month: ClockCounterClockwiseIcon,
@@ -123,6 +126,12 @@ export function TabPills({
       {tabs.map((tab, i) => {
         const isActive = tab.id === activeId;
         const Icon = resolveTabIcon(tab);
+        const indicatorClass =
+          tab.indicator === "approval"
+            ? "bg-(--color-status-green-spec)"
+            : tab.indicator === "failed"
+              ? "bg-(--color-status-red-spec)"
+              : "";
         return (
           <button
             key={tab.id}
@@ -148,12 +157,22 @@ export function TabPills({
             )}
             style={{ paddingTop: "6.25px", paddingBottom: "6.25px" }}
           >
-            <Icon
-              aria-hidden
-              size={12}
-              weight={isActive ? "fill" : "regular"}
-              className="mr-1.5 shrink-0"
-            />
+            {tab.indicator ? (
+              <span
+                className="relative mr-1.5 flex size-3 shrink-0 items-center justify-center"
+                aria-hidden
+              >
+                <span className={cn("absolute inline-flex size-2 animate-ping rounded-full opacity-75", indicatorClass)} />
+                <span className={cn("relative inline-flex size-2 rounded-full", indicatorClass)} />
+              </span>
+            ) : (
+              <Icon
+                aria-hidden
+                size={12}
+                weight={isActive ? "fill" : "regular"}
+                className="mr-1.5 shrink-0"
+              />
+            )}
             {tab.label}
           </button>
         );

@@ -134,22 +134,23 @@ def build_graph(mermaid_diagram=False, checkpointer=None):
     builder.add_edge("results_node", "conclusions_node")
     builder.add_edge("conclusions_node", "plots_node")
     builder.add_edge("plots_node", "refine_results")
-    # Citations stage: either run citations_node, or skip straight to claim
-    # extraction. The validation/evidence-matrix path is exercised on either
-    # branch so reviewer pass-through always sees a fresh report.
-    builder.add_edge("refine_results", "scientific_verifier_node")
+    # Citations stage: every paper must pass the reference validator before
+    # scientific verification. When citation generation is disabled, route
+    # directly to the validator so a paper without verifiable references cannot
+    # advance to review or publication.
     builder.add_conditional_edges(
-        "scientific_verifier_node",
+        "refine_results",
         citation_router,
         {
             "citations_node": "citations_node",
-            "claim_evidence_fanout": "claim_evidence_fanout",
+            "citation_validator_node": "citation_validator_node",
         },
     )
-    # After citations, validate references, then extract claims, then link
-    # them to the retrieved sources before the reviewer panel runs.
+    # After citations, validate references, then run scientific verification,
+    # extract claims, and link them to retrieved sources before review.
     builder.add_edge("citations_node", "citation_validator_node")
-    builder.add_edge("citation_validator_node", "claim_evidence_fanout")
+    builder.add_edge("citation_validator_node", "scientific_verifier_node")
+    builder.add_edge("scientific_verifier_node", "claim_evidence_fanout")
     builder.add_edge("claim_evidence_fanout", "claim_extractor")
     builder.add_edge("claim_extractor", "evidence_matrix_node")
     builder.add_edge("evidence_matrix_node", "reviewer_panel_fanout")

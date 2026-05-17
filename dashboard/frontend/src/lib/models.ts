@@ -129,6 +129,14 @@ export const MODELS: ModelDef[] = [
     notes: "Availability depends on account",
   },
   {
+    id: "gpt-5.5-mini",
+    label: "GPT-5.5 mini",
+    provider: "openai",
+    maxOutputTokens: 128000,
+    temperature: null,
+    notes: "Default agent · availability depends on account",
+  },
+  {
     id: "gpt-5.5-pro",
     label: "GPT-5.5 Pro",
     provider: "openai",

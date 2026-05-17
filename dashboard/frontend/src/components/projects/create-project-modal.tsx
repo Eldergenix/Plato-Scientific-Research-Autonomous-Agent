@@ -50,14 +50,33 @@ const TEMPLATES: ReadonlyArray<Template> = [
   },
 ];
 
-const JOURNALS: ReadonlyArray<{ id: Journal; label: string }> = [
-  { id: "NONE", label: "No journal target" },
-  { id: "AAS", label: "AAS" },
-  { id: "APS", label: "APS" },
-  { id: "ICML", label: "ICML" },
-  { id: "JHEP", label: "JHEP" },
-  { id: "NeurIPS", label: "NeurIPS" },
-  { id: "PASJ", label: "PASJ" },
+const JOURNALS: ReadonlyArray<{ id: Journal; label: string; format: string }> = [
+  { id: "NONE", label: "No journal target", format: "Portable article format" },
+  { id: "ARXIV", label: "arXiv", format: "TeX source package with PDF and figure files" },
+  { id: "NATURE", label: "Nature", format: "Springer Nature-style article fallback with line numbers" },
+  { id: "SCIENCE", label: "Science", format: "AAAS article fallback with numbered references" },
+  { id: "SCIENCE_ADVANCES", label: "Science Advances", format: "AAAS open-access article fallback" },
+  { id: "NEJM", label: "NEJM", format: "Double-spaced clinical manuscript fallback" },
+  { id: "LANCET", label: "The Lancet", format: "Double-spaced clinical manuscript fallback" },
+  { id: "CELL", label: "Cell", format: "Cell Press-style article fallback with line numbers" },
+  { id: "JAMA", label: "JAMA", format: "Double-spaced medical manuscript fallback" },
+  {
+    id: "NATURE_REVIEWS_MOL_CELL_BIO",
+    label: "Nature Reviews Molecular Cell Biology",
+    format: "Review-article fallback with Nature bibliography style",
+  },
+  { id: "CHEMICAL_REVIEWS", label: "Chemical Reviews", format: "ACS review-style article fallback" },
+  {
+    id: "REVIEWS_OF_MODERN_PHYSICS",
+    label: "Reviews of Modern Physics",
+    format: "REVTeX RMP layout",
+  },
+  { id: "AAS", label: "AAS", format: "AAS TeX twocolumn" },
+  { id: "APS", label: "APS", format: "REVTeX APS layout" },
+  { id: "ICML", label: "ICML", format: "ICML 2025 style" },
+  { id: "JHEP", label: "JHEP", format: "JHEP / JCAP style" },
+  { id: "NeurIPS", label: "NeurIPS", format: "NeurIPS 2025 style" },
+  { id: "PASJ", label: "PASJ", format: "PASJ twocolumn style" },
 ];
 
 /* -----------------------------------------------------------------------------
@@ -153,7 +172,7 @@ function JournalSelect({
           position="popper"
           sideOffset={4}
           className={cn(
-            "z-[60] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-[8px]",
+            "z-[60] max-h-[360px] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-[8px]",
             "border border-(--color-border-card) bg-(--color-bg-card) shadow-[var(--shadow-dialog)]",
           )}
         >
@@ -163,7 +182,7 @@ function JournalSelect({
                 key={j.id}
                 value={j.id}
                 className={cn(
-                  "relative flex h-7 cursor-pointer items-center gap-2 rounded-[4px] pl-6 pr-2",
+                  "relative flex min-h-9 cursor-pointer items-start gap-2 rounded-[4px] py-1.5 pl-6 pr-2",
                   "text-[13px] text-(--color-text-secondary-spec)",
                   "data-[highlighted]:bg-(--color-ghost-bg-hover) data-[highlighted]:text-(--color-text-primary)",
                   "data-[highlighted]:outline-none",
@@ -172,7 +191,14 @@ function JournalSelect({
                 <Select.ItemIndicator className="absolute left-1.5 inline-flex items-center">
                   <Check size={12} strokeWidth={2} className="text-(--color-brand-hover)" />
                 </Select.ItemIndicator>
-                <Select.ItemText>{j.label}</Select.ItemText>
+                <Select.ItemText>
+                  <span className="block text-[13px] text-(--color-text-primary)">
+                    {j.label}
+                  </span>
+                  <span className="block text-[11px] text-(--color-text-tertiary-spec)">
+                    {j.format}
+                  </span>
+                </Select.ItemText>
               </Select.Item>
             ))}
           </Select.Viewport>

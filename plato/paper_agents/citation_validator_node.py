@@ -353,6 +353,10 @@ async def citation_validator_node(
             (run_dir / "validation_report.json").write_text(
                 json.dumps(report, indent=2, sort_keys=True)
             )
+        if state.get("enforce_reference_gate", True):
+            raise RuntimeError(
+                "Reference verification failed: no references were available for validation."
+            )
         return {"validation_report": report, "run_id": run_id}
 
     async with CitationValidator() as validator:

@@ -30,6 +30,7 @@ export interface RunEventStageFinished {
   ts: number | string;
   stage: StageId;
   ok?: boolean;
+  status?: RunStatus;
 }
 
 export interface RunEventStageHeartbeat {
@@ -555,6 +556,7 @@ export interface PaperSectionArtifact {
 
 export interface PaperArtifacts {
   pdfUrl?: string;
+  submissionZipUrl?: string;
   sections: PaperSectionArtifact[];
 }
 
@@ -1153,15 +1155,24 @@ export const api = {
   async getPaperArtifacts(pid: string): Promise<PaperArtifacts> {
     const pdfPath = `/projects/${pid}/files/paper/main.pdf`;
     const texPath = `/projects/${pid}/files/paper/main.tex`;
+    const zipPath = `/projects/${pid}/files/paper/submission_package.zip`;
     const pdfUrl = `${API_BASE}${pdfPath}`;
     const texUrl = `${API_BASE}${texPath}`;
+    const submissionZipUrl = `${API_BASE}${zipPath}`;
 
     let pdfExists = false;
+    let zipExists = false;
     try {
       const head = await fetch(pdfUrl, { method: "HEAD" });
       pdfExists = head.ok;
     } catch {
       pdfExists = false;
+    }
+    try {
+      const head = await fetch(submissionZipUrl, { method: "HEAD" });
+      zipExists = head.ok;
+    } catch {
+      zipExists = false;
     }
 
     let sections: PaperSectionArtifact[] = [];
@@ -1177,6 +1188,7 @@ export const api = {
 
     return {
       pdfUrl: pdfExists ? pdfUrl : undefined,
+      submissionZipUrl: zipExists ? submissionZipUrl : undefined,
       sections,
     };
   },

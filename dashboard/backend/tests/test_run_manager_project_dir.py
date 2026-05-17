@@ -27,7 +27,7 @@ def test_normalize_model_config_prefers_openai_when_google_is_present() -> None:
         {"OPENAI_API_KEY": "openai-key", "GOOGLE_API_KEY": "google-key"},
     )
 
-    assert normalized["models"]["llm"] == "gpt-4.1-mini"
+    assert normalized["models"]["llm"] == "gpt-5.5-mini"
     assert config["models"] == {}
 
 
@@ -218,7 +218,7 @@ def test_project_run_lifecycle_updates_meta_from_artifact(tmp_path: Path) -> Non
         stage="idea",
         status="running",
         started_at=utcnow(),
-        config={"models": {"llm": "gpt-4.1-mini"}},
+        config={"models": {"llm": "gpt-5.5-mini"}},
     )
 
     rm._set_project_run_started(run, project_dir)
@@ -236,7 +236,7 @@ def test_project_run_lifecycle_updates_meta_from_artifact(tmp_path: Path) -> Non
     assert finished.active_run is None
     assert finished.stages["idea"].status == "done"
     assert finished.stages["idea"].origin == "ai"
-    assert finished.stages["idea"].model == "gpt-4.1-mini"
+    assert finished.stages["idea"].model == "gpt-5.5-mini"
 
 
 def test_project_run_success_without_artifact_becomes_failed(tmp_path: Path) -> None:

@@ -17,10 +17,17 @@ def test_biology_journal_presets() -> None:
     # The full list per the §5.5 spec, in order.
     assert biology.journal_presets == [
         "NATURE",
-        "CELL",
         "SCIENCE",
+        "SCIENCE_ADVANCES",
+        "NEJM",
+        "LANCET",
+        "CELL",
+        "JAMA",
+        "NATURE_REVIEWS_MOL_CELL_BIO",
+        "CHEMICAL_REVIEWS",
         "PLOS_BIO",
         "ELIFE",
+        "ARXIV",
         "NONE",
     ]
 

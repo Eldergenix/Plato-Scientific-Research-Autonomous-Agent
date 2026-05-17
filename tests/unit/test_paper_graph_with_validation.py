@@ -48,12 +48,12 @@ def test_existing_review_pipeline_still_present():
     assert review_nodes.issubset(nodes)
 
 
-def test_citation_router_skip_branch_routes_to_claim_evidence_fanout():
-    """When add_citations is False the router should still feed the matrix."""
+def test_citation_router_skip_branch_routes_to_reference_validator():
+    """When add_citations is False the router must still enforce references."""
     from plato.paper_agents.routers import citation_router
 
     state = {"paper": {"add_citations": False}}
-    assert citation_router(state) == "claim_evidence_fanout"
+    assert citation_router(state) == "citation_validator_node"
 
 
 def test_citation_router_on_branch_routes_to_citations_node():
@@ -68,9 +68,9 @@ def test_citations_node_predecessor_to_validator():
     graph = build_graph(checkpointer=MemorySaver())
     edges = graph.get_graph().edges
     edge_pairs = {(e.source, e.target) for e in edges}
-    assert ("refine_results", "scientific_verifier_node") in edge_pairs
     assert ("citations_node", "citation_validator_node") in edge_pairs
-    assert ("citation_validator_node", "claim_evidence_fanout") in edge_pairs
+    assert ("citation_validator_node", "scientific_verifier_node") in edge_pairs
+    assert ("scientific_verifier_node", "claim_evidence_fanout") in edge_pairs
     assert ("claim_evidence_fanout", "claim_extractor") in edge_pairs
     assert ("claim_extractor", "evidence_matrix_node") in edge_pairs
     assert ("evidence_matrix_node", "reviewer_panel_fanout") in edge_pairs

@@ -31,7 +31,7 @@ echo ""
 echo "Key status: $status"
 case "$PROVIDER" in
   gemini)   key_field="GEMINI";    model="gemini-2.5-flash" ;;
-  openai)   key_field="OPENAI";    model="gpt-4.1-mini"     ;;
+  openai)   key_field="OPENAI";    model="gpt-5.5-mini"     ;;
   anthropic) key_field="ANTHROPIC"; model="claude-3.7-sonnet" ;;
   *) echo "Unknown PROVIDER=$PROVIDER (use gemini|openai|anthropic)"; exit 2 ;;
 esac

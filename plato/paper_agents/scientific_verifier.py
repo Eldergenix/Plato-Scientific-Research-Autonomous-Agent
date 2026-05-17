@@ -54,6 +54,9 @@ _NUMERIC_PATTERN = re.compile(
 class ScientificVerificationReport(BaseModel):
     passed: bool
     numeric_claim_count: int
+    total_references: int = 0
+    verified_references: int = 0
+    reference_validation_rate: float = 0.0
     detected_operations: list[str] = Field(default_factory=list)
     provenance_markers: list[str] = Field(default_factory=list)
     artifact_inventory: list[str] = Field(default_factory=list)
@@ -90,12 +93,34 @@ def build_scientific_verification_report(
     provenance_markers = sorted(
         marker for marker in _PROVENANCE_MARKERS if marker in combined_lower
     )
+    artifact_provenance_markers = list(provenance_markers)
     artifact_inventory = _artifact_inventory(state)
     required_operations = _required_operations_from_artifacts(artifact_inventory)
     numeric_claim_count = len(_NUMERIC_PATTERN.findall(results))
+    validation_report = cast(Optional[dict[str, Any]], state.get("validation_report"))
+    total_references, verified_references, validation_rate, gate_passed = (
+        _reference_validation_stats(validation_report)
+    )
+    has_verified_references = verified_references > 0
 
     blocking_issues: list[str] = []
     warnings: list[str] = []
+
+    if validation_report is not None:
+        if total_references == 0:
+            blocking_issues.append(
+                "no references were available for scientific verification"
+            )
+        elif verified_references == 0:
+            blocking_issues.append(
+                "references were present but none were verifiably resolved"
+            )
+        elif gate_passed is False:
+            blocking_issues.append(
+                "reference validation gate failed before scientific verification"
+            )
+        else:
+            provenance_markers.append("verified references")
 
     if artifact_inventory and not detected_operations:
         blocking_issues.append(
@@ -107,18 +132,28 @@ def build_scientific_verification_report(
             "analysis artifacts were found for operations not described in Methods/Results: "
             + ", ".join(missing_operations)
         )
-    if artifact_inventory and not provenance_markers:
+    if artifact_inventory and not artifact_provenance_markers:
         blocking_issues.append(
             "analysis artifacts exist but Methods/Results do not mention reproducibility or artifact metadata"
         )
     if numeric_claim_count > 0 and not artifact_inventory:
-        blocking_issues.append(
-            "Results contain quantitative claims but no analysis artifacts were found"
-        )
+        if has_verified_references:
+            warnings.append(
+                "Results contain quantitative claims backed by verified references but no local analysis artifacts were found"
+            )
+        else:
+            blocking_issues.append(
+                "Results contain quantitative claims but no analysis artifacts were found"
+            )
     if numeric_claim_count > 0 and "validation" not in combined_lower:
-        blocking_issues.append(
-            "Results contain quantitative claims but do not report validation checks"
-        )
+        if artifact_inventory:
+            blocking_issues.append(
+                "Results contain quantitative claims but do not report validation checks"
+            )
+        else:
+            warnings.append(
+                "Results contain quantitative claims without local validation text; verified citations are required"
+            )
     if "publication_plot" in detected_operations and "figure" not in results.lower():
         warnings.append(
             "publication_plot was referenced but Results do not appear to discuss a figure"
@@ -131,6 +166,9 @@ def build_scientific_verification_report(
     return ScientificVerificationReport(
         passed=not blocking_issues,
         numeric_claim_count=numeric_claim_count,
+        total_references=total_references,
+        verified_references=verified_references,
+        reference_validation_rate=validation_rate,
         detected_operations=detected_operations,
         provenance_markers=provenance_markers,
         artifact_inventory=artifact_inventory,
@@ -147,6 +185,8 @@ def _artifact_inventory(state: GraphState) -> list[str]:
     project_root = Path(folder)
     roots = (
         project_root / "input_files" / "analysis_artifacts",
+        project_root / "scientific_analysis_artifacts",
+        project_root / "input_files" / "scientific_analysis_artifacts",
         project_root / "plots",
         project_root / "input_files" / "plots",
     )
@@ -167,7 +207,7 @@ def _required_operations_from_artifacts(artifact_inventory: list[str]) -> list[s
     required: set[str] = set()
     for artifact in artifact_inventory:
         match = re.search(
-            r"analysis_artifacts/([a-z0-9_]+?)_[0-9a-f]{10}/",
+            r"(?:analysis_artifacts|scientific_analysis_artifacts)/([a-z0-9_]+?)_[0-9a-f]{10}/",
             artifact,
         )
         if match:
@@ -175,6 +215,30 @@ def _required_operations_from_artifacts(artifact_inventory: list[str]) -> list[s
         if artifact.startswith("plots/sklearn_synthetic/"):
             required.add("sklearn_synthetic")
     return sorted(required)
+
+
+def _reference_validation_stats(
+    validation_report: Optional[dict[str, Any]],
+) -> tuple[int, int, float, bool | None]:
+    if not validation_report:
+        return 0, 0, 0.0, None
+    total = int(
+        validation_report.get("total_references")
+        or validation_report.get("total")
+        or 0
+    )
+    verified = int(
+        validation_report.get("verified_references")
+        or validation_report.get("passed")
+        or 0
+    )
+    try:
+        rate = float(validation_report.get("validation_rate") or 0.0)
+    except (TypeError, ValueError):
+        rate = 0.0
+    gate = cast(dict[str, Any], validation_report.get("accuracy_gate") or {})
+    passed = gate.get("passed")
+    return total, verified, rate, passed if isinstance(passed, bool) else None
 
 
 def _write_report(state: GraphState, report: ScientificVerificationReport) -> None:

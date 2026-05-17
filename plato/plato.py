@@ -5,6 +5,7 @@ import time
 import os
 import shutil
 import warnings
+import zipfile
 from pathlib import Path
 
 from .config import (
@@ -1218,6 +1219,7 @@ class Plato:
         # Initialize the state
         input_state = {
             "files": {"Folder": self.project_dir},  # name of project folder
+            "run_id": recorder.manifest.run_id,
             "llm": {
                 "model": llm.name,  # name of the LLM model to use
                 "temperature": llm.temperature,
@@ -1268,8 +1270,6 @@ class Plato:
         candidates = (
             "paper_v4_refereed",
             "paper_v3_citations",
-            "paper_v2_no_citations",
-            "paper_v1_preliminary",
         )
         for stem in candidates:
             tex = paper_dir / f"{stem}.tex"
@@ -1277,12 +1277,62 @@ class Plato:
             if tex.is_file() and pdf.is_file():
                 shutil.copy2(tex, paper_dir / "main.tex")
                 shutil.copy2(pdf, paper_dir / "main.pdf")
+                self._write_submission_package(paper_dir)
                 return
         if (paper_dir / "main.tex").is_file() and (paper_dir / "main.pdf").is_file():
+            self._write_submission_package(paper_dir)
             return
         raise RuntimeError(
-            "Paper generation finished without a compiled TeX/PDF artifact"
+            "Paper generation finished without a compiled citation-bearing TeX/PDF artifact"
         )
+
+    def _write_submission_package(self, paper_dir: Path) -> None:
+        """Create a dashboard-downloadable journal submission package."""
+        project_root = Path(self.project_dir)
+        package_path = paper_dir / "submission_package.zip"
+        readme = (
+            "Plato publication submission package\n\n"
+            "Contents:\n"
+            "- main.tex: canonical LaTeX source\n"
+            "- main.pdf: compiled manuscript preview\n"
+            "- bibliography.bib: verified bibliography when generated\n"
+            "- reports/: citation and scientific verification reports when available\n"
+            "- figures/: generated plot and figure artifacts when available\n\n"
+            "Before journal upload, review the target journal's current author "
+            "instructions and metadata forms. Plato blocks completion without "
+            "verifiable references, but author details, disclosures, cover "
+            "letters, and ethics statements may still require manual entry.\n"
+        )
+
+        with zipfile.ZipFile(package_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for filename in ("main.tex", "main.pdf", "bibliography.bib"):
+                path = paper_dir / filename
+                if path.is_file():
+                    zf.write(path, filename)
+
+            report_files = [
+                paper_dir / "scientific_verification.json",
+                *sorted(project_root.glob("runs/*/validation_report.json")),
+            ]
+            for path in report_files:
+                if path.is_file():
+                    zf.write(path, f"reports/{path.parent.name}-{path.name}")
+
+            figure_roots = (
+                project_root / "plots",
+                project_root / "input_files" / "plots",
+                project_root / "input_files" / "analysis_artifacts",
+                project_root / "scientific_analysis_artifacts",
+                project_root / "input_files" / "scientific_analysis_artifacts",
+            )
+            for root in figure_roots:
+                if not root.is_dir():
+                    continue
+                for path in sorted(root.rglob("*")):
+                    if path.is_file():
+                        zf.write(path, f"figures/{path.relative_to(project_root)}")
+
+            zf.writestr("README_SUBMISSION.md", readme)
 
     def referee(
         self, llm: LLM | str = models["gemini-2.5-flash"], verbose=False

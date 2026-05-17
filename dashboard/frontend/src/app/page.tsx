@@ -12,7 +12,11 @@ import { DataStage } from "@/components/stages/data-stage";
 import { IdeaStage } from "@/components/stages/idea-stage";
 import { ResultsStage } from "@/components/stages/results-stage";
 import { EmptyStage } from "@/components/stages/empty-stage";
-import { ApprovalCheckpoints, getBlockingApproval } from "@/components/stages/approval-checkpoints";
+import {
+  ApprovalCheckpoints,
+  getBlockingApproval,
+  isApprovalNeeded,
+} from "@/components/stages/approval-checkpoints";
 import { CostMeterPanel, useCostMeter } from "@/components/cost/cost-meter-panel";
 import { CreateProjectModal } from "@/components/projects/create-project-modal";
 import { PaperPreview } from "@/components/stages/paper-preview";
@@ -97,11 +101,25 @@ export default function Home() {
   const [logHeight, setLogHeight] = React.useState<0 | 30 | 60>(0);
   const [paused, setPaused] = React.useState(false);
   const [elapsedMs, setElapsedMs] = React.useState(0);
-  const [filterTab, setFilterTab] = React.useState<"active" | "backlog" | "all">(
-    "active",
-  );
+  const [filterTab, setFilterTab] = React.useState<
+    "active" | "approve" | "backlog" | "failed" | "all"
+  >("active");
 
-  const { project, log, plots, nodeEvents, codeEvents, loading, isLive, capabilities, startRun, cancelRun, selectProject, refresh } = useProject();
+  const {
+    project,
+    log,
+    plots,
+    nodeEvents,
+    codeEvents,
+    lastFinishedRun,
+    loading,
+    isLive,
+    capabilities,
+    startRun,
+    cancelRun,
+    selectProject,
+    refresh,
+  } = useProject();
   const cost = useCostMeter();
   const [createOpen, setCreateOpen] = React.useState(false);
   const [detailsOpen, setDetailsOpen] = React.useState(false);
@@ -112,7 +130,7 @@ export default function Home() {
   const [runToast, setRunToast] = React.useState<{
     title: string;
     body: string;
-    tone: "amber" | "red";
+    tone: "amber" | "green" | "red";
   } | null>(null);
 
   const refreshRunHistory = React.useCallback(async () => {
@@ -175,12 +193,33 @@ export default function Home() {
   const nextPipelineStage = React.useMemo(() => getNextPipelineStage(project), [project]);
 
   const showRunToast = React.useCallback(
-    (toast: { title: string; body: string; tone: "amber" | "red" }) => {
+    (toast: { title: string; body: string; tone: "amber" | "green" | "red" }) => {
       setRunToast(toast);
       setTimeout(() => setRunToast(null), 5000);
     },
     [],
   );
+
+  React.useEffect(() => {
+    if (!lastFinishedRun || lastFinishedRun.projectId !== project.id) return;
+    const label =
+      lastFinishedRun.stage.charAt(0).toUpperCase() +
+      lastFinishedRun.stage.slice(1);
+    const succeeded = lastFinishedRun.status === "succeeded";
+    const cancelled = lastFinishedRun.status === "cancelled";
+    showRunToast({
+      title: `${label} ${succeeded ? "complete" : cancelled ? "cancelled" : "failed"}`,
+      body:
+        lastFinishedRun.stage === "paper" && succeeded
+          ? "The manuscript, verified references, and submission ZIP are ready."
+          : succeeded
+            ? "The project stage was updated with the latest generated output."
+            : cancelled
+              ? "The run was stopped and partial artifacts were preserved."
+              : "Open the failed tab or logs to inspect the error.",
+      tone: succeeded ? "green" : cancelled ? "amber" : "red",
+    });
+  }, [lastFinishedRun, project.id, showRunToast]);
 
   const requestCancel = React.useCallback(() => {
     if (!project.activeRun) return;
@@ -248,7 +287,13 @@ export default function Home() {
     if (filterTab === "all") return project;
     const keep = (s: Stage): boolean => {
       if (filterTab === "active") {
-        return s.status === "running" || s.status === "failed";
+        return s.status === "running";
+      }
+      if (filterTab === "approve") {
+        return isApprovalNeeded(project, s.id);
+      }
+      if (filterTab === "failed") {
+        return s.status === "failed";
       }
       // backlog
       return s.status === "empty" || s.status === "pending" || s.status === "stale";
@@ -353,7 +398,15 @@ export default function Home() {
               onOpenCostMeter={cost.openMeter}
               onAddFilter={() =>
                 setFilterTab((t) =>
-                  t === "active" ? "backlog" : t === "backlog" ? "all" : "active",
+                  t === "active"
+                    ? "approve"
+                    : t === "approve"
+                      ? "backlog"
+                      : t === "backlog"
+                        ? "failed"
+                        : t === "failed"
+                          ? "all"
+                          : "active",
                 )
               }
               onChangeDisplay={() =>
@@ -385,6 +438,7 @@ export default function Home() {
                 <StageDetail
                   stage={openStage}
                   project={project}
+                  log={log}
                   plots={plots}
                   nodeEvents={nodeEvents}
                   codeEvents={codeEvents}
@@ -467,7 +521,9 @@ export default function Home() {
             border:
               runToast.tone === "red"
                 ? "1px solid var(--color-status-red-spec)"
-                : "1px solid var(--color-status-amber-spec)",
+                : runToast.tone === "green"
+                  ? "1px solid var(--color-status-green-spec)"
+                  : "1px solid var(--color-status-amber-spec)",
           }}
         >
           <div className="flex items-start gap-3">
@@ -478,7 +534,9 @@ export default function Home() {
                 "mt-0.5",
                 runToast.tone === "red"
                   ? "text-(--color-status-red-spec)"
-                  : "text-(--color-status-amber-spec)",
+                  : runToast.tone === "green"
+                    ? "text-(--color-status-green-spec)"
+                    : "text-(--color-status-amber-spec)",
               )}
             />
             <div className="flex-1 text-[12.5px] leading-[1.5]">
@@ -999,6 +1057,7 @@ function PipelineRunMonitor({
 function StageDetail({
   stage,
   project,
+  log,
   plots,
   nodeEvents,
   codeEvents,
@@ -1009,6 +1068,7 @@ function StageDetail({
 }: {
   stage: StageId;
   project: ReturnType<typeof useProject>["project"];
+  log: ReturnType<typeof useProject>["log"];
   plots: ReturnType<typeof useProject>["plots"];
   nodeEvents: ReturnType<typeof useProject>["nodeEvents"];
   codeEvents: ReturnType<typeof useProject>["codeEvents"];
@@ -1049,6 +1109,7 @@ function StageDetail({
         <StagePane
           stage={stage}
           project={project}
+          log={log}
           plots={plots}
           nodeEvents={nodeEvents}
           codeEvents={codeEvents}
@@ -1064,6 +1125,7 @@ function StageDetail({
 function StagePane({
   stage,
   project,
+  log,
   plots,
   nodeEvents,
   codeEvents,
@@ -1073,6 +1135,7 @@ function StagePane({
 }: {
   stage: StageId;
   project: ReturnType<typeof useProject>["project"];
+  log: ReturnType<typeof useProject>["log"];
   plots: ReturnType<typeof useProject>["plots"];
   nodeEvents: ReturnType<typeof useProject>["nodeEvents"];
   codeEvents: ReturnType<typeof useProject>["codeEvents"];
@@ -1123,6 +1186,7 @@ function StagePane({
       return (
         <GeneratedMarkdownStage
           project={project}
+          log={log}
           stage="literature"
           icon={BookMarked}
           title="Literature review"
@@ -1134,6 +1198,7 @@ function StagePane({
       return (
         <GeneratedMarkdownStage
           project={project}
+          log={log}
           stage="method"
           icon={ClipboardList}
           title="Methodology"
@@ -1153,6 +1218,8 @@ function StagePane({
           icon={Newspaper}
           title="Paper draft"
           description="Three-way LaTeX / markdown / rendered-PDF view. Generate the paper from results once experiments complete."
+          busy={project.activeRun?.stage === "paper"}
+          logLines={log}
           onGenerate={() => onRun()}
         />
       );
@@ -1160,6 +1227,7 @@ function StagePane({
       return (
         <GeneratedMarkdownStage
           project={project}
+          log={log}
           stage="referee"
           icon={Stamp}
           title="Peer review"
@@ -1174,6 +1242,7 @@ function StagePane({
 
 function GeneratedMarkdownStage({
   project,
+  log,
   stage,
   icon: Icon,
   title,
@@ -1181,6 +1250,7 @@ function GeneratedMarkdownStage({
   onGenerate,
 }: {
   project: Project;
+  log: ReturnType<typeof useProject>["log"];
   stage: Exclude<StageId, "data" | "idea" | "results" | "paper">;
   icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
   title: string;
@@ -1191,6 +1261,8 @@ function GeneratedMarkdownStage({
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const stageState = project.stages[stage];
+  const isRunning =
+    project.activeRun?.stage === stage || stageState.status === "running";
   const refetchKey = `${project.id}|${stage}|${stageState.status}|${stageState.lastRunAt ?? ""}|${project.activeRun?.runId ?? "idle"}`;
 
   React.useEffect(() => {
@@ -1227,10 +1299,10 @@ function GeneratedMarkdownStage({
         icon={Icon}
         title={title}
         description={
-          error
-            ? `Could not load this stage artifact: ${error}`
-            : description
+          error ? `Could not load this stage artifact: ${error}` : description
         }
+        busy={isRunning}
+        logLines={log}
         onGenerate={onGenerate}
       />
     );
@@ -1263,6 +1335,7 @@ function PaperStagePane({
 }) {
   const [artifacts, setArtifacts] = React.useState<{
     pdfUrl?: string;
+    submissionZipUrl?: string;
     sections: import("@/components/stages/paper-preview").PaperSection[];
   }>({ sections: [] });
   const [scores, setScores] = React.useState<ScientificScores | undefined>();
@@ -1278,6 +1351,7 @@ function PaperStagePane({
         if (cancelled) return;
         setArtifacts({
           pdfUrl: r.pdfUrl,
+          submissionZipUrl: r.submissionZipUrl,
           sections: r.sections.map((s) => ({
             id: s.id,
             name: s.name,
@@ -1321,6 +1395,7 @@ function PaperStagePane({
   return (
     <PaperPreview
       pdfUrl={artifacts.pdfUrl}
+      submissionZipUrl={artifacts.submissionZipUrl}
       sections={artifacts.sections}
       scores={scores}
       versions={versions}

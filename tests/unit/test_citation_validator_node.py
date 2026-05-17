@@ -132,6 +132,21 @@ def test_empty_references_writes_empty_report_no_crash(tmp_path):
     assert persisted["accuracy_gate"]["passed"] is False
 
 
+def test_empty_references_raise_when_gate_is_enforced(tmp_path):
+    state = _state(tmp_path)
+    state["enforce_reference_gate"] = True
+
+    with (
+        patch.object(node_module, "CitationValidator") as ctor,
+        pytest.raises(RuntimeError, match="no references were available"),
+    ):
+        asyncio.run(node_module.citation_validator_node(state))
+
+    ctor.assert_not_called()
+    report_path = tmp_path / "runs" / "run-test-001" / "validation_report.json"
+    assert report_path.exists()
+
+
 def test_state_validation_report_set_after_run(tmp_path):
     refs = [{"id": "r1", "doi": "10.1/x"}]
     state = _state(tmp_path, references=refs)
