@@ -65,6 +65,10 @@ _run_dirs: dict[str, Path] = {}
 _SPAWN_CTX = mp.get_context("spawn")
 _TAIL_INTERVAL_S = 0.25
 _SIGTERM_GRACE_S = 5.0
+OPENAI_DEFAULT_MODEL = "gpt-5.5"
+_MODEL_ALIASES = {
+    "gpt-5.5-mini": OPENAI_DEFAULT_MODEL,
+}
 
 _STAGE_ARTIFACTS: dict[StageId, tuple[str, ...]] = {
     "data": ("input_files/data_description.md",),
@@ -372,18 +376,26 @@ def _resolve_keys() -> dict[str, str]:
     return out
 
 
+def _normalize_model_id(model: Any) -> Any:
+    if not isinstance(model, str):
+        return model
+    return _MODEL_ALIASES.get(model, model)
+
+
 def _normalize_model_config_for_keys(config: dict, env_keys: dict[str, str]) -> dict:
     """Choose an available default LLM when the request omits one.
 
     Plato's idea workflow defaults its base ``llm`` to Gemini. Hosted
     deployments often have multiple provider keys, and the free Gemini quota
     is easy to exhaust, so prefer OpenAI when available. Keep caller-supplied
-    models untouched; only fill the missing base model.
+    models untouched except removed-model aliases; only fill the missing base
+    model.
     """
-    models = dict(config.get("models") or {})
+    original_models = config.get("models") or {}
+    models = {key: _normalize_model_id(value) for key, value in original_models.items()}
     if "llm" not in models and env_keys.get("OPENAI_API_KEY"):
-        models["llm"] = "gpt-5.5-mini"
-    if models == (config.get("models") or {}):
+        models["llm"] = OPENAI_DEFAULT_MODEL
+    if models == original_models:
         return config
     normalized = dict(config)
     normalized["models"] = models
@@ -537,7 +549,7 @@ def _child_main(
 
         if stage == "data":
             if config.get("enhance") or extra.get("enhance"):
-                summarizer = models_cfg.get("summarizer") or "gpt-4o"
+                summarizer = models_cfg.get("summarizer") or OPENAI_DEFAULT_MODEL
                 formatter = models_cfg.get("formatter") or "o3-mini"
                 plato.enhance_data_description(
                     summarizer_model=summarizer,

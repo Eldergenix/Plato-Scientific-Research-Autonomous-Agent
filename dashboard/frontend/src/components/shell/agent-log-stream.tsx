@@ -84,7 +84,7 @@ export function AgentLogStream({
   return (
     <div
       className={cn(
-        "hairline-t bg-(--color-bg-panel) flex flex-col transition-[height] duration-150",
+        "bg-(--color-bg-panel) flex flex-col transition-[height] duration-150",
         heightClass,
       )}
       role="region"

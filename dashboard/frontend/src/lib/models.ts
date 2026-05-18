@@ -68,7 +68,7 @@ export const MODELS: ModelDef[] = [
     temperature: 0.5,
     costInputPer1k: 0.0020,
     costOutputPer1k: 0.0080,
-    notes: "Recommended",
+    notes: "Legacy OpenAI",
   },
   {
     id: "gpt-4.1-mini",
@@ -123,14 +123,6 @@ export const MODELS: ModelDef[] = [
   {
     id: "gpt-5.5",
     label: "GPT-5.5",
-    provider: "openai",
-    maxOutputTokens: 128000,
-    temperature: null,
-    notes: "Availability depends on account",
-  },
-  {
-    id: "gpt-5.5-mini",
-    label: "GPT-5.5 mini",
     provider: "openai",
     maxOutputTokens: 128000,
     temperature: null,

@@ -27,7 +27,7 @@ def test_normalize_model_config_prefers_openai_when_google_is_present() -> None:
         {"OPENAI_API_KEY": "openai-key", "GOOGLE_API_KEY": "google-key"},
     )
 
-    assert normalized["models"]["llm"] == "gpt-5.5-mini"
+    assert normalized["models"]["llm"] == "gpt-5.5"
     assert config["models"] == {}
 
 
@@ -43,6 +43,21 @@ def test_normalize_model_config_preserves_explicit_llm() -> None:
 
     assert normalized is config
     assert normalized["models"]["llm"] == "gemini-2.5-flash"
+
+
+def test_normalize_model_config_rewrites_removed_gpt55_mini() -> None:
+    from plato_dashboard.worker import run_manager as rm
+
+    config = {"models": {"llm": "gpt-5.5-mini"}}
+
+    normalized = rm._normalize_model_config_for_keys(
+        config,
+        {"OPENAI_API_KEY": "openai-key"},
+    )
+
+    assert normalized is not config
+    assert normalized["models"]["llm"] == "gpt-5.5"
+    assert config["models"]["llm"] == "gpt-5.5-mini"
 
 
 def test_run_dir_uses_registry_override(
@@ -218,7 +233,7 @@ def test_project_run_lifecycle_updates_meta_from_artifact(tmp_path: Path) -> Non
         stage="idea",
         status="running",
         started_at=utcnow(),
-        config={"models": {"llm": "gpt-5.5-mini"}},
+        config={"models": {"llm": "gpt-5.5"}},
     )
 
     rm._set_project_run_started(run, project_dir)
@@ -236,7 +251,7 @@ def test_project_run_lifecycle_updates_meta_from_artifact(tmp_path: Path) -> Non
     assert finished.active_run is None
     assert finished.stages["idea"].status == "done"
     assert finished.stages["idea"].origin == "ai"
-    assert finished.stages["idea"].model == "gpt-5.5-mini"
+    assert finished.stages["idea"].model == "gpt-5.5"
 
 
 def test_project_run_success_without_artifact_becomes_failed(tmp_path: Path) -> None:

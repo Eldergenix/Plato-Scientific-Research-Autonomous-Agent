@@ -29,12 +29,12 @@ export interface ModelPickerProps {
 // Per-stage recommendations. Hand-tuned defaults that map cmbagent best-fit
 // models to each Plato stage.
 const RECOMMENDED_BY_STAGE: Record<NonNullable<ModelPickerProps["recommendedFor"]>, string> = {
-  idea: "gpt-4.1",
+  idea: "gpt-5.5",
   method: "claude-4.1-opus",
   results: "gpt-5",
-  paper: "gpt-4.1",
+  paper: "gpt-5.5",
   referee: "claude-4.1-opus",
-  literature: "gpt-5.5-mini",
+  literature: "gpt-5.5",
 };
 
 const PROVIDER_DOT: Record<Provider, string> = {
