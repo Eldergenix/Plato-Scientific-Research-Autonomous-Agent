@@ -395,7 +395,7 @@ export function TopBar({
         style={{ paddingTop: "2px", paddingBottom: "2px" }}
       >
         {/* Left: tab pills + flexible spacer */}
-        <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto py-1 -my-1">
           <TabPills
             tabs={tabs}
             activeId={filterTab}

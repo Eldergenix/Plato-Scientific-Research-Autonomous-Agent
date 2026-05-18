@@ -24,7 +24,7 @@ _PRICE_PER_M: dict[str, tuple[float, float]] = {
     "gpt-4.1":              (3.00, 12.00),
     "gpt-4.1-mini":         (0.40,  1.60),
     "gpt-5":                (5.00, 25.00),
-    "gpt-5.5-mini":         (0.00,  0.00),
+    "gpt-5.5":              (0.00,  0.00),
     "o3-mini":              (1.10,  4.40),
     "claude-sonnet-4-5":    (3.00, 15.00),
     "claude-4.1-opus":      (15.00, 75.00),

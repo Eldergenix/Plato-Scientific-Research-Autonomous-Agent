@@ -257,7 +257,7 @@ function SidePanel({
         Use cmbagent&rsquo;s preprocess_task to summarize and structure your data description.
       </p>
       <div className="mt-3 space-y-2">
-        <Field label="Summarizer model" value="gpt-5.5-mini" />
+        <Field label="Summarizer model" value="gpt-5.5" />
         <Field label="Formatter model" value="o3-mini" />
       </div>
       <Button

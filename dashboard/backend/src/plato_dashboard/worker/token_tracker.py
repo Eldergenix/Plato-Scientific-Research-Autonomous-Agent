@@ -38,7 +38,6 @@ MODEL_COSTS: dict[str, tuple[float, float]] = {
     "gpt-5": (0.0125, 0.050),
     "gpt-5-mini": (0.00025, 0.0020),
     "gpt-5.5": (0.0, 0.0),
-    "gpt-5.5-mini": (0.0, 0.0),
     "gpt-5.5-pro": (0.0, 0.0),
     # Anthropic
     "claude-3.7-sonnet": (0.003, 0.015),
@@ -118,7 +117,7 @@ def normalize_model_id(raw: Optional[str]) -> Optional[str]:
         "gpt-4-1-mini": "gpt-4.1-mini",
         "gpt-4-5": "gpt-4.5",
         "gpt-5-5": "gpt-5.5",
-        "gpt-5-5-mini": "gpt-5.5-mini",
+        "gpt-5-5-mini": "gpt-5.5",
         "gpt-5-5-pro": "gpt-5.5-pro",
         "claude-3-7-sonnet": "claude-3.7-sonnet",
         "claude-4-1-opus": "claude-4.1-opus",
