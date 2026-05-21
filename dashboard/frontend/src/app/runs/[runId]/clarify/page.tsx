@@ -20,7 +20,10 @@ type Loadable<T> =
   | { state: "error"; error: string };
 
 async function fetchOptional<T>(url: string): Promise<T | null> {
-  const resp = await fetch(url, { cache: "no-store" });
+  const resp = await fetch(url, {
+    cache: "no-store",
+    credentials: "include",
+  });
   if (resp.status === 404) return null;
   if (!resp.ok) {
     const body = await resp.json().catch(() => null);

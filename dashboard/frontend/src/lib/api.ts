@@ -7,9 +7,9 @@ import type {
   ResearchPublication,
   StageId,
 } from "./types";
+import { dashboardApiBase } from "./api-base";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
+const API_BASE = dashboardApiBase();
 
 // Discriminated union for SSE payloads emitted by the FastAPI event
 // bus (see plato_dashboard.events.bus). Consumers should switch on
@@ -147,6 +147,7 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     r = await fetch(`${API_BASE}${path}`, {
       ...init,
+      credentials: "include",
       headers,
     });
   } catch (e) {
@@ -1073,7 +1074,7 @@ export const api = {
     const connect = () => {
       if (stopped || finished) return;
       reconnectTimer = null;
-      es = new EventSource(url);
+      es = new EventSource(url, { withCredentials: true });
       es.onopen = () => {
         attempt = 0;
       };
@@ -1163,13 +1164,19 @@ export const api = {
     let pdfExists = false;
     let zipExists = false;
     try {
-      const head = await fetch(pdfUrl, { method: "HEAD" });
+      const head = await fetch(pdfUrl, {
+        method: "HEAD",
+        credentials: "include",
+      });
       pdfExists = head.ok;
     } catch {
       pdfExists = false;
     }
     try {
-      const head = await fetch(submissionZipUrl, { method: "HEAD" });
+      const head = await fetch(submissionZipUrl, {
+        method: "HEAD",
+        credentials: "include",
+      });
       zipExists = head.ok;
     } catch {
       zipExists = false;
@@ -1177,7 +1184,7 @@ export const api = {
 
     let sections: PaperSectionArtifact[] = [];
     try {
-      const r = await fetch(texUrl);
+      const r = await fetch(texUrl, { credentials: "include" });
       if (r.ok) {
         const tex = await r.text();
         sections = parseTexSections(tex);

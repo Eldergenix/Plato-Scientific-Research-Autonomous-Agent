@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import pytest
 
-from plato_dashboard.worker.token_tracker import clear_run_ledger
+from plato_dashboard.auth import AUTH_REQUIRED_ENV
+from plato_dashboard.domain.models import Run, utcnow
+from plato_dashboard.worker.token_tracker import clear_run_ledger, record_tokens_delta
 
 
 @pytest.fixture(autouse=True)
@@ -48,3 +50,67 @@ def test_run_usage_404_for_untracked_run(client) -> None:
     resp = client.get("/api/v1/runs/nonexistent/usage")
     assert resp.status_code == 404
     assert resp.json()["detail"]["code"] == "run_not_tracked"
+
+
+def test_run_usage_required_mode_allows_owner(
+    client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from plato_dashboard.worker import run_manager as rm
+
+    monkeypatch.setenv(AUTH_REQUIRED_ENV, "1")
+    pid = client.post(
+        "/api/v1/projects",
+        json={"name": "Usage owner"},
+        headers={"X-Plato-User": "alice"},
+    ).json()["id"]
+    run = Run(
+        id="run_usage_owner",
+        project_id=pid,
+        stage="idea",
+        status="running",
+        started_at=utcnow(),
+    )
+    rm._active_runs[run.id] = run
+    record_tokens_delta(run.id, "gpt-5", 1000, 250)
+    try:
+        resp = client.get(
+            f"/api/v1/runs/{run.id}/usage",
+            headers={"X-Plato-User": "alice"},
+        )
+    finally:
+        rm._active_runs.pop(run.id, None)
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["input_tokens"] == 1000
+
+
+def test_run_usage_required_mode_refuses_other_user(
+    client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from plato_dashboard.worker import run_manager as rm
+
+    monkeypatch.setenv(AUTH_REQUIRED_ENV, "1")
+    pid = client.post(
+        "/api/v1/projects",
+        json={"name": "Usage owner"},
+        headers={"X-Plato-User": "alice"},
+    ).json()["id"]
+    run = Run(
+        id="run_usage_cross_tenant",
+        project_id=pid,
+        stage="idea",
+        status="running",
+        started_at=utcnow(),
+    )
+    rm._active_runs[run.id] = run
+    record_tokens_delta(run.id, "gpt-5", 1000, 250)
+    try:
+        resp = client.get(
+            f"/api/v1/runs/{run.id}/usage",
+            headers={"X-Plato-User": "bob"},
+        )
+    finally:
+        rm._active_runs.pop(run.id, None)
+
+    assert resp.status_code == 403
+    assert resp.json()["detail"]["code"] == "project_forbidden"

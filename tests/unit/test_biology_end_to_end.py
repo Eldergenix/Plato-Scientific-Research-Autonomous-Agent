@@ -7,9 +7,9 @@ Mirrors the _FakePlato pattern from test_eval_runner.py, but:
 2. Drives the runner against the protein_structure_alphafold golden task
    with a fake Plato that records the resolved domain and writes a
    manifest carrying ``domain="biology"``.
-3. Confirms the fake retrieval call only sees the biology adapter set
-   (``pubmed`` / ``openalex`` / ``semantic_scholar``) — never astro
-   adapters like ``arxiv`` or ``ads``.
+3. Confirms the fake retrieval call only sees the biology adapter set,
+   including the no-key/free public sources — never astro-only adapters
+   like ``arxiv`` or ``ads``.
 """
 
 from __future__ import annotations
@@ -35,6 +35,28 @@ PROTEIN_TASK_PATH = GOLDEN_DIR / "protein_structure_alphafold.json"
 # Astro-only adapter names. If any of these leak into a biology run we
 # must fail loudly — that's a regression of the domain-routed retrieval.
 ASTRO_ONLY_ADAPTERS = {"arxiv", "ads"}
+
+ASTRO_RETRIEVAL_SOURCES = [
+    "arxiv",
+    "openalex",
+    "crossref",
+    "doaj",
+    "datacite",
+    "opencitations",
+    "ads",
+    "semantic_scholar",
+]
+
+BIOLOGY_RETRIEVAL_SOURCES = [
+    "pubmed",
+    "europe_pmc",
+    "openalex",
+    "crossref",
+    "doaj",
+    "datacite",
+    "opencitations",
+    "semantic_scholar",
+]
 
 
 class _FakeBiologyPlato:
@@ -115,7 +137,7 @@ def test_biology_domain_resolves_through_plato_init_path():
     """Constructing a Plato-shaped object with domain='biology' resolves the right profile."""
     plato = _FakeBiologyPlato(Path("/tmp/unused-for-init-check"), domain="biology")
     assert plato.domain.name == "biology"
-    assert plato.domain.retrieval_sources == ["pubmed", "openalex", "semantic_scholar"]
+    assert plato.domain.retrieval_sources == BIOLOGY_RETRIEVAL_SOURCES
     assert plato.domain.keyword_extractor == "mesh"
     assert plato.domain.novelty_corpus == "pubmed"
 
@@ -216,8 +238,7 @@ def test_eval_runner_biology_run_only_uses_biology_adapters(tmp_path: Path) -> N
 
     assert len(captured) == 1
     sources = set(captured[0].retrieval_sources_seen)
-    # The biology adapter set is exactly these three.
-    assert sources == {"pubmed", "openalex", "semantic_scholar"}
+    assert sources == set(BIOLOGY_RETRIEVAL_SOURCES)
     # And critically: no astro-only adapter ever got asked.
     leaked = sources & ASTRO_ONLY_ADAPTERS
     assert not leaked, f"biology run leaked into astro-only adapters: {leaked}"
@@ -245,8 +266,8 @@ def test_summary_json_includes_biology_task(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     "domain_name,expected_sources",
     [
-        ("astro", ["semantic_scholar", "arxiv", "openalex", "ads"]),
-        ("biology", ["pubmed", "openalex", "semantic_scholar"]),
+        ("astro", ASTRO_RETRIEVAL_SOURCES),
+        ("biology", BIOLOGY_RETRIEVAL_SOURCES),
     ],
 )
 def test_domain_specific_adapter_sets_are_disjoint_in_unique_sources(

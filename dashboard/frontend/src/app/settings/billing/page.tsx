@@ -9,15 +9,38 @@ import {
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Pill } from "@/components/ui/pill";
-import { isHostedBillingEnabled } from "@/lib/auth-mode";
+import {
+  clerkAuthConfigError,
+  hostedBillingConfigError,
+  isClerkAuthMisconfigured,
+  isHostedBillingEnabled,
+  isHostedBillingRequested,
+} from "@/lib/auth-mode";
 import { getHostedBillingSummary } from "@/lib/hosted-billing.server";
+
+export const dynamic = "force-dynamic";
+
+function parseEnvNumber(name: string, fallback: number): number {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+const TRIAL_PUBLICATION_LIMIT = parseEnvNumber(
+  "PLATO_HOSTED_TRIAL_PUBLICATIONS_PER_WEEK",
+  2,
+);
+const TRIAL_PUBLICATION_LABEL = `${TRIAL_PUBLICATION_LIMIT} ${
+  TRIAL_PUBLICATION_LIMIT === 1 ? "paper" : "papers"
+} / week`;
 
 const USER_PLANS = [
   {
     name: "Free BYOK",
     price: "$0",
     description: "Personal scientific workspace with your own provider keys.",
-    details: ["Bring your own keys", "2 publications per week", "No usage billing"],
+    details: ["Bring your own keys", TRIAL_PUBLICATION_LABEL, "No usage billing"],
   },
   {
     name: "Pro",
@@ -50,7 +73,34 @@ const LAB_PLANS = [
 
 export default async function BillingSettingsPage() {
   const hostedBilling = isHostedBillingEnabled();
-  const billingSummary = hostedBilling ? await getHostedBillingSummary() : null;
+  const hostedBillingRequested = isHostedBillingRequested();
+  const clerkAuthMisconfigured = isClerkAuthMisconfigured();
+  const billingConfigError = clerkAuthMisconfigured
+    ? clerkAuthConfigError()
+    : hostedBillingConfigError();
+  let billingSummary = null;
+  let billingError: string | null = null;
+  if (hostedBilling) {
+    try {
+      billingSummary = await getHostedBillingSummary();
+    } catch (error) {
+      billingError =
+        error instanceof Error ? error.message : "Hosted billing summary failed to load";
+    }
+  }
+  const billingWarnings = [
+    ...(billingSummary?.diagnostics ?? []).map((item) =>
+      item.status == null
+        ? `${item.source}: ${item.message}`
+        : `${item.source}: API ${item.status} ${item.message}`,
+    ),
+    ...(billingError ? [billingError] : []),
+  ];
+  const trialPublicationLabel = billingSummary
+    ? `${billingSummary.trialPublicationLimit} ${
+        billingSummary.trialPublicationLimit === 1 ? "paper" : "papers"
+      } / week`
+    : TRIAL_PUBLICATION_LABEL;
 
   return (
     <div className="min-h-screen bg-(--color-bg-page) px-6 py-8">
@@ -59,8 +109,12 @@ export default async function BillingSettingsPage() {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <div className="mb-2 flex items-center gap-2">
-                <Pill tone={hostedBilling ? "green" : "neutral"}>
-                  {hostedBilling ? "hosted" : "self-hosted"}
+                <Pill tone={hostedBilling ? "green" : billingConfigError ? "amber" : "neutral"}>
+                  {hostedBilling
+                    ? "hosted"
+                    : billingConfigError
+                      ? "hosted config error"
+                      : "self-hosted"}
                 </Pill>
                 <Pill tone="neutral">Labs</Pill>
                 {billingSummary ? (
@@ -70,8 +124,15 @@ export default async function BillingSettingsPage() {
                 ) : null}
                 {billingSummary ? (
                   <Pill tone={billingSummary.providerMode === "byok" ? "indigo" : "green"}>
-                    {billingSummary.providerMode === "byok" ? "byok" : "hosted usage"}
+                    {billingSummary.providerMode === "unknown"
+                      ? "usage unknown"
+                      : billingSummary.providerMode === "byok"
+                        ? "byok"
+                        : "hosted usage"}
                   </Pill>
+                ) : null}
+                {billingWarnings.length > 0 ? (
+                  <Pill tone="amber">billing warning</Pill>
                 ) : null}
               </div>
               <h1 className="text-[20px] font-[510] tracking-[-0.3px] text-(--color-text-primary-strong)">
@@ -117,10 +178,42 @@ export default async function BillingSettingsPage() {
           />
           <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
             <Metric label="Trial" value="1 month free" />
-            <Metric label="Strict cap" value="2 papers / week" />
+            <Metric label="Strict cap" value={trialPublicationLabel} />
             <Metric label="Tenant scope" value="User or active Lab" />
           </div>
         </section>
+
+        {billingConfigError ? (
+          <section
+            className="surface-linear-card border-(--color-status-amber)/40 bg-(--color-status-amber)/10 p-5"
+            data-testid="billing-auth-config-error"
+          >
+            <SectionTitle
+              title="Hosted billing is misconfigured"
+              subtitle="Hosted billing, sign-in, and Lab subscription controls are unavailable until Clerk auth and billing are configured together."
+            />
+            <p className="mt-3 font-mono text-[11px] text-(--color-text-tertiary-spec)">
+              {billingConfigError}
+            </p>
+          </section>
+        ) : null}
+
+        {billingWarnings.length > 0 ? (
+          <section
+            className="surface-linear-card border-(--color-status-amber)/40 bg-(--color-status-amber)/10 p-5"
+            data-testid="hosted-billing-warning"
+          >
+            <SectionTitle
+              title="Billing data needs attention"
+              subtitle="The page is still usable, but production billing totals may be incomplete until these upstream reads recover."
+            />
+            <ul className="mt-3 space-y-1 text-[12px] text-(--color-text-primary)">
+              {billingWarnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
 
         {billingSummary ? (
           <section className="surface-linear-card p-5" data-testid="hosted-billing-summary">
@@ -160,7 +253,7 @@ export default async function BillingSettingsPage() {
               />
               <Metric
                 label="Trial guard"
-                value={`${billingSummary.trialPublicationLimit} papers / week`}
+                value={trialPublicationLabel}
               />
             </div>
             {billingSummary.organization ? (
@@ -256,7 +349,7 @@ export default async function BillingSettingsPage() {
               </div>
             </section>
           </>
-        ) : (
+        ) : hostedBillingRequested || clerkAuthMisconfigured ? null : (
           <section className="surface-linear-card p-5">
             <SectionTitle
               title="Hosted billing disabled"

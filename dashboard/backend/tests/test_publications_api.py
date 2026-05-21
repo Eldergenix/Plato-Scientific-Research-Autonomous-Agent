@@ -162,6 +162,60 @@ def test_publication_social_actions_and_rss(client, tmp_project_root: Path) -> N
     assert " GMT</pubDate>" in rss.text
 
 
+def test_publication_rss_rejects_spoofed_forwarded_metadata(
+    client,
+    tmp_project_root: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("PLATO_PUBLIC_ORIGIN", raising=False)
+    pid = _create_project_with_paper(client, tmp_project_root)
+    created = client.post(
+        f"/api/v1/projects/{pid}/publications",
+        json={"title": "Safe RSS paper"},
+        headers={"X-Plato-User": "alice"},
+    )
+    assert created.status_code == 201, created.text
+
+    rss = client.get(
+        "/api/v1/publications/rss.xml",
+        headers={
+            "x-forwarded-host": "evil.example/path",
+            "x-forwarded-proto": "javascript",
+        },
+    )
+
+    assert rss.status_code == 200
+    assert "evil.example" not in rss.text
+    assert "javascript://" not in rss.text
+
+
+def test_publication_rss_uses_configured_public_origin(
+    client,
+    tmp_project_root: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("PLATO_PUBLIC_ORIGIN", "https://discovering.app/")
+    pid = _create_project_with_paper(client, tmp_project_root)
+    created = client.post(
+        f"/api/v1/projects/{pid}/publications",
+        json={"title": "Configured origin RSS paper"},
+        headers={"X-Plato-User": "alice"},
+    )
+    assert created.status_code == 201, created.text
+
+    rss = client.get(
+        "/api/v1/publications/rss.xml",
+        headers={
+            "x-forwarded-host": "evil.example",
+            "x-forwarded-proto": "http",
+        },
+    )
+
+    assert rss.status_code == 200
+    assert "<link>https://discovering.app/papers</link>" in rss.text
+    assert "evil.example" not in rss.text
+
+
 def test_publish_rejects_projects_without_pdf_artifact(client) -> None:
     created = client.post(
         "/api/v1/projects",

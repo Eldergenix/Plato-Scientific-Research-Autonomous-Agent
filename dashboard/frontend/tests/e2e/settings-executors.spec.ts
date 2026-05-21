@@ -1,5 +1,7 @@
 import { test, expect, type Page } from "./fixtures";
 
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3201";
+
 /**
  * /settings/executors renders four executor entries fetched from
  * /api/v1/executors and lets the user pick one as default via
@@ -55,6 +57,7 @@ async function mockExecutorApis(page: Page) {
   await page.route(
     "**/api/v1/user/executor_preferences",
     async (route) => {
+      expect(route.request().headers()["cookie"]).toContain("plato_user=alice");
       if (route.request().method() === "GET") {
         await route.fulfill({
           status: 200,
@@ -79,6 +82,15 @@ async function mockExecutorApis(page: Page) {
 test.describe("/settings/executors", () => {
   test("renders four executors and shows the default card", async ({ page }) => {
     await mockExecutorApis(page);
+    await page.context().addCookies([
+      {
+        name: "plato_user",
+        value: "alice",
+        url: BASE_URL,
+        httpOnly: true,
+        sameSite: "Lax",
+      },
+    ]);
     await page.goto("/settings/executors");
 
     await expect(
@@ -132,6 +144,7 @@ test.describe("/settings/executors", () => {
     await page.route(
       "**/api/v1/user/executor_preferences",
       async (route) => {
+        expect(route.request().headers()["cookie"]).toContain("plato_user=alice");
         if (route.request().method() === "GET") {
           await route.fulfill({
             status: 200,
@@ -147,6 +160,15 @@ test.describe("/settings/executors", () => {
         });
       },
     );
+    await page.context().addCookies([
+      {
+        name: "plato_user",
+        value: "alice",
+        url: BASE_URL,
+        httpOnly: true,
+        sameSite: "Lax",
+      },
+    ]);
     await page.goto("/settings/executors");
 
     const card = page.getByTestId("executor-card");

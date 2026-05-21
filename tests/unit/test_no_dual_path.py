@@ -14,7 +14,7 @@ def plato_instance(tmp_path):
     from plato import Plato
 
     p = Plato(project_dir=str(tmp_path))
-    p.set_data_description("test description")
+    p.set_data_description("No dataset has been uploaded yet.\n\nUse a test fixture.")
     p.set_idea("test idea")
     return p
 

@@ -333,10 +333,9 @@ export default function ProjectsPage() {
 
   const handleDelete = React.useCallback(
     async (projectId: string) => {
-      // Optimistic remove + rollback on api failure. Backend ProjectStore
-      // tenant-checks before rm-rf'ing the dir, so a 403 here means the
-      // user doesn't own the project and the row should reappear.
       const before = projects ?? [];
+      const project = before.find((item) => item.id === projectId);
+      setError(null);
       setProjects((prev) =>
         prev ? prev.filter((p) => p.id !== projectId) : prev,
       );
@@ -344,8 +343,8 @@ export default function ProjectsPage() {
         await api.deleteProject(projectId);
       } catch (e: unknown) {
         setProjects(before);
-        // We surface this in the page-level error pill rather than a
-        // toast because the project card itself just disappeared.
+        const reason = e instanceof Error ? e.message : "Delete request failed";
+        setError(`Could not delete ${project?.name ?? projectId}: ${reason}`);
         console.error("deleteProject failed", e);
       }
     },

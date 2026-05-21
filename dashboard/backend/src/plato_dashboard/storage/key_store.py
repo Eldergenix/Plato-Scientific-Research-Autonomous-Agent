@@ -1,6 +1,9 @@
-"""Per-installation API key store.
+"""Encrypted dashboard API key store.
 
-- Lives at ``~/.plato/keys.json`` (mode 0600).
+- Single-user deployments use ``~/.plato/keys.json`` (mode 0600).
+- Multi-tenant deployments store in-app keys under
+  ``<project_root>/users/<tenant_id>/keys.json`` so personal and Lab
+  workspaces do not share provider credentials.
 - Encrypted at rest with a Fernet key derived from a machine-local salt
   stored alongside the file. This is *obfuscation*, not strong protection;
   on a single-user desktop it's enough to keep keys out of accidental git
@@ -72,6 +75,30 @@ def _derive_key(salt: bytes) -> bytes:
     return base64.urlsafe_b64encode(kdf.derive(seed))
 
 
+def key_store_path_for_user(
+    project_root: Path,
+    fallback_keys_path: Path,
+    user_id: str | None,
+) -> Path:
+    if user_id:
+        return project_root / "users" / user_id / "keys.json"
+    return fallback_keys_path
+
+
+def key_store_path_for_project_dir(
+    project_root: Path,
+    fallback_keys_path: Path,
+    project_dir: Path,
+) -> Path:
+    try:
+        relative = project_dir.resolve().relative_to((project_root / "users").resolve())
+    except ValueError:
+        return fallback_keys_path
+    if not relative.parts:
+        return fallback_keys_path
+    return key_store_path_for_user(project_root, fallback_keys_path, relative.parts[0])
+
+
 class KeyStore:
     def __init__(self, path: Path):
         self.path = path
@@ -79,6 +106,7 @@ class KeyStore:
 
     def _fernet(self) -> Fernet:
         if not self.salt_path.exists():
+            self.salt_path.parent.mkdir(parents=True, exist_ok=True)
             # Atomic salt creation via O_CREAT|O_EXCL: two concurrent
             # callers can't both decide to write a fresh salt and have
             # the second overwrite the first. If two processes race,
@@ -108,6 +136,7 @@ class KeyStore:
 
     def save(self, payload: KeysPayload) -> None:
         # Merge: never overwrite a previously-stored key with None.
+        self.path.parent.mkdir(parents=True, exist_ok=True)
         existing = self.load()
         merged = existing.model_copy(update={k: v for k, v in payload.model_dump().items() if v is not None})
         encrypted = self._fernet().encrypt(merged.model_dump_json().encode())

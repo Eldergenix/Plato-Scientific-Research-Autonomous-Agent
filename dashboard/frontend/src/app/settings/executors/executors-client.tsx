@@ -21,9 +21,9 @@ import {
   type ExecutorInfo,
 } from "@/components/executors/executor-selector";
 import { ExecutorCard } from "@/components/executors/executor-card";
+import { dashboardApiBase } from "@/lib/api-base";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
+const API_BASE = dashboardApiBase();
 
 interface ExecutorListResponse {
   executors: ExecutorInfo[];
@@ -42,6 +42,7 @@ type FetchState =
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const resp = await fetch(`${API_BASE}${path}`, {
     ...init,
+    credentials: "include",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",

@@ -16,11 +16,17 @@ from ..auth import USER_COOKIE, USER_HEADER, extract_user_id
 from ..domain.models import Project
 from ..settings import Settings, get_settings
 from ..storage.project_store import ProjectStore
-from ..storage.publication_store import PublicationStore, resolve_publications_database_url
+from ..storage.publication_store import (
+    PublicationStore,
+    resolve_publications_database_url,
+)
 
 router = APIRouter()
 
 _TAG_RE = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
+_HOST_RE = re.compile(
+    r"\A(?:localhost|\[[0-9a-fA-F:.]+\]|[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?)(?::[0-9]{1,5})?\Z"
+)
 _STORE_LOCK = Lock()
 _PUBLICATION_STORES: dict[tuple[Path, str], PublicationStore] = {}
 
@@ -129,7 +135,9 @@ def _project_store_for_actor(settings: Settings, actor: str) -> ProjectStore:
     return ProjectStore(settings.project_root / "users" / actor, user_id=actor)
 
 
-def _load_owned_project(settings: Settings, actor: str, pid: str) -> tuple[Project, Path]:
+def _load_owned_project(
+    settings: Settings, actor: str, pid: str
+) -> tuple[Project, Path]:
     stores = [
         _project_store_for_actor(settings, actor),
         ProjectStore(settings.project_root),
@@ -153,7 +161,9 @@ def _authors_from_project(project: Project) -> list[dict[str, Any]]:
             "affiliation": author.affiliation,
             "role": author.role,
         }
-        for author in sorted(project.publication_settings.authors, key=lambda item: item.order)
+        for author in sorted(
+            project.publication_settings.authors, key=lambda item: item.order
+        )
         if author.name.strip()
     ]
 
@@ -190,15 +200,47 @@ def _rss_pub_date(value: datetime) -> str:
     return format_datetime(dt.astimezone(timezone.utc), usegmt=True)
 
 
-def _public_base_url(request: Request) -> str:
-    forwarded_host = (request.headers.get("x-forwarded-host") or "").split(",", 1)[0].strip()
-    if not forwarded_host:
-        return str(request.base_url).rstrip("/")
-    forwarded_proto = (request.headers.get("x-forwarded-proto") or request.url.scheme).split(
-        ",",
-        1,
-    )[0].strip()
-    return f"{forwarded_proto}://{forwarded_host}".rstrip("/")
+def _first_header_value(value: str | None) -> str | None:
+    first = (value or "").split(",", 1)[0].strip()
+    return first or None
+
+
+def _safe_host(value: str | None) -> str | None:
+    if value is None or not _HOST_RE.match(value):
+        return None
+    port = value.rsplit(":", 1)[1] if ":" in value and not value.endswith("]") else None
+    if port and port.isdigit() and int(port) > 65535:
+        return None
+    return value
+
+
+def _safe_proto(value: str | None) -> str | None:
+    proto = (value or "").strip().rstrip(":").lower()
+    return proto if proto in {"http", "https"} else None
+
+
+def _configured_public_origin(settings: Settings) -> str | None:
+    raw = (settings.public_origin or "").strip()
+    if not raw:
+        return None
+    from urllib.parse import urlparse
+
+    parsed = urlparse(raw)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+    return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
+
+
+def _public_base_url(request: Request, settings: Settings) -> str:
+    configured = _configured_public_origin(settings)
+    if configured:
+        return configured
+
+    forwarded_host = _safe_host(_first_header_value(request.headers.get("x-forwarded-host")))
+    host = forwarded_host or _safe_host(request.url.netloc) or "localhost"
+    forwarded_proto = _safe_proto(_first_header_value(request.headers.get("x-forwarded-proto")))
+    proto = forwarded_proto or _safe_proto(request.url.scheme) or ("http" if "localhost" in host else "https")
+    return f"{proto}://{host}".rstrip("/")
 
 
 @router.get("/publications", response_model=PublicationFeed)
@@ -210,26 +252,31 @@ def list_publications(
     store: PublicationStore = Depends(_publication_store),
 ) -> PublicationFeed:
     safe_limit = min(max(limit, 1), 100)
-    return PublicationFeed(
-        publications=store.list_publications(
+    publications = [
+        Publication.model_validate(item)
+        for item in store.list_publications(
             tag=tag,
             q=q,
             author=author,
             limit=safe_limit,
         )
-    )
+    ]
+    return PublicationFeed(publications=publications)
 
 
 @router.get("/publications/rss.xml")
 def rss_feed(
     request: Request,
     store: PublicationStore = Depends(_publication_store),
+    settings: Settings = Depends(get_settings),
 ) -> Response:
-    base_url = _public_base_url(request)
+    base_url = _public_base_url(request, settings)
     items = []
     for publication in store.list_publications(limit=100):
         link = f"{base_url}/papers?publication={publication['id']}"
-        authors = ", ".join(author["name"] for author in publication["authors"] if author.get("name"))
+        authors = ", ".join(
+            author["name"] for author in publication["authors"] if author.get("name")
+        )
         description = publication["description"]
         if authors:
             description = f"{description}\n\nAuthors: {authors}"
@@ -273,7 +320,9 @@ def get_publication(
         raise HTTPException(404, detail={"code": "publication_not_found"}) from exc
 
 
-@router.post("/projects/{pid}/publications", response_model=Publication, status_code=201)
+@router.post(
+    "/projects/{pid}/publications", response_model=Publication, status_code=201
+)
 def publish_project_paper(
     pid: str,
     body: PublishPublicationRequest,
@@ -312,7 +361,11 @@ def publish_project_paper(
     )
 
 
-@router.post("/publications/{publication_id}/comments", response_model=PublicationComment, status_code=201)
+@router.post(
+    "/publications/{publication_id}/comments",
+    response_model=PublicationComment,
+    status_code=201,
+)
 def add_comment(
     publication_id: str,
     body: PublicationCommentRequest,
@@ -360,7 +413,9 @@ def unlike_publication(
         raise HTTPException(404, detail={"code": "publication_not_found"}) from exc
 
 
-@router.post("/publications/{publication_id}/shares", response_model=Publication, status_code=201)
+@router.post(
+    "/publications/{publication_id}/shares", response_model=Publication, status_code=201
+)
 def share_publication(
     publication_id: str,
     body: PublicationShareRequest,

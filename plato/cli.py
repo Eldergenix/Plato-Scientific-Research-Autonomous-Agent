@@ -170,7 +170,10 @@ def _run_app(args) -> None:
     try:
         from plato_app.cli import run
     except ImportError:
-        print("❌ PlatoApp not installed. Install with: pip install plato-app")
+        print(
+            "❌ PlatoApp not installed. Clone and install "
+            "https://github.com/AstroPilot-AI/PlatoApp, then run this command again."
+        )
         sys.exit(1)
 
     run()
@@ -246,7 +249,7 @@ def _run_loop(args) -> None:
     def _plato_factory():
         # Lazy import: failing here is non-fatal — caller may pass a custom
         # factory in programmatic use.
-        from plato import Plato  # noqa: WPS433 — intentional inline import
+        from plato import Plato
 
         # Iter-21: the loop CLI now threads the user's --domain pick into
         # the Plato constructor and stashes --executor on the instance so

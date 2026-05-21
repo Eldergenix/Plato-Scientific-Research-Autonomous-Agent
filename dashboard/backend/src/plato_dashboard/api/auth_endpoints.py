@@ -6,25 +6,9 @@ These endpoints give the frontend a place to (a) tell the server "this is
 the user id I want to use", (b) clear that choice on logout, and (c) ask
 "who am I?" on page load.
 
-The cookie (``plato_user``) is the source of truth on the server. The
-header (``X-Plato-User``) remains supported so external integrations and
-the existing ``extract_user_id`` helper in ``plato_dashboard.auth`` keep
-working unchanged.
-
-Integration note: the eventual ``plato_dashboard.auth`` module is expected
-to expose two helpers we read here lazily:
-
-* ``extract_user_id(request)`` — pulls the user id from the header.
-  ``extract_user_id`` should be extended to also read the cookie; until
-  that's done, the dashboard sends the header explicitly via fetch's
-  ``credentials: 'include'`` in same-origin requests, which makes the
-  cookie available to any handler that imports it directly.
-* ``auth_required()`` — boolean: is the server configured to require
-  auth? We fall back to ``Settings.is_auth_required`` when the helper
-  is not yet present.
-
-The lazy import means this file does not blow up at import time on a
-worktree where ``auth.py`` has not landed yet.
+The canonical ``plato_dashboard.auth.extract_user_id`` helper owns the
+header/cookie precedence and optional trusted-proxy guard so ``/auth/me``
+cannot drift from the rest of the backend.
 """
 
 from __future__ import annotations
@@ -34,7 +18,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
-from ..auth import USER_COOKIE, _is_safe_user_id
+from ..auth import USER_COOKIE, _is_safe_user_id, auth_required, extract_user_id
 from ..settings import get_settings
 
 router = APIRouter()
@@ -44,38 +28,15 @@ router = APIRouter()
 _COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30
 
 
-def _read_user_id(request: Request) -> str | None:
-    """Resolve the active user id from header or cookie, in that order.
-
-    Header beats cookie so external callers (CI, scripts, the existing
-    ``extract_user_id`` helper) can override the browser session without
-    having to clear the cookie first.
-    """
-    header = request.headers.get("X-Plato-User")
-    if header and header.strip():
-        return header.strip()
-    cookie = request.cookies.get(USER_COOKIE)
-    if cookie and cookie.strip():
-        return cookie.strip()
-    return None
-
-
 def _auth_required() -> bool:
-    """Whether the server is configured to require auth.
+    """Whether the server is configured to require auth."""
+    return auth_required() or get_settings().is_auth_required
 
-    Prefer the canonical helper from ``plato_dashboard.auth`` if it has
-    landed; fall back to ``Settings.is_auth_required`` so this module
-    works on a fresh worktree.
-    """
-    try:
-        from .. import auth
 
-        helper = getattr(auth, "auth_required", None)
-        if callable(helper):
-            return bool(helper())
-    except Exception:
-        pass
-    return get_settings().is_auth_required
+def _request_is_https(request: Request) -> bool:
+    forwarded_proto = (request.headers.get("x-forwarded-proto") or "").split(",", 1)[0]
+    proto = forwarded_proto.strip().lower() or request.url.scheme
+    return proto == "https"
 
 
 class LoginRequest(BaseModel):
@@ -90,7 +51,7 @@ class LoginRequest(BaseModel):
 
 
 @router.post("/auth/login")
-def login(response: Response, body: LoginRequest) -> dict[str, Any]:
+def login(request: Request, response: Response, body: LoginRequest) -> dict[str, Any]:
     """Set the ``plato_user`` cookie and echo the chosen user id back."""
     user_id = body.user_id.strip() if isinstance(body.user_id, str) else ""
     if not user_id or not _is_safe_user_id(user_id):
@@ -107,6 +68,7 @@ def login(response: Response, body: LoginRequest) -> dict[str, Any]:
         max_age=_COOKIE_MAX_AGE_SECONDS,
         httponly=True,
         samesite="lax",
+        secure=_request_is_https(request),
         # No domain — scope to the current host. Avoids accidentally
         # leaking the cookie to a sibling subdomain in shared deploys.
         path="/",
@@ -115,9 +77,13 @@ def login(response: Response, body: LoginRequest) -> dict[str, Any]:
 
 
 @router.post("/auth/logout")
-def logout(response: Response) -> dict[str, Any]:
+def logout(request: Request, response: Response) -> dict[str, Any]:
     """Clear the ``plato_user`` cookie."""
-    response.delete_cookie(key=USER_COOKIE, path="/")
+    response.delete_cookie(
+        key=USER_COOKIE,
+        path="/",
+        secure=_request_is_https(request),
+    )
     return {"ok": True}
 
 
@@ -125,6 +91,6 @@ def logout(response: Response) -> dict[str, Any]:
 def me(request: Request) -> dict[str, Any]:
     """Resolve the current user id (header or cookie) and the auth flag."""
     return {
-        "user_id": _read_user_id(request),
+        "user_id": extract_user_id(request),
         "auth_required": _auth_required(),
     }

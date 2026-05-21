@@ -121,8 +121,8 @@ export const MODELS: ModelDef[] = [
     notes: "Cheap · long output",
   },
   {
-    id: "gpt-5.5",
-    label: "GPT-5.5",
+    id: "gpt-5.5-2026-04-23",
+    label: "GPT-5.5 2026-04-23",
     provider: "openai",
     maxOutputTokens: 128000,
     temperature: null,

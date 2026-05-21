@@ -1,5 +1,7 @@
 import { test, expect, type Route } from "./fixtures";
 
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3201";
+
 const PROJECT_ID = "feed-project";
 const PDF_URL = `/api/v1/projects/${PROJECT_ID}/files/paper/main.pdf`;
 
@@ -98,7 +100,10 @@ test.describe("papers publication feed", () => {
     let currentPublication = publication();
 
     await page.route("**/api/v1/projects", (route) => json(route, [project()]));
-    await page.route(`**/api/v1/projects/${PROJECT_ID}/plots`, (route) => json(route, []));
+    await page.route(`**/api/v1/projects/${PROJECT_ID}/plots`, (route) => {
+      expect(route.request().headers()["cookie"]).toContain("plato_user=alice");
+      return json(route, []);
+    });
     await page.route(`**/api/v1/projects/${PROJECT_ID}/runs`, (route) => json(route, []));
     await page.route(`**/api/v1/projects/${PROJECT_ID}/files/paper/main.pdf`, (route) =>
       route.fulfill({ status: 200, contentType: "application/pdf", body: "%PDF-1.5\n" }),
@@ -151,6 +156,15 @@ test.describe("papers publication feed", () => {
       await json(route, currentPublication);
     });
 
+    await page.context().addCookies([
+      {
+        name: "plato_user",
+        value: "alice",
+        url: BASE_URL,
+        httpOnly: true,
+        sameSite: "Lax",
+      },
+    ]);
     await page.goto("/papers");
 
     await expect(page.getByTestId("publication-feed")).toBeVisible();

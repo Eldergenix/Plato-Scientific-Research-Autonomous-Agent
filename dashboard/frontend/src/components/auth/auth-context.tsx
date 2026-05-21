@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { dashboardApiBase } from "@/lib/api-base";
 
 /**
  * Auth context for the dashboard's tenant-id login flow.
@@ -17,8 +18,7 @@ import { usePathname, useRouter } from "next/navigation";
  * stays isolated; tests can render under the provider directly.
  */
 
-const AUTH_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
+const AUTH_BASE = dashboardApiBase();
 
 const STORAGE_KEY = "plato:user_id";
 

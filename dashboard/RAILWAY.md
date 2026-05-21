@@ -74,6 +74,63 @@ that up automatically when you point a service at this repo.
 
    Do **not** set `PORT` yourself — Railway injects it.
 
+   For the hosted SaaS/Lab deployment, add this Clerk and proxy contract
+   before deploying a build that has `NEXT_PUBLIC_PLATO_AUTH_PROVIDER=clerk`.
+   The dashboard intentionally fails closed when Clerk auth is requested but
+   these values are missing or invalid.
+
+   | Variable | Required? | Notes |
+   |---|---|---|
+   | `NEXT_PUBLIC_PLATO_AUTH_PROVIDER` | required for hosted SaaS | set to `clerk` |
+   | `PLATO_AUTH_PROVIDER` | required for hosted SaaS | set to `clerk` |
+   | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | required for hosted SaaS | Clerk publishable key for this domain |
+   | `CLERK_SECRET_KEY` | required for hosted SaaS | Clerk secret key for server-side auth |
+   | `PLATO_BACKEND_PROXY_SECRET` | required for hosted SaaS | 32+ random characters shared by Next.js and FastAPI; protects private tenant headers |
+   | `PLATO_PUBLIC_ORIGIN` | required for production readiness | canonical HTTPS app origin, for example `https://discovering.app` |
+   | `NEXT_PUBLIC_CLERK_PROXY_URL` | required for production readiness | usually `${PLATO_PUBLIC_ORIGIN}/__clerk` |
+   | `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | recommended | `/sign-in` |
+   | `NEXT_PUBLIC_CLERK_SIGN_UP_URL` | recommended | `/sign-up` |
+   | `NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL` | recommended | `/` |
+   | `NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL` | recommended | `/` |
+   | `NEXT_PUBLIC_PLATO_HOSTED_BILLING` | required for Clerk Billing UI | set to `enabled` only after Clerk Billing is configured |
+   | `PLATO_HOSTED_TRIAL_PUBLICATIONS_PER_WEEK` | optional | defaults to `2` |
+   | `PLATO_HOSTED_USER_PRO_FEE_CENTS` | optional | defaults to `1499` |
+   | `PLATO_HOSTED_USER_RESEARCHER_FEE_CENTS` | optional | defaults to `9999` |
+   | `PLATO_HOSTED_LAB_BASE_FEE_CENTS` | optional | defaults to `9900` |
+   | `PLATO_HOSTED_LAB_SEAT_FEE_CENTS` | optional | defaults to `0` |
+
+   Use `railway variables --skip-deploys --set ...` when adding missing
+   hosted variables during a release-prep pass; then trigger a single
+   deployment after the variable set is complete.
+
+   Before deploying hosted SaaS/Lab mode, run the local source gates and
+   redacted strict preflight from the repo root:
+
+   ```bash
+   bash dashboard/scripts/check-local-production-gates.sh
+   bash dashboard/scripts/check-hosted-saas-preflight.sh --railway --service plato --environment production --hosted-required --strict
+   ```
+
+   Strict preflight treats warnings as release blockers so hosted production
+   cannot ship with missing canonical-origin or billing-readiness flags.
+
+   After a deployment, run the read-only production readiness check. It
+   repeats the hosted preflight, probes the public health/auth boundary, and
+   scans the latest Railway build/deploy logs for warning and error markers:
+
+   ```bash
+   bash dashboard/scripts/check-production-readiness.sh --service plato --environment production --origin https://discovering.app
+   ```
+
+   If the Railway CLI variable endpoint is unavailable during verification,
+   provide a local JSON or KV variables snapshot with `--variables-file`. The
+   readiness script still redacts secret values and reports only key
+   presence/length:
+
+   ```bash
+   bash dashboard/scripts/check-production-readiness.sh --service plato --environment production --origin https://discovering.app --variables-file /path/to/railway-variables.json
+   ```
+
 4. **Generate a public domain** (Service → **Settings** → **Networking** →
    **Generate Domain**). Open the URL. The first request after a cold
    start can take ~10s while the Python process imports the world.
@@ -98,10 +155,28 @@ railway variables --service plato --set 'PLATO_REDIS_URL=${{Redis.REDIS_URL}}'
 railway variables --service plato --set 'PLATO_USE_FAKEREDIS=false'
 railway variables --service plato --set ANTHROPIC_API_KEY=sk-ant-...
 
+# hosted SaaS/Lab variables, if this service uses Clerk
+railway variables --service plato --skip-deploys --set 'NEXT_PUBLIC_PLATO_AUTH_PROVIDER=clerk'
+railway variables --service plato --skip-deploys --set 'PLATO_AUTH_PROVIDER=clerk'
+railway variables --service plato --skip-deploys --set 'NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_...'
+railway variables --service plato --skip-deploys --set 'CLERK_SECRET_KEY=sk_...'
+railway variables --service plato --skip-deploys --set 'PLATO_BACKEND_PROXY_SECRET=<32+ random chars>'
+railway variables --service plato --skip-deploys --set 'PLATO_PUBLIC_ORIGIN=https://discovering.app'
+railway variables --service plato --skip-deploys --set 'NEXT_PUBLIC_CLERK_PROXY_URL=https://discovering.app/__clerk'
+railway variables --service plato --skip-deploys --set 'NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in'
+railway variables --service plato --skip-deploys --set 'NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up'
+railway variables --service plato --skip-deploys --set 'NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=/'
+railway variables --service plato --skip-deploys --set 'NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=/'
+railway variables --service plato --skip-deploys --set 'NEXT_PUBLIC_PLATO_HOSTED_BILLING=enabled'
+
+bash dashboard/scripts/check-local-production-gates.sh
+bash dashboard/scripts/check-hosted-saas-preflight.sh --railway --service plato --environment production --hosted-required --strict
+
 # every deploy after that
 railway up              # builds + deploys from current branch
 railway domain          # creates and prints the public URL
-railway logs            # tail
+bash dashboard/scripts/check-production-readiness.sh --service plato --environment production --origin https://discovering.app
+# If Railway variable reads fail, use --variables-file /path/to/railway-variables.json
 ```
 
 `railway up` from the repo root will pick up `railway.json`
@@ -155,6 +230,7 @@ limits comfortably.
 | Build times out at ~10 min | First build is slow; cmbagent compile | Re-run; subsequent builds use the layer cache |
 | `Healthcheck failed: /api/v1/health` after green build | App still booting (LangChain imports) | Bump `healthcheckTimeout` in `railway.json` to `600` |
 | `502 Bad Gateway` on first request | Cold start or Next waiting for FastAPI | Wait ~10s, refresh; then check `railway logs` if it persists |
+| `{"message":"Application not found"}` on dashboard routes | Public domain is not attached to the `plato` service, or the service has no active deployment | Reconnect the domain to the `plato` service, confirm the active production deployment, or redeploy from the repo root with `railway up` |
 | `Error: spawn npm ENOENT` during boot | Runtime pruned TypeScript while `next.config.ts` still needs it | Keep the built frontend `node_modules` from the builder stage; do not run `npm prune --omit=dev` unless the config is compiled or converted |
 | `"No models configured"` in the UI | Forgot to set provider keys | Set `ANTHROPIC_API_KEY` (or another) in Variables → Redeploy |
 | Demo mode banner won't go away | `PLATO_DEMO_MODE=enabled` is the default | Set `PLATO_DEMO_MODE=disabled` **only if you've also enabled `PLATO_AUTH`** |

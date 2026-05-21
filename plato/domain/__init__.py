@@ -75,7 +75,16 @@ def list_domains() -> list[str]:
 register_domain(
     DomainProfile(
         name="astro",
-        retrieval_sources=["semantic_scholar", "arxiv", "openalex", "ads"],
+        retrieval_sources=[
+            "arxiv",
+            "openalex",
+            "crossref",
+            "doaj",
+            "datacite",
+            "opencitations",
+            "ads",
+            "semantic_scholar",
+        ],
         keyword_extractor="cmbagent",
         journal_presets=[
             "NONE",
@@ -100,7 +109,16 @@ register_domain(
 register_domain(
     DomainProfile(
         name="biology",
-        retrieval_sources=["pubmed", "openalex", "semantic_scholar"],
+        retrieval_sources=[
+            "pubmed",
+            "europe_pmc",
+            "openalex",
+            "crossref",
+            "doaj",
+            "datacite",
+            "opencitations",
+            "semantic_scholar",
+        ],
         keyword_extractor="mesh",
         journal_presets=[
             "NATURE",
