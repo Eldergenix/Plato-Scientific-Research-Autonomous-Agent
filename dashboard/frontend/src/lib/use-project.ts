@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { api, setActiveRunId } from "./api";
+import { dashboardApiBase } from "./api-base";
 import type { RunEvent, RunEventCodeExecute, RunStatus, StageRunBody } from "./api";
 import type { LogLine, Project, Stage, StageId } from "./types";
 
@@ -128,6 +129,7 @@ const NODE_EVENTS_MAX = 500;
 // runs; older cells fall off the front when exceeded.
 const CODE_EVENTS_MAX = 200;
 const SELECTED_PROJECT_STORAGE_KEY = "plato:selected-project-id";
+const API_BASE = dashboardApiBase();
 
 export function persistSelectedProjectId(projectId: string | null): void {
   if (typeof window === "undefined") return;
@@ -241,7 +243,8 @@ export function useProject(): ProjectState {
     if (!projectIdRef.current) return;
     try {
       const r = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1"}/projects/${projectIdRef.current}/plots`,
+        `${API_BASE}/projects/${projectIdRef.current}/plots`,
+        { credentials: "include" },
       );
       if (!r.ok) return;
       const list = (await r.json()) as PlotEntry[];
@@ -469,7 +472,8 @@ export function useProject(): ProjectState {
         // Initial plots fetch.
         try {
           const plotsRes = await fetch(
-            `${process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1"}/projects/${active.id}/plots`,
+            `${API_BASE}/projects/${active.id}/plots`,
+            { credentials: "include" },
           );
           if (plotsRes.ok) {
             const list = (await plotsRes.json()) as PlotEntry[];

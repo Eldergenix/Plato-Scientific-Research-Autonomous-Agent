@@ -82,7 +82,13 @@ Generate a literature-first scientific research idea that can be evaluated with 
 
 
 class ProjectStore:
-    def __init__(self, root: Path, *, user_id: str | None = None):
+    def __init__(
+        self,
+        root: Path,
+        *,
+        user_id: str | None = None,
+        allow_legacy_unbound: bool = True,
+    ):
         # Per-user tenant binding (iter-31): when ``user_id`` is set, every
         # read/write that touches a Project's meta verifies the project's
         # ``user_id`` matches. Routers already enforce this via
@@ -94,6 +100,7 @@ class ProjectStore:
         # tests) construct without ``user_id`` and the check is skipped.
         self.root = root
         self.user_id = user_id
+        self.allow_legacy_unbound = allow_legacy_unbound
         root.mkdir(parents=True, exist_ok=True)
 
     def _check_tenant(self, project: "Project") -> None:
@@ -107,9 +114,12 @@ class ProjectStore:
         if self.user_id is None:
             return
         if project.user_id is None:
-            # Legacy un-bound project. Permit if the store is also un-bound;
-            # otherwise treat as cross-tenant and 404.
-            return
+            # Legacy un-bound project. Required multi-tenant deployments cannot
+            # prove ownership, so bound stores fail closed unless explicitly
+            # configured for legacy compatibility.
+            if self.allow_legacy_unbound:
+                return
+            raise FileNotFoundError(project.id)
         if project.user_id != self.user_id:
             raise FileNotFoundError(project.id)
 

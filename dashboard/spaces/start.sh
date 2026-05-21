@@ -28,7 +28,7 @@ uvicorn plato_dashboard.api.server:app \
     --host 0.0.0.0 \
     --port "${BACKEND_PORT}" \
     --proxy-headers \
-    --forwarded-allow-ips='*' &
+    --forwarded-allow-ips='*' 2>&1 &
 api_pid="$!"
 
 cleanup() {
@@ -37,7 +37,7 @@ cleanup() {
 trap cleanup INT TERM EXIT
 
 for i in $(seq 1 60); do
-    if curl -fsS "http://127.0.0.1:${BACKEND_PORT}/api/v1/health" >/dev/null; then
+    if curl -fsS "http://127.0.0.1:${BACKEND_PORT}/api/v1/health" >/dev/null 2>&1; then
         break
     fi
     if [[ "${i}" == "60" ]]; then

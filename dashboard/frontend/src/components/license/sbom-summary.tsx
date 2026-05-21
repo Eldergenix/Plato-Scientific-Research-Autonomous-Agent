@@ -3,9 +3,9 @@
 import * as React from "react";
 import { Download, FileJson } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { dashboardApiBase } from "@/lib/api-base";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
+const API_BASE = dashboardApiBase();
 
 export interface SbomSummaryData {
   /** CycloneDX spec version, e.g. "1.5". */
@@ -30,6 +30,7 @@ export function summarizeSbom(doc: unknown): SbomSummaryData {
 
 async function fetchSbom(): Promise<{ doc: unknown; raw: string }> {
   const r = await fetch(`${API_BASE}/sbom`, {
+    credentials: "include",
     headers: { Accept: "application/json" },
   });
   if (!r.ok) {

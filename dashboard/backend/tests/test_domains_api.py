@@ -56,10 +56,14 @@ def test_astro_payload_matches_registered_profile() -> None:
     astro = next(d for d in body["domains"] if d["name"] == "astro")
 
     assert astro["retrieval_sources"] == [
-        "semantic_scholar",
         "arxiv",
         "openalex",
+        "crossref",
+        "doaj",
+        "datacite",
+        "opencitations",
         "ads",
+        "semantic_scholar",
     ]
     assert astro["keyword_extractor"] == "cmbagent"
     assert astro["executor"] == "cmbagent"
@@ -73,7 +77,16 @@ def test_biology_payload_matches_registered_profile() -> None:
     body = _client().get("/api/v1/domains").json()
     bio = next(d for d in body["domains"] if d["name"] == "biology")
 
-    assert bio["retrieval_sources"] == ["pubmed", "openalex", "semantic_scholar"]
+    assert bio["retrieval_sources"] == [
+        "pubmed",
+        "europe_pmc",
+        "openalex",
+        "crossref",
+        "doaj",
+        "datacite",
+        "opencitations",
+        "semantic_scholar",
+    ]
     assert bio["keyword_extractor"] == "mesh"
     assert bio["novelty_corpus"] == "pubmed"
     assert "NATURE" in bio["journal_presets"]

@@ -10,7 +10,10 @@ from plato.plato import Plato
 def test_semantic_scholar_literature_uses_async_graph_invocation(tmp_path, monkeypatch):
     input_dir = tmp_path / INPUT_FILES
     input_dir.mkdir()
-    (input_dir / DESCRIPTION_FILE).write_text("Synthetic classification benchmark", encoding="utf-8")
+    (input_dir / DESCRIPTION_FILE).write_text(
+        "No dataset has been uploaded yet.\n\nSynthetic classification benchmark",
+        encoding="utf-8",
+    )
     (input_dir / IDEA_FILE).write_text("Compare logistic regression and random forest.", encoding="utf-8")
 
     called = {}

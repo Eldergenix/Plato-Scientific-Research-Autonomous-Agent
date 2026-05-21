@@ -58,6 +58,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_ROOT_USER_ACTION=ignore \
     PLATO_HOST=0.0.0.0 \
     PLATO_PORT=7878 \
     PLATO_BACKEND_PORT=7878 \
@@ -68,7 +69,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 # <<< Keep the LaTeX stack aligned with dashboard/Dockerfile. Production
 # Railway uses this image too, and paper-stage execution requires xelatex.
-RUN apt-get update && \
+# The python slim base excludes man pages; TeX/xz update-alternatives expects
+# them, so restore docs before apt install to keep production builds quiet.
+RUN rm -f /etc/dpkg/dpkg.cfg.d/docker && \
+    apt-get update && \
     apt-get install -y --no-install-recommends \
         tini \
         ca-certificates \
@@ -94,12 +98,12 @@ WORKDIR /app
 # <<< Install parent Plato.
 COPY pyproject.toml README.md /app/
 COPY plato/ /app/plato/
-RUN pip install -e .
+RUN pip install -q -e .
 
 # <<< Install dashboard backend.
 COPY dashboard/backend/pyproject.toml /app/dashboard/backend/
 COPY dashboard/backend/src/ /app/dashboard/backend/src/
-RUN pip install -e /app/dashboard/backend
+RUN pip install -q -e /app/dashboard/backend
 
 # <<< Pull the Next.js production build. The public process is Next; the
 # FastAPI gateway runs on an internal localhost port and handles /api/v1.

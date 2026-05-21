@@ -74,7 +74,7 @@ test.describe("navigation", () => {
     await page.goto("/models");
 
     const ideaModel = page.getByLabel("Idea model");
-    await expect(ideaModel).toHaveValue("gpt-5.5");
+    await expect(ideaModel).toHaveValue("gpt-5.5-2026-04-23");
 
     await ideaModel.fill("openai/custom-research-model");
     await ideaModel.blur();

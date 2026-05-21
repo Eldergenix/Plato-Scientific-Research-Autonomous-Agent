@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 
-const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3001";
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3201";
 const SPLINE_VIEWER_SRC =
   "https://unpkg.com/@splinetool/viewer@1.12.94/build/spline-viewer.js";
 const SPLINE_SCENE_URL =

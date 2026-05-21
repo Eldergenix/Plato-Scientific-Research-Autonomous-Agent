@@ -1,7 +1,8 @@
 "use client";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
+import { dashboardApiBase } from "@/lib/api-base";
+
+const API_BASE = dashboardApiBase();
 
 export type LoopStatusValue = "running" | "stopped" | "interrupted" | "error";
 

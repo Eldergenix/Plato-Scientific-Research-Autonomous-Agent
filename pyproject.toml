@@ -20,7 +20,7 @@ dependencies = [
   "langchain-openai>=0.3.12,<1.0",
   "langgraph>=0.3.25,<1.1",
   "langgraph-checkpoint-sqlite>=2.0.0",
-  "aiosqlite>=0.20",
+  "aiosqlite>=0.22,<0.23",
   "sqlalchemy>=2.0",
   "httpx>=0.27",
   "google-cloud-aiplatform",
@@ -28,14 +28,21 @@ dependencies = [
   "flatbuffers>=24.12.23",
   "filelock>=3.17.0",
   "cmbagent>=0.0.1post63",
-  "mistralai>=1.0,<2.0",
+  "cmbagent-autogen>=0.0.91.post11,<0.0.92",
+  "mistralai>=1.12.4,<1.13",
   "pymupdf",
   "pillow",
   "jsonschema",
   "jupyter-client>=8.6",
   "ipykernel>=6.29",
   "defusedxml>=0.7.1",
-  "futurehouse-client",
+  "futurehouse-client>=0.7.1,<0.8",
+  "ldp>=0.46.0,<0.47",
+  "fhlmi>=0.43.1,<0.44",
+  "certifi>=2026.4.22,<2027",
+  "requests>=2.34.2,<3",
+  "urllib3>=2.7,<3",
+  "uuid-utils>=0.16,<0.17",
   "json5",
   "pip",
 ]
@@ -49,7 +56,10 @@ Repository = "https://github.com/AstroPilot-AI/Plato"
 plato = "plato.cli:main"
 
 [project.optional-dependencies]
-app = ["plato_app>=1.0.0"]
+# Compatibility extra for older install docs. The legacy Streamlit GUI lives
+# in AstroPilot-AI/PlatoApp and is not published on PyPI, so this extra must
+# stay resolver-safe for uv/pip installs of the main package.
+app = []
 obs = ["langfuse>=2.0"]
 postgres = [
   "langgraph-checkpoint-postgres>=2.0.0",
@@ -151,6 +161,7 @@ addopts = [
 filterwarnings = [
   "error::DeprecationWarning:pydantic.*",
   "ignore::DeprecationWarning:botocore.*",
+  "ignore:The default value of `allowed_objects` will change:langchain_core._api.deprecation.LangChainPendingDeprecationWarning:langgraph.cache.base",
 ]
 markers = [
   "slow: marks tests that take >5 seconds (deselect with -m 'not slow')",

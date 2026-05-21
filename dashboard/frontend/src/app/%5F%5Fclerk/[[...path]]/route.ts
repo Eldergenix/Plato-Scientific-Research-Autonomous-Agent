@@ -1,8 +1,16 @@
 import { NextResponse } from "next/server";
+import {
+  clerkAuthConfigError,
+  isClerkAuthEnabled,
+  isClerkAuthMisconfigured,
+} from "@/lib/auth-mode";
+import { publicOrigin } from "@/lib/public-origin";
 import type { NextRequest } from "next/server";
 
 const CLERK_PROXY_PREFIX = "/__clerk";
 const CLERK_FRONTEND_API = "https://frontend-api.clerk.dev";
+const CLERK_AUTH_ENABLED = isClerkAuthEnabled();
+const CLERK_AUTH_MISCONFIGURED = isClerkAuthMisconfigured();
 
 const FORWARDED_REQUEST_HEADERS = [
   "accept",
@@ -30,18 +38,6 @@ const STRIPPED_RESPONSE_HEADERS = new Set([
   "content-length",
   "transfer-encoding",
 ]);
-
-function publicOrigin(request: NextRequest): string {
-  const host =
-    request.headers.get("x-forwarded-host") ??
-    request.headers.get("host") ??
-    request.nextUrl.host;
-  const proto =
-    request.headers.get("x-forwarded-proto") ??
-    (host.includes("localhost") ? "http" : "https");
-
-  return `${proto}://${host}`;
-}
 
 function forwardedHeaders(request: NextRequest): Headers {
   const headers = new Headers();
@@ -91,6 +87,27 @@ function responseHeaders(response: Response, proxyOrigin: string): Headers {
 }
 
 async function proxyClerk(request: NextRequest): Promise<Response> {
+  if (CLERK_AUTH_MISCONFIGURED) {
+    return NextResponse.json(
+      {
+        code: "clerk_auth_misconfigured",
+        message: "Hosted Clerk auth is requested but Clerk keys are missing or invalid.",
+        detail: clerkAuthConfigError(),
+      },
+      { status: 503 },
+    );
+  }
+
+  if (!CLERK_AUTH_ENABLED) {
+    return NextResponse.json(
+      {
+        code: "clerk_proxy_disabled",
+        message: "Hosted Clerk authentication is not enabled for this deployment.",
+      },
+      { status: 404 },
+    );
+  }
+
   const targetPath = request.nextUrl.pathname.slice(CLERK_PROXY_PREFIX.length) || "/";
   const targetUrl = new URL(`${CLERK_FRONTEND_API}${targetPath}`);
   targetUrl.search = request.nextUrl.search;

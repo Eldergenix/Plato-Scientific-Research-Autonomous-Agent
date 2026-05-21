@@ -5,7 +5,12 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "typecheck": "next typegen && tsc --noEmit --incremental false",
+    "test:e2e": "env -u FORCE_COLOR -u NO_COLOR playwright test",
+    "video:studio": "remotion studio remotion/index.tsx",
+    "video:still": "remotion still remotion/index.tsx PlatoProductHuntDemo out/plato-product-hunt-frame.png --frame=360 --scale=0.5",
+    "video:render": "remotion render remotion/index.tsx PlatoProductHuntDemo out/plato-product-hunt-demo.mp4 --codec=h264 --pixel-format=yuv420p"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.3.1",
@@ -30,11 +35,18 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
+    "@remotion/cli": "^4.0.462",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "remotion": "^4.0.462",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "overrides": {
+    "@remotion/renderer": {
+      "source-map": "0.7.4"
+    }
   }
 }

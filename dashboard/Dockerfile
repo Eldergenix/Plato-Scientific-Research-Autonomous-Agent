@@ -68,6 +68,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_ROOT_USER_ACTION=ignore \
     PLATO_HOST=0.0.0.0 \
     PLATO_PORT=7879 \
     PLATO_BACKEND_PORT=7879
@@ -78,7 +79,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # tini is PID 1 for signal handling; redis-server is optional (used only
 # when PLATO_USE_FAKEREDIS is disabled); build-essential + git are needed
 # by cmbagent's C extensions during pip install.
-RUN apt-get update && \
+# The python slim base excludes man pages; TeX/xz update-alternatives expects
+# them, so restore docs before apt install to keep production builds quiet.
+RUN rm -f /etc/dpkg/dpkg.cfg.d/docker && \
+    apt-get update && \
     apt-get install -y --no-install-recommends \
         tini \
         ca-certificates \
@@ -102,12 +106,12 @@ WORKDIR /app
 # layer warm even when only application code changes.
 COPY pyproject.toml README.md /app/
 COPY plato/ /app/plato/
-RUN pip install -e .
+RUN pip install -q -e .
 
 # <<< Install the dashboard backend (editable so log/event paths resolve).
 COPY dashboard/backend/pyproject.toml /app/dashboard/backend/
 COPY dashboard/backend/src/ /app/dashboard/backend/src/
-RUN pip install -e /app/dashboard/backend
+RUN pip install -q -e /app/dashboard/backend
 
 # <<< Pull the Next.js production build out of stage 1.
 COPY --from=frontend-builder /build/package.json /app/dashboard/frontend/package.json
@@ -128,6 +132,13 @@ BACKEND_PORT="${PLATO_BACKEND_PORT:-7879}"
 export PLATO_PORT="${BACKEND_PORT}"
 export PLATO_API_PROXY_TARGET="${PLATO_API_PROXY_TARGET:-http://127.0.0.1:${BACKEND_PORT}}"
 
+LANGGRAPH_ALLOWED_OBJECTS_WARNING='ignore:The default value of `allowed_objects` will change in a future version:Warning'
+if [[ -n "${PYTHONWARNINGS:-}" ]]; then
+    export PYTHONWARNINGS="${PYTHONWARNINGS},${LANGGRAPH_ALLOWED_OBJECTS_WARNING}"
+else
+    export PYTHONWARNINGS="${LANGGRAPH_ALLOWED_OBJECTS_WARNING}"
+fi
+
 # Only spin up the bundled Redis when explicitly requested and no external
 # Redis URL was provided. Production Railway deploys should set
 # PLATO_REDIS_URL to the Redis service's private URL instead.
@@ -141,7 +152,7 @@ uvicorn plato_dashboard.api.server:app \
     --host 0.0.0.0 \
     --port "${BACKEND_PORT}" \
     --proxy-headers \
-    --forwarded-allow-ips='*' &
+    --forwarded-allow-ips='*' 2>&1 &
 api_pid="$!"
 
 cleanup() {
@@ -150,7 +161,7 @@ cleanup() {
 trap cleanup INT TERM EXIT
 
 for i in $(seq 1 60); do
-    if curl -fsS "http://127.0.0.1:${BACKEND_PORT}/api/v1/health" >/dev/null; then
+    if curl -fsS "http://127.0.0.1:${BACKEND_PORT}/api/v1/health" >/dev/null 2>&1; then
         break
     fi
     if [[ "${i}" == "60" ]]; then

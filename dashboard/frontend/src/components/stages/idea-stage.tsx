@@ -344,9 +344,9 @@ function IdeaSidePanel({
   const [iterations, setIterations] = React.useState(4);
   const [maker, setMaker] = React.useState("gpt-5");
   const [hater, setHater] = React.useState("o3-mini");
-  const [planner, setPlanner] = React.useState("gpt-5.5");
+  const [planner, setPlanner] = React.useState("gpt-5.5-2026-04-23");
   const [reviewer, setReviewer] = React.useState("o3-mini");
-  const [orchestration, setOrchestration] = React.useState("gpt-5.5");
+  const [orchestration, setOrchestration] = React.useState("gpt-5.5-2026-04-23");
   const [formatter, setFormatter] = React.useState("o3-mini");
   const [submitting, setSubmitting] = React.useState(false);
   const [submitError, setSubmitError] = React.useState<string | null>(null);

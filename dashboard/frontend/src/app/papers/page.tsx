@@ -33,6 +33,7 @@ import { TabPills } from "@/components/shell/tab-pills";
 import Folder from "@/components/ui/folder";
 import { Button } from "@/components/ui/button";
 import { api, type PaperArtifacts, type RunRecord } from "@/lib/api";
+import { dashboardApiBase } from "@/lib/api-base";
 import type {
   Project,
   PublicationFeedAuthor,
@@ -46,7 +47,7 @@ import type {
 } from "@/lib/types";
 import { cn, formatRelativeTime } from "@/lib/utils";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
+const API_BASE = dashboardApiBase();
 
 type FilterId = "all" | "papers" | "data" | "research" | "experiments" | "references";
 type ArtifactKind = Exclude<FilterId, "all">;
@@ -199,6 +200,7 @@ function normalizePublicationSettings(settings: PublicationSettings): Publicatio
 
 async function fetchPlots(projectId: string): Promise<PlotRecord[]> {
   const response = await fetch(`${API_BASE}/projects/${projectId}/plots`, {
+    credentials: "include",
     headers: { Accept: "application/json" },
     cache: "no-store",
   });
@@ -208,6 +210,7 @@ async function fetchPlots(projectId: string): Promise<PlotRecord[]> {
 
 async function fetchCitationGraph(runId: string): Promise<CitationGraphPayload | null> {
   const response = await fetch(`${API_BASE}/runs/${runId}/citation_graph`, {
+    credentials: "include",
     headers: { Accept: "application/json" },
     cache: "no-store",
   });

@@ -5,7 +5,12 @@ import { AuthProvider } from "@/components/auth/auth-context";
 import { AuthModeProvider } from "@/components/auth/auth-mode-provider";
 import { ErrorBoundary } from "@/components/shell/error-boundary";
 import { ThemeProvider } from "@/components/shell/theme-provider";
-import { isClerkAuthEnabled } from "@/lib/auth-mode";
+import {
+  clerkAuthConfigError,
+  isClerkAuthEnabled,
+  isClerkAuthMisconfigured,
+  isClerkProviderAvailable,
+} from "@/lib/auth-mode";
 import "./globals.css";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -35,6 +40,8 @@ export const metadata: Metadata = {
   },
 };
 
+export const dynamic = "force-dynamic";
+
 // Inline pre-hydration script that mirrors ThemeProvider's resolution logic.
 // Static literal (no user input) — safe injection. Keep in sync with
 // src/components/shell/theme-provider.tsx so the class matches what React
@@ -48,8 +55,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   const clerkAuthEnabled = isClerkAuthEnabled();
+  const clerkAuthMisconfigured = isClerkAuthMisconfigured();
+  const clerkProviderAvailable = isClerkProviderAvailable();
   const app = (
-    <AuthModeProvider clerkAuthEnabled={clerkAuthEnabled}>
+    <AuthModeProvider
+      clerkAuthEnabled={clerkAuthEnabled}
+      clerkAuthMisconfigured={clerkAuthMisconfigured}
+      clerkAuthError={clerkAuthConfigError()}
+    >
       <ThemeProvider>
         <AuthProvider>
           <ErrorBoundary>{children}</ErrorBoundary>
@@ -75,7 +88,7 @@ export default function RootLayout({
         >
           Skip to main content
         </a>
-        {clerkAuthEnabled ? (
+        {clerkProviderAvailable ? (
           <ClerkProvider proxyUrl={clerkProxyUrl}>{app}</ClerkProvider>
         ) : (
           app

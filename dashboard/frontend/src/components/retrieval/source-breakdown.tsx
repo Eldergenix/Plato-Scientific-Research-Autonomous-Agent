@@ -26,7 +26,7 @@ export interface RetrievalSummaryPayload {
 
 /**
  * Adapter colour map. Sticks to the seven ``--color-status-*`` vars that
- * exist in globals.css. R4 currently has six adapters; if a new one
+ * exist in globals.css. If a new adapter
  * lands without a colour we fall back to the neutral border.
  */
 const ADAPTER_COLOR: Record<string, string> = {
@@ -35,6 +35,10 @@ const ADAPTER_COLOR: Record<string, string> = {
   crossref: "var(--color-status-purple)",
   ads: "var(--color-status-teal)",
   pubmed: "var(--color-status-green-spec)",
+  europe_pmc: "var(--color-status-blue)",
+  datacite: "var(--color-status-orange)",
+  doaj: "var(--color-status-green-spec)",
+  opencitations: "var(--color-status-teal)",
   semantic_scholar: "var(--color-status-amber-spec)",
 };
 
@@ -44,6 +48,10 @@ const ADAPTER_LABEL: Record<string, string> = {
   crossref: "Crossref",
   ads: "ADS",
   pubmed: "PubMed",
+  europe_pmc: "Europe PMC",
+  datacite: "DataCite",
+  doaj: "DOAJ",
+  opencitations: "OpenCitations",
   semantic_scholar: "Semantic Scholar",
 };
 
@@ -64,6 +72,12 @@ function sourceUrl(id: string): string | null {
   const trimmed = id.trim();
   if (!trimmed) return null;
   if (/^10\.\d{4,9}\//.test(trimmed)) return `https://doi.org/${trimmed}`;
+  const doi = trimmed.match(/10\.\d{4,9}\/[-._;()/:A-Z0-9]+/i)?.[0];
+  if (doi) return `https://doi.org/${doi}`;
+  const epmcPmc = trimmed.match(/^europe_pmc:PMC:(PMC\d+)$/i)?.[1];
+  if (epmcPmc) return `https://europepmc.org/articles/${epmcPmc}`;
+  const epmcMed = trimmed.match(/^europe_pmc:MED:(\d+)$/i)?.[1];
+  if (epmcMed) return `https://europepmc.org/article/MED/${epmcMed}`;
   if (/^arxiv:/i.test(trimmed)) {
     return `https://arxiv.org/abs/${trimmed.slice(6)}`;
   }

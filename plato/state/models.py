@@ -28,6 +28,10 @@ RetrievedVia = Literal[
     "ads",
     "crossref",
     "pubmed",
+    "europe_pmc",
+    "datacite",
+    "doaj",
+    "opencitations",
 ]
 """Adapter that produced a ``Source``. Extend the literal as new adapters land."""
 

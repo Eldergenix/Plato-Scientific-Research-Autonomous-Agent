@@ -2,9 +2,10 @@
 
 import * as React from "react";
 import { AlertCircle, CheckCircle2, Loader2, RefreshCw } from "lucide-react";
+import { dashboardApiBase } from "@/lib/api-base";
 import { cn } from "@/lib/utils";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
+const API_BASE = dashboardApiBase();
 
 type CapabilityDecision =
   | "integrate_core"
@@ -54,6 +55,7 @@ type LoadState =
 
 async function fetchReport(): Promise<ScientificCapabilityReport> {
   const response = await fetch(`${API_BASE}/scientific-capabilities`, {
+    credentials: "include",
     headers: { Accept: "application/json" },
     cache: "no-store",
   });

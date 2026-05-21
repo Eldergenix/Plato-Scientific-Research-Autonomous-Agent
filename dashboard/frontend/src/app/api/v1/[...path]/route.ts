@@ -1,34 +1,41 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
 import { homedir } from "node:os";
 import { auth, clerkClient } from "@clerk/nextjs/server";
+import {
+  clerkAuthConfigError,
+  isClerkAuthEnabled,
+  isClerkAuthMisconfigured,
+  platoTenantHeadersForClerkSession,
+  platoTenantIdForClerkSession,
+} from "@/lib/auth-mode";
+import {
+  createPublicationSlotReserver,
+  isPublicationProducingRequest,
+  parseEnvNumber,
+} from "@/lib/hosted-trial-quota";
+import { publicHost, publicProto } from "@/lib/public-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const API_PROXY_TARGET =
   process.env.PLATO_API_PROXY_TARGET?.trim() || "http://127.0.0.1:7878";
-const CLERK_AUTH_ENABLED =
-  (process.env.PLATO_AUTH_PROVIDER === "clerk" ||
-    process.env.NEXT_PUBLIC_PLATO_AUTH_PROVIDER === "clerk") &&
-  Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) &&
-  Boolean(process.env.CLERK_SECRET_KEY);
-const TRIAL_PUBLICATION_LIMIT = Number(
-  process.env.PLATO_HOSTED_TRIAL_PUBLICATIONS_PER_WEEK ?? "2",
-);
+const BACKEND_PROXY_SECRET = process.env.PLATO_BACKEND_PROXY_SECRET?.trim() || "";
+const CLERK_AUTH_ENABLED = isClerkAuthEnabled();
+const CLERK_AUTH_MISCONFIGURED = isClerkAuthMisconfigured();
 const USAGE_LEDGER_PATH =
   process.env.PLATO_HOSTED_USAGE_LEDGER_PATH ||
   `${homedir()}/.plato/hosted-usage/weekly-publications.json`;
+const TENANT_COOKIE = "plato_user";
+const TENANT_ID_RE = /^[A-Za-z0-9._-]{1,64}$/;
 
 type RouteContext = {
   params: Promise<{ path?: string[] }>;
 };
 
-type PublicationLedger = Record<
-  string,
-  Record<string, { publications: number; updatedAt: string }>
->;
-let ledgerWriteQueue = Promise.resolve();
+type TenantContext = {
+  tenant: string | null;
+  headers: Headers | null;
+};
 
 const FORWARDED_REQUEST_HEADERS = new Set([
   "accept",
@@ -36,9 +43,6 @@ const FORWARDED_REQUEST_HEADERS = new Set([
   "content-type",
   "cookie",
   "x-plato-run-id",
-  "x-plato-user",
-  "x-plato-auth-provider",
-  "x-plato-lab-id",
 ]);
 
 const RESPONSE_HEADER_BLOCKLIST = new Set([
@@ -49,9 +53,42 @@ const RESPONSE_HEADER_BLOCKLIST = new Set([
   "transfer-encoding",
 ]);
 
-function tenantFromHeaders(request: Request): string | null {
-  const value = request.headers.get("X-Plato-User")?.trim();
-  return value && /^[A-Za-z0-9._-]{1,64}$/.test(value) ? value : null;
+const TRIAL_PUBLICATION_LIMIT = parseEnvNumber(
+  "PLATO_HOSTED_TRIAL_PUBLICATIONS_PER_WEEK",
+  2,
+);
+
+function tenantFromCookie(request: Request): string | null {
+  const cookie = request.headers.get("cookie");
+  if (!cookie) return null;
+  for (const part of cookie.split(";")) {
+    const [rawName, ...rawValue] = part.trim().split("=");
+    if (rawName !== TENANT_COOKIE || rawValue.length === 0) continue;
+    const value = decodeURIComponent(rawValue.join("=")).trim();
+    return TENANT_ID_RE.test(value) ? value : null;
+  }
+  return null;
+}
+
+async function tenantContextForRequest(request: Request): Promise<TenantContext> {
+  if (CLERK_AUTH_ENABLED) {
+    const session = await auth();
+    return {
+      tenant: platoTenantIdForClerkSession(session),
+      headers: platoTenantHeadersForClerkSession(session),
+    };
+  }
+  if (CLERK_AUTH_MISCONFIGURED) {
+    return { tenant: null, headers: null };
+  }
+
+  const tenant = tenantFromCookie(request);
+  const headers = new Headers();
+  if (tenant) {
+    headers.set("X-Plato-User", tenant);
+    headers.set("X-Plato-Auth-Provider", "plato-cookie");
+  }
+  return { tenant, headers };
 }
 
 function targetUrl(path: string[], request: Request): string {
@@ -61,54 +98,39 @@ function targetUrl(path: string[], request: Request): string {
   return target.toString();
 }
 
-function isPublicationRun(path: string[], request: Request): boolean {
-  return (
-    request.method === "POST" &&
-    path.length === 5 &&
-    path[0] === "projects" &&
-    path[2] === "stages" &&
-    path[3] === "paper" &&
-    path[4] === "run"
-  );
-}
-
 function isPublicApiRequest(path: string[], request: Request): boolean {
   if (path.length === 1 && ["health", "capabilities"].includes(path[0])) {
     return true;
   }
+  if (path[0] === "auth" && path.length === 2 && path[1] === "me") {
+    return true;
+  }
   if (
+    !CLERK_AUTH_ENABLED &&
+    !CLERK_AUTH_MISCONFIGURED &&
     path[0] === "auth" &&
     path.length === 2 &&
-    ["me", "login", "logout"].includes(path[1] ?? "")
+    ["login", "logout"].includes(path[1] ?? "")
   ) {
     return true;
   }
   if (!["GET", "HEAD"].includes(request.method)) {
     return false;
   }
-  return path[0] === "publications";
+  return (
+    (path.length === 1 && path[0] === "publications") ||
+    (path.length === 2 && path[0] === "publications" && path[1] === "rss.xml") ||
+    (path.length === 2 && path[0] === "publications")
+  );
 }
 
-function weekKey(date = new Date()): string {
-  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  const day = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - day);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  const week = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
-  return `${d.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
-}
-
-async function readLedger(): Promise<PublicationLedger> {
-  try {
-    return JSON.parse(await readFile(USAGE_LEDGER_PATH, "utf8")) as PublicationLedger;
-  } catch {
-    return {};
-  }
-}
-
-async function writeLedger(ledger: PublicationLedger): Promise<void> {
-  await mkdir(dirname(USAGE_LEDGER_PATH), { recursive: true });
-  await writeFile(USAGE_LEDGER_PATH, JSON.stringify(ledger, null, 2), "utf8");
+function isLocalAuthMutation(path: string[], request: Request): boolean {
+  return (
+    request.method === "POST" &&
+    path[0] === "auth" &&
+    path.length === 2 &&
+    ["login", "logout"].includes(path[1] ?? "")
+  );
 }
 
 async function shouldApplyTrialLimit(): Promise<boolean> {
@@ -135,58 +157,35 @@ async function shouldApplyTrialLimit(): Promise<boolean> {
   }
 }
 
-async function reservePublicationSlot(tenant: string): Promise<Response | null> {
-  if (!Number.isFinite(TRIAL_PUBLICATION_LIMIT) || TRIAL_PUBLICATION_LIMIT <= 0) {
-    return null;
-  }
-  if (!(await shouldApplyTrialLimit())) return null;
-  const key = weekKey();
-  const writeTask = ledgerWriteQueue.then(async () => {
-    const ledger = await readLedger();
-    ledger[tenant] ??= {};
-    const current = ledger[tenant][key]?.publications ?? 0;
-    if (current >= TRIAL_PUBLICATION_LIMIT) {
-      return Response.json(
-        {
-          code: "trial_publication_limit_exceeded",
-          message: `This trial/free billing scope is limited to ${TRIAL_PUBLICATION_LIMIT} scientific publications per week.`,
-          week: key,
-          used: current,
-          limit: TRIAL_PUBLICATION_LIMIT,
-        },
-        { status: 402 },
-      );
-    }
-    ledger[tenant][key] = {
-      publications: current + 1,
-      updatedAt: new Date().toISOString(),
-    };
-    await writeLedger(ledger);
-    return null;
-  });
-  ledgerWriteQueue = writeTask.then(
-    () => undefined,
-    () => undefined,
-  );
-  return await writeTask;
-}
+const reservePublicationSlot = createPublicationSlotReserver({
+  ledgerPath: USAGE_LEDGER_PATH,
+  limit: TRIAL_PUBLICATION_LIMIT,
+  shouldApplyLimit: shouldApplyTrialLimit,
+});
 
-function forwardedHeaders(request: Request): Headers {
+function forwardedHeaders(request: Request, tenantHeaders: Headers | null): Headers {
   const headers = new Headers();
   request.headers.forEach((value, key) => {
-    if (FORWARDED_REQUEST_HEADERS.has(key.toLowerCase())) {
+    const lowerKey = key.toLowerCase();
+    if (
+      FORWARDED_REQUEST_HEADERS.has(lowerKey) &&
+      (lowerKey !== "cookie" || (!CLERK_AUTH_ENABLED && !CLERK_AUTH_MISCONFIGURED))
+    ) {
       headers.set(key, value);
     }
   });
-  const incoming = new URL(request.url);
+  tenantHeaders?.forEach((value, key) => headers.set(key, value));
   headers.set(
     "x-forwarded-host",
-    request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? incoming.host,
+    publicHost({ headers: request.headers, url: request.url }),
   );
   headers.set(
     "x-forwarded-proto",
-    request.headers.get("x-forwarded-proto") ?? incoming.protocol.replace(":", ""),
+    publicProto({ headers: request.headers, url: request.url }),
   );
+  if (BACKEND_PROXY_SECRET) {
+    headers.set("X-Plato-Proxy-Secret", BACKEND_PROXY_SECRET);
+  }
   return headers;
 }
 
@@ -202,9 +201,32 @@ function responseHeaders(response: Response): Headers {
 
 async function proxyRequest(request: Request, context: RouteContext): Promise<Response> {
   const { path = [] } = await context.params;
-  const tenant = tenantFromHeaders(request);
-  const publicationRun = isPublicationRun(path, request);
+  const localAuthMutation = isLocalAuthMutation(path, request);
+  if (CLERK_AUTH_ENABLED && localAuthMutation) {
+    return Response.json(
+      {
+        code: "local_auth_disabled",
+        message: "Local Plato login is disabled when hosted Clerk auth is enabled.",
+      },
+      { status: 404 },
+    );
+  }
+
+  const tenantContext = await tenantContextForRequest(request);
+  const tenant = tenantContext.tenant;
+  const publicationProducingRequest = isPublicationProducingRequest(path, request);
   const publicApiRequest = isPublicApiRequest(path, request);
+
+  if (CLERK_AUTH_MISCONFIGURED && !publicApiRequest) {
+    return Response.json(
+      {
+        code: "clerk_auth_misconfigured",
+        message: "Hosted Clerk auth is requested but Clerk keys are missing or invalid.",
+        detail: clerkAuthConfigError(),
+      },
+      { status: 503 },
+    );
+  }
 
   if (CLERK_AUTH_ENABLED && !tenant && !publicApiRequest) {
     return Response.json(
@@ -213,22 +235,23 @@ async function proxyRequest(request: Request, context: RouteContext): Promise<Re
     );
   }
 
-  if (publicationRun && tenant) {
-    const limited = await reservePublicationSlot(tenant);
-    if (limited) return limited;
-  }
+  const publicationReservation = publicationProducingRequest && tenant
+    ? await reservePublicationSlot(tenant)
+    : null;
+  if (publicationReservation?.limited) return publicationReservation.limited;
 
   const hasBody = !["GET", "HEAD"].includes(request.method);
   let upstream: Response;
   try {
     upstream = await fetch(targetUrl(path, request), {
       method: request.method,
-      headers: forwardedHeaders(request),
+      headers: forwardedHeaders(request, tenantContext.headers),
       body: hasBody ? await request.arrayBuffer() : undefined,
       cache: "no-store",
       redirect: "manual",
     });
   } catch (error) {
+    await publicationReservation?.rollback();
     return Response.json(
       {
         code: "backend_unavailable",
@@ -237,6 +260,9 @@ async function proxyRequest(request: Request, context: RouteContext): Promise<Re
       },
       { status: 503 },
     );
+  }
+  if (publicationReservation && !upstream.ok) {
+    await publicationReservation.rollback();
   }
 
   return new Response(upstream.body, {

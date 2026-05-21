@@ -44,6 +44,30 @@ def test_tool_toggle_persists_per_user(client, tmp_project_root: Path) -> None:
     assert bob_tool["enabled"] is True
 
 
+def test_tool_toggle_persists_per_lab(client, tmp_project_root: Path) -> None:
+    resp = client.put(
+        "/api/v1/tooling/tools/search_literature",
+        json={"enabled": False},
+        headers={"X-Plato-User": "lab_org_alpha"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["enabled"] is False
+
+    prefs = tmp_project_root / "users" / "lab_org_alpha" / "tooling_config.json"
+    assert json.loads(prefs.read_text())["disabled_tools"] == ["search_literature"]
+
+    lab = client.get("/api/v1/tooling", headers={"X-Plato-User": "lab_org_alpha"}).json()
+    personal = client.get(
+        "/api/v1/tooling", headers={"X-Plato-User": "user_scientist_a"}
+    ).json()
+    lab_tool = next(tool for tool in lab["tools"] if tool["id"] == "search_literature")
+    personal_tool = next(
+        tool for tool in personal["tools"] if tool["id"] == "search_literature"
+    )
+    assert lab_tool["enabled"] is False
+    assert personal_tool["enabled"] is True
+
+
 def test_unknown_tool_toggle_404s(client) -> None:
     resp = client.put("/api/v1/tooling/tools/not_real", json={"enabled": False})
     assert resp.status_code == 404

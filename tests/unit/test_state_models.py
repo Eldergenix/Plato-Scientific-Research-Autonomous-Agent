@@ -41,6 +41,20 @@ def test_source_rejects_unknown_retrieved_via():
         )
 
 
+@pytest.mark.parametrize(
+    "retrieved_via",
+    ["europe_pmc", "datacite", "doaj", "opencitations"],
+)
+def test_source_accepts_no_key_retrieval_adapters(retrieved_via: str):
+    s = Source(
+        id=f"{retrieved_via}:x",
+        title="t",
+        retrieved_via=retrieved_via,  # type: ignore[arg-type]
+        fetched_at=datetime.now(timezone.utc),
+    )
+    assert s.retrieved_via == retrieved_via
+
+
 def test_claim_defaults():
     c = Claim(id="c1", text="atoms exist")
     assert c.source_id is None

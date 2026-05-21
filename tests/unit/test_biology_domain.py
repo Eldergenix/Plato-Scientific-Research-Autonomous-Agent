@@ -7,7 +7,16 @@ from plato.domain import get_domain, list_domains
 def test_biology_profile_registered() -> None:
     biology = get_domain("biology")
     assert biology.name == "biology"
-    assert biology.retrieval_sources == ["pubmed", "openalex", "semantic_scholar"]
+    assert biology.retrieval_sources == [
+        "pubmed",
+        "europe_pmc",
+        "openalex",
+        "crossref",
+        "doaj",
+        "datacite",
+        "opencitations",
+        "semantic_scholar",
+    ]
     assert biology.keyword_extractor == "mesh"
     assert biology.novelty_corpus == "pubmed"
 

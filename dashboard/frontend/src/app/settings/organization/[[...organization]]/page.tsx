@@ -6,12 +6,22 @@ import {
   Show,
   SignInButton,
 } from "@clerk/nextjs";
-import { Building2, LogIn } from "lucide-react";
+import { AlertTriangle, Building2, LogIn } from "lucide-react";
 import { useAuthMode } from "@/components/auth/auth-mode-provider";
 import { Button } from "@/components/ui/button";
 
 export default function OrganizationSettingsPage() {
-  const { clerkAuthEnabled } = useAuthMode();
+  const { clerkAuthEnabled, clerkAuthMisconfigured, clerkAuthError } = useAuthMode();
+
+  if (clerkAuthMisconfigured) {
+    return (
+      <AuthConfigurationError
+        title="Organization"
+        detail={clerkAuthError}
+        summary="Hosted Lab settings are unavailable because Clerk Organizations were requested but Clerk auth is not configured correctly."
+      />
+    );
+  }
 
   if (!clerkAuthEnabled) {
     return <SelfHostedOrganizationFallback />;
@@ -63,6 +73,50 @@ export default function OrganizationSettingsPage() {
             <OrganizationProfile path="/settings/organization" routing="path" />
           </section>
         </Show>
+      </div>
+    </div>
+  );
+}
+
+function AuthConfigurationError({
+  title,
+  summary,
+  detail,
+}: {
+  title: string;
+  summary: string;
+  detail: string | null;
+}) {
+  return (
+    <div className="min-h-screen bg-(--color-bg-page) px-6 py-8">
+      <div className="mx-auto max-w-4xl space-y-6">
+        <SettingsHeader
+          title={title}
+          subtitle="Hosted Clerk authentication needs attention before this page can be used."
+        />
+        <section
+          className="surface-linear-card p-5"
+          data-testid="organization-auth-config-error"
+        >
+          <div className="flex items-start gap-3">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-[8px] bg-red-500/10 text-red-600">
+              <AlertTriangle size={16} strokeWidth={1.75} />
+            </div>
+            <div>
+              <h2 className="text-[15px] font-[510] text-(--color-text-primary-strong)">
+                Clerk auth is misconfigured
+              </h2>
+              <p className="mt-1 text-[12px] text-(--color-text-tertiary-spec)">
+                {summary}
+              </p>
+              {detail ? (
+                <p className="mt-3 font-mono text-[11px] text-(--color-text-tertiary-spec)">
+                  {detail}
+                </p>
+              ) : null}
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   );

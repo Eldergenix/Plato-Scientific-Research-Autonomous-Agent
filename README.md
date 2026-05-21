@@ -129,6 +129,35 @@ plato dashboard
 
 The dashboard supersedes the legacy `plato run` Streamlit app for new workflows.
 
+For hosted Railway SaaS/Lab deployments with Clerk auth or Clerk Billing, run
+the local production gates and redacted strict preflight before deploying:
+
+```bash
+bash dashboard/scripts/check-local-production-gates.sh
+bash dashboard/scripts/check-hosted-saas-preflight.sh --railway --service plato --environment production --hosted-required --strict
+```
+
+It verifies the Clerk user/Lab auth contract, `PLATO_BACKEND_PROXY_SECRET`,
+public origin, Clerk proxy, and hosted billing flags without printing secret
+values. Strict mode treats preflight warnings as release blockers. After
+deploying, use the read-only production readiness check to probe the live app
+and scan Railway logs:
+
+```bash
+bash dashboard/scripts/check-production-readiness.sh --service plato --environment production --origin https://discovering.app
+```
+
+If `railway variables --json`/`--kv` is unavailable but you have a local
+Railway variables snapshot, pass it with `--variables-file`; the checker still
+prints only redacted key status and lengths:
+
+```bash
+bash dashboard/scripts/check-production-readiness.sh --service plato --environment production --origin https://discovering.app --variables-file /path/to/railway-variables.json
+```
+
+See [dashboard/RAILWAY.md](dashboard/RAILWAY.md) for the full production
+variable matrix.
+
 ## Build from source
 
 ### pip

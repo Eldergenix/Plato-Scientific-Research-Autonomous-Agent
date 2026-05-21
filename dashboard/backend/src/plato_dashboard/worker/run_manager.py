@@ -36,7 +36,7 @@ from typing import Any, Optional
 from ..domain.models import ActiveRun, Project, Run, StageId, utcnow
 from ..events.bus import EventBus
 from ..settings import get_settings
-from ..storage.key_store import ENV_KEYS, KeyStore
+from ..storage.key_store import ENV_KEYS, KeyStore, key_store_path_for_project_dir
 from ..tooling import disabled_tool_names_for_project_dir
 
 # In-memory state. Promoted to Redis in Phase 2.
@@ -65,9 +65,10 @@ _run_dirs: dict[str, Path] = {}
 _SPAWN_CTX = mp.get_context("spawn")
 _TAIL_INTERVAL_S = 0.25
 _SIGTERM_GRACE_S = 5.0
-OPENAI_DEFAULT_MODEL = "gpt-5.5"
+OPENAI_DEFAULT_MODEL = "gpt-5.5-2026-04-23"
 _MODEL_ALIASES = {
     "gpt-5.5-mini": OPENAI_DEFAULT_MODEL,
+    "gpt-5.5": OPENAI_DEFAULT_MODEL,
 }
 
 _STAGE_ARTIFACTS: dict[StageId, tuple[str, ...]] = {
@@ -364,10 +365,19 @@ def _set_project_run_finished(run: Run, project_dir: Path) -> None:
     _write_status(run)
 
 
-def _resolve_keys() -> dict[str, str]:
+def _resolve_keys(project_dir: Path | None = None) -> dict[str, str]:
     """Pull API keys from KeyStore + env, mapped to env-var names Plato reads."""
     settings = get_settings()
-    store = KeyStore(settings.keys_path)
+    keys_path = (
+        key_store_path_for_project_dir(
+            settings.project_root,
+            settings.keys_path,
+            project_dir,
+        )
+        if project_dir is not None
+        else settings.keys_path
+    )
+    store = KeyStore(keys_path)
     out: dict[str, str] = {}
     for provider, env_var in ENV_KEYS.items():
         val = store.resolve(provider)
@@ -971,7 +981,7 @@ async def start_run(
     # Truncate any stale pipe from an earlier identically-named run.
     events_file.write_text("")
 
-    env_keys = _resolve_keys()
+    env_keys = _resolve_keys(resolved_project_dir)
     disabled_tools = disabled_tool_names_for_project_dir(
         resolved_project_dir,
         get_settings().project_root,
