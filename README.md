@@ -2,7 +2,7 @@
 
 [![Python Version](https://img.shields.io/badge/python-%3E%3D3.12-blue.svg)](https://www.python.org/downloads/) [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-Plato is a multi-agent AI system that takes experimental data and produces peer-reviewable scientific papers end-to-end — generating the research idea, designing the methodology, running the analysis (via [cmbagent](https://github.com/CMBAgents/cmbagent)), and writing the LaTeX manuscript through a reviewer-panel revision loop.
+Plato is a multi-agent AI system that takes experimental data and produces peer-reviewable scientific papers end-to-end — generating the research idea, designing the methodology, running the analysis, and writing the LaTeX manuscript through a reviewer-panel revision loop.
 
 ## What's new in 0.2
 
