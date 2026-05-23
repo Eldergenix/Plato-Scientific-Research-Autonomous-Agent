@@ -12,6 +12,7 @@ import {
   isPublicationProducingRequest,
   parseEnvNumber,
 } from "@/lib/hosted-trial-quota";
+import { backendProxySecretForRequest } from "@/lib/backend-proxy-secret.server";
 import { publicHost, publicProto } from "@/lib/public-origin";
 
 export const runtime = "nodejs";
@@ -19,7 +20,6 @@ export const dynamic = "force-dynamic";
 
 const API_PROXY_TARGET =
   process.env.PLATO_API_PROXY_TARGET?.trim() || "http://127.0.0.1:7878";
-const BACKEND_PROXY_SECRET = process.env.PLATO_BACKEND_PROXY_SECRET?.trim() || "";
 const CLERK_AUTH_ENABLED = isClerkAuthEnabled();
 const CLERK_AUTH_MISCONFIGURED = isClerkAuthMisconfigured();
 const USAGE_LEDGER_PATH =
@@ -183,8 +183,9 @@ function forwardedHeaders(request: Request, tenantHeaders: Headers | null): Head
     "x-forwarded-proto",
     publicProto({ headers: request.headers, url: request.url }),
   );
-  if (BACKEND_PROXY_SECRET) {
-    headers.set("X-Plato-Proxy-Secret", BACKEND_PROXY_SECRET);
+  const backendProxySecret = backendProxySecretForRequest();
+  if (backendProxySecret) {
+    headers.set("X-Plato-Proxy-Secret", backendProxySecret);
   }
   return headers;
 }
