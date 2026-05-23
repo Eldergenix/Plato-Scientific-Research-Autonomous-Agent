@@ -38,6 +38,16 @@ const nextConfig: NextConfig = {
     root: path.resolve(__dirname),
   },
   webpack(config, { dev }) {
+    if (staticExport) {
+      config.resolve.alias = {
+        ...(config.resolve.alias ?? {}),
+        "@clerk/nextjs$": path.resolve(__dirname, "src/lib/static-clerk.tsx"),
+        "@clerk/nextjs/server$": path.resolve(
+          __dirname,
+          "src/lib/static-clerk-server.ts",
+        ),
+      };
+    }
     if (!dev) {
       config.cache = false;
     }

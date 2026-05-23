@@ -57,8 +57,27 @@ jobs:
 
       - name: Prune runtime-only dynamic routes
         run: |
+          rm -rf 'src/app/%5F%5Fclerk'
+          rm -rf 'src/app/api'
+          rm -rf 'src/app/landing'
+          rm -rf 'src/app/login'
           rm -rf 'src/app/runs/[runId]'
           rm -rf 'src/app/loop/[loopId]'
+          rm -rf 'src/app/sign-in'
+          rm -rf 'src/app/sign-up'
+          rm -rf 'src/app/settings/account'
+          rm -rf 'src/app/settings/organization'
+
+      - name: Prepare static-only route segments
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          for route in (Path("src/app/layout.tsx"), Path("src/app/settings/billing/page.tsx")):
+              route.write_text(
+                  route.read_text().replace('export const dynamic = "force-dynamic";\n', "")
+              )
+          PY
 
       - name: Build dashboard static export
         env:
