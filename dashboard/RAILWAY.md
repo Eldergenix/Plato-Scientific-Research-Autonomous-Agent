@@ -85,7 +85,7 @@ that up automatically when you point a service at this repo.
    | `PLATO_AUTH_PROVIDER` | required for hosted SaaS | set to `clerk` |
    | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | required for hosted SaaS | Clerk publishable key for this domain |
    | `CLERK_SECRET_KEY` | required for hosted SaaS | Clerk secret key for server-side auth |
-   | `PLATO_BACKEND_PROXY_SECRET` | required for hosted SaaS | 32+ random characters shared by Next.js and FastAPI; protects private tenant headers |
+   | `PLATO_BACKEND_PROXY_SECRET` | recommended for hosted SaaS | 32+ random characters shared by Next.js and FastAPI; protects private tenant headers. In the single-service image, this can be omitted when both runtimes share `CLERK_SECRET_KEY`, because they derive the internal proxy secret from it. |
    | `PLATO_PUBLIC_ORIGIN` | required for production readiness | canonical HTTPS app origin, for example `https://discovering.app` |
    | `NEXT_PUBLIC_CLERK_PROXY_URL` | required for production readiness | usually `${PLATO_PUBLIC_ORIGIN}/__clerk` |
    | `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | recommended | `/sign-in` |
@@ -168,6 +168,11 @@ railway variables --service plato --skip-deploys --set 'NEXT_PUBLIC_CLERK_SIGN_U
 railway variables --service plato --skip-deploys --set 'NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=/'
 railway variables --service plato --skip-deploys --set 'NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=/'
 railway variables --service plato --skip-deploys --set 'NEXT_PUBLIC_PLATO_HOSTED_BILLING=enabled'
+
+# PLATO_BACKEND_PROXY_SECRET remains the explicit split-service contract.
+# The default Railway image runs Next.js and FastAPI in one service, so both
+# runtimes can derive the same private backend proxy secret from CLERK_SECRET_KEY
+# when the explicit variable is absent.
 
 bash dashboard/scripts/check-local-production-gates.sh
 bash dashboard/scripts/check-hosted-saas-preflight.sh --railway --service plato --environment production --hosted-required --strict

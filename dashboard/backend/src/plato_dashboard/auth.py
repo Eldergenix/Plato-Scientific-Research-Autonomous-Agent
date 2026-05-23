@@ -15,6 +15,7 @@ simply absent and we fall through to the legacy un-namespaced layout.
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import os
 import re
@@ -27,7 +28,12 @@ PROXY_SECRET_HEADER = "X-Plato-Proxy-Secret"
 AUTH_REQUIRED_ENV = "PLATO_DASHBOARD_AUTH_REQUIRED"
 LEGACY_AUTH_ENV = "PLATO_AUTH"
 BACKEND_PROXY_SECRET_ENV = "PLATO_BACKEND_PROXY_SECRET"
+CLERK_SECRET_KEY_ENV = "CLERK_SECRET_KEY"
+CLERK_AUTH_PROVIDER_ENV = "PLATO_AUTH_PROVIDER"
+PUBLIC_CLERK_AUTH_PROVIDER_ENV = "NEXT_PUBLIC_PLATO_AUTH_PROVIDER"
+CLERK_AUTH_PROVIDER = "clerk"
 MIN_PROXY_SECRET_LENGTH = 32
+_DERIVED_PROXY_SECRET_CONTEXT = b"plato-backend-proxy-secret-v1"
 
 # A user id is used directly as a path segment under
 # ``<project_root>/users/<user_id>/``. Anything outside this allowlist
@@ -45,9 +51,34 @@ def auth_required() -> bool:
     )
 
 
+def _clerk_auth_requested() -> bool:
+    return (
+        os.environ.get(CLERK_AUTH_PROVIDER_ENV) == CLERK_AUTH_PROVIDER
+        or os.environ.get(PUBLIC_CLERK_AUTH_PROVIDER_ENV) == CLERK_AUTH_PROVIDER
+    )
+
+
+def _clerk_secret_key() -> str | None:
+    value = os.environ.get(CLERK_SECRET_KEY_ENV, "").strip()
+    if re.match(r"\Ask_(?:test|live)_[A-Za-z0-9_-]+\Z", value):
+        return value
+    return None
+
+
+def _derived_proxy_secret() -> str | None:
+    secret = _clerk_secret_key()
+    if not _clerk_auth_requested() or secret is None:
+        return None
+    return hmac.new(
+        secret.encode(),
+        _DERIVED_PROXY_SECRET_CONTEXT,
+        hashlib.sha256,
+    ).hexdigest()
+
+
 def _proxy_secret() -> str | None:
     secret = os.environ.get(BACKEND_PROXY_SECRET_ENV, "").strip()
-    return secret or None
+    return secret or _derived_proxy_secret()
 
 
 def proxy_secret_configuration_error() -> str | None:
@@ -157,6 +188,8 @@ def require_user_id(request: Request) -> str:
 __all__ = [
     "AUTH_REQUIRED_ENV",
     "BACKEND_PROXY_SECRET_ENV",
+    "CLERK_AUTH_PROVIDER_ENV",
+    "CLERK_SECRET_KEY_ENV",
     "LEGACY_AUTH_ENV",
     "MIN_PROXY_SECRET_LENGTH",
     "PROXY_SECRET_HEADER",

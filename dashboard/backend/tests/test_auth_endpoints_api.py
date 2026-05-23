@@ -9,6 +9,8 @@ endpoint.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 from typing import Iterator
 
 import pytest
@@ -20,6 +22,8 @@ from plato_dashboard.api.server import create_app
 from plato_dashboard.auth import (
     AUTH_REQUIRED_ENV,
     BACKEND_PROXY_SECRET_ENV,
+    CLERK_AUTH_PROVIDER_ENV,
+    CLERK_SECRET_KEY_ENV,
     PROXY_SECRET_HEADER,
     USER_HEADER,
 )
@@ -212,6 +216,36 @@ def test_short_proxy_secret_fails_closed_for_private_backend_routes(
         assert private.status_code == 503
         assert private.json()["detail"]["code"] == "proxy_secret_misconfigured"
         assert "at least 32 characters" in private.json()["detail"]["message"]
+
+
+def test_clerk_secret_derives_backend_proxy_secret_when_explicit_secret_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_project_root  # noqa: ARG001
+) -> None:
+    monkeypatch.setenv(AUTH_REQUIRED_ENV, "1")
+    monkeypatch.setenv(CLERK_AUTH_PROVIDER_ENV, "clerk")
+    monkeypatch.delenv(BACKEND_PROXY_SECRET_ENV, raising=False)
+    clerk_secret = "sk_test_validDerivedProxySecretForHostedMode"
+    monkeypatch.setenv(CLERK_SECRET_KEY_ENV, clerk_secret)
+    derived_secret = hmac.new(
+        clerk_secret.encode(),
+        b"plato-backend-proxy-secret-v1",
+        hashlib.sha256,
+    ).hexdigest()
+
+    app = create_app()
+    with TestClient(app) as c:
+        direct = c.get("/api/v1/projects", headers={USER_HEADER: "alice"})
+        assert direct.status_code == 401
+        assert direct.json()["detail"]["code"] == "proxy_secret_required"
+
+        trusted = c.get(
+            "/api/v1/projects",
+            headers={
+                USER_HEADER: "alice",
+                PROXY_SECRET_HEADER: derived_secret,
+            },
+        )
+        assert trusted.status_code == 200
 
 
 def test_me_returns_null_when_neither_header_nor_cookie(auth_client: TestClient) -> None:

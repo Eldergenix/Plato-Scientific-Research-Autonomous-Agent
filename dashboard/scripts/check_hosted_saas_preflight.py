@@ -147,6 +147,10 @@ def secret_key_valid(values: dict[str, str]) -> bool:
     return bool(re.fullmatch(r"sk_(test|live)_[A-Za-z0-9_-]+", raw))
 
 
+def backend_proxy_secret_available(values: dict[str, str]) -> bool:
+    return len(value(values, "PLATO_BACKEND_PROXY_SECRET")) >= 32 or secret_key_valid(values)
+
+
 def main() -> int:
     args = parse_args()
     values = read_values(args.source)
@@ -179,8 +183,11 @@ def main() -> int:
     if not secret_key_valid(values):
         errors.append("CLERK_SECRET_KEY is missing or does not look like a Clerk secret key")
 
-    if len(value(values, "PLATO_BACKEND_PROXY_SECRET")) < 32:
-        errors.append("PLATO_BACKEND_PROXY_SECRET must be set to at least 32 characters")
+    if not backend_proxy_secret_available(values):
+        errors.append(
+            "PLATO_BACKEND_PROXY_SECRET must be set to at least 32 characters, "
+            "or CLERK_SECRET_KEY must be present so the backend proxy secret can be derived",
+        )
 
     public_origin = value(values, "PLATO_PUBLIC_ORIGIN")
     clerk_proxy_url = value(values, "NEXT_PUBLIC_CLERK_PROXY_URL")

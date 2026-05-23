@@ -13,7 +13,7 @@ type ClerkAuthConfiguration = {
   error: string | null;
 };
 
-function secretKeyLooksValid(value: string | undefined): boolean {
+export function secretKeyLooksValid(value: string | undefined): boolean {
   return /^sk_(test|live)_[A-Za-z0-9_-]+$/.test(value ?? "");
 }
 
@@ -41,8 +41,15 @@ function publishableKeyLooksValid(value: string | undefined): boolean {
   }
 }
 
-function backendProxySecretLooksConfigured(value: string | undefined): boolean {
+export function backendProxySecretLooksConfigured(value: string | undefined): boolean {
   return (value ?? "").trim().length >= 32;
+}
+
+function backendProxySecretAvailable(): boolean {
+  return (
+    backendProxySecretLooksConfigured(process.env.PLATO_BACKEND_PROXY_SECRET) ||
+    secretKeyLooksValid(process.env.CLERK_SECRET_KEY)
+  );
 }
 
 export function clerkAuthConfiguration(): ClerkAuthConfiguration {
@@ -69,12 +76,12 @@ export function clerkAuthConfiguration(): ClerkAuthConfiguration {
     };
   }
 
-  if (!backendProxySecretLooksConfigured(process.env.PLATO_BACKEND_PROXY_SECRET)) {
+  if (!backendProxySecretAvailable()) {
     return {
       requested: true,
       enabled: false,
       error:
-        "PLATO_BACKEND_PROXY_SECRET is missing or too short. Hosted Clerk deployments must use a private backend proxy secret with at least 32 characters.",
+        "PLATO_BACKEND_PROXY_SECRET is missing or too short, and CLERK_SECRET_KEY is unavailable for derived backend proxy protection.",
     };
   }
 

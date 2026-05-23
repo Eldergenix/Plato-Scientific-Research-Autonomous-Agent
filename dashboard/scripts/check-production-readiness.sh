@@ -171,6 +171,16 @@ var_min_length() {
   [ "${#actual}" -ge "$min_length" ]
 }
 
+clerk_secret_valid() {
+  local actual
+  actual="$(railway_value "CLERK_SECRET_KEY")"
+  [[ "$actual" =~ ^sk_(test|live)_[A-Za-z0-9_-]+$ ]]
+}
+
+backend_proxy_protected() {
+  var_min_length "PLATO_BACKEND_PROXY_SECRET" 32 || clerk_secret_valid
+}
+
 kv_variables_to_json() {
   VARS_KV_FILE="$variables_kv" python3 - <<'PY'
 import json
@@ -288,7 +298,7 @@ EOF
 EOF
   else
 
-    if ! var_min_length "PLATO_BACKEND_PROXY_SECRET" 32; then
+    if ! backend_proxy_protected; then
       if [ "$variable_commands" -eq 0 ]; then
         echo "  1. Set missing or invalid hosted variables without triggering partial deploys:"
       fi

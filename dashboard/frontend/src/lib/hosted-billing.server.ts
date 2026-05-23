@@ -1,6 +1,7 @@
 import "server-only";
 
 import { auth, clerkClient } from "@clerk/nextjs/server";
+import { backendProxySecretForRequest } from "@/lib/backend-proxy-secret.server";
 import { platoTenantIdForClerkSession } from "@/lib/auth-mode";
 
 type KeyState = "unset" | "from_env" | "in_app";
@@ -70,7 +71,6 @@ type BillingSummary = {
 
 const API_PROXY_TARGET =
   process.env.PLATO_API_PROXY_TARGET?.trim() || "http://127.0.0.1:7878";
-const BACKEND_PROXY_SECRET = process.env.PLATO_BACKEND_PROXY_SECRET?.trim() || "";
 const BYOK_PROVIDERS: Array<keyof KeysStatus> = ["OPENAI", "GEMINI", "ANTHROPIC"];
 
 function parseEnvNumber(name: string, fallback: number): number {
@@ -133,8 +133,9 @@ async function fetchTenantJson<T>(
       "X-Plato-User": tenantId,
       "X-Plato-Auth-Provider": "clerk",
     };
-    if (BACKEND_PROXY_SECRET) {
-      headers["X-Plato-Proxy-Secret"] = BACKEND_PROXY_SECRET;
+    const backendProxySecret = backendProxySecretForRequest();
+    if (backendProxySecret) {
+      headers["X-Plato-Proxy-Secret"] = backendProxySecret;
     }
 
     response = await fetch(new URL(path, API_PROXY_TARGET), {

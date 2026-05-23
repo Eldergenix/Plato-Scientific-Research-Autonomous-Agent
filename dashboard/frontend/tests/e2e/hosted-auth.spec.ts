@@ -259,35 +259,35 @@ test.describe("hosted Clerk auth boundary", () => {
 test.describe("hosted backend proxy secret boundary", () => {
   test.skip(
     process.env.PLAYWRIGHT_EXPECT_HOSTED_PROXY_SECRET_ERROR !== "1",
-    "Run with valid-looking Clerk keys and no backend proxy secret.",
+    "Run with hosted auth requested but no explicit or derived backend proxy secret.",
   );
 
-  test("hosted Clerk mode fails loud without the backend proxy secret", async ({ page }) => {
+  test("hosted Clerk mode fails loud without backend proxy protection", async ({ page }) => {
     const response = await page.goto("/api/v1/projects");
     const body = await page.locator("body").textContent();
 
     expect(response?.status()).toBe(503);
     expect(body).toContain("clerk_auth_misconfigured");
-    expect(body).toContain("PLATO_BACKEND_PROXY_SECRET is missing or too short");
+    expect(body).toContain("CLERK_SECRET_KEY is unavailable for derived backend proxy protection");
 
     await page.goto("/settings/billing");
     await expect(page.getByTestId("billing-auth-config-error")).toBeVisible();
     await expect(
-      page.getByText("PLATO_BACKEND_PROXY_SECRET is missing or too short"),
+      page.getByText("CLERK_SECRET_KEY is unavailable for derived backend proxy protection"),
     ).toBeVisible();
     await expect(page.getByText("hosted config error")).toBeVisible();
 
     await page.goto("/settings/account");
     await expect(page.getByTestId("account-auth-config-error")).toBeVisible();
     await expect(
-      page.getByText("PLATO_BACKEND_PROXY_SECRET is missing or too short"),
+      page.getByText("CLERK_SECRET_KEY is unavailable for derived backend proxy protection"),
     ).toBeVisible();
     await expect(page.getByTestId("account-settings-fallback")).toHaveCount(0);
 
     await page.goto("/settings/organization");
     await expect(page.getByTestId("organization-auth-config-error")).toBeVisible();
     await expect(
-      page.getByText("PLATO_BACKEND_PROXY_SECRET is missing or too short"),
+      page.getByText("CLERK_SECRET_KEY is unavailable for derived backend proxy protection"),
     ).toBeVisible();
     await expect(page.getByTestId("organization-settings-fallback")).toHaveCount(0);
   });
