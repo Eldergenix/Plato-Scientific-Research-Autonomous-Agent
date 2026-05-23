@@ -17,7 +17,6 @@ import json
 from typing import Any, Iterable
 from unittest.mock import patch
 
-import pytest
 from langgraph.graph import END
 
 
@@ -47,7 +46,12 @@ def _make_state(**overrides: Any) -> dict:
             "cmbagent_keywords": False,
         },
         "tokens": {"ti": 0, "to": 0, "i": 0, "o": 0},
-        "llm": {"model": "stub", "max_output_tokens": 1024, "llm": None, "temperature": 0.0},
+        "llm": {
+            "model": "stub",
+            "max_output_tokens": 1024,
+            "llm": None,
+            "temperature": 0.0,
+        },
         "latex": {"section_to_fix": ""},
         "keys": None,
         "time": {"start": 0.0},
@@ -64,7 +68,7 @@ def _make_state(**overrides: Any) -> dict:
 def _llm_call_returning(payload: dict | str):
     """Build a mock side-effect for ``LLM_call`` that returns a fenced JSON block."""
 
-    def _side_effect(prompt, state):  # signature mirrors tools.LLM_call
+    def _side_effect(prompt, state, **_kwargs):  # signature mirrors tools.LLM_call
         if isinstance(payload, dict):
             body = json.dumps(payload)
         else:
@@ -78,7 +82,7 @@ def _scripted_llm_call(scripts: Iterable[dict | str]):
     """A side-effect that walks through a list of payloads, one per call."""
     iterator = iter(scripts)
 
-    def _side_effect(prompt, state):
+    def _side_effect(prompt, state, **_kwargs):
         try:
             payload = next(iterator)
         except StopIteration as exc:
@@ -90,6 +94,30 @@ def _scripted_llm_call(scripts: Iterable[dict | str]):
         return state, f"```json\n{body}\n```"
 
     return _side_effect
+
+
+def test_merge_critiques_combines_parallel_reviewer_updates_and_allows_reset():
+    from plato.paper_agents.parameters import merge_critiques
+
+    merged = merge_critiques(
+        {"methodology": {"severity": 3}},
+        {"statistics": {"severity": 2}},
+    )
+    assert merged == {
+        "methodology": {"severity": 3},
+        "statistics": {"severity": 2},
+    }
+    assert merge_critiques(merged, {}) == {}
+
+
+def test_merge_tokens_keeps_highest_cumulative_totals_from_parallel_updates():
+    from plato.paper_agents.parameters import merge_tokens
+
+    merged = merge_tokens(
+        {"ti": 100, "to": 50, "i": 10, "o": 5},
+        {"ti": 125, "to": 63, "i": 25, "o": 13},
+    )
+    assert merged == {"ti": 125, "to": 63, "i": 25, "o": 13}
 
 
 # ---------------------------------------------------------------------------
@@ -258,7 +286,14 @@ def test_redraft_node_updates_paper_and_increments_iteration():
     state = _make_state(
         critique_digest={
             "max_severity": 4,
-            "issues": [{"reviewer": "methodology", "section": "methods", "issue": "x", "fix": "y"}],
+            "issues": [
+                {
+                    "reviewer": "methodology",
+                    "section": "methods",
+                    "issue": "x",
+                    "fix": "y",
+                }
+            ],
             "iteration": 0,
         },
         revision_state={"iteration": 0, "max_iterations": 2},
@@ -291,7 +326,7 @@ def test_redraft_node_tolerates_unparseable_llm_output():
         revision_state={"iteration": 0, "max_iterations": 2},
     )
 
-    def _bad_side_effect(prompt, state):
+    def _bad_side_effect(prompt, state, **_kwargs):
         return state, "not valid json at all"
 
     with patch.object(redraft_module, "LLM_call", side_effect=_bad_side_effect):
@@ -322,7 +357,9 @@ def test_revision_loop_terminates_when_severity_drops():
         "issues": [{"section": "methods", "issue": "weak", "fix": "strengthen"}],
     }
     with patch.object(
-        reviewer_panel, "LLM_call", side_effect=_llm_call_returning(high_severity_payload)
+        reviewer_panel,
+        "LLM_call",
+        side_effect=_llm_call_returning(high_severity_payload),
     ):
         for reviewer_fn in (
             reviewer_panel.methodology_reviewer,
@@ -361,7 +398,9 @@ def test_revision_loop_terminates_when_severity_drops():
     # ---- Second reviewer pass: all severity 1 ----
     low_severity_payload = {"severity": 1, "issues": []}
     with patch.object(
-        reviewer_panel, "LLM_call", side_effect=_llm_call_returning(low_severity_payload)
+        reviewer_panel,
+        "LLM_call",
+        side_effect=_llm_call_returning(low_severity_payload),
     ):
         for reviewer_fn in (
             reviewer_panel.methodology_reviewer,

@@ -1,8 +1,10 @@
 import re
 import requests
+from requests import RequestException
 from typing import List, Tuple
 
 from ..key_manager import KeyManager
+
 
 def _execute_query(payload, keys: KeyManager):
     """
@@ -16,9 +18,19 @@ def _execute_query(payload, keys: KeyManager):
     """
     api_key = keys.PERPLEXITY
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    response = requests.post("https://api.perplexity.ai/chat/completions", headers=headers, json=payload).json()
-
-    return response
+    try:
+        response = requests.post(
+            "https://api.perplexity.ai/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=60,
+        )
+        response.raise_for_status()
+        return response.json()
+    except RequestException as exc:
+        raise RuntimeError(f"Perplexity API request failed: {exc}") from exc
+    except ValueError as exc:
+        raise RuntimeError("Perplexity API returned invalid JSON") from exc
 
 
 def perplexity(para, keys: KeyManager):
@@ -55,35 +67,50 @@ Your answer should be the input text populated with references. You should not a
 Your answear should not have the formating marks <TEXT> and </TEXT>, just the text.
     """
     payload = {
-    "model": 'sonar-reasoning-pro',
-    "temperature": 0,
-    "messages": [{"role": "system", "content": "Be precise and concise. Follow the instructions."}, {"role": "user", "content": perplexity_message}],
-    "search_domain_filter": ["arxiv.org"],
+        "model": "sonar-reasoning-pro",
+        "temperature": 0,
+        "messages": [
+            {
+                "role": "system",
+                "content": "Be precise and concise. Follow the instructions.",
+            },
+            {"role": "user", "content": perplexity_message},
+        ],
+        "search_domain_filter": ["arxiv.org"],
     }
     perplexity_response = _execute_query(payload, keys)
-    content = perplexity_response["choices"][0]["message"]["content"]
-    citations = perplexity_response["citations"]
-    cleaned_response = re.sub(r'<think>.*?</think>\s*', '', content, flags=re.DOTALL)
+    if not isinstance(perplexity_response, dict):
+        raise RuntimeError("Perplexity API returned an invalid response shape")
+    choices = perplexity_response.get("choices")
+    if not isinstance(choices, list) or not choices:
+        raise RuntimeError("Perplexity API returned no choices")
+    message = choices[0].get("message") if isinstance(choices[0], dict) else None
+    content = message.get("content") if isinstance(message, dict) else None
+    if not isinstance(content, str):
+        raise RuntimeError("Perplexity API response did not include message content")
+    citations_raw = perplexity_response.get("citations", [])
+    citations = citations_raw if isinstance(citations_raw, list) else []
+    cleaned_response = re.sub(r"<think>.*?</think>\s*", "", content, flags=re.DOTALL)
 
     def citation_repl(match):
         # Extract the citation number as a string and convert to an integer.
         number_str = match.group(1)
         index = int(number_str) - 1  # Adjust for 0-based indexing
         if 0 <= index < len(citations):
-            return f'[[{number_str}]({citations[index]})]'
+            return f"[[{number_str}]({citations[index]})]"
         # If the citation number is out of bounds, return it unchanged.
         return match.group(0)
+
     # Replace all instances of citations in the form [x] using the helper function.
     # markdown_response = re.sub(r'\[(\d+)\]', citation_repl, cleaned_response)
-    #display(Markdown(markdown_response))
+    # display(Markdown(markdown_response))
     return (cleaned_response, citations)
-
 
 
 def process_tex_file_with_references(text, keys: KeyManager, nparagraphs=None):
     """
     Processes a LaTeX file by inserting `\\citep{}` references and generating a corresponding .bib file.
-    
+
     This pipeline:
       - Loads a .tex file as a list of lines.
       - Extracts paragraph-like lines using `_extract_paragraphs_from_tex_content()`, which returns a dict
@@ -92,30 +119,30 @@ def process_tex_file_with_references(text, keys: KeyManager, nparagraphs=None):
       - Uses `_replace_references_with_cite()` to insert `\\citep{}` commands and update the BibTeX content.
       - Updates the corresponding line (using its original line index) in the list of lines.
       - Writes the modified .tex file and an updated bibliography file.
-    
+
     Args:
         fname_tex (str): Path to the input .tex file.
         fname_bib (str): Path to the output .bib file.
         perplexity (callable): A function that processes a paragraph.
         nparagraphs (int, optional): Maximum number of paragraphs to process.
     """
-    
+
     # Join lines to get the full text for paragraph extraction
-    lines = text.splitlines()
+    lines = text.splitlines(keepends=True)
     para_dict = _extract_paragraphs_from_tex_content(text)
-    
-    str_bib = ''  # initialize string for the .bib file content
+
+    str_bib = ""  # initialize string for the .bib file content
     count = 0
-    
+
     # Iterate through the extracted paragraphs in order of their line numbers
     for kpara in sorted(para_dict.keys()):
         # Optionally skip the first paragraph (or any others)
         if count == 0:
             count += 1
             continue
-        
+
         para = para_dict[kpara]
-        
+
         # Try to process the paragraph using perplexity function (placeholder shown here)
         for attempt in range(2):
             # Replace the following line with your actual perplexity call if needed.
@@ -127,28 +154,27 @@ def process_tex_file_with_references(text, keys: KeyManager, nparagraphs=None):
                 # Skip this paragraph if processing fails after two attempts
                 count += 1
                 continue
-        
+
         # Replace citation markers in the paragraph and update the BibTeX content
         new_para, str_bib = _replace_references_with_cite(new_para, citations, str_bib)
-        
+
         # Update the line in the list only if the line index is valid
         lines[kpara] = new_para
-        
+
         count += 1
         if nparagraphs is not None and count >= nparagraphs:
             break
 
     # Reassemble the text and write the updated files
-    new_text = ''.join(lines)
+    new_text = "".join(lines)
 
     return new_text, str_bib
-
 
 
 def _extract_paragraphs_from_tex_content(tex_content: str) -> dict:
     """
     Returns a dictionary mapping 0-indexed line numbers to lines that are likely part of a paragraph.
-    
+
     Args:
         tex_content (str): LaTeX source as a string.
 
@@ -164,26 +190,30 @@ def _extract_paragraphs_from_tex_content(tex_content: str) -> dict:
         if not line:
             continue
 
-        if line.startswith('%'):
+        if line.startswith("%"):
             continue
 
-        if re.match(r'\\(begin|end|section|subsection|label|caption|ref|title|author|documentclass|usepackage|newcommand|section|subsection|subsubsection|affiliation|keywords|bibliography|centering|includegraphics)', line):
+        if re.match(
+            r"\\(begin|end|section|subsection|label|caption|ref|title|author|documentclass|usepackage|newcommand|section|subsection|subsubsection|affiliation|keywords|bibliography|centering|includegraphics)",
+            line,
+        ):
             continue
 
-        if re.search(r'\\(item|enumerate)', line):    # consider removing?
+        if re.search(r"\\(item|enumerate)", line):  # consider removing?
             continue
 
-        if re.search(r'(figure|table|equation|align|tabular)', line):
+        if re.search(r"(figure|table|equation|align|tabular)", line):
             continue
 
-        if re.match(r'^\$.*\$$', line) or re.match(r'^\\\[.*\\\]$', line):
+        if re.match(r"^\$.*\$$", line) or re.match(r"^\\\[.*\\\]$", line):
             continue
 
-        paragraph_lines[i] = raw_line   # append the raw_line
+        paragraph_lines[i] = raw_line  # append the raw_line
 
     return paragraph_lines
 
-def _arxiv_url_to_bib(citations: List[str]) -> Tuple[List[str], List[str]]:
+
+def _arxiv_url_to_bib(citations: List[str]) -> Tuple[List[str | None], List[str]]:
     """
     Given a list of arXiv URLs, returns BibTeX keys and entries.
 
@@ -195,24 +225,23 @@ def _arxiv_url_to_bib(citations: List[str]) -> Tuple[List[str], List[str]]:
             - A list of BibTeX keys (as strings).
             - A list of full BibTeX entries (as strings) suitable for inclusion in a .bib file.
     """
-    bib_keys = []
-    bib_strs = []
+    bib_keys: list[str | None] = []
+    bib_strs: list[str] = []
 
     for url in citations:
-
         try:
             # Convert URL to bibtex url (e.g., from /abs/ or /html/ to /bibtex/)
-            bib_url = re.sub(r'\b(abs|html|pdf)\b', 'bibtex', url)
-            response = requests.get(bib_url)
+            bib_url = re.sub(r"\b(abs|html|pdf)\b", "bibtex", url)
+            response = requests.get(bib_url, timeout=10)
 
             # If fetching fails, try the fallback using the arXiv ID
             if response.status_code != 200:
                 # Extract arXiv id from the URL (matches patterns like 2010.07487)
-                match_id = re.search(r'(\d{4}\.\d+)', url)
+                match_id = re.search(r"(\d{4}\.\d+)", url)
                 if match_id:
                     arxiv_id = match_id.group(1)
                     fallback_url = f"https://arxiv.org/bibtex/{arxiv_id}"
-                    response = requests.get(fallback_url)
+                    response = requests.get(fallback_url, timeout=10)
                     if response.status_code != 200:
                         # Fallback failed; mark this citation as failed.
                         bib_keys.append(None)
@@ -225,7 +254,7 @@ def _arxiv_url_to_bib(citations: List[str]) -> Tuple[List[str], List[str]]:
             bib_str = response.text.strip()
 
             # Extract BibTeX key using regex
-            match = re.match(r'@[\w]+\{([^,]+),', bib_str)
+            match = re.match(r"@[\w]+\{([^,]+),", bib_str)
             if not match:
                 # Could not extract key; mark as failed.
                 bib_keys.append(None)
@@ -235,13 +264,14 @@ def _arxiv_url_to_bib(citations: List[str]) -> Tuple[List[str], List[str]]:
             bib_keys.append(bib_key)
             bib_strs.append(bib_str)
 
-        except Exception:
+        except RequestException:
             bib_keys.append(None)
             continue
 
     return bib_keys, bib_strs
 
-def _replace_grouped_citations(content: str, bib_keys: List[str]) -> str:
+
+def _replace_grouped_citations(content: str, bib_keys: List[str | None]) -> str:
     """
     Replaces runs like [1][2][3] with a single sorted `\\citep{key1,key2,key3}`, sorted by year.
     Works for single refs like [1] too.
@@ -256,28 +286,34 @@ def _replace_grouped_citations(content: str, bib_keys: List[str]) -> str:
 
     def extract_year(key: str) -> int:
         """Extracts a 4-digit year from a BibTeX key (or returns a large number if missing)."""
-        match = re.search(r'\d{4}', key)
-        return int(match.group()) if match else float('inf')
+        match = re.search(r"\d{4}", key)
+        return int(match.group()) if match else 9999
 
     def replacer(match):
         # numbers = re.findall(r'\[(\d+)\]', match.group())  # ['1', '2', '3']
         # keys = [bib_keys[int(n) - 1] for n in numbers]     # adjust for 1-indexed
         # sorted_keys = sorted(keys, key=extract_year)
         # return f" \\citep{{{','.join(sorted_keys)}}}"
-        numbers = re.findall(r'\[(\d+)\]', match.group())  # e.g. ['1', '2', '3']
+        numbers = re.findall(r"\[(\d+)\]", match.group())  # e.g. ['1', '2', '3']
         # Only include keys that were successfully fetched.
-        keys = [bib_keys[int(n) - 1] for n in numbers if bib_keys[int(n) - 1] is not None]
+        keys = []
+        for n in numbers:
+            idx = int(n) - 1
+            if 0 <= idx < len(bib_keys) and bib_keys[idx] is not None:
+                keys.append(bib_keys[idx])
         if not keys:
             return ""  # Remove citation markers if no valid keys exist.
         sorted_keys = sorted(keys, key=extract_year)
         return f" \\citep{{{','.join(sorted_keys)}}}"
 
-
     # Match sequences like [1][2][3]
-    pattern = r'(?:\[\d+\])+'
+    pattern = r"(?:\[\d+\])+"
     return re.sub(pattern, replacer, content)
 
-def _replace_references_with_cite(content: str, citations: List[str], bibtex_file_str: str) -> Tuple[str, str]:
+
+def _replace_references_with_cite(
+    content: str, citations: List[str], bibtex_file_str: str
+) -> Tuple[str, str]:
     """
     Replaces numeric reference markers like [1] in the content with LaTeX-style `\\citep{...}`,
     and appends corresponding BibTeX entries to the bibtex string.
@@ -298,6 +334,6 @@ def _replace_references_with_cite(content: str, citations: List[str], bibtex_fil
     content = _replace_grouped_citations(content, bib_keys)
 
     # Append all BibTeX entries to the .bib string
-    bibtex_file_str = bibtex_file_str.rstrip() + '\n\n' + '\n\n'.join(bib_strs)
+    bibtex_file_str = bibtex_file_str.rstrip() + "\n\n" + "\n\n".join(bib_strs)
 
     return content, bibtex_file_str

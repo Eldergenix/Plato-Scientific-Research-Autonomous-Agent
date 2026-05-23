@@ -8,16 +8,15 @@ PlatoApp is the GUI for multiagent research assitant system [Plato](https://gith
 
 ## Launch the GUI
 
-Install the app with
+The legacy Streamlit GUI lives in the separate
+[AstroPilot-AI/PlatoApp](https://github.com/AstroPilot-AI/PlatoApp) repository.
+It is not published on PyPI as `plato_app`/`plato-app`, so install it from
+source:
 
 ```bash
-pip install "plato[app]"
-```
-
-or, if Plato is already installed, do:
-
-```bash
-pip install plato_app
+git clone https://github.com/AstroPilot-AI/PlatoApp.git
+cd PlatoApp
+pip install -e .
 ```
 
 Then, launch the app with
@@ -27,10 +26,6 @@ plato run
 ```
 
 ## Build the GUI from source
-
-First, clone the app with
-
-`git clone https://github.com/AstroPilot-AI/PlatoApp.git`
 
 Install the GUI from source following one of the following steps:
 

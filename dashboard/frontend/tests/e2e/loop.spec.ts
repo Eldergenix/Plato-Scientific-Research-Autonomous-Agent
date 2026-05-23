@@ -56,7 +56,7 @@ const TSV_ROWS = [
   },
 ];
 
-const API_BASE = "http://127.0.0.1:7878/api/v1";
+const API_BASE = "**/api/v1";
 
 async function mockLoopApi(page: Page) {
   // Capabilities + projects must answer something so the dashboard shell loads
@@ -147,6 +147,39 @@ test.describe("loop UI", () => {
     await page.getByTestId("loop-start-button").click();
     await expect(page.getByTestId("loop-start-dialog")).toBeVisible();
     await expect(page.getByTestId("loop-form-project-dir")).toBeVisible();
+  });
+
+  test("start dialog fields use light and dark theme tokens", async ({ page, context }) => {
+    const expectPalette = async (
+      targetPage: Page,
+      theme: "light" | "dark",
+      expected: { background: string; border: string },
+    ) => {
+      await targetPage.addInitScript((nextTheme) => {
+        localStorage.setItem("plato:theme", nextTheme);
+      }, theme);
+      await mockLoopApi(targetPage);
+      await targetPage.goto("/loop");
+      await targetPage.getByTestId("loop-start-button").click();
+      await expect(targetPage.getByTestId("loop-start-dialog")).toBeVisible();
+
+      const focusedField = targetPage.getByTestId("loop-form-project-dir");
+      const restingField = targetPage.getByTestId("loop-form-max-cost");
+      await expect(focusedField).toHaveCSS("background-color", expected.background);
+      await expect(restingField).toHaveCSS("border-top-color", expected.border);
+    };
+
+    await expectPalette(page, "light", {
+      background: "rgb(255, 255, 255)",
+      border: "rgb(216, 221, 229)",
+    });
+
+    const darkPage = await context.newPage();
+    await expectPalette(darkPage, "dark", {
+      background: "rgb(20, 20, 21)",
+      border: "rgb(38, 38, 40)",
+    });
+    await darkPage.close();
   });
 
   test("submitting the form posts /loop/start and redirects to detail page", async ({

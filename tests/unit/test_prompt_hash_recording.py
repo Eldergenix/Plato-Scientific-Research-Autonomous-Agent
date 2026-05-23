@@ -1,11 +1,9 @@
 """R9 — verify LLM_call / LLM_call_stream record sha256(prompt) when a recorder is in scope."""
+
 from __future__ import annotations
 
 import hashlib
-from pathlib import Path
 from unittest.mock import MagicMock
-
-import pytest
 
 from plato.paper_agents.tools import _record_prompt_hash
 
@@ -18,6 +16,14 @@ class _FakeRecorder:
 
     def update(self, **fields) -> None:
         self.calls.append(fields)
+
+
+class _PromptMessage:
+    def __init__(self, label: str) -> None:
+        self.label = label
+
+    def __repr__(self) -> str:
+        return self.label
 
 
 def test_record_prompt_hash_writes_sha256_under_node_name() -> None:
@@ -48,10 +54,8 @@ def test_record_prompt_hash_no_node_name_is_noop() -> None:
 def test_record_prompt_hash_handles_list_prompt() -> None:
     """LangChain-style list-of-message prompts must hash the str repr."""
     rec = _FakeRecorder()
-    msg1 = MagicMock()
-    msg1.__repr__ = lambda self: "Sys"
-    msg2 = MagicMock()
-    msg2.__repr__ = lambda self: "Hum"
+    msg1 = _PromptMessage("Sys")
+    msg2 = _PromptMessage("Hum")
     state = {"recorder": rec, "_last_prompt": [msg1, msg2]}
 
     _record_prompt_hash(state, node_name="literature")
@@ -73,4 +77,4 @@ def test_record_prompt_hash_recorder_failure_is_swallowed() -> None:
 
 def test_record_prompt_hash_string_state_is_noop() -> None:
     """Defensive: non-dict state must not crash."""
-    _record_prompt_hash("not a dict", node_name="any")  # type: ignore[arg-type]
+    _record_prompt_hash("not a dict", node_name="any")

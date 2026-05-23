@@ -14,6 +14,7 @@ The fake module is a stand-in for the real LangFuse SDK and lives in
 ``sys.modules`` only for the duration of one test, so this file does
 not depend on the optional ``plato[obs]`` extra being installed in CI.
 """
+
 from __future__ import annotations
 
 import sys
@@ -59,7 +60,7 @@ def test_warns_when_keys_present_but_package_missing(
 def test_returns_handler_when_env_and_package_present(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Keys + a fake ``langfuse.callback`` module → handler instance."""
+    """Keys + a fake ``langfuse.callback`` module → redacting wrapper."""
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-test")
 
@@ -83,7 +84,8 @@ def test_returns_handler_when_env_and_package_present(
         metadata={"workflow": "get_paper"},
     )
 
-    assert isinstance(handler, _FakeHandler)
+    assert handler is not None
+    assert isinstance(handler._inner, _FakeHandler)
     assert captured["session_id"] == "run-3"
     assert captured["user_id"] == "alice"
     assert captured["metadata"] == {"workflow": "get_paper"}

@@ -3,6 +3,7 @@
 See ``test_paper_graph_trajectory`` for the rationale on
 ``builder.edges`` vs ``get_graph().edges``.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -94,7 +95,8 @@ def test_idea_graph_phase5_literature_chain(idea_graph):
     """literature_summary -> counter_evidence_search -> gap_detector -> END."""
     edges = _builder_edges(idea_graph)
     chain = [
-        ("literature_summary", "counter_evidence_search"),
+        ("literature_summary", "claim_extractor"),
+        ("claim_extractor", "counter_evidence_search"),
         ("counter_evidence_search", "gap_detector"),
         ("gap_detector", "__end__"),
     ]

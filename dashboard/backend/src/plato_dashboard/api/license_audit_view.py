@@ -64,7 +64,7 @@ def _build_audit_payload() -> dict:
     Falls through to an HTTPException the route handler converts.
     """
     try:
-        from scripts.license_audit import collect_distributions  # type: ignore[import-not-found]
+        from scripts.license_audit import collect_distributions
     except Exception as exc:  # ImportError, ModuleNotFoundError, or ImportErrors raised inside the script.
         raise HTTPException(
             status_code=500,

@@ -33,6 +33,11 @@ interface BudgetCap {
 // run_stage (server.py:414-463).
 const LEGACY_CAPS_KEY = "plato.budgetCaps.v1";
 const GRID_COLS = "minmax(0,2.4fr) 1fr 1fr 1fr 1fr 36px";
+const BUDGET_FIELD_CLASS = cn(
+  "rounded-[6px] border border-(--color-border-pill) bg-(--color-bg-card) px-2 py-1.5 text-[12px]",
+  "text-(--color-text-primary) shadow-[var(--shadow-glass)] transition-colors",
+  "hover:border-(--color-border-strong) focus:border-(--color-brand-indigo) focus:outline-none",
+);
 
 async function fetchCapsFromBackend(projects: Project[]): Promise<BudgetCap[]> {
   // Fan out api.getCostCaps per project; backend is one tiny meta.json read
@@ -419,7 +424,7 @@ export default function CostsPage() {
                 aria-label="Project to cap"
                 value={capProjectId}
                 onChange={(e) => setCapProjectId(e.target.value)}
-                className="rounded-[6px] border border-[#262628] bg-[#141415] px-2 py-1.5 text-[12px] text-(--color-text-primary) focus:border-(--color-brand-indigo) focus:outline-none"
+                className={BUDGET_FIELD_CLASS}
               >
                 <option value="">Select project…</option>
                 {(projects ?? []).map((p) => (
@@ -438,9 +443,8 @@ export default function CostsPage() {
                 onChange={(e) => setCapValue(e.target.value)}
                 placeholder="0.00"
                 className={cn(
-                  "w-24 rounded-[6px] border border-[#262628] bg-[#141415] px-2 py-1.5 font-mono text-[12px]",
-                  "text-(--color-text-primary) placeholder:text-(--color-text-quaternary-spec)",
-                  "focus:border-(--color-brand-indigo) focus:outline-none",
+                  BUDGET_FIELD_CLASS,
+                  "w-24 font-mono placeholder:text-(--color-text-quaternary-spec)",
                 )}
               />
               <span className="text-(--color-text-tertiary-spec)">USD</span>

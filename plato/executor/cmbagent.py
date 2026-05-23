@@ -5,6 +5,7 @@ Wraps :class:`plato.experiment.Experiment` so the existing
 ``cmbagent.planning_and_control_context_carryover`` flow keeps working
 unchanged behind the new :class:`~plato.executor.Executor` Protocol.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -20,6 +21,7 @@ class CmbagentExecutor:
     """Executor that delegates to the existing :class:`~plato.experiment.Experiment` wrapper."""
 
     name = "cmbagent"
+    requires_model_credentials = True
 
     async def run(
         self,

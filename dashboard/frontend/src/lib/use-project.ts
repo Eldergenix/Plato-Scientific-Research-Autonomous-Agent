@@ -2,6 +2,8 @@
 
 import * as React from "react";
 import { api, setActiveRunId } from "./api";
+import { dashboardApiBase } from "./api-base";
+import type { RunEvent, RunEventCodeExecute, RunStatus, StageRunBody } from "./api";
 import type { LogLine, Project, Stage, StageId } from "./types";
 
 export interface PlotEntry {
@@ -37,6 +39,13 @@ export interface CodeEventEntry {
   } | null;
 }
 
+export interface FinishedRunEntry {
+  projectId: string;
+  runId: string;
+  stage: StageId;
+  status: RunStatus;
+}
+
 interface ProjectState {
   project: Project;
   log: LogLine[];
@@ -55,6 +64,7 @@ interface ProjectState {
    * carries the cell's full source string.
    */
   codeEvents: CodeEventEntry[];
+  lastFinishedRun: FinishedRunEntry | null;
   isLive: boolean; // true when fetched from API; false when offline / pre-bootstrap
   loading: boolean; // true until the first ``getProject`` resolves (or fails)
   capabilities: {
@@ -62,8 +72,9 @@ interface ProjectState {
     allowed_stages: StageId[];
     notes: string[];
   } | null;
-  startRun: (stage: StageId, body?: { mode?: "fast" | "cmbagent" }) => Promise<void>;
+  startRun: (stage: StageId, body?: StageRunBody) => Promise<void>;
   cancelRun: () => Promise<void>;
+  selectProject: (project: Project) => void;
   refresh: () => Promise<void>;
   refreshPlots: () => Promise<void>;
 }
@@ -117,6 +128,91 @@ const NODE_EVENTS_MAX = 500;
 // can be sizable (full source + stdout). 200 covers typical results
 // runs; older cells fall off the front when exceeded.
 const CODE_EVENTS_MAX = 200;
+const SELECTED_PROJECT_STORAGE_KEY = "plato:selected-project-id";
+const API_BASE = dashboardApiBase();
+
+export function persistSelectedProjectId(projectId: string | null): void {
+  if (typeof window === "undefined") return;
+  if (projectId) {
+    window.localStorage.setItem(SELECTED_PROJECT_STORAGE_KEY, projectId);
+  } else {
+    window.localStorage.removeItem(SELECTED_PROJECT_STORAGE_KEY);
+  }
+}
+
+function readSelectedProjectId(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(SELECTED_PROJECT_STORAGE_KEY);
+}
+
+export function pickPreferredProject(projects: Project[]): Project | undefined {
+  if (projects.length === 0) return undefined;
+  const selectedProjectId = readSelectedProjectId();
+  const selectedProject = projects.find((project) => project.id === selectedProjectId);
+  if (selectedProject) return selectedProject;
+
+  return projects.reduce((latest, project) => {
+    const latestTime = Date.parse(latest.updatedAt);
+    const projectTime = Date.parse(project.updatedAt);
+    if (!Number.isFinite(projectTime)) return latest;
+    if (!Number.isFinite(latestTime)) return project;
+    return projectTime > latestTime ? project : latest;
+  });
+}
+
+function coerceCodeEvent(evt: RunEventCodeExecute): CodeEventEntry {
+  const tsMs = (() => {
+    const raw = evt.ts;
+    if (typeof raw === "number") return raw;
+    const parsed = Date.parse(String(raw));
+    return Number.isFinite(parsed) ? parsed : Date.now();
+  })();
+  return {
+    index: typeof evt.index === "number" ? evt.index : undefined,
+    source: typeof evt.source === "string" ? evt.source : undefined,
+    stdout:
+      evt.stdout === null || typeof evt.stdout === "string"
+        ? evt.stdout
+        : undefined,
+    stderr:
+      evt.stderr === null || typeof evt.stderr === "string"
+        ? evt.stderr
+        : undefined,
+    executor:
+      evt.executor === null || typeof evt.executor === "string"
+        ? evt.executor
+        : undefined,
+    ts: tsMs,
+    error:
+      evt.error === null || typeof evt.error === "object"
+        ? (evt.error as CodeEventEntry["error"])
+        : undefined,
+  };
+}
+
+const STEP_RE = /\bStep\s+(\d+)\s*(?:\/|of)\s*(\d+)\b/i;
+const ATTEMPT_RE = /\bAttempt\s+(\d+)\s*(?:\/|of)\s*(\d+)\b/i;
+
+function progressFromLogLine(text: string): Pick<
+  NonNullable<Project["activeRun"]>,
+  "step" | "totalSteps" | "attempt" | "totalAttempts"
+> | null {
+  const next: Pick<
+    NonNullable<Project["activeRun"]>,
+    "step" | "totalSteps" | "attempt" | "totalAttempts"
+  > = {};
+  const step = STEP_RE.exec(text);
+  if (step) {
+    next.step = Number(step[1]);
+    next.totalSteps = Number(step[2]);
+  }
+  const attempt = ATTEMPT_RE.exec(text);
+  if (attempt) {
+    next.attempt = Number(attempt[1]);
+    next.totalAttempts = Number(attempt[2]);
+  }
+  return Object.keys(next).length > 0 ? next : null;
+}
 
 export function useProject(): ProjectState {
   const [project, setProject] = React.useState<Project>(EMPTY_PROJECT);
@@ -124,10 +220,12 @@ export function useProject(): ProjectState {
   const [plots, setPlots] = React.useState<PlotEntry[]>([]);
   const [nodeEvents, setNodeEvents] = React.useState<NodeEventEntry[]>([]);
   const [codeEvents, setCodeEvents] = React.useState<CodeEventEntry[]>([]);
+  const [lastFinishedRun, setLastFinishedRun] = React.useState<FinishedRunEntry | null>(null);
   const [isLive, setIsLive] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [caps, setCaps] = React.useState<ProjectState["capabilities"]>(null);
   const sseUnsubRef = React.useRef<(() => void) | null>(null);
+  const subscribedRunIdRef = React.useRef<string | null>(null);
   const projectIdRef = React.useRef<string | null>(null);
 
   const refresh = React.useCallback(async () => {
@@ -145,7 +243,8 @@ export function useProject(): ProjectState {
     if (!projectIdRef.current) return;
     try {
       const r = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:7878/api/v1"}/projects/${projectIdRef.current}/plots`,
+        `${API_BASE}/projects/${projectIdRef.current}/plots`,
+        { credentials: "include" },
       );
       if (!r.ok) return;
       const list = (await r.json()) as PlotEntry[];
@@ -154,6 +253,192 @@ export function useProject(): ProjectState {
       // ignore
     }
   }, []);
+
+  const refreshHistoricalResultsEvents = React.useCallback(async (pid: string) => {
+    try {
+      const runs = await api.listRuns(pid);
+      const resultRuns = runs
+        .filter((run) => run.stage === "results" && run.status === "succeeded")
+        .sort((a, b) => {
+          const aTime = Date.parse(a.finishedAt ?? a.startedAt ?? "");
+          const bTime = Date.parse(b.finishedAt ?? b.startedAt ?? "");
+          return (
+            (Number.isFinite(aTime) ? aTime : 0) -
+            (Number.isFinite(bTime) ? bTime : 0)
+          );
+        });
+      const latest = resultRuns[resultRuns.length - 1];
+      if (!latest) {
+        if (projectIdRef.current === pid) setCodeEvents([]);
+        return;
+      }
+      const events = await api.listRunEvents(pid, latest.id);
+      const entries = events
+        .filter((evt): evt is RunEventCodeExecute => evt.kind === "code.execute")
+        .map(coerceCodeEvent)
+        .slice(-CODE_EVENTS_MAX);
+      if (projectIdRef.current === pid) setCodeEvents(entries);
+    } catch {
+      // Keep the live buffer. Historical replay is best-effort for reloads.
+    }
+  }, []);
+
+  const applyRunEvent = React.useCallback(
+    (evt: RunEvent, runId: string, stage: StageId) => {
+      if (evt.kind === "log.line") {
+        const text = String(evt.text ?? "");
+        const LOG_MAX = 2000;
+        setLog((prev) => {
+          const next = [
+            ...prev,
+            {
+              ts: String(evt.ts),
+              source: String(evt.source ?? stage),
+              agent: evt.agent as string | undefined,
+              level: (evt.level as "info" | "warn" | "error" | "tool") ?? "info",
+              text,
+            },
+          ];
+          return next.length > LOG_MAX ? next.slice(-LOG_MAX) : next;
+        });
+        const progress = progressFromLogLine(text);
+        if (progress) {
+          setProject((prev) =>
+            prev.activeRun?.runId === runId
+              ? {
+                  ...prev,
+                  activeRun: { ...prev.activeRun, ...progress },
+                }
+              : prev,
+          );
+        }
+      } else if (evt.kind === "error") {
+        const text = String(evt.message ?? "Run failed");
+        setLog((prev) => {
+          const next = [
+            ...prev,
+            {
+              ts: String(evt.ts),
+              source: String(evt.stage ?? stage),
+              level: "error" as const,
+              text,
+            },
+          ];
+          return next.length > 2000 ? next.slice(-2000) : next;
+        });
+      } else if (evt.kind === "plot.created") {
+        void refreshPlots();
+      } else if (evt.kind === "stage.heartbeat") {
+        setProject((prev) =>
+          prev.activeRun?.runId === runId
+            ? {
+                ...prev,
+                activeRun: {
+                  ...prev.activeRun,
+                  step: typeof evt.step === "number" ? evt.step : prev.activeRun.step,
+                  totalSteps:
+                    typeof evt.total_steps === "number"
+                      ? evt.total_steps
+                      : prev.activeRun.totalSteps,
+                  attempt:
+                    typeof evt.attempt === "number"
+                      ? evt.attempt
+                      : prev.activeRun.attempt,
+                  totalAttempts:
+                    typeof evt.total_attempts === "number"
+                      ? evt.total_attempts
+                      : prev.activeRun.totalAttempts,
+                },
+              }
+            : prev,
+        );
+      } else if (evt.kind === "code.execute") {
+        const entry = coerceCodeEvent(evt as RunEventCodeExecute);
+        setCodeEvents((prev) => {
+          const next = [...prev, entry];
+          return next.length > CODE_EVENTS_MAX ? next.slice(-CODE_EVENTS_MAX) : next;
+        });
+      } else if (evt.kind === "node.entered" || evt.kind === "node.exited") {
+        const tsMs = (() => {
+          const raw = evt.ts;
+          if (typeof raw === "number") return raw;
+          const parsed = Date.parse(String(raw));
+          return Number.isFinite(parsed) ? parsed : Date.now();
+        })();
+        const entry: NodeEventEntry = {
+          name: String((evt as { name?: unknown }).name ?? "unknown"),
+          stage: (evt as { stage?: string }).stage,
+          ts: tsMs,
+          kind: evt.kind === "node.entered" ? "entered" : "exited",
+          durationMs:
+            evt.kind === "node.exited"
+              ? (evt as { duration_ms?: number }).duration_ms
+              : undefined,
+        };
+        setNodeEvents((prev) => {
+          const next = [...prev, entry];
+          return next.length > NODE_EVENTS_MAX ? next.slice(-NODE_EVENTS_MAX) : next;
+        });
+      } else if (evt.kind === "stage.finished") {
+        const finished = evt as { status?: RunStatus; ok?: boolean };
+        const status: RunStatus =
+          finished.status ?? (finished.ok === false ? "failed" : "succeeded");
+        const pid = projectIdRef.current;
+        setActiveRunId(null);
+        sseUnsubRef.current?.();
+        sseUnsubRef.current = null;
+        subscribedRunIdRef.current = null;
+        if (pid) setLastFinishedRun({ projectId: pid, runId, stage, status });
+        void refresh();
+        void refreshPlots();
+        if (stage === "results" && pid) {
+          void refreshHistoricalResultsEvents(pid);
+        }
+      }
+    },
+    [refresh, refreshHistoricalResultsEvents, refreshPlots],
+  );
+
+  const attachRun = React.useCallback(
+    async (pid: string, runId: string, stage: StageId, replayHistory: boolean) => {
+      if (subscribedRunIdRef.current === runId) return;
+      sseUnsubRef.current?.();
+      subscribedRunIdRef.current = runId;
+      setActiveRunId(runId);
+      if (replayHistory) {
+        try {
+          const history = await api.listRunEvents(pid, runId);
+          for (const evt of history) applyRunEvent(evt, runId, stage);
+        } catch {
+          // Run history replay is best-effort; live SSE continues below.
+        }
+      }
+      if (subscribedRunIdRef.current !== runId) return;
+      sseUnsubRef.current = api.subscribeRunEvents(pid, runId, (evt) => {
+        applyRunEvent(evt, runId, stage);
+      });
+    },
+    [applyRunEvent],
+  );
+
+  const selectProject = React.useCallback((nextProject: Project) => {
+    projectIdRef.current = nextProject.id;
+    persistSelectedProjectId(nextProject.id);
+    setProject(nextProject);
+    setLog([]);
+    setPlots([]);
+    setNodeEvents([]);
+    setCodeEvents([]);
+    setActiveRunId(null);
+    sseUnsubRef.current?.();
+    sseUnsubRef.current = null;
+    subscribedRunIdRef.current = null;
+    if (nextProject.activeRun) {
+      void attachRun(nextProject.id, nextProject.activeRun.runId, nextProject.activeRun.stage, true);
+    } else {
+      void refreshHistoricalResultsEvents(nextProject.id);
+    }
+  }, [attachRun, refreshHistoricalResultsEvents]);
 
   // Bootstrap: ping API, load caps + first project (or create one).
   React.useEffect(() => {
@@ -172,9 +457,12 @@ export function useProject(): ProjectState {
         const list = await api.listProjects();
         let active: Project;
         if (list.length > 0) {
-          active = list[list.length - 1];
+          const preferred = pickPreferredProject(list);
+          if (!preferred) throw new Error("No project available.");
+          active = preferred;
         } else {
           active = await api.createProject("New project");
+          persistSelectedProjectId(active.id);
         }
         if (cancelled) return;
         projectIdRef.current = active.id;
@@ -184,7 +472,8 @@ export function useProject(): ProjectState {
         // Initial plots fetch.
         try {
           const plotsRes = await fetch(
-            `${process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:7878/api/v1"}/projects/${active.id}/plots`,
+            `${API_BASE}/projects/${active.id}/plots`,
+            { credentials: "include" },
           );
           if (plotsRes.ok) {
             const list = (await plotsRes.json()) as PlotEntry[];
@@ -192,6 +481,11 @@ export function useProject(): ProjectState {
           }
         } catch {
           // ignore
+        }
+        if (!cancelled && active.activeRun) {
+          void attachRun(active.id, active.activeRun.runId, active.activeRun.stage, true);
+        } else if (!cancelled) {
+          void refreshHistoricalResultsEvents(active.id);
         }
       } catch {
         // Iter-23: backend offline → stay on EMPTY_PROJECT instead of
@@ -207,8 +501,9 @@ export function useProject(): ProjectState {
     return () => {
       cancelled = true;
       sseUnsubRef.current?.();
+      subscribedRunIdRef.current = null;
     };
-  }, []);
+  }, [attachRun, refreshHistoricalResultsEvents]);
 
   const startRun = React.useCallback<ProjectState["startRun"]>(
     async (stage, body) => {
@@ -221,124 +516,68 @@ export function useProject(): ProjectState {
         setActiveRunId(run.id);
         // Iter-28: clear any node events from the previous run so the
         // swimlane doesn't show stale lanes from a different run.
+        setLog([]);
         setNodeEvents([]);
         // Iter-30: same logic for code events.
         setCodeEvents([]);
-        sseUnsubRef.current?.();
-        sseUnsubRef.current = api.subscribeRunEvents(
-          projectIdRef.current,
-          run.id,
-          (evt) => {
-            if (evt.kind === "log.line") {
-              // Ring-buffer cap: keep at most LOG_MAX entries so a long
-              // run can't grow the log array (and the rendered DOM)
-              // without bound. Visualization layer should still pair
-              // this with virtualization for full safety.
-              const LOG_MAX = 2000;
-              setLog((prev) => {
-                const next = [
-                  ...prev,
-                  {
-                    ts: String(evt.ts),
-                    source: String(evt.source ?? stage),
-                    agent: evt.agent as string | undefined,
-                    level:
-                      (evt.level as "info" | "warn" | "error" | "tool") ??
-                      "info",
-                    text: String(evt.text ?? ""),
-                  },
-                ];
-                return next.length > LOG_MAX ? next.slice(-LOG_MAX) : next;
-              });
-            } else if (evt.kind === "plot.created") {
-              // Live plot file watcher: a new plot file appeared on disk.
-              void refreshPlots();
-            } else if (evt.kind === "code.execute") {
-              // Iter-30: fan out to CodePane via codeEvents. Same ring-
-              // buffer treatment as nodeEvents — bounded so a long run
-              // can't accumulate unbounded source-string allocations.
-              const tsMs = (() => {
-                const raw = evt.ts;
-                if (typeof raw === "number") return raw;
-                const parsed = Date.parse(String(raw));
-                return Number.isFinite(parsed) ? parsed : Date.now();
-              })();
-              const entry: CodeEventEntry = {
-                index: typeof evt.index === "number" ? evt.index : undefined,
-                source: typeof evt.source === "string" ? evt.source : undefined,
-                stdout:
-                  evt.stdout === null || typeof evt.stdout === "string"
-                    ? evt.stdout
-                    : undefined,
-                stderr:
-                  evt.stderr === null || typeof evt.stderr === "string"
-                    ? evt.stderr
-                    : undefined,
-                executor:
-                  evt.executor === null || typeof evt.executor === "string"
-                    ? evt.executor
-                    : undefined,
-                ts: tsMs,
-                error:
-                  evt.error === null || typeof evt.error === "object"
-                    ? (evt.error as CodeEventEntry["error"])
-                    : undefined,
-              };
-              setCodeEvents((prev) => {
-                const next = [...prev, entry];
-                return next.length > CODE_EVENTS_MAX
-                  ? next.slice(-CODE_EVENTS_MAX)
-                  : next;
-              });
-            } else if (
-              evt.kind === "node.entered" || evt.kind === "node.exited"
-            ) {
-              // Iter-28: AgentSwimlane consumer. Coerce ts to ms
-              // (backend emits ISO-8601 strings; Date.parse handles
-              // both string + number forms).
-              const tsMs = (() => {
-                const raw = evt.ts;
-                if (typeof raw === "number") return raw;
-                const parsed = Date.parse(String(raw));
-                return Number.isFinite(parsed) ? parsed : Date.now();
-              })();
-              const entry: NodeEventEntry = {
-                name: String((evt as { name?: unknown }).name ?? "unknown"),
-                stage: (evt as { stage?: string }).stage,
-                ts: tsMs,
-                kind: evt.kind === "node.entered" ? "entered" : "exited",
-                durationMs:
-                  evt.kind === "node.exited"
-                    ? (evt as { duration_ms?: number }).duration_ms
-                    : undefined,
-              };
-              setNodeEvents((prev) => {
-                const next = [...prev, entry];
-                return next.length > NODE_EVENTS_MAX
-                  ? next.slice(-NODE_EVENTS_MAX)
-                  : next;
-              });
-            } else if (evt.kind === "stage.finished") {
-              // Clear the run-id correlation header so post-run
-              // requests (refresh, plot fetches) aren't tagged with
-              // a stale run id.
-              setActiveRunId(null);
-              void refresh();
-              void refreshPlots();
-            }
-          },
-        );
+        setProject((prev) => {
+          const currentStage = prev.stages[stage];
+          return {
+            ...prev,
+            activeRun: {
+              runId: run.id,
+              stage,
+              startedAt: run.started_at ?? new Date().toISOString(),
+            },
+            stages: {
+              ...prev.stages,
+              [stage]: currentStage
+                ? {
+                    ...currentStage,
+                    status: "running",
+                    progressLabel: "Running",
+                  }
+                : currentStage,
+            },
+          };
+        });
+        void attachRun(projectIdRef.current, run.id, stage, false);
       } catch (e) {
         console.error("Failed to start run", e);
+        throw e;
       }
     },
-    [isLive, refresh, refreshPlots],
+    [attachRun, isLive],
   );
 
   const cancelRun = React.useCallback<ProjectState["cancelRun"]>(async () => {
     if (!isLive || !projectIdRef.current || !project.activeRun) return;
+    const cancelledStage = project.activeRun.stage;
     await api.cancelRun(projectIdRef.current, project.activeRun.runId);
-  }, [isLive, project.activeRun]);
+    setActiveRunId(null);
+    sseUnsubRef.current?.();
+    sseUnsubRef.current = null;
+    subscribedRunIdRef.current = null;
+    setProject((prev) => {
+      if (prev.activeRun?.stage !== cancelledStage) return prev;
+      const currentStage = prev.stages[cancelledStage];
+      return {
+        ...prev,
+        activeRun: null,
+        stages: {
+          ...prev.stages,
+          [cancelledStage]: currentStage
+            ? {
+                ...currentStage,
+                status: "empty",
+                progressLabel: undefined,
+              }
+            : currentStage,
+        },
+      };
+    });
+    await refresh();
+  }, [isLive, project.activeRun, refresh]);
 
   return {
     project,
@@ -346,11 +585,13 @@ export function useProject(): ProjectState {
     plots,
     nodeEvents,
     codeEvents,
+    lastFinishedRun,
     isLive,
     loading,
     capabilities: caps,
     startRun,
     cancelRun,
+    selectProject,
     refresh,
     refreshPlots,
   };

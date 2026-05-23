@@ -5,13 +5,16 @@ Just verifies that ``abstract_node``, ``methods_node`` and
 :class:`ScopedWriter` integration in place. We mock the LLM and the LaTeX
 toolchain so the test stays hermetic.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import cast
 from unittest.mock import patch
 
 import pytest
+from langchain_core.runnables import RunnableConfig
+from plato.paper_agents.parameters import GraphState
 
 
 def test_three_nodes_importable() -> None:
@@ -27,7 +30,7 @@ def test_three_nodes_importable() -> None:
     )
 
 
-def _make_state(project_dir: Path) -> dict[str, Any]:
+def _make_state(project_dir: Path) -> GraphState:
     """Minimal `GraphState`-shaped dict pointing at a real temp project dir."""
     from plato.paper_agents.journal import Journal
 
@@ -36,42 +39,50 @@ def _make_state(project_dir: Path) -> dict[str, Any]:
     temp_dir.mkdir(parents=True, exist_ok=True)
     llm_calls = paper_folder / "LLM_calls.txt"
 
-    return {
-        "messages": [],
-        "files": {
-            "Folder": str(paper_folder),
-            "Paper_folder": str(paper_folder),
-            "Temp": str(temp_dir),
-            "Paper_v1": str(paper_folder / "paper_v1.tex"),
-            "LLM_calls": str(llm_calls),
-            "Error": str(paper_folder / "Error.txt"),
+    return cast(
+        GraphState,
+        {
+            "messages": [],
+            "files": {
+                "Folder": str(paper_folder),
+                "Paper_folder": str(paper_folder),
+                "Temp": str(temp_dir),
+                "Paper_v1": str(paper_folder / "paper_v1.tex"),
+                "LLM_calls": str(llm_calls),
+                "Error": str(paper_folder / "Error.txt"),
+            },
+            "idea": {"Idea": "x", "Methods": "y", "Results": "z"},
+            "paper": {
+                "Title": "",
+                "Abstract": "",
+                "Keywords": "",
+                "Introduction": "",
+                "Methods": "",
+                "Results": "",
+                "Conclusions": "",
+                "References": "",
+                "summary": "",
+                "journal": Journal.NONE,
+                "add_citations": False,
+                "cmbagent_keywords": False,
+            },
+            "tokens": {"ti": 0, "to": 0, "i": 0, "o": 0},
+            "llm": {
+                "model": "stub",
+                "max_output_tokens": 1024,
+                "llm": None,
+                "temperature": 0.0,
+            },
+            "latex": {"section_to_fix": ""},
+            "keys": None,
+            "time": {"start": 0.0},
+            "writer": "scientist",
+            "params": {"num_keywords": 3},
+            "critiques": {},
+            "critique_digest": None,
+            "revision_state": {"iteration": 0, "max_iterations": 2},
         },
-        "idea": {"Idea": "x", "Methods": "y", "Results": "z"},
-        "paper": {
-            "Title": "",
-            "Abstract": "",
-            "Keywords": "",
-            "Introduction": "",
-            "Methods": "",
-            "Results": "",
-            "Conclusions": "",
-            "References": "",
-            "summary": "",
-            "journal": Journal.NONE,
-            "add_citations": False,
-            "cmbagent_keywords": False,
-        },
-        "tokens": {"ti": 0, "to": 0, "i": 0, "o": 0},
-        "llm": {"model": "stub", "max_output_tokens": 1024, "llm": None, "temperature": 0.0},
-        "latex": {"section_to_fix": ""},
-        "keys": None,
-        "time": {"start": 0.0},
-        "writer": "scientist",
-        "params": {"num_keywords": 3},
-        "critiques": {},
-        "critique_digest": None,
-        "revision_state": {"iteration": 0, "max_iterations": 2},
-    }
+    )
 
 
 @pytest.fixture
@@ -86,7 +97,7 @@ def _scripted_llm(scripts: list[str]):
     the last script if more calls come in."""
     idx = {"i": 0}
 
-    def _impl(prompt, state):
+    def _impl(prompt, state, **_kwargs):
         state["tokens"]["ti"] += 1
         state["tokens"]["to"] += 1
         i = idx["i"]
@@ -108,11 +119,13 @@ def test_abstract_node_runs_with_scoped_writer(project_dir: Path) -> None:
         # 2: abstract_reflection → LaTeX block named Abstract
         "\\begin{Abstract}\nAn abstract.\n\\end{Abstract}",
     ]
-    with patch.object(paper_node, "LLM_call", side_effect=_scripted_llm(scripts)), \
-         patch.object(paper_node, "compile_tex_document", return_value=True), \
-         patch.object(paper_node, "save_paper", return_value=None), \
-         patch.object(paper_node, "fix_latex", side_effect=lambda s, f: (s, True)):
-        out = paper_node.abstract_node(state, config=None)
+    with (
+        patch.object(paper_node, "LLM_call", side_effect=_scripted_llm(scripts)),
+        patch.object(paper_node, "compile_tex_document", return_value=True),
+        patch.object(paper_node, "save_paper", return_value=None),
+        patch.object(paper_node, "fix_latex", side_effect=lambda s, f: (s, True)),
+    ):
+        out = paper_node.abstract_node(state, config=cast(RunnableConfig, {}))
 
     assert "paper" in out
     assert out["paper"]["Title"] == "T"
@@ -125,7 +138,9 @@ def test_abstract_node_runs_with_scoped_writer(project_dir: Path) -> None:
 
 
 def _section_script(section_name: str) -> list[str]:
-    return [f"\\begin{{{section_name}}}\nSome {section_name} text.\n\\end{{{section_name}}}"]
+    return [
+        f"\\begin{{{section_name}}}\nSome {section_name} text.\n\\end{{{section_name}}}"
+    ]
 
 
 def test_methods_node_runs_with_scoped_writer(project_dir: Path) -> None:
@@ -133,12 +148,18 @@ def test_methods_node_runs_with_scoped_writer(project_dir: Path) -> None:
 
     state = _make_state(project_dir)
 
-    with patch.object(paper_node, "LLM_call", side_effect=_scripted_llm(_section_script("Methods"))), \
-         patch.object(paper_node, "LaTeX_checker", side_effect=lambda s, t: t), \
-         patch.object(paper_node, "compile_tex_document", return_value=True), \
-         patch.object(paper_node, "save_paper", return_value=None), \
-         patch.object(paper_node, "fix_latex", side_effect=lambda s, f: (s, True)):
-        out = paper_node.methods_node(state, config=None)
+    with (
+        patch.object(
+            paper_node,
+            "LLM_call",
+            side_effect=_scripted_llm(_section_script("Methods")),
+        ),
+        patch.object(paper_node, "LaTeX_checker", side_effect=lambda s, t: t),
+        patch.object(paper_node, "compile_tex_document", return_value=True),
+        patch.object(paper_node, "save_paper", return_value=None),
+        patch.object(paper_node, "fix_latex", side_effect=lambda s, f: (s, True)),
+    ):
+        out = paper_node.methods_node(state, config=cast(RunnableConfig, {}))
 
     assert "paper" in out
     assert "Some Methods text." in out["paper"]["Methods"]
@@ -152,15 +173,23 @@ def test_conclusions_node_runs_with_scoped_writer(project_dir: Path) -> None:
 
     state = _make_state(project_dir)
 
-    with patch.object(paper_node, "LLM_call", side_effect=_scripted_llm(_section_script("Conclusions"))), \
-         patch.object(paper_node, "LaTeX_checker", side_effect=lambda s, t: t), \
-         patch.object(paper_node, "compile_tex_document", return_value=True), \
-         patch.object(paper_node, "save_paper", return_value=None), \
-         patch.object(paper_node, "fix_latex", side_effect=lambda s, f: (s, True)):
-        out = paper_node.conclusions_node(state, config=None)
+    with (
+        patch.object(
+            paper_node,
+            "LLM_call",
+            side_effect=_scripted_llm(_section_script("Conclusions")),
+        ),
+        patch.object(paper_node, "LaTeX_checker", side_effect=lambda s, t: t),
+        patch.object(paper_node, "compile_tex_document", return_value=True),
+        patch.object(paper_node, "save_paper", return_value=None),
+        patch.object(paper_node, "fix_latex", side_effect=lambda s, f: (s, True)),
+    ):
+        out = paper_node.conclusions_node(state, config=cast(RunnableConfig, {}))
 
     assert "paper" in out
     assert "Some Conclusions text." in out["paper"]["Conclusions"]
     conclusions_path = project_dir / "temp" / "Conclusions.tex"
-    assert conclusions_path.exists(), "ScopedWriter should have written temp/Conclusions.tex"
+    assert conclusions_path.exists(), (
+        "ScopedWriter should have written temp/Conclusions.tex"
+    )
     assert "Some Conclusions text." in conclusions_path.read_text()

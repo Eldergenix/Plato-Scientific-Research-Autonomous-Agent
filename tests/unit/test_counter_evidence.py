@@ -1,18 +1,23 @@
 """Unit tests for the Workflow-#11 counter-evidence search node."""
+
 from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
 from unittest.mock import patch, AsyncMock
 
-import pytest
 
 from plato.langgraph_agents import counter_evidence as ce
 from plato.state.models import Source
 
 
-def _src(idx: int, *, doi: str | None = None, arxiv: str | None = None,
-         title: str | None = None) -> Source:
+def _src(
+    idx: int,
+    *,
+    doi: str | None = None,
+    arxiv: str | None = None,
+    title: str | None = None,
+) -> Source:
     return Source(
         id=f"src-{idx:03d}",
         doi=doi,

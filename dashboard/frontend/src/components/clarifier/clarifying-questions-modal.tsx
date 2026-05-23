@@ -114,6 +114,7 @@ export function ClarifyingQuestionsModal({
     try {
       const resp = await fetch(`/api/v1/runs/${runId}/clarifications`, {
         method: "POST",
+        credentials: "include",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ answers: answers.map((a) => a.trim()) }),
       });

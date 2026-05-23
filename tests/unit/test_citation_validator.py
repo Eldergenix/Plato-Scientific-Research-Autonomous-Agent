@@ -7,6 +7,7 @@ so a single test can simulate Crossref, arXiv, and URL-liveness responses
 simultaneously. ``respx`` is optional and not installed in the dev
 environment, so we use plain ``AsyncMock`` instead.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -47,6 +48,47 @@ def _response(status_code: int, json_body: dict | None = None) -> httpx.Response
     if json_body is not None:
         return httpx.Response(status_code=status_code, json=json_body)
     return httpx.Response(status_code=status_code)
+
+
+def _text_response(status_code: int, text: str) -> httpx.Response:
+    return httpx.Response(status_code=status_code, text=text)
+
+
+def _arxiv_feed() -> str:
+    return """<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <title>Some Paper</title>
+    <author><name>Ada Lovelace</name></author>
+    <published>2024-01-01T00:00:00Z</published>
+  </entry>
+</feed>"""
+
+
+def _crossref_work(
+    *,
+    title: str = "Some Paper",
+    authors: list[tuple[str, str]] | None = None,
+    year: int = 2024,
+    doi: str = "10.1000/valid",
+) -> dict:
+    author_rows = authors or [
+        ("Ada", "Lovelace"),
+        ("Grace", "Hopper"),
+        ("Katherine", "Johnson"),
+    ]
+    return {
+        "message": {
+            "title": [title],
+            "author": [
+                {"given": given, "family": family} for given, family in author_rows
+            ],
+            "published": {"date-parts": [[year]]},
+            "container-title": ["Journal of Tests"],
+            "DOI": doi,
+            "URL": f"https://doi.org/{doi}",
+        }
+    }
 
 
 def _mock_client(
@@ -97,14 +139,20 @@ def _mock_client(
 
 @pytest.mark.asyncio
 async def test_valid_doi_resolves_and_is_not_retracted():
-    src = _make_source(doi="10.1000/valid")
+    src = _make_source(
+        doi="10.1000/valid",
+    )
     client = _mock_client(
-        get_router={"https://api.crossref.org/works/": _response(200, {"message": {}})},
+        get_router={
+            "https://api.crossref.org/works/": _response(200, _crossref_work())
+        },
     )
     v = CitationValidator(http_client=client)
     result = await v.validate(src)
     assert result.doi_resolved is True
     assert result.retracted is False
+    assert result.status == "verified"
+    assert result.verdict == "UNLIKELY"
     assert result.error is None
 
 
@@ -169,6 +217,11 @@ async def test_crossref_update_to_retraction_marks_retracted():
 async def test_valid_arxiv_id_resolves():
     src = _make_source(arxiv_id="2401.12345")
     client = _mock_client(
+        get_router={
+            "https://export.arxiv.org/api/query?id_list=": _text_response(
+                200, _arxiv_feed()
+            )
+        },
         head_router={"https://export.arxiv.org/abs/": _response(200)},
     )
     v = CitationValidator(http_client=client)
@@ -226,7 +279,9 @@ async def test_validate_batch_returns_one_result_per_source():
         for i in range(7)
     ]
     client = _mock_client(
-        get_router={"https://api.crossref.org/works/": _response(200, {"message": {}})},
+        get_router={
+            "https://api.crossref.org/works/": _response(200, _crossref_work())
+        },
     )
     v = CitationValidator(http_client=client)
     results = await v.validate_batch(sources, concurrency=3)
@@ -234,6 +289,93 @@ async def test_validate_batch_returns_one_result_per_source():
     assert len(results) == len(sources)
     assert [r.source_id for r in results] == [s.id for s in sources]
     assert all(r.doi_resolved is True for r in results)
+
+
+@pytest.mark.asyncio
+async def test_author_overlap_below_threshold_flags_hallucination_candidate():
+    src = _make_source(
+        doi="10.1000/valid",
+        id="bad-authors",
+    )
+    src.authors = ["Alice Alpha", "Bob Beta", "Carol Gamma"]
+    client = _mock_client(
+        get_router={
+            "https://api.crossref.org/works/": _response(
+                200,
+                _crossref_work(
+                    authors=[
+                        ("Ada", "Lovelace"),
+                        ("Grace", "Hopper"),
+                        ("Katherine", "Johnson"),
+                    ],
+                ),
+            )
+        },
+    )
+    v = CitationValidator(http_client=client)
+
+    result = await v.validate(src)
+
+    assert result.status == "error"
+    assert result.verdict == "UNCERTAIN"
+    assert result.hallucination_assessment is not None
+    assert result.issues[0]["type"] == "author_overlap_below_threshold"
+    assert "author-mismatch" in result.tags
+    assert result.folder == "References/Needs Review"
+
+
+@pytest.mark.asyncio
+async def test_bibtex_last_first_authors_match_crossref_metadata():
+    src = _make_source(doi="10.1000/valid", id="last-first-authors")
+    src.authors = ["Lovelace, Ada", "Hopper, Grace", "Johnson, Katherine"]
+    client = _mock_client(
+        get_router={
+            "https://api.crossref.org/works/": _response(200, _crossref_work())
+        },
+    )
+    v = CitationValidator(http_client=client)
+
+    result = await v.validate(src)
+
+    assert result.status == "verified"
+    assert result.issues == []
+    assert result.folder == "References/Verified"
+
+
+@pytest.mark.asyncio
+async def test_llm_found_metadata_reverification_clears_unverified_reference():
+    src = _make_source(id="llm-found")
+    src.title = "A Real Paper Found by Web Search"
+    src.authors = ["Ada Lovelace", "Grace Hopper", "Katherine Johnson"]
+    src.year = 2024
+
+    async def assessor(_source, _issues):
+        return {
+            "verdict": "UNLIKELY",
+            "explanation": "Exact source found on a dedicated paper page.",
+            "link": "https://example.edu/paper",
+            "found_title": "A Real Paper Found by Web Search",
+            "found_authors": "Ada Lovelace, Grace Hopper, Katherine Johnson",
+            "found_year": "2024",
+        }
+
+    client = _mock_client(
+        get_router={
+            "https://api.crossref.org/works?query.title=": _response(
+                200, {"message": {"items": []}}
+            )
+        },
+    )
+    v = CitationValidator(http_client=client, hallucination_assessor=assessor)
+
+    result = await v.validate(src)
+
+    assert result.status == "verified"
+    assert result.verdict == "UNLIKELY"
+    assert result.matched_source == "llm_verified"
+    assert result.issues == []
+    assert "bibtex" in result.corrections
+    assert result.folder == "References/Verified"
 
 
 @pytest.mark.asyncio

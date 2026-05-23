@@ -37,10 +37,22 @@ MODEL_COSTS: dict[str, tuple[float, float]] = {
     "gpt-4.5": (0.075, 0.150),
     "gpt-5": (0.0125, 0.050),
     "gpt-5-mini": (0.00025, 0.0020),
+    "gpt-5.5": (0.0, 0.0),
+    "gpt-5.5-2026-04-23": (0.0, 0.0),
+    "gpt-5.5-pro": (0.0, 0.0),
     # Anthropic
     "claude-3.7-sonnet": (0.003, 0.015),
     "claude-4-opus": (0.015, 0.075),
     "claude-4.1-opus": (0.015, 0.075),
+    "claude-4.7-opus": (0.0, 0.0),
+    # Hugging Face Inference Providers: route-specific pricing; keep
+    # usage visible but avoid fake fixed-cost estimates.
+    "deepseek-v4": (0.0, 0.0),
+    "deepseek-v4-pro": (0.0, 0.0),
+    "qwen/qwen3.6-27b": (0.0, 0.0),
+    "meta-llama/llama-3.3-70b-instruct": (0.0, 0.0),
+    "moonshotai/kimi-k2.6": (0.0, 0.0),
+    "nvidia/nvidia-nemotron-3-super-120b-a12b-nvfp4": (0.0, 0.0),
 }
 
 # Stage outputs we walk on disk.
@@ -105,8 +117,14 @@ def normalize_model_id(raw: Optional[str]) -> Optional[str]:
         "gpt-4-1": "gpt-4.1",
         "gpt-4-1-mini": "gpt-4.1-mini",
         "gpt-4-5": "gpt-4.5",
+        "gpt-5-5": "gpt-5.5-2026-04-23",
+        "gpt-5-5-mini": "gpt-5.5-2026-04-23",
+        "gpt-5-5-pro": "gpt-5.5-pro",
         "claude-3-7-sonnet": "claude-3.7-sonnet",
         "claude-4-1-opus": "claude-4.1-opus",
+        "claude-4-7-opus": "claude-4.7-opus",
+        "deepseek-ai/deepseek-v4-flash": "deepseek-v4",
+        "deepseek-ai/deepseek-v4-pro": "deepseek-v4-pro",
     }
     if stripped in aliases:
         return aliases[stripped]

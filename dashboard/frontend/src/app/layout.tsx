@@ -1,9 +1,19 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
 import { AuthProvider } from "@/components/auth/auth-context";
+import { AuthModeProvider } from "@/components/auth/auth-mode-provider";
 import { ErrorBoundary } from "@/components/shell/error-boundary";
 import { ThemeProvider } from "@/components/shell/theme-provider";
+import {
+  clerkAuthConfigError,
+  isClerkAuthEnabled,
+  isClerkAuthMisconfigured,
+  isClerkProviderAvailable,
+} from "@/lib/auth-mode";
 import "./globals.css";
+import "react-pdf/dist/Page/AnnotationLayer.css";
+import "react-pdf/dist/Page/TextLayer.css";
 
 const inter = Inter({
   variable: "--font-sans-loaded",
@@ -23,19 +33,44 @@ export const metadata: Metadata = {
   title: "Plato — Scientific Research Dashboard",
   description:
     "Multi-agent research workspace for Plato — orchestrate ideas, methods, results, and papers.",
+  icons: {
+    icon: [{ url: "/favicon.png", type: "image/png", sizes: "632x636" }],
+    shortcut: "/favicon.png",
+    apple: "/favicon.png",
+  },
 };
+
+export const dynamic = "force-dynamic";
 
 // Inline pre-hydration script that mirrors ThemeProvider's resolution logic.
 // Static literal (no user input) — safe injection. Keep in sync with
 // src/components/shell/theme-provider.tsx so the class matches what React
 // would set, avoiding a flash of un-themed content.
 const themeBootstrap = `(function(){try{var t=localStorage.getItem("plato:theme")||"dark";var d=t==="system"?(window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"):t;document.documentElement.className=d;}catch(e){document.documentElement.className="dark";}})();`;
+const clerkProxyUrl = process.env.NEXT_PUBLIC_CLERK_PROXY_URL ?? "/__clerk";
 
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const clerkAuthEnabled = isClerkAuthEnabled();
+  const clerkAuthMisconfigured = isClerkAuthMisconfigured();
+  const clerkProviderAvailable = isClerkProviderAvailable();
+  const app = (
+    <AuthModeProvider
+      clerkAuthEnabled={clerkAuthEnabled}
+      clerkAuthMisconfigured={clerkAuthMisconfigured}
+      clerkAuthError={clerkAuthConfigError()}
+    >
+      <ThemeProvider>
+        <AuthProvider>
+          <ErrorBoundary>{children}</ErrorBoundary>
+        </AuthProvider>
+      </ThemeProvider>
+    </AuthModeProvider>
+  );
+
   // suppressHydrationWarning on <html> is required because the inline
   // themeBootstrap script writes documentElement.className before React
   // reconciles. Without it, React logs a hydration mismatch.
@@ -53,11 +88,11 @@ export default function RootLayout({
         >
           Skip to main content
         </a>
-        <ThemeProvider>
-          <AuthProvider>
-            <ErrorBoundary>{children}</ErrorBoundary>
-          </AuthProvider>
-        </ThemeProvider>
+        {clerkProviderAvailable ? (
+          <ClerkProvider proxyUrl={clerkProxyUrl}>{app}</ClerkProvider>
+        ) : (
+          app
+        )}
       </body>
     </html>
   );

@@ -3,6 +3,7 @@
 These tests exercise the loop without ever instantiating real ``Plato``;
 they use a mock ``plato_factory`` and a deterministic ``score_fn``.
 """
+
 from __future__ import annotations
 
 import asyncio

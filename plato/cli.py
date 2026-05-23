@@ -170,7 +170,10 @@ def _run_app(args) -> None:
     try:
         from plato_app.cli import run
     except ImportError:
-        print("❌ PlatoApp not installed. Install with: pip install plato-app")
+        print(
+            "❌ PlatoApp not installed. Clone and install "
+            "https://github.com/AstroPilot-AI/PlatoApp, then run this command again."
+        )
         sys.exit(1)
 
     run()
@@ -210,7 +213,7 @@ def _run_dashboard(args) -> None:
     except ImportError:
         print(
             "❌ plato-dashboard not installed.\n"
-            "   Install with: pip install \"plato[dashboard]\"\n"
+            '   Install with: pip install "plato[dashboard]"\n'
             "   Or from source: pip install -e dashboard/backend"
         )
         sys.exit(1)
@@ -246,7 +249,7 @@ def _run_loop(args) -> None:
     def _plato_factory():
         # Lazy import: failing here is non-fatal — caller may pass a custom
         # factory in programmatic use.
-        from plato import Plato  # noqa: WPS433 — intentional inline import
+        from plato import Plato
 
         # Iter-21: the loop CLI now threads the user's --domain pick into
         # the Plato constructor and stashes --executor on the instance so
@@ -259,7 +262,7 @@ def _run_loop(args) -> None:
             # Stash on the instance so a custom score/run loop can consume
             # it. ResearchLoop forwards kwargs into get_results in a future
             # commit; for now this lives on the instance for inspection.
-            plato_obj._cli_executor_override = executor_override  # type: ignore[attr-defined]
+            plato_obj._cli_executor_override = executor_override
         return plato_obj
 
     def _score_fn(_plato):

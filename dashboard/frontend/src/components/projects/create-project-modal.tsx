@@ -50,14 +50,33 @@ const TEMPLATES: ReadonlyArray<Template> = [
   },
 ];
 
-const JOURNALS: ReadonlyArray<{ id: Journal; label: string }> = [
-  { id: "NONE", label: "No journal target" },
-  { id: "AAS", label: "AAS" },
-  { id: "APS", label: "APS" },
-  { id: "ICML", label: "ICML" },
-  { id: "JHEP", label: "JHEP" },
-  { id: "NeurIPS", label: "NeurIPS" },
-  { id: "PASJ", label: "PASJ" },
+const JOURNALS: ReadonlyArray<{ id: Journal; label: string; format: string }> = [
+  { id: "NONE", label: "No journal target", format: "Portable article format" },
+  { id: "ARXIV", label: "arXiv", format: "TeX source package with PDF and figure files" },
+  { id: "NATURE", label: "Nature", format: "Springer Nature-style article fallback with line numbers" },
+  { id: "SCIENCE", label: "Science", format: "AAAS article fallback with numbered references" },
+  { id: "SCIENCE_ADVANCES", label: "Science Advances", format: "AAAS open-access article fallback" },
+  { id: "NEJM", label: "NEJM", format: "Double-spaced clinical manuscript fallback" },
+  { id: "LANCET", label: "The Lancet", format: "Double-spaced clinical manuscript fallback" },
+  { id: "CELL", label: "Cell", format: "Cell Press-style article fallback with line numbers" },
+  { id: "JAMA", label: "JAMA", format: "Double-spaced medical manuscript fallback" },
+  {
+    id: "NATURE_REVIEWS_MOL_CELL_BIO",
+    label: "Nature Reviews Molecular Cell Biology",
+    format: "Review-article fallback with Nature bibliography style",
+  },
+  { id: "CHEMICAL_REVIEWS", label: "Chemical Reviews", format: "ACS review-style article fallback" },
+  {
+    id: "REVIEWS_OF_MODERN_PHYSICS",
+    label: "Reviews of Modern Physics",
+    format: "REVTeX RMP layout",
+  },
+  { id: "AAS", label: "AAS", format: "AAS TeX twocolumn" },
+  { id: "APS", label: "APS", format: "REVTeX APS layout" },
+  { id: "ICML", label: "ICML", format: "ICML 2025 style" },
+  { id: "JHEP", label: "JHEP", format: "JHEP / JCAP style" },
+  { id: "NeurIPS", label: "NeurIPS", format: "NeurIPS 2025 style" },
+  { id: "PASJ", label: "PASJ", format: "PASJ twocolumn style" },
 ];
 
 /* -----------------------------------------------------------------------------
@@ -81,6 +100,14 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+const fieldClass = cn(
+  "rounded-[6px] border border-(--color-border-field) bg-(--color-bg-field) px-2.5",
+  "text-[13px] text-(--color-text-primary) placeholder:text-(--color-text-quaternary-spec)",
+  "transition-colors hover:border-(--color-border-field-hover)",
+  "focus-visible:border-(--color-brand-indigo) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--color-brand-indigo)",
+  "disabled:opacity-50",
+);
+
 function TemplateCard({
   template,
   active,
@@ -98,8 +125,8 @@ function TemplateCard({
         "flex flex-col items-start gap-1 rounded-[6px] border px-2.5 py-2 text-left transition-colors",
         "min-h-[44px] flex-1 basis-0",
         active
-          ? "border-(--color-brand-indigo) bg-(--color-brand-indigo)/10"
-          : "border-[#262628] bg-[#141415] hover:border-[#34343a]",
+          ? "border-(--color-border-strong) bg-(--color-bg-pill-active) shadow-[var(--shadow-glass-active)]"
+          : "border-(--color-border-field) bg-(--color-bg-field) hover:border-(--color-border-field-hover) hover:bg-(--color-ghost-bg-hover)",
       )}
     >
       <span className="flex items-center gap-1.5 text-[12px] font-medium text-(--color-text-primary)">
@@ -127,9 +154,10 @@ function JournalSelect({
     <Select.Root value={value} onValueChange={(v) => onChange(v as Journal)} disabled={disabled}>
       <Select.Trigger
         className={cn(
-          "inline-flex w-full items-center justify-between gap-2 rounded-[6px] border border-[#262628] bg-[#141415] px-2.5",
+          "inline-flex w-full items-center justify-between gap-2 rounded-[6px] border border-(--color-border-field) bg-(--color-bg-field) px-2.5",
           "h-8 text-[13px] font-medium text-(--color-text-primary)",
-          "hover:border-[#34343a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-brand-interactive)",
+          "transition-colors hover:border-(--color-border-field-hover) hover:bg-(--color-ghost-bg-hover)",
+          "focus-visible:border-(--color-brand-indigo) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--color-brand-indigo)",
           "disabled:opacity-50",
         )}
         aria-label="Journal target"
@@ -144,7 +172,7 @@ function JournalSelect({
           position="popper"
           sideOffset={4}
           className={cn(
-            "z-[60] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-[8px]",
+            "z-[60] max-h-[360px] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-[8px]",
             "border border-(--color-border-card) bg-(--color-bg-card) shadow-[var(--shadow-dialog)]",
           )}
         >
@@ -154,7 +182,7 @@ function JournalSelect({
                 key={j.id}
                 value={j.id}
                 className={cn(
-                  "relative flex h-7 cursor-pointer items-center gap-2 rounded-[4px] pl-6 pr-2",
+                  "relative flex min-h-9 cursor-pointer items-start gap-2 rounded-[4px] py-1.5 pl-6 pr-2",
                   "text-[13px] text-(--color-text-secondary-spec)",
                   "data-[highlighted]:bg-(--color-ghost-bg-hover) data-[highlighted]:text-(--color-text-primary)",
                   "data-[highlighted]:outline-none",
@@ -163,7 +191,14 @@ function JournalSelect({
                 <Select.ItemIndicator className="absolute left-1.5 inline-flex items-center">
                   <Check size={12} strokeWidth={2} className="text-(--color-brand-hover)" />
                 </Select.ItemIndicator>
-                <Select.ItemText>{j.label}</Select.ItemText>
+                <Select.ItemText>
+                  <span className="block text-[13px] text-(--color-text-primary)">
+                    {j.label}
+                  </span>
+                  <span className="block text-[11px] text-(--color-text-tertiary-spec)">
+                    {j.format}
+                  </span>
+                </Select.ItemText>
               </Select.Item>
             ))}
           </Select.Viewport>
@@ -252,17 +287,20 @@ export function CreateProjectModal({
           }}
         >
           {/* Header */}
-          <div className="flex h-11 items-center justify-between gap-2 border-b border-[#1D1D1F] px-4">
+          <div className="flex h-11 items-center justify-between gap-2 border-b border-(--color-border-card) px-4">
             <Dialog.Title className="flex items-center gap-2 text-[15px] font-medium tracking-[-0.01em] text-(--color-text-primary-strong)">
               <FolderPlus size={14} strokeWidth={1.75} className="text-(--color-brand-hover)" />
               New project
             </Dialog.Title>
+            <Dialog.Description className="sr-only">
+              Create a Plato project with a name, optional data description, starter template, and journal target.
+            </Dialog.Description>
             <Dialog.Close
               aria-label="Close"
               disabled={submitting}
               className={cn(
                 "inline-flex size-7 items-center justify-center rounded-full text-(--color-text-tertiary-spec)",
-                "transition-colors hover:bg-white/5 hover:text-(--color-text-primary)",
+                "transition-colors hover:bg-(--color-ghost-bg-hover) hover:text-(--color-text-primary)",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-brand-interactive)",
                 "disabled:opacity-40",
               )}
@@ -284,13 +322,7 @@ export function CreateProjectModal({
                   onChange={(e) => setName(e.target.value)}
                   disabled={submitting}
                   placeholder="e.g. GW231123 ringdown analysis"
-                  className={cn(
-                    "h-8 rounded-[6px] border border-[#262628] bg-[#141415] px-2.5",
-                    "text-[13px] text-(--color-text-primary) placeholder:text-(--color-text-quaternary-spec)",
-                    "transition-colors hover:border-[#34343a]",
-                    "focus-visible:border-(--color-brand-indigo) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--color-brand-indigo)",
-                    "disabled:opacity-50",
-                  )}
+                  className={cn(fieldClass, "h-8")}
                 />
               </div>
 
@@ -308,13 +340,7 @@ export function CreateProjectModal({
                   placeholder={
                     "Describe your data, format, and goals.\nExample:\nHDF5 strain files at 16384 Hz from H1, L1, V1.\nGoal: estimate ringdown QNM frequencies."
                   }
-                  className={cn(
-                    "min-h-[120px] resize-y rounded-[6px] border border-[#262628] bg-[#141415] px-2.5 py-2",
-                    "text-[13px] leading-[1.5] text-(--color-text-primary) placeholder:text-(--color-text-quaternary-spec)",
-                    "transition-colors hover:border-[#34343a]",
-                    "focus-visible:border-(--color-brand-indigo) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--color-brand-indigo)",
-                    "disabled:opacity-50",
-                  )}
+                  className={cn(fieldClass, "min-h-[120px] resize-y py-2 leading-[1.5]")}
                 />
               </div>
 

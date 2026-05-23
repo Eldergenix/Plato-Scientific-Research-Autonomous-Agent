@@ -1,4 +1,5 @@
 from __future__ import annotations
+import os
 from pathlib import Path
 from typing import Literal
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -52,6 +53,7 @@ class Settings(BaseSettings):
         "http://localhost:3001",
         "http://localhost:7878",
     )
+    public_origin: str | None = None
 
     @property
     def is_demo(self) -> bool:
@@ -59,7 +61,7 @@ class Settings(BaseSettings):
 
     @property
     def is_auth_required(self) -> bool:
-        return self.auth == "enabled"
+        return self.auth == "enabled" or os.environ.get("PLATO_DASHBOARD_AUTH_REQUIRED") == "1"
 
 
 def get_settings() -> Settings:

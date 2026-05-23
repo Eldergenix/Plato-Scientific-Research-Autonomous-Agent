@@ -1,4 +1,5 @@
 """Tests for the embedding-based novelty scorer."""
+
 from __future__ import annotations
 
 import sys
@@ -145,7 +146,9 @@ async def test_openai_backend_uses_client_when_available():
     fake_client.embeddings.create.return_value = fake_resp
 
     with patch.dict(sys.modules, {"openai": fake_openai}):
-        backend = OpenAIEmbeddingBackend(api_key="sk-test", model="text-embedding-3-small")
+        backend = OpenAIEmbeddingBackend(
+            api_key="sk-test", model="text-embedding-3-small"
+        )
         out = await backend.embed(["a", "b"])
 
     assert out == [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]

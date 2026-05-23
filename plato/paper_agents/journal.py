@@ -2,11 +2,13 @@ from typing import Callable
 from pydantic import BaseModel
 from enum import Enum
 
+
 class Journal(str, Enum):
     """Enum which includes the different journals considered."""
+
     NONE = None
     """No journal, use standard latex presets with unsrt for bibliography style."""
-    AAS  = "AAS"
+    AAS = "AAS"
     """American Astronomical Society journals, including the Astrophysical Journal."""
     APS = "APS"
     """Physical Review Journals from the American Physical Society, including Physical Review Letters, PRA, etc."""
@@ -18,19 +20,37 @@ class Journal(str, Enum):
     """NeurIPS - Conference on Neural Information Processing Systems."""
     PASJ = "PASJ"
     """Publications of the Astronomical Society of Japan."""
+    ARXIV = "ARXIV"
+    """arXiv preprint submission package; accepts TeX/LaTeX source, PDF, and supported figure files."""
     NATURE = "NATURE"
     """Nature journal (Springer Nature). Requires naturemag.cls from TeX Live publishers bundle (or article fallback)."""
-    CELL = "CELL"
-    """Cell journal (Cell Press). No standard CTAN class; falls back to article with double spacing + line numbers."""
     SCIENCE = "SCIENCE"
     """Science journal (AAAS). No standard CTAN class; falls back to article."""
+    SCIENCE_ADVANCES = "SCIENCE_ADVANCES"
+    """Science Advances open-access multidisciplinary journal by AAAS."""
+    NEJM = "NEJM"
+    """New England Journal of Medicine clinical and biomedical manuscript preset."""
+    LANCET = "LANCET"
+    """The Lancet general medical journal manuscript preset."""
+    CELL = "CELL"
+    """Cell journal (Cell Press). No standard CTAN class; falls back to article with double spacing + line numbers."""
+    JAMA = "JAMA"
+    """JAMA general medical manuscript preset."""
+    NATURE_REVIEWS_MOL_CELL_BIO = "NATURE_REVIEWS_MOL_CELL_BIO"
+    """Nature Reviews Molecular Cell Biology review-article preset."""
+    CHEMICAL_REVIEWS = "CHEMICAL_REVIEWS"
+    """Chemical Reviews review-article preset."""
+    REVIEWS_OF_MODERN_PHYSICS = "REVIEWS_OF_MODERN_PHYSICS"
+    """Reviews of Modern Physics preset based on REVTeX."""
     PLOS_BIO = "PLOS_BIO"
     """PLOS Biology (Public Library of Science). Requires plos2015.cls from TeX Live extras (or article fallback)."""
     ELIFE = "ELIFE"
     """eLife journal. Requires elife.cls (``tlmgr install elife``) — falls back to article."""
 
+
 class LatexPresets(BaseModel):
     """Latex presets to be set depending on the journal"""
+
     article: str
     """Article preset or .cls file."""
     layout: str = ""

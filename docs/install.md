@@ -49,20 +49,25 @@ source .venv/bin/activate
 To install Plato, just run
 
 ```bash
-pip install "plato[app]"
+pip install plato
 ```
 
-The `[app]` extra installs the legacy Streamlit [GUI](app.md). For the new self-hosted FastAPI + Next.js dashboard use `pip install "plato[dashboard]"` (see [dashboard.md](dashboard.md)). If you only need the Python API, plain `pip install plato` is enough.
+The legacy Streamlit [GUI](app.md) now lives in the separate
+`AstroPilot-AI/PlatoApp` repository and must be installed from source. For the
+new self-hosted FastAPI + Next.js dashboard use `pip install "plato[dashboard]"`
+(see [dashboard.md](dashboard.md)). If you only need the Python API, plain
+`pip install plato` is enough.
 
 ### uv
 
 Alternatively, we can use [uv](https://docs.astral.sh/uv/) to install plato as
 
 ```bash
-uv add plato[app]
+uv add plato
 ```
 
-or `uv add plato` if we do not need GUI support.
+Install the legacy GUI from the separate `AstroPilot-AI/PlatoApp` source tree
+only if you need it.
 
 ## Build from source
 

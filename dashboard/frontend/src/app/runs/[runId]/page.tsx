@@ -16,9 +16,9 @@ import {
 } from "@/components/manifest/validation-report-card";
 import { RunDetailNav } from "@/components/manifest/run-detail-nav";
 import { setActiveRunId } from "@/lib/api";
+import { dashboardApiBase } from "@/lib/api-base";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:7878/api/v1";
+const API_BASE = dashboardApiBase();
 
 type Loadable<T> =
   | { kind: "loading" }
@@ -30,8 +30,9 @@ async function fetchOptional<T>(path: string): Promise<Loadable<T>> {
   let resp: Response;
   try {
     resp = await fetch(`${API_BASE}${path}`, {
-      headers: { Accept: "application/json" },
       cache: "no-store",
+      credentials: "include",
+      headers: { Accept: "application/json" },
     });
   } catch (err) {
     return {

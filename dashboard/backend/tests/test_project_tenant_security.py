@@ -21,6 +21,7 @@ The suite runs with ``PLATO_DASHBOARD_AUTH_REQUIRED=1`` so the strict
 matrix is exercised; legacy single-user mode is covered by the
 existing dashboard test suite.
 """
+
 from __future__ import annotations
 
 import json
@@ -31,6 +32,7 @@ from fastapi.testclient import TestClient
 
 from plato_dashboard.api.server import create_app
 from plato_dashboard.auth import AUTH_REQUIRED_ENV
+from plato_dashboard.domain.models import Run, utcnow
 
 
 @pytest.fixture
@@ -59,12 +61,71 @@ def _create_project_as(client: TestClient, user: str, name: str = "p") -> str:
 
 # --- Project bind / read ---------------------------------------------------
 
+
 def test_create_project_writes_user_id(authed_client: TestClient) -> None:
     pid = _create_project_as(authed_client, "alice")
     # Read it back as alice to confirm the user_id round-trips.
-    resp = authed_client.get(f"/api/v1/projects/{pid}", headers={"X-Plato-User": "alice"})
+    resp = authed_client.get(
+        f"/api/v1/projects/{pid}", headers={"X-Plato-User": "alice"}
+    )
     assert resp.status_code == 200
     assert resp.json()["user_id"] == "alice"
+
+
+def test_lab_project_uses_lab_tenant_namespace(
+    authed_client: TestClient, tmp_project_root: Path
+) -> None:
+    lab_tenant = "lab_org_alpha"
+    pid = _create_project_as(authed_client, lab_tenant, name="Shared Lab Project")
+
+    lab_meta = tmp_project_root / "users" / lab_tenant / pid / "meta.json"
+    personal_meta = tmp_project_root / "users" / "user_scientist_a" / pid / "meta.json"
+
+    assert lab_meta.exists()
+    assert not personal_meta.exists()
+
+    resp = authed_client.get(
+        f"/api/v1/projects/{pid}",
+        headers={
+            "X-Plato-User": lab_tenant,
+            "X-Plato-Auth-Provider": "clerk",
+            "X-Plato-Lab-Id": "org_alpha",
+        },
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["user_id"] == lab_tenant
+
+
+def test_personal_user_cannot_read_active_lab_project(
+    authed_client: TestClient,
+) -> None:
+    pid = _create_project_as(authed_client, "lab_org_alpha", name="Lab Owned")
+
+    resp = authed_client.get(
+        f"/api/v1/projects/{pid}",
+        headers={
+            "X-Plato-User": "user_scientist_a",
+            "X-Plato-Auth-Provider": "clerk",
+        },
+    )
+
+    assert resp.status_code in (403, 404)
+
+
+def test_other_lab_cannot_read_lab_project(authed_client: TestClient) -> None:
+    pid = _create_project_as(authed_client, "lab_org_alpha", name="Lab Owned")
+
+    resp = authed_client.get(
+        f"/api/v1/projects/{pid}",
+        headers={
+            "X-Plato-User": "lab_org_beta",
+            "X-Plato-Auth-Provider": "clerk",
+            "X-Plato-Lab-Id": "org_beta",
+        },
+    )
+
+    assert resp.status_code in (403, 404)
 
 
 def test_get_project_refuses_cross_tenant(authed_client: TestClient) -> None:
@@ -82,6 +143,7 @@ def test_delete_project_refuses_cross_tenant(authed_client: TestClient) -> None:
 
 
 # --- Stage IO --------------------------------------------------------------
+
 
 def test_read_stage_refuses_cross_tenant(authed_client: TestClient) -> None:
     pid = _create_project_as(authed_client, "alice")
@@ -102,6 +164,7 @@ def test_write_stage_refuses_cross_tenant(authed_client: TestClient) -> None:
 
 
 # --- Run lifecycle ---------------------------------------------------------
+
 
 def test_run_stage_refuses_cross_tenant(authed_client: TestClient) -> None:
     """The CRITICAL one: alice can't launch a run inside bob's project."""
@@ -124,6 +187,191 @@ def test_list_runs_refuses_cross_tenant(authed_client: TestClient) -> None:
     assert resp.status_code in (403, 404)
 
 
+def test_get_active_run_allows_owner_before_manifest(
+    authed_client: TestClient,
+) -> None:
+    """SSE/status can attach before the child has written manifest.json."""
+    from plato_dashboard.worker import run_manager as rm
+
+    pid = _create_project_as(authed_client, "alice")
+    run = Run(
+        id="run_manifestless_active",
+        project_id=pid,
+        stage="idea",
+        status="running",
+        started_at=utcnow(),
+    )
+    rm._active_runs[run.id] = run
+    try:
+        resp = authed_client.get(
+            f"/api/v1/projects/{pid}/runs/{run.id}",
+            headers={"X-Plato-User": "alice"},
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["id"] == run.id
+    finally:
+        rm._active_runs.pop(run.id, None)
+
+
+def test_get_persisted_run_allows_owner_without_manifest(
+    authed_client: TestClient, tmp_project_root: Path
+) -> None:
+    """Dashboard run status remains readable after the active registry clears."""
+    pid = _create_project_as(authed_client, "alice")
+    run_dir = tmp_project_root / "users" / "alice" / pid / "runs" / "run_status_only"
+    run_dir.mkdir(parents=True)
+    (run_dir / "status.json").write_text(
+        json.dumps(
+            {
+                "run_id": "run_status_only",
+                "project_id": pid,
+                "stage": "idea",
+                "status": "failed",
+                "started_at": "2026-05-13T20:51:17.901109+00:00",
+                "finished_at": "2026-05-13T20:51:19.661168+00:00",
+                "error": "Data description file not found!",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    resp = authed_client.get(
+        f"/api/v1/projects/{pid}/runs/run_status_only",
+        headers={"X-Plato-User": "alice"},
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["error"] == "Data description file not found!"
+
+
+def test_tenant_namespaced_manifest_artifact_allows_owner(
+    authed_client: TestClient, tmp_project_root: Path
+) -> None:
+    pid = _create_project_as(authed_client, "alice")
+    run_dir = tmp_project_root / "users" / "alice" / pid / "runs" / "run_manifest_ok"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "run_id": "run_manifest_ok",
+                "workflow": "get_idea_fast",
+                "user_id": "alice",
+                "status": "success",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    resp = authed_client.get(
+        "/api/v1/runs/run_manifest_ok/manifest",
+        headers={"X-Plato-User": "alice"},
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["user_id"] == "alice"
+
+
+def test_tenant_namespaced_manifest_artifact_refuses_other_user(
+    authed_client: TestClient, tmp_project_root: Path
+) -> None:
+    pid = _create_project_as(authed_client, "alice")
+    run_dir = tmp_project_root / "users" / "alice" / pid / "runs" / "run_manifest_block"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text(
+        json.dumps({"run_id": "run_manifest_block", "user_id": "alice"}),
+        encoding="utf-8",
+    )
+
+    resp = authed_client.get(
+        "/api/v1/runs/run_manifest_block/manifest",
+        headers={"X-Plato-User": "bob"},
+    )
+
+    assert resp.status_code == 403
+    assert resp.json()["detail"]["code"] == "run_forbidden"
+
+
+def test_tenant_namespaced_citation_graph_uses_shared_run_lookup(
+    authed_client: TestClient, tmp_project_root: Path
+) -> None:
+    pid = _create_project_as(authed_client, "alice")
+    run_dir = tmp_project_root / "users" / "alice" / pid / "runs" / "run_graph_ok"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text(
+        json.dumps({"run_id": "run_graph_ok", "user_id": "alice"}),
+        encoding="utf-8",
+    )
+    (run_dir / "citation_graph.json").write_text(
+        json.dumps(
+            {
+                "seeds": [{"id": "W1", "title": "Seed"}],
+                "expanded": [{"id": "W2", "title": "Expanded"}],
+                "edges": [{"from": "W1", "to": "W2", "kind": "references"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    resp = authed_client.get(
+        "/api/v1/runs/run_graph_ok/citation_graph",
+        headers={"X-Plato-User": "alice"},
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["stats"]["edge_count"] == 1
+
+
+def test_cancel_active_run_allows_owner_before_manifest(
+    authed_client: TestClient,
+) -> None:
+    """Cancel must not 403 during the early active-run window."""
+    from plato_dashboard.worker import run_manager as rm
+
+    pid = _create_project_as(authed_client, "alice")
+    run = Run(
+        id="run_cancel_manifestless",
+        project_id=pid,
+        stage="literature",
+        status="running",
+        started_at=utcnow(),
+    )
+    rm._active_runs[run.id] = run
+    try:
+        resp = authed_client.post(
+            f"/api/v1/projects/{pid}/runs/{run.id}/cancel",
+            headers={"X-Plato-User": "alice"},
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["cancelled"] is True
+    finally:
+        rm._active_runs.pop(run.id, None)
+
+
+def test_active_run_still_refuses_cross_project_access(
+    authed_client: TestClient,
+) -> None:
+    from plato_dashboard.worker import run_manager as rm
+
+    alice_pid = _create_project_as(authed_client, "alice", name="alice")
+    bob_pid = _create_project_as(authed_client, "bob", name="bob")
+    run = Run(
+        id="run_wrong_project",
+        project_id=alice_pid,
+        stage="idea",
+        status="running",
+        started_at=utcnow(),
+    )
+    rm._active_runs[run.id] = run
+    try:
+        resp = authed_client.get(
+            f"/api/v1/projects/{bob_pid}/runs/{run.id}",
+            headers={"X-Plato-User": "bob"},
+        )
+        assert resp.status_code in (403, 404)
+    finally:
+        rm._active_runs.pop(run.id, None)
+
+
 def test_list_plots_refuses_cross_tenant(authed_client: TestClient) -> None:
     pid = _create_project_as(authed_client, "alice")
     resp = authed_client.get(
@@ -133,6 +381,7 @@ def test_list_plots_refuses_cross_tenant(authed_client: TestClient) -> None:
 
 
 # --- get_file: tenant + path traversal ------------------------------------
+
 
 def test_get_file_refuses_cross_tenant(authed_client: TestClient) -> None:
     pid = _create_project_as(authed_client, "alice")
@@ -174,7 +423,7 @@ def test_get_file_rejects_path_prefix_collision(
 
     # Plant a file in the long project that the short-project handler
     # would return if the prefix-collision bug were present.
-    long_user_root = tmp_project_root.parent / "users" / "alice" / pid_long
+    long_user_root = tmp_project_root / "users" / "alice" / pid_long
     long_user_root.mkdir(parents=True, exist_ok=True)
     secret = long_user_root / "secret.txt"
     secret.write_text("this should never leak across projects")
@@ -191,6 +440,7 @@ def test_get_file_rejects_path_prefix_collision(
 
 
 # --- legacy un-tenanted projects ------------------------------------------
+
 
 def test_legacy_project_without_user_id_is_403_in_required_mode(
     authed_client: TestClient, tmp_project_root: Path
@@ -223,3 +473,32 @@ def test_legacy_project_without_user_id_is_403_in_required_mode(
     )
     # In required-mode (set by the fixture), no user_id is fail-closed.
     assert resp.status_code == 403
+
+
+def test_legacy_project_without_user_id_is_hidden_from_required_mode_list(
+    authed_client: TestClient, tmp_project_root: Path
+) -> None:
+    legacy_dir = tmp_project_root / "users" / "alice" / "legacy_project"
+    legacy_dir.mkdir(parents=True)
+    meta = {
+        "id": "legacy_project",
+        "name": "pre-iter-24 project",
+        "created_at": "2024-01-01T00:00:00+00:00",
+        "updated_at": "2024-01-01T00:00:00+00:00",
+        "journal": "NONE",
+        "stages": {
+            "data": {"id": "data", "label": "Data", "status": "empty"},
+            "idea": {"id": "idea", "label": "Idea", "status": "empty"},
+            "literature": {"id": "literature", "label": "Lit", "status": "empty"},
+            "method": {"id": "method", "label": "Method", "status": "empty"},
+            "results": {"id": "results", "label": "Results", "status": "empty"},
+            "paper": {"id": "paper", "label": "Paper", "status": "empty"},
+            "referee": {"id": "referee", "label": "Referee", "status": "empty"},
+        },
+    }
+    (legacy_dir / "meta.json").write_text(json.dumps(meta))
+
+    resp = authed_client.get("/api/v1/projects", headers={"X-Plato-User": "alice"})
+
+    assert resp.status_code == 200
+    assert all(project["id"] != "legacy_project" for project in resp.json())

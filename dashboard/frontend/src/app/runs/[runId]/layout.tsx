@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { DashboardShell } from "@/components/shell/dashboard-shell";
 
 interface Params {
   runId: string;
@@ -8,7 +9,7 @@ export function generateStaticParams(): Params[] {
   return [];
 }
 
-export const dynamicParams = false;
+export const dynamicParams = true;
 
 // Server-side metadata so the browser tab + history entry name the
 // run instead of the generic "Plato — Scientific Research Dashboard"
@@ -30,5 +31,5 @@ export default function RunDetailLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return children;
+  return <DashboardShell>{children}</DashboardShell>;
 }

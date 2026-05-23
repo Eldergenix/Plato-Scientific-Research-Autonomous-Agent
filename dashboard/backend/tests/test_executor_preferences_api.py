@@ -79,9 +79,7 @@ def test_persistence_writes_per_user_path_with_header(
         json={"default_executor": "e2b"},
         headers={"X-Plato-User": "alice"},
     )
-    user_path = (
-        tmp_project_root.parent / "users" / "alice" / "executor_prefs.json"
-    )
+    user_path = tmp_project_root / "users" / "alice" / "executor_prefs.json"
     assert user_path.is_file()
     assert json.loads(user_path.read_text()) == {"default_executor": "e2b"}
 
@@ -112,6 +110,36 @@ def test_two_users_get_isolated_prefs(client) -> None:
     )
     assert a.json()["default_executor"] == "modal"
     assert b.json()["default_executor"] == "e2b"
+
+
+def test_lab_executor_preference_isolated_from_personal_user(
+    client, tmp_project_root: Path
+) -> None:
+    client.put(
+        "/api/v1/user/executor_preferences",
+        json={"default_executor": "modal"},
+        headers={"X-Plato-User": "lab_org_alpha"},
+    )
+    client.put(
+        "/api/v1/user/executor_preferences",
+        json={"default_executor": "e2b"},
+        headers={"X-Plato-User": "user_scientist_a"},
+    )
+
+    lab = client.get(
+        "/api/v1/user/executor_preferences",
+        headers={"X-Plato-User": "lab_org_alpha"},
+    )
+    personal = client.get(
+        "/api/v1/user/executor_preferences",
+        headers={"X-Plato-User": "user_scientist_a"},
+    )
+
+    assert lab.json()["default_executor"] == "modal"
+    assert personal.json()["default_executor"] == "e2b"
+    assert (
+        tmp_project_root / "users" / "lab_org_alpha" / "executor_prefs.json"
+    ).is_file()
 
 
 def test_required_mode_rejects_missing_header_on_get(

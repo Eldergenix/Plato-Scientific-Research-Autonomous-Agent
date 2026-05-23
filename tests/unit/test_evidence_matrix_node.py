@@ -8,14 +8,13 @@ never reaches a chat model. We verify:
   ``supports`` links.
 - ``evidence_matrix.jsonl`` is written one record per line.
 """
+
 from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
-
-import pytest
 
 from plato.paper_agents import evidence_matrix_node as node_module
 from plato.state.models import Claim, EvidenceLink, Source
@@ -42,7 +41,7 @@ def _llm_returning(payloads):
     """Yield each payload as ```json fenced block, in order."""
     iterator = iter(payloads)
 
-    def _side_effect(prompt, state):
+    def _side_effect(prompt, state, **_kwargs):
         try:
             payload = next(iterator)
         except StopIteration as exc:
@@ -61,12 +60,19 @@ def test_two_drafted_claims_one_source_claim_produces_two_links(tmp_path):
     source_claims = [
         _source_claim(0, "Observations confirm dark matter at 27%.", "src-1"),
     ]
-    state = _state(tmp_path, drafted, source_claims, sources=[
-        Source(
-            id="src-1", title="Stub", retrieved_via="arxiv",
-            fetched_at=datetime.now(timezone.utc),
-        ),
-    ])
+    state = _state(
+        tmp_path,
+        drafted,
+        source_claims,
+        sources=[
+            Source(
+                id="src-1",
+                title="Stub",
+                retrieved_via="arxiv",
+                fetched_at=datetime.now(timezone.utc),
+            ),
+        ],
+    )
 
     payloads = [
         {"support": "supports", "strength": "strong", "rationale": "matches"},
@@ -77,9 +83,9 @@ def test_two_drafted_claims_one_source_claim_produces_two_links(tmp_path):
 
     links = update["evidence_links"]
     assert len(links) == 2
-    assert all(isinstance(l, EvidenceLink) for l in links)
+    assert all(isinstance(link, EvidenceLink) for link in links)
 
-    by_claim = {l.claim_id: l for l in links}
+    by_claim = {link.claim_id: link for link in links}
     assert by_claim["d-000"].support == "supports"
     assert by_claim["d-000"].strength == "strong"
     assert by_claim["d-000"].source_id == "src-1"
@@ -99,7 +105,7 @@ def test_jsonl_file_written_one_record_per_line(tmp_path):
         {"support": "refutes", "strength": "weak", "rationale": "."},
     ]
     with patch.object(node_module, "LLM_call", side_effect=_llm_returning(payloads)):
-        update = node_module.evidence_matrix_node(state)
+        node_module.evidence_matrix_node(state)
 
     jsonl_path = tmp_path / "runs" / "run-evi-001" / "evidence_matrix.jsonl"
     assert jsonl_path.exists()
@@ -173,7 +179,12 @@ def test_existing_evidence_links_preserved(tmp_path):
     source_claims = [_source_claim(0, "Source", "src-1")]
     state = _state(tmp_path, drafted, source_claims)
     state["evidence_links"] = [
-        EvidenceLink(claim_id="prev-1", source_id="src-old", support="supports", strength="strong"),
+        EvidenceLink(
+            claim_id="prev-1",
+            source_id="src-old",
+            support="supports",
+            strength="strong",
+        ),
     ]
 
     payloads = [{"support": "supports", "strength": "moderate", "rationale": "."}]
@@ -194,7 +205,7 @@ def test_malformed_llm_response_retries_then_skips(tmp_path):
 
     bad_payloads = ["not json", "still not json", "really not json"]
 
-    def _bad_side_effect(prompt, state):
+    def _bad_side_effect(prompt, state, **_kwargs):
         return state, bad_payloads.pop(0) if bad_payloads else "no json"
 
     with patch.object(node_module, "LLM_call", side_effect=_bad_side_effect):

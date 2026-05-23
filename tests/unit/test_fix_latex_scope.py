@@ -12,6 +12,7 @@ We don't actually call the real LLM here — the test stubs out the
 LLM call, the LaTeX compiler, and the file-renaming shell-outs so the
 loop just exercises the write path.
 """
+
 from __future__ import annotations
 
 import types
@@ -76,7 +77,9 @@ def test_fix_latex_writes_through_scoped_writer(
             r"""\begin{Text}\nfixed body\n\end{Text}""",
         ),
     )
-    monkeypatch.setattr(latex_module, "extract_latex_block", lambda st, raw, b: "fixed body")
+    monkeypatch.setattr(
+        latex_module, "extract_latex_block", lambda st, raw, b: "fixed body"
+    )
     monkeypatch.setattr(latex_module, "fix_latex_bug_prompt", lambda st: "PROMPT")
     monkeypatch.setattr(latex_module, "compile_tex_document", lambda st, p, t: True)
     monkeypatch.setattr(latex_module, "os", _stub_os_module())
@@ -115,8 +118,12 @@ def test_fix_latex_falls_back_to_temp_file_when_no_paper_folder(
         return None
 
     monkeypatch.setattr(latex_module, "temp_file", _fake_temp_file)
-    monkeypatch.setattr(latex_module, "LLM_call", lambda p, st, *, node_name=None: (st, "raw"))
-    monkeypatch.setattr(latex_module, "extract_latex_block", lambda st, r, b: "fixed body")
+    monkeypatch.setattr(
+        latex_module, "LLM_call", lambda p, st, *, node_name=None: (st, "raw")
+    )
+    monkeypatch.setattr(
+        latex_module, "extract_latex_block", lambda st, r, b: "fixed body"
+    )
     monkeypatch.setattr(latex_module, "fix_latex_bug_prompt", lambda st: "PROMPT")
     monkeypatch.setattr(latex_module, "compile_tex_document", lambda st, p, t: True)
     monkeypatch.setattr(latex_module, "os", _stub_os_module())

@@ -32,12 +32,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
+from ..auth import USER_COOKIE, USER_HEADER, auth_required, extract_user_id
 from ..settings import Settings, get_settings
 
 logger = logging.getLogger(__name__)
+LoopRunStatus = Literal["running", "stopped", "interrupted", "error"]
 
 
 # --------------------------------------------------------------------------- #
@@ -71,7 +73,7 @@ class LoopStatus(BaseModel):
     # Discriminated by Literal so a typo in _supervise (e.g. "errored")
     # would fail validation at write-time rather than silently
     # producing a value the frontend can't match.
-    status: Literal["running", "stopped", "interrupted", "error"]
+    status: LoopRunStatus
     iterations: int
     kept: int
     discarded: int
@@ -114,7 +116,7 @@ class LoopRecord:
         self.task: Optional[asyncio.Task[Any]] = None
         self.started_at = started_at
         self.owner = owner
-        self.status: str = "running"
+        self.status: LoopRunStatus = "running"
         self.error: Optional[str] = None
 
     def snapshot(self) -> LoopStatus:
@@ -156,27 +158,28 @@ def reset_registry() -> None:
 # Tenant guard
 # --------------------------------------------------------------------------- #
 def _user_id(
+    request: Request,
     settings: Settings = Depends(get_settings),
-    x_plato_user: Optional[str] = Header(default=None, alias="X-Plato-User"),
 ) -> Optional[str]:
     """Resolve the calling user. Required when ``settings.is_auth_required``.
 
-    In single-user local mode auth is disabled; the header is optional and
+    In single-user local mode auth is disabled; identity is optional and
     every loop is owned by ``None``. In auth-required deployments the
-    header must be present, otherwise we 401 — same behavior the rest of
-    the API will adopt once Phase 1.5 lands a session store.
+    caller must be authenticated by either the upstream ``X-Plato-User``
+    header or the dashboard ``plato_user`` cookie.
     """
-    if not settings.is_auth_required:
-        return x_plato_user  # may be None in local mode
-    if not x_plato_user:
+    user_id = extract_user_id(request)
+    if not (auth_required() or settings.is_auth_required):
+        return user_id
+    if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={
                 "code": "auth_required",
-                "message": "Send X-Plato-User; auth is enabled.",
+                "message": f"Missing required header '{USER_HEADER}' or cookie '{USER_COOKIE}'.",
             },
         )
-    return x_plato_user
+    return user_id
 
 
 def _require_owned(record: LoopRecord, user: Optional[str]) -> None:
@@ -257,7 +260,7 @@ async def _supervise(record: LoopRecord) -> None:
 router = APIRouter(prefix="/api/v1/loop", tags=["loop"])
 
 
-@router.post("/start", response_model=LoopStatus, status_code=status.HTTP_201_CREATED)
+@router.post("/start", response_model=LoopStatus)
 async def start_loop(
     req: LoopStartRequest,
     user: Optional[str] = Depends(_user_id),

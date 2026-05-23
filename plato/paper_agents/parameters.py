@@ -7,6 +7,7 @@ from langgraph.graph.message import add_messages
 from .journal import Journal
 from ..key_manager import KeyManager
 
+
 # Paper class
 class PAPER(TypedDict):
     Title: str
@@ -22,25 +23,27 @@ class PAPER(TypedDict):
     add_citations: bool
     cmbagent_keywords: bool
 
+
 # Class for Input/Output files
 class FILES(TypedDict):
-    Folder: str       #name of the project file
-    Idea: str         #name of the file containing the project idea
-    Methods: str      #name of the file containing the methods 
-    Results: str      #name of the file containing the results
-    Plots: str        #name of the folder containing the plots
-    Paper_v1: str     #name of the file containing the version 1 of the paper 
-    Paper_v2: str     #name of the file containing the version 2 of the paper 
-    Paper_v3: str     #name of the file containing the version 3 of the paper
-    Paper_v4: str     #name of the file containing the version 4 of the paper
-    Error: str        #name of the error file
-    LaTeX_log: str    #name of the file with the LaTeX log (when compiling it)
-    LaTeX_err: str    #name of the file with just the LaTeX errors
-    Temp: str         #name of the folder with the temporary LaTeX files
-    LLM_calls: str    #name of the file with the calls to the LLM
-    Paper_folder: str #name of the folder containing all paper files
-    AAS_keywords: str #name of the file with the AAS keywords
-    num_plots: int    #number of plots
+    Folder: str  # name of the project file
+    Idea: str  # name of the file containing the project idea
+    Methods: str  # name of the file containing the methods
+    Results: str  # name of the file containing the results
+    Plots: str  # name of the folder containing the plots
+    Paper_v1: str  # name of the file containing the version 1 of the paper
+    Paper_v2: str  # name of the file containing the version 2 of the paper
+    Paper_v3: str  # name of the file containing the version 3 of the paper
+    Paper_v4: str  # name of the file containing the version 4 of the paper
+    Error: str  # name of the error file
+    LaTeX_log: str  # name of the file with the LaTeX log (when compiling it)
+    LaTeX_err: str  # name of the file with just the LaTeX errors
+    Temp: str  # name of the folder with the temporary LaTeX files
+    LLM_calls: str  # name of the file with the calls to the LLM
+    Paper_folder: str  # name of the folder containing all paper files
+    AAS_keywords: str  # name of the file with the AAS keywords
+    num_plots: int  # number of plots
+
 
 # Idea class
 class IDEA(TypedDict):
@@ -48,17 +51,20 @@ class IDEA(TypedDict):
     Methods: str
     Results: str
 
+
 # Token class
 class TOKENS(TypedDict):
-    ti: int #total input tokens
-    to: int #total output tokens 
-    i:  int #input tokens (just for individual calls or functions)
-    o:  int #output tokens (just for individual calls or functions)
+    ti: int  # total input tokens
+    to: int  # total output tokens
+    i: int  # input tokens (just for individual calls or functions)
+    o: int  # output tokens (just for individual calls or functions)
+
 
 # LaTeX class
 class LATEX(TypedDict):
     section_to_fix: str
-    
+
+
 # LLM class
 class LLM(TypedDict):
     model: str
@@ -68,9 +74,11 @@ class LLM(TypedDict):
     llm: BaseChatModel
     temperature: float
 
+
 # TIME class
 class TIME(TypedDict):
     start: float
+
 
 # parameters class
 class PARAMS(TypedDict):
@@ -79,8 +87,52 @@ class PARAMS(TypedDict):
 
 # Revision-loop bookkeeping (Phase 3 / R6)
 class REVISION_STATE(TypedDict):
-    iteration: int       # current revision iteration (0 = first review, before any redraft)
+    iteration: int  # current revision iteration (0 = first review, before any redraft)
     max_iterations: int  # hard cap on revision loops to guarantee termination
+
+
+def merge_critiques(
+    left: dict[str, dict] | None,
+    right: dict[str, dict] | None,
+) -> dict[str, dict]:
+    """Merge parallel reviewer updates while preserving explicit resets."""
+    if right == {}:
+        return {}
+    if not left:
+        return dict(right or {})
+    merged = dict(left)
+    merged.update(right or {})
+    return merged
+
+
+def merge_tokens(left: TOKENS | None, right: TOKENS | None) -> TOKENS:
+    """Merge token bookkeeping from parallel reviewer nodes.
+
+    Reviewer nodes start from the same prior state, so summing their
+    cumulative totals would double-count the pre-review tokens. Keep the
+    highest cumulative total and preserve the latest per-call counters.
+    """
+    if not left:
+        base = right or {"ti": 0, "to": 0, "i": 0, "o": 0}
+        return {
+            "ti": int(base.get("ti", 0)),
+            "to": int(base.get("to", 0)),
+            "i": int(base.get("i", 0)),
+            "o": int(base.get("o", 0)),
+        }
+    if not right:
+        return {
+            "ti": int(left.get("ti", 0)),
+            "to": int(left.get("to", 0)),
+            "i": int(left.get("i", 0)),
+            "o": int(left.get("o", 0)),
+        }
+    return {
+        "ti": max(int(left.get("ti", 0)), int(right.get("ti", 0))),
+        "to": max(int(left.get("to", 0)), int(right.get("to", 0))),
+        "i": int(right.get("i", left.get("i", 0))),
+        "o": int(right.get("o", left.get("o", 0))),
+    }
 
 
 # Graph state class
@@ -89,24 +141,32 @@ class GraphState(TypedDict):
     files: FILES
     idea: IDEA
     paper: PAPER
-    tokens: TOKENS
+    tokens: Annotated[TOKENS, merge_tokens]
     llm: LLM
     latex: LATEX
     keys: KeyManager
     time: TIME
-    writer: str  #determines who is writing the paper. E.g. astrophysicists, biologist
-    params: PARAMS #parameters of model
+    writer: str  # determines who is writing the paper. E.g. astrophysicists, biologist
+    params: PARAMS  # parameters of model
     # Phase 3 — R6: multi-reviewer panel + revision loop
-    critiques: dict[str, dict]            # e.g. {"methodology": {"severity": 3, "issues": [...]}, ...}
-    critique_digest: Optional[dict]        # CritiqueDigest payload (max_severity, issues, iteration)
-    revision_state: REVISION_STATE         # iteration counter and max_iterations cap
+    # e.g. {"methodology": {"severity": 3, "issues": [...]}, ...}
+    critiques: Annotated[dict[str, dict], merge_critiques]
+    critique_digest: Optional[
+        dict
+    ]  # CritiqueDigest payload (max_severity, issues, iteration)
+    revision_state: REVISION_STATE  # iteration counter and max_iterations cap
     # Phase 2 — R3 citation validation pipeline
-    run_id: Optional[str]                  # unique id for the current run (used for run-dir + manifest)
-    sources: list[Any]                     # Source objects threaded through the validator
-    references: list[Any]                  # Reference rows extracted by ``citations_node``
-    validation_report: Optional[dict]      # populated by ``citation_validator_node``
-    store: Optional[Any]                   # SQLite store handle when persistence is wired
+    run_id: Optional[str]  # unique id for the current run (used for run-dir + manifest)
+    sources: list[Any]  # Source objects threaded through the validator
+    references: list[Any]  # Reference rows extracted by ``citations_node``
+    validation_report: Optional[dict]  # populated by ``citation_validator_node``
+    scientific_verification_report: Optional[
+        dict
+    ]  # publication provenance + repeatability gate
+    store: Optional[Any]  # SQLite store handle when persistence is wired
     # Phase 2 — R5 claim/evidence matrix
-    claims: list[Any]                      # Claim objects produced by ``claim_extractor``
-    evidence_links: list[Any]              # EvidenceLink rows produced by ``evidence_matrix_node``
-    unsupported_claim_rate: float          # fraction with no "supports" link (consumed by reviewer panel)
+    claims: list[Any]  # Claim objects produced by ``claim_extractor``
+    evidence_links: list[Any]  # EvidenceLink rows produced by ``evidence_matrix_node``
+    unsupported_claim_rate: (
+        float  # fraction with no "supports" link (consumed by reviewer panel)
+    )

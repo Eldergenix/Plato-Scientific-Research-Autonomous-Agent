@@ -1,9 +1,16 @@
 import os
-import fitz  # PyMuPDF
 import base64
 
-def pdf_to_images(pdf_path: str, out_dir: str = None, dpi: int = 200, fmt: str = "png",
-                  password: str = None, transparent: bool = False, keep_images=False):
+
+def pdf_to_images(
+    pdf_path: str,
+    out_dir: str | None = None,
+    dpi: int = 200,
+    fmt: str = "png",
+    password: str | None = None,
+    transparent: bool = False,
+    keep_images: bool = False,
+) -> list[str]:
     """
     Convert all pages of a PDF to images.
 
@@ -15,11 +22,12 @@ def pdf_to_images(pdf_path: str, out_dir: str = None, dpi: int = 200, fmt: str =
         password: PDF password if encrypted.
         transparent: If True, keeps alpha channel (PNG only).
     """
-    
     if out_dir is None:
         base = os.path.splitext(os.path.basename(pdf_path))[0]
         out_dir = os.path.join(os.path.dirname(pdf_path), f"{base}_pages")
     os.makedirs(out_dir, exist_ok=True)
+
+    import fitz  # PyMuPDF
 
     # Open document (with password if needed)
     doc = fitz.open(pdf_path)
@@ -36,26 +44,27 @@ def pdf_to_images(pdf_path: str, out_dir: str = None, dpi: int = 200, fmt: str =
     for i in range(n_pages):
         page = doc.load_page(i)
         pix = page.get_pixmap(matrix=mat, alpha=transparent)
-        fname = f"page-{i+1:03d}.{fmt.lower()}"
+        fname = f"page-{i + 1:03d}.{fmt.lower()}"
         fpath = os.path.join(out_dir, fname)
         pix.save(fpath)
 
     # read base64 representation of the images
     images = []
     for i in range(n_pages):
-        fname = f"page-{i+1:03d}.{fmt.lower()}"
+        fname = f"page-{i + 1:03d}.{fmt.lower()}"
         fpath = os.path.join(out_dir, fname)
         with open(fpath, "rb") as file:
             data = file.read()
-        images.append(base64.b64encode(data).decode('utf-8'))
+        images.append(base64.b64encode(data).decode("utf-8"))
 
     # remove the images
-    if not(keep_images):
+    if not keep_images:
         for i in range(n_pages):
-            fname = f"page-{i+1:03d}.{fmt.lower()}"
+            fname = f"page-{i + 1:03d}.{fmt.lower()}"
             fpath = os.path.join(out_dir, fname)
             if os.path.exists(fpath):
                 os.remove(fpath)
+        if os.path.exists(out_dir) and not os.listdir(out_dir):
+            os.rmdir(out_dir)
 
     return images
-

@@ -7,6 +7,7 @@ the corresponding kwargs. iter-21 plumbs them through the CLI so
 dispatches end-to-end. These tests pin the parser surface and verify
 the loop factory threads the flags into ``Plato()``.
 """
+
 from __future__ import annotations
 
 import sys
@@ -67,6 +68,7 @@ def test_loop_factory_threads_domain_into_plato_constructor(
 
     # Simulate the parsed-args namespace the CLI passes around.
     from argparse import Namespace
+
     args = Namespace(
         project_dir=str(tmp_path),
         hours=0.01,
@@ -84,6 +86,7 @@ def test_loop_factory_threads_domain_into_plato_constructor(
 
     def _factory():
         from plato import Plato
+
         domain = getattr(args, "domain", "astro") or "astro"
         return Plato(project_dir=args.project_dir, domain=domain)
 
@@ -109,6 +112,7 @@ def test_loop_factory_stashes_executor_override(
     monkeypatch.setattr(_plato_pkg, "Plato", _StubPlato, raising=False)
 
     from argparse import Namespace
+
     args = Namespace(
         project_dir=str(tmp_path),
         hours=0.01,
@@ -121,9 +125,10 @@ def test_loop_factory_stashes_executor_override(
 
     def _factory():
         from plato import Plato
+
         plato_obj = Plato(project_dir=args.project_dir, domain=args.domain)
         if args.executor:
-            plato_obj._cli_executor_override = args.executor  # type: ignore[attr-defined]
+            plato_obj._cli_executor_override = args.executor
         return plato_obj
 
     instance = _factory()

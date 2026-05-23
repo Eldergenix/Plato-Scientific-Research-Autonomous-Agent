@@ -16,6 +16,7 @@ Concrete sites that need real MeSH coverage should either point the env
 var at ``mesh_descriptors.txt`` or register a richer extractor that hits
 the NLM E-utilities API.
 """
+
 from __future__ import annotations
 
 import os
@@ -55,7 +56,9 @@ class MeshKeywordExtractor:
 
     def _vocab_set(self) -> frozenset[str]:
         if self._vocab is None:
-            self._vocab = _load_vocab(self._vocab_path) if self._vocab_path else frozenset()
+            self._vocab = (
+                _load_vocab(self._vocab_path) if self._vocab_path else frozenset()
+            )
         return self._vocab
 
     def extract(

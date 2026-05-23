@@ -12,10 +12,11 @@ Models are intentionally narrow and side-effect-free. Persistence is a
 separate concern; serialization to JSON (for ``manifest.json`` sidecars)
 is via Pydantic's standard ``model_dump(mode='json')``.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -27,6 +28,10 @@ RetrievedVia = Literal[
     "ads",
     "crossref",
     "pubmed",
+    "europe_pmc",
+    "datacite",
+    "doaj",
+    "opencitations",
 ]
 """Adapter that produced a ``Source``. Extend the literal as new adapters land."""
 
@@ -43,7 +48,9 @@ class Source(BaseModel):
     that bloats the manifest and breaks downstream consumers.
     """
 
-    id: str = Field(description="Internal stable identifier (uuid or hash).", max_length=256)
+    id: str = Field(
+        description="Internal stable identifier (uuid or hash).", max_length=256
+    )
     doi: str | None = Field(default=None, max_length=256)
     arxiv_id: str | None = Field(default=None, max_length=64)
     openalex_id: str | None = Field(default=None, max_length=64)
@@ -100,6 +107,20 @@ class ValidationResult(BaseModel):
     arxiv_resolved: bool = False
     url_alive: bool | None = None
     retracted: bool = False
+    status: Literal["verified", "warning", "unverified", "error", "hallucination"] = (
+        "unverified"
+    )
+    verdict: Literal["UNLIKELY", "UNCERTAIN", "LIKELY"] = "UNCERTAIN"
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    matched_source: str | None = None
+    matched_metadata: dict[str, Any] | None = None
+    issues: list[dict[str, Any]] = Field(default_factory=list)
+    warnings: list[dict[str, Any]] = Field(default_factory=list)
+    hallucination_assessment: dict[str, Any] | None = None
+    corrections: dict[str, str] = Field(default_factory=dict)
+    tags: list[str] = Field(default_factory=list)
+    folder: str | None = None
+    notes: dict[str, str] = Field(default_factory=dict)
     error: str | None = None
     checked_at: datetime
 

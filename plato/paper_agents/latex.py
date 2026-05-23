@@ -1,7 +1,9 @@
 import subprocess
 import os
 import re
+import shutil
 from pathlib import Path
+from typing import Any
 
 from .parameters import GraphState
 from .prompts import fix_latex_bug_prompt
@@ -26,12 +28,78 @@ special_chars = {
 }
 
 
+def sanitize_latex_section(text: str) -> str:
+    """Normalize common LLM-generated LaTeX mistakes before compilation."""
+    if not text:
+        return text
+
+    sanitized = text.replace("</figure>", r"\end{figure}")
+    sanitized = sanitized.replace(r"\ensuremath{\_}", r"\_")
+
+    def escape_command_underscores(match: re.Match[str]) -> str:
+        prefix, body, suffix = match.groups()
+        body = re.sub(r"(?<!\\)_", r"\\_", body)
+        return f"{prefix}{body}{suffix}"
+
+    sanitized = re.sub(
+        r"(\\(?:text|texttt|textit|textbf|emph)\{)([^{}]*)(\})",
+        escape_command_underscores,
+        sanitized,
+    )
+
+    def clean_label(match: re.Match[str]) -> str:
+        label = match.group(1)
+        label = label.replace(r"\_", "_")
+        label = re.sub(r"\\[A-Za-z]+\{([^{}]*)\}", r"\1", label)
+        label = re.sub(r"[^A-Za-z0-9:._-]+", "-", label).strip("-")
+        return rf"\label{{{label or 'fig:generated'}}}"
+
+    return re.sub(r"\\label\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}", clean_label, sanitized)
+
+
+def _latex_engine() -> tuple[str, str]:
+    xelatex = shutil.which("xelatex")
+    if xelatex:
+        return "xelatex", xelatex
+    tectonic = shutil.which("tectonic")
+    if tectonic:
+        return "tectonic", tectonic
+    raise FileNotFoundError(
+        "No LaTeX engine found. Install xelatex or tectonic to compile PDFs."
+    )
+
+
+def _run_latex_engine(
+    doc_name: str,
+    doc_folder: str,
+    *,
+    nonstop: bool = False,
+    check: bool = False,
+) -> tuple[str, subprocess.CompletedProcess[str]]:
+    engine, executable = _latex_engine()
+    if engine == "xelatex":
+        command = [executable]
+        if nonstop:
+            command.extend(["-interaction=nonstopmode", "-file-line-error"])
+        command.append(doc_name)
+    else:
+        command = [executable, "--keep-logs", "--keep-intermediates", doc_name]
+    return engine, subprocess.run(
+        command,
+        cwd=doc_folder,
+        input="\n",
+        capture_output=True,
+        text=True,
+        check=check,
+    )
+
+
 def extract_latex_errors(state):
     """
     This function takes a LaTeX compilation file and extracts the compilation errors.
     """
 
-    with open(state['files']['LaTeX_log'], 'r') as f:
+    with open(state["files"]["LaTeX_log"], "r") as f:
         lines = f.readlines()
 
     errors = []
@@ -48,15 +116,15 @@ def extract_latex_errors(state):
                 next_line = lines[i].strip()
 
                 if (
-                    next_line.startswith("! ") or
-                    next_line.startswith("(/") or
-                    next_line.startswith(")") or
-                    next_line.startswith("Package ") or
-                    next_line.startswith("Document Class") or
-                    next_line.startswith("(/usr") or
-                    re.match(r'^\([^\)]+\.sty', next_line) or
-                    re.match(r'^\(/', next_line) or
-                    re.match(r'^.*\.tex$', next_line)  # new .tex file
+                    next_line.startswith("! ")
+                    or next_line.startswith("(/")
+                    or next_line.startswith(")")
+                    or next_line.startswith("Package ")
+                    or next_line.startswith("Document Class")
+                    or next_line.startswith("(/usr")
+                    or re.match(r"^\([^\)]+\.sty", next_line)
+                    or re.match(r"^\(/", next_line)
+                    or re.match(r"^.*\.tex$", next_line)  # new .tex file
                 ):
                     break
 
@@ -69,7 +137,7 @@ def extract_latex_errors(state):
             i += 1
 
     # Write the errors to the output file
-    with open(state['files']['LaTeX_err'], 'w') as f:
+    with open(state["files"]["LaTeX_err"], "w") as f:
         if errors:
             f.write("LaTeX Compilation Errors Found:\n\n")
             for error in errors:
@@ -78,20 +146,27 @@ def extract_latex_errors(state):
             f.write("✅ No LaTeX errors found.\n")
 
 
-def clean_files(doc_name, doc_folder):
-
+def clean_files(
+    doc_name: str | os.PathLike[str], doc_folder: str | os.PathLike[str]
+) -> None:
     file_path = Path(doc_name)
     doc_stem = file_path.stem
-    for suffix in ['aux', 'log', 'pdf', 'out']:
-        if os.path.exists(f'{doc_folder}/{doc_stem}.{suffix}'):
-            os.system(f'rm {doc_folder}/{doc_stem}.{suffix}')
+    doc_folder_path = Path(doc_folder)
+    for suffix in ["aux", "log", "pdf", "out"]:
+        target = doc_folder_path / f"{doc_stem}.{suffix}"
+        if target.exists():
+            target.unlink()
 
 
-def compile_tex_document(state: dict, doc_name: str, doc_folder: str) -> None:
-
+def compile_tex_document(
+    state: Any,
+    doc_name: str | os.PathLike[str],
+    doc_folder: str | os.PathLike[str],
+) -> bool:
     file_path = Path(doc_name)
     doc_name = file_path.name
     doc_stem = file_path.stem
+    doc_folder_text = os.fspath(doc_folder)
     # Bibliography is written to Paper_folder by paper_node (see lines 270/183),
     # NOT Temp. Reading from Temp here meant per-section temp compiles never
     # found a bib file and silently skipped BibTeX, so citations rendered as
@@ -99,18 +174,17 @@ def compile_tex_document(state: dict, doc_name: str, doc_folder: str) -> None:
     # Paper_folder (where it actually lives) so the BibTeX trigger fires; if
     # the section is being compiled inside Temp/ we copy the bib in below so
     # bibtex can resolve refs from the section's own working directory.
-    bib_path = os.path.join(state['files']['Paper_folder'], "bibliography.bib")
+    bib_path = os.path.join(state["files"]["Paper_folder"], "bibliography.bib")
 
-    def run_xelatex(pass_num=None):
-        result = subprocess.run(["xelatex", doc_name], cwd=doc_folder,
-                                input="\n", capture_output=True, text=True)
+    def run_latex(pass_num=None):
+        _engine, result = _run_latex_engine(doc_name, doc_folder_text)
         if result.returncode != 0:
             print("❌", end="", flush=True)
-            clean_files(doc_name, doc_folder)
+            clean_files(doc_name, doc_folder_text)
             log_output(result)
             extract_latex_errors(state)
             return False
-            #raise RuntimeError(f"XeLaTeX failed (pass {pass_num}):\n{result.stderr}")
+            # raise RuntimeError(f"XeLaTeX failed (pass {pass_num}):\n{result.stderr}")
         return True
 
     def run_bibtex():
@@ -122,27 +196,34 @@ def compile_tex_document(state: dict, doc_name: str, doc_folder: str) -> None:
         env = os.environ.copy()
         prior = env.get("BIBINPUTS", "")
         env["BIBINPUTS"] = (
-            f"{state['files']['Paper_folder']}:{prior}" if prior
+            f"{state['files']['Paper_folder']}:{prior}"
+            if prior
             else f"{state['files']['Paper_folder']}:"
         )
-        result = subprocess.run(["bibtex", doc_stem], cwd=doc_folder,
-                                capture_output=True, text=True, env=env)
+        result = subprocess.run(
+            ["bibtex", doc_stem],
+            cwd=doc_folder_text,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
         if result.returncode != 0:
             raise RuntimeError(f"BibTeX failed:\n{result.stderr}")
 
     def log_output(result):
-        with open(state['files']['LaTeX_log'], 'a') as f:
+        with open(state["files"]["LaTeX_log"], "a") as f:
             f.write("---- STDOUT ----\n")
             f.write(result.stdout)
             f.write("---- STDERR ----\n")
             f.write(result.stderr)
 
     # Pass 1
-    if not(run_xelatex(pass_num=1)):
+    if not (run_latex(pass_num=1)):
         return False
 
     # Bibliography step if needed
-    if os.path.exists(bib_path):
+    engine, _executable = _latex_engine()
+    if os.path.exists(bib_path) and engine == "xelatex":
         run_bibtex()
         total_passes = 3
     else:
@@ -150,12 +231,12 @@ def compile_tex_document(state: dict, doc_name: str, doc_folder: str) -> None:
 
     # Additional passes
     for i in range(2, total_passes + 1):
-        run_xelatex(pass_num=i)
+        run_latex(pass_num=i)
 
     print("✅", end="", flush=True)
-    clean_files(doc_name, doc_folder)
+    clean_files(doc_name, doc_folder_text)
     return True
-    
+
 
 def compile_latex(state: GraphState, paper_name: str) -> None:
     """Compile the generated latex file
@@ -168,29 +249,37 @@ def compile_latex(state: GraphState, paper_name: str) -> None:
     # get the paper stem
     paper_stem = Path(paper_name).stem
 
-    def run_xelatex():
-        return subprocess.run(["xelatex", "-interaction=nonstopmode", "-file-line-error", paper_name],
-                              cwd=state['files']['Paper_folder'],
-                              input="\n", capture_output=True,
-                              text=True, check=True)
+    def run_latex():
+        _engine, result = _run_latex_engine(
+            paper_name,
+            state["files"]["Paper_folder"],
+            nonstop=True,
+            check=True,
+        )
+        return result
 
     def run_bibtex():
-        subprocess.run(["bibtex", paper_stem],
-                       cwd=state['files']['Paper_folder'],
-                       capture_output=True, text=True)
+        subprocess.run(
+            ["bibtex", paper_stem],
+            cwd=state["files"]["Paper_folder"],
+            capture_output=True,
+            text=True,
+        )
 
     def log_output(i, result_or_error, is_error=False):
-        with open(state['files']['LaTeX_log'], 'a') as f:
+        with open(state["files"]["LaTeX_log"], "a") as f:
             f.write(f"\n==== {'ERROR' if is_error else 'PASS'} on iteration {i} ====\n")
             f.write("---- STDOUT ----\n")
             f.write(result_or_error.stdout or "")
             f.write("---- STDERR ----\n")
             f.write(result_or_error.stderr or "")
 
+    engine, _executable = _latex_engine()
+
     # Try to compile it the first time
-    print(f'Compiling {paper_stem}'.ljust(33,'.'), end="", flush=True)
+    print(f"Compiling {paper_stem}".ljust(33, "."), end="", flush=True)
     try:
-        run_xelatex()
+        run_latex()
         print("✅", end="", flush=True)
     except subprocess.CalledProcessError as e:
         log_output("Pass 1", e, is_error=True)
@@ -198,28 +287,36 @@ def compile_latex(state: GraphState, paper_name: str) -> None:
 
     # if there is bibliography, compile it
     further_iterations = 1
-    if os.path.exists(f"{state['files']['Paper_folder']}/bibliography.bib"):
+    if (
+        os.path.exists(f"{state['files']['Paper_folder']}/bibliography.bib")
+        and engine == "xelatex"
+    ):
         run_bibtex()
-        further_iterations =2
+        further_iterations = 2
 
     # Compile it two more times to put references and citations
-    for i in range(further_iterations):        
+    for i in range(further_iterations):
         try:
-            run_xelatex()
+            run_latex()
             print("✅", end="", flush=True)
         except subprocess.CalledProcessError as e:
-            log_output(f"Final Pass {i+1}", e, is_error=True)
+            log_output(f"Final Pass {i + 1}", e, is_error=True)
             print("❌", end="", flush=True)
 
     # remove auxiliary files
-    for fin in [f'{paper_stem}.aux', f'{paper_stem}.log', f'{paper_stem}.out',
-                f'{paper_stem}.bbl', f'{paper_stem}.blg', f'{paper_stem}.synctex.gz',
-                f'{paper_stem}.synctex(busy)']:
+    for fin in [
+        f"{paper_stem}.aux",
+        f"{paper_stem}.log",
+        f"{paper_stem}.out",
+        f"{paper_stem}.bbl",
+        f"{paper_stem}.blg",
+        f"{paper_stem}.synctex.gz",
+        f"{paper_stem}.synctex(busy)",
+    ]:
         if os.path.exists(f"{state['files']['Paper_folder']}/{fin}"):
             os.remove(f"{state['files']['Paper_folder']}/{fin}")
 
     print("")
-
 
 
 def save_paper(state: GraphState, paper_name: str):
@@ -231,7 +328,7 @@ def save_paper(state: GraphState, paper_name: str):
        name: name of the file to save the paper
     """
 
-    journaldict: LatexPresets = journal_dict[state['paper']['journal']]
+    journaldict: LatexPresets = journal_dict[state["paper"]["journal"]]
 
     author = "Plato"
     affiliation = r"Anthropic, Gemini \& OpenAI servers. Planet Earth."
@@ -239,7 +336,9 @@ def save_paper(state: GraphState, paper_name: str):
     paper = rf"""\documentclass[{journaldict.layout}]{{{journaldict.article}}}
 
 \usepackage{{amsmath}}
+\usepackage{{amssymb}}
 \usepackage{{multirow}}
+\usepackage{{booktabs}}
 \usepackage{{natbib}}
 \usepackage{{graphicx}} 
 \usepackage{{tabularx}}
@@ -248,56 +347,57 @@ def save_paper(state: GraphState, paper_name: str):
 
 \begin{{document}}
 
-{journaldict.title}{{{state['paper'].get('Title','')}}}
+{journaldict.title}{{{state["paper"].get("Title", "")}}}
 
 {journaldict.author(author)}
 {journaldict.affiliation(affiliation)}
 
-{journaldict.abstract(state['paper'].get('Abstract',''))}
-{journaldict.keywords(state['paper']['Keywords'])}
+{journaldict.abstract(sanitize_latex_section(state["paper"].get("Abstract", "")))}
+{journaldict.keywords(sanitize_latex_section(state["paper"].get("Keywords", "")))}
 
 
 \section{{Introduction}}
 \label{{sec:intro}}
-{state['paper'].get('Introduction','')}
+{sanitize_latex_section(state["paper"].get("Introduction", ""))}
 
 \section{{Methods}}
 \label{{sec:methods}}
-{state['paper'].get('Methods','')}
+{sanitize_latex_section(state["paper"].get("Methods", ""))}
 
 \section{{Results}}
 \label{{sec:results}}
-{state['paper'].get('Results','')}
+{sanitize_latex_section(state["paper"].get("Results", ""))}
 
 \section{{Conclusions}}
 \label{{sec:conclusions}}
-{state['paper'].get('Conclusions','')}
+{sanitize_latex_section(state["paper"].get("Conclusions", ""))}
 
 \bibliography{{bibliography}}{{}}
 {journaldict.bibliographystyle}
 
 \end{{document}}
 """
-    
+
     # save paper to file
     f_in = f"{state['files']['Paper_folder']}/{paper_name}"
-    with open(f_in, 'w', encoding='utf-8') as f:
+    with open(f_in, "w", encoding="utf-8") as f:
         f.write(paper)
 
 
 def save_bib(state: GraphState):
-    with open(f"{state['files']['Paper_folder']}/bibliography_temp.bib", 'a', encoding='utf-8') as f:
-        f.write(state['paper']['References'].strip() + "\n")    
-
+    with open(
+        f"{state['files']['Paper_folder']}/bibliography_temp.bib", "a", encoding="utf-8"
+    ) as f:
+        f.write(state["paper"]["References"].strip() + "\n")
 
 
 def escape_special_chars(text):
     # Split into math and non-math parts
-    parts = re.split(r'(\$.*?\$)', text)  # keep $...$ parts intact
+    parts = re.split(r"(\$.*?\$)", text)  # keep $...$ parts intact
     sanitized = []
 
     for part in parts:
-        if part.startswith('$') and part.endswith('$'):
+        if part.startswith("$") and part.endswith("$"):
             # Don't touch math parts
             sanitized.append(part)
         else:
@@ -306,34 +406,38 @@ def escape_special_chars(text):
                 part = part.replace(char, escaped)
             sanitized.append(part)
 
-    return ''.join(sanitized)
+    return "".join(sanitized)
 
 
 def process_bib_file(input_file, output_file):
-    with open(input_file, 'r') as fin:
+    with open(input_file, "r") as fin:
         lines = fin.readlines()
 
     processed_lines = []
     for line in lines:
-        if line.strip().startswith('title') or line.strip().startswith('journal'):
-            key, value = line.split('=', 1)
-            # quote_char = '"' if '"' in value else '{'
-            content = re.search(r'[{\"](.+)[}\"]', value).group(1)
+        if line.strip().startswith("title") or line.strip().startswith("journal"):
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip()
+            match = re.search(r"[{\"](.+)[}\"]", value)
+            content = (
+                match.group(1) if match else value.rstrip(",").strip().strip('{}"')
+            )
             escaped_content = escape_special_chars(content)
 
             # Optional: preserve acronyms (wrap them in braces)
-            escaped_content = re.sub(r'\b([A-Z]{2,})\b', r'{\1}', escaped_content)
+            escaped_content = re.sub(r"\b([A-Z]{2,})\b", r"{\1}", escaped_content)
 
-            processed_lines.append(f'  {key.strip()} = {{{escaped_content}}},\n')
+            processed_lines.append(f"  {key} = {{{escaped_content}}},\n")
         else:
             processed_lines.append(line)
 
-    with open(output_file, 'w') as fout:
+    with open(output_file, "w") as fout:
         fout.writelines(processed_lines)
 
     print(f"Sanitized BibTeX saved to: {output_file}")
 
-    
+
 def _wrap_for_fix(state, text: str) -> str:
     """Wrap ``text`` in a full LaTeX document the same way ``temp_file('write')`` does.
 
@@ -346,11 +450,13 @@ def _wrap_for_fix(state, text: str) -> str:
     ``temp_file('write')`` produced or downstream
     ``compile_tex_document`` reads will diff.
     """
-    journaldict: LatexPresets = journal_dict[state['paper']['journal']]
+    journaldict: LatexPresets = journal_dict[state["paper"]["journal"]]
     return rf"""\documentclass[{journaldict.layout}]{{{journaldict.article}}}
 
 \usepackage{{amsmath}}
+\usepackage{{amssymb}}
 \usepackage{{multirow}}
+\usepackage{{booktabs}}
 \usepackage{{natbib}}
 \usepackage{{graphicx}}
 {journaldict.usepackage}
@@ -370,8 +476,8 @@ def fix_latex(state, f_temp):
     """
 
     file_path = Path(f_temp)
-    f_stem    = file_path.with_suffix('')
-    suffix    = file_path.suffix
+    f_stem = file_path.with_suffix("")
+    suffix = file_path.suffix
 
     # Iter-20 (R11 completion): fix_latex now writes its versioned
     # recovery candidates through a ScopedWriter rooted at the paper
@@ -381,40 +487,39 @@ def fix_latex(state, f_temp):
     # Falls back to the legacy ``temp_file`` write when ``Paper_folder``
     # isn't set so the helper stays usable from contexts that don't
     # carry the per-paper layout (one-off scripts, tests).
-    paper_folder = state.get('files', {}).get('Paper_folder')
+    paper_folder = state.get("files", {}).get("Paper_folder")
     writer = ScopedWriter(paper_folder, LATEX_FIX_SCOPE) if paper_folder else None
 
     # You have three attemps to fix the problem
     for i in range(3):
-
         # make a LLM call with the problematic text and the LaTeX errors
         # uses state['files']['LaTeX_err'] and state['latex']['sction'] for the prompt
         PROMPT = fix_latex_bug_prompt(state)
         state, result = LLM_call(PROMPT, state, node_name="fix_latex")
         fixed_text = extract_latex_block(state, result, "Text")
-        state['paper'][state['latex']['section_to_fix']] = fixed_text
+        state["paper"][state["latex"]["section_to_fix"]] = fixed_text
 
         # save text to file — scoped when we have a paper folder, legacy
         # path otherwise.
-        f_name = f"{f_stem}_v{i+1}{suffix}"
+        f_name = f"{f_stem}_v{i + 1}{suffix}"
         if writer is not None:
             writer.write(f"temp/{Path(f_name).name}", _wrap_for_fix(state, fixed_text))
         else:
-            temp_file(state, f_name, 'write', fixed_text)
+            temp_file(state, f_name, "write", fixed_text)
 
         # compile again; if successful change file names and exit
-        if compile_tex_document(state, f_name, state['files']['Temp']):
-            os.system(f'mv {f_temp} {f_stem}_orig{suffix}')
-            os.system(f"mv {f_name} {f_temp}")
+        if compile_tex_document(state, f_name, state["files"]["Temp"]):
+            shutil.move(str(f_temp), f"{f_stem}_orig{suffix}")
+            shutil.copy2(str(f_name), str(f_temp))
             return state, True
 
     return state, False
-        
+
 
 def fix_percent(text):
     """
     This function replaces any % (that is not \\%) by \\%. This is useful as in the abstract many times percentiles are quoted and if not \\%, LaTeX will interpret it as a comment.
     """
-    
+
     # Replace any % that is not preceded by a backslash
-    return re.sub(r'(?<!\\)%', r'\\%', text)
+    return re.sub(r"(?<!\\)%", r"\\%", text)

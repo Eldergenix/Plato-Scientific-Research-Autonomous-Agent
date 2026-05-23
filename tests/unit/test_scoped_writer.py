@@ -1,4 +1,5 @@
 """Phase 3 — R11 unit tests for :mod:`plato.io.scoped_writer`."""
+
 from __future__ import annotations
 
 import os

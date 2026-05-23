@@ -37,6 +37,12 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.resolve(__dirname),
   },
+  webpack(config, { dev }) {
+    if (!dev) {
+      config.cache = false;
+    }
+    return config;
+  },
   async headers() {
     return [
       {
@@ -47,6 +53,9 @@ const nextConfig: NextConfig = {
         headers: SECURITY_HEADERS,
       },
     ];
+  },
+  async rewrites() {
+    return [];
   },
 };
 

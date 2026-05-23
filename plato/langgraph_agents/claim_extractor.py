@@ -22,13 +22,14 @@ Design notes
 - State update: this node returns ``{"claims": existing + new}`` so prior
   claims (e.g. drafted by other nodes) are preserved.
 """
+
 from __future__ import annotations
 
 import json
 import re
 import time
 import uuid
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from langchain_core.runnables import RunnableConfig
 
@@ -85,7 +86,9 @@ def _abstract_for(source_or_str: Source | str) -> str:
         return source_or_str.abstract or ""
     # legacy paper-info string from semantic_scholar: try to slice the abstract
     text = str(source_or_str)
-    m = re.search(r"Abstract:\s*(.*?)(?:\nURL:|\narXiv link:|\npdf:|$)", text, re.DOTALL)
+    m = re.search(
+        r"Abstract:\s*(.*?)(?:\nURL:|\narXiv link:|\npdf:|$)", text, re.DOTALL
+    )
     return m.group(1).strip() if m else text
 
 
@@ -107,11 +110,11 @@ def _coerce_quote_span(abstract: str, span_text: str | None) -> tuple[int, int] 
 
 def _iter_inputs(state: GraphState) -> list[Source | str]:
     """Pick sources or fall back to the legacy paper-info strings."""
-    sources = state.get("sources") if isinstance(state, dict) else None
+    sources = cast(Any, state.get("sources"))
     if sources:
         return list(sources)
 
-    literature = state.get("literature") if isinstance(state, dict) else None
+    literature = cast(Any, state.get("literature"))
     if literature and literature.get("papers"):
         papers = literature["papers"]
         if isinstance(papers, list):
@@ -122,6 +125,7 @@ def _iter_inputs(state: GraphState) -> list[Source | str]:
 # ---------------------------------------------------------------------------
 # Node
 # ---------------------------------------------------------------------------
+
 
 def claim_extractor(state: GraphState, config: Optional[RunnableConfig] = None):
     # Note: ``Optional[RunnableConfig]`` (not ``RunnableConfig | None``)

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { dashboardApiBase } from "@/lib/api-base";
 
 /**
  * Auth context for the dashboard's tenant-id login flow.
@@ -17,8 +18,7 @@ import { usePathname, useRouter } from "next/navigation";
  * stays isolated; tests can render under the provider directly.
  */
 
-const AUTH_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:7878/api/v1";
+const AUTH_BASE = dashboardApiBase();
 
 const STORAGE_KEY = "plato:user_id";
 
@@ -56,6 +56,15 @@ function writePersisted(id: string | null): void {
   }
 }
 
+function isPublicAuthPath(pathname: string): boolean {
+  return (
+    pathname === "/landing" ||
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/sign-in") ||
+    pathname.startsWith("/sign-up")
+  );
+}
+
 async function fetchMe(): Promise<{ user_id: string | null; auth_required: boolean }> {
   // Wrap fetch itself in try/catch — when the user is offline, fetch()
   // throws TypeError("Failed to fetch") rather than resolving to a
@@ -89,12 +98,7 @@ async function postLogin(id: string): Promise<{ user_id: string }> {
     body: JSON.stringify({ user_id: id }),
   });
   if (!r.ok) {
-    let detail: unknown;
-    try {
-      detail = await r.json();
-    } catch {
-      detail = await r.text();
-    }
+    const detail = await readErrorDetail(r);
     const msg =
       typeof detail === "object" && detail && "detail" in detail
         ? JSON.stringify((detail as { detail: unknown }).detail)
@@ -102,6 +106,16 @@ async function postLogin(id: string): Promise<{ user_id: string }> {
     throw new Error(`Login failed (${r.status}): ${msg}`);
   }
   return (await r.json()) as { user_id: string };
+}
+
+async function readErrorDetail(response: Response): Promise<unknown> {
+  const body = await response.text();
+  if (!body) return null;
+  try {
+    return JSON.parse(body);
+  } catch {
+    return body;
+  }
 }
 
 async function postLogout(): Promise<void> {
@@ -148,7 +162,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Client-side guard: when the backend reports auth_required and no
   // user is signed in, send the user to /login. We intentionally
-  // skip this when we're already on /login (avoids a redirect loop)
+  // skip public auth surfaces (avoids a redirect loop)
   // and while the initial /me probe is still in flight (avoids a
   // flash-redirect from the localStorage-seeded null state).
   const router = useRouter();
@@ -157,7 +171,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (loading) return;
     if (!authRequired) return;
     if (user_id) return;
-    if (pathname.startsWith("/login")) return;
+    if (isPublicAuthPath(pathname)) return;
     router.replace(`/login?next=${encodeURIComponent(pathname)}`);
   }, [authRequired, loading, pathname, router, user_id]);
 

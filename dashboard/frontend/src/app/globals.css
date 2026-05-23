@@ -40,11 +40,15 @@
   --color-bg-row-active: #191a1a;
   --color-bg-tag-pill: #0f1010;
   --color-bg-button-glass: #1d1d1e;
+  --color-bg-button-glass-hover: #232325;
+  --color-bg-field: #141415;
 
   /* Borders */
   --color-border-card: #1d1d1f;
   --color-border-pill: #262628;
   --color-border-button-glass: rgba(255, 255, 255, 0.136);
+  --color-border-field: #262628;
+  --color-border-field-hover: #34343a;
 
   /* Text */
   --color-text-primary-strong: #ffffff;
@@ -64,7 +68,8 @@
   --color-status-green-spec: #27a644;
   --color-status-amber-spec: #f0bf00;
   --color-status-red-spec: #eb5757;
-  --color-status-purple: #bb87fc;
+  --color-status-purple: #D5FF50;
+  --color-status-purple-foreground: #0a0a0b;
   --color-status-blue: #4ea7fc;
   --color-status-orange: #ff7236;
   --color-accent-row-progress: #24302a;
@@ -73,6 +78,8 @@
   /* Gradients */
   --gradient-progress: linear-gradient(90deg, #161b19 0%, #171718 100%);
   --gradient-backlog: linear-gradient(90deg, #1c1a18 0%, #171718 100%);
+  --gradient-failed: linear-gradient(90deg, #1f1818 0%, #171718 100%);
+  --gradient-done: linear-gradient(90deg, #171b18 0%, #171718 100%);
 
   /* Shadows */
   --shadow-card: 0 4px 4px -1px rgba(0, 0, 0, 0.04), 0 1px 1px rgba(0, 0, 0, 0.08);
@@ -212,6 +219,7 @@
     font-size: var(--text-body);
     line-height: 1.5;
     font-weight: var(--font-weight-regular);
+    overflow: hidden;
   }
 
   ::selection {
@@ -315,7 +323,7 @@
     transition: background 120ms ease-out;
   }
   .glass-button:hover {
-    background: #232325;
+    background: var(--color-bg-button-glass-hover);
   }
 
   .icon-button {
@@ -446,6 +454,8 @@
     font-size: 12px;
     font-weight: var(--font-weight-medium);
     color: var(--color-text-row-meta);
+    max-width: min(180px, 42vw);
+    min-width: 0;
   }
   .tag-pill::before {
     content: "";
@@ -465,6 +475,10 @@
   .tag-pill[data-color="teal"]   { color: var(--color-status-teal); }
   .tag-pill > span {
     color: var(--color-text-row-meta);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   /* ---- Hairlines & legacy pill ---- */
@@ -486,6 +500,25 @@
 
   .glow-indigo {
     box-shadow: 0 0 0 1px var(--color-brand-indigo), 0 0 24px -4px rgba(94, 106, 210, 0.4);
+  }
+
+  [data-run-button="true"],
+  [data-testid="run-pipeline-button"],
+  [data-testid="workspace-empty-run-pipeline"] {
+    border-radius: 9999px !important;
+    background: linear-gradient(180deg, #E5E5E5 0%, #E2E2E2 100%) !important;
+    color: #121212 !important;
+    box-shadow:
+      0 3px 4px -1px rgba(0, 0, 0, 0.15),
+      0 0 0 1px #D4D4D4,
+      inset 0 1px 0 rgba(255, 255, 255, 0.33) !important;
+  }
+
+  [data-run-button="true"]:hover:not(:disabled),
+  [data-testid="run-pipeline-button"]:hover:not(:disabled),
+  [data-testid="workspace-empty-run-pipeline"]:hover:not(:disabled) {
+    background: linear-gradient(180deg, #E5E5E5 0%, #E2E2E2 100%) !important;
+    color: #121212 !important;
   }
 }
 
@@ -529,6 +562,9 @@
   --color-bg-pill-active: #e2e4e9;
   --color-bg-row-active: #eef0f3;
   --color-bg-button-glass: #ffffff;
+  --color-bg-button-glass-hover: #edf0f4;
+  --color-bg-field: #ffffff;
+  --color-bg-tag-pill: #ffffff;
   --color-bg-marketing: #f8fafb;
   --color-bg-panel: #ffffff;
   --color-bg-surface: #f5f6f8;
@@ -539,15 +575,27 @@
   --color-border-solid: #e2e5ea;
   --color-border-strong: #c8cdd5;
   --color-border-pill: #e2e5ea;
+  --color-border-button-glass: rgba(10, 10, 11, 0.12);
+  --color-border-field: #d8dde5;
+  --color-border-field-hover: #b9c0cb;
 
+  --color-text-primary-strong: #0a0a0a;
   --color-text-primary: #0a0a0b;
   --color-text-secondary: #2c3038;
+  --color-text-secondary-spec: #2c3038;
   --color-text-tertiary: #5d6470;
   --color-text-tertiary-spec: #5d6470;
   --color-text-quaternary: #8a92a0;
+  --color-text-quaternary-spec: #8a92a0;
+  --color-text-quinary: #9aa3af;
   --color-text-row-title: #0a0a0b;
   --color-text-row-meta: #5d6470;
+  --color-text-progress-meta: #2f7a46;
+  --color-text-backlog-meta: #8a6514;
   --color-text-workspace: #0a0a0b;
+
+  --color-status-purple: #006BFF;
+  --color-status-purple-foreground: #ffffff;
 
   --color-ghost-bg: rgba(0, 0, 0, 0.02);
   --color-ghost-bg-hover: rgba(0, 0, 0, 0.05);
@@ -555,4 +603,22 @@
 
   --gradient-progress: linear-gradient(90deg, #effaf3 0%, #f5f6f8 100%);
   --gradient-backlog: linear-gradient(90deg, #fef9ec 0%, #f5f6f8 100%);
+  --gradient-failed: linear-gradient(90deg, #fff1f1 0%, #f5f6f8 100%);
+  --gradient-done: linear-gradient(90deg, #eef8f1 0%, #f5f6f8 100%);
+
+  --shadow-glass: 0 0 0 0.5px rgba(10, 10, 11, 0.12), 0 4px 4px -1px rgba(15, 23, 42, 0.04), 0 1px 1px rgba(15, 23, 42, 0.08);
+  --shadow-glass-active: 0 0 0 0.5px rgba(10, 10, 11, 0.16);
+  --shadow-icon-button: 0 0 0 1px rgba(10, 10, 11, 0.1), 0 4px 4px -1px rgba(15, 23, 42, 0.05), 0 1px 1px rgba(15, 23, 42, 0.08);
+}
+
+@media (max-width: 640px) {
+  :root {
+    --text-h1: 24px;
+    --text-h2: 20px;
+    --text-h3: 18px;
+    --text-body: 15px;
+    --h-row: 44px;
+    --h-button: 32px;
+    --h-tab: 32px;
+  }
 }

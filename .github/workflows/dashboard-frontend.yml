@@ -38,6 +38,7 @@ jobs:
           cache-dependency-path: dashboard/frontend/package-lock.json
       - name: Install backend (mock)
         run: |
+          pip install -e .
           pip install -e dashboard/backend
           pip install uvicorn fakeredis
       - name: Install frontend deps

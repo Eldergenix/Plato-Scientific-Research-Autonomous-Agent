@@ -7,6 +7,7 @@ import { TabPills } from "@/components/shell/tab-pills";
 import { StatusIcon } from "@/components/views/status-icon";
 import { CreateProjectModal } from "@/components/projects/create-project-modal";
 import { api } from "@/lib/api";
+import { persistSelectedProjectId } from "@/lib/use-project";
 import {
   cn,
   formatCost,
@@ -50,7 +51,7 @@ const AVATAR_PALETTE: ReadonlyArray<{ bg: string; fg: string }> = [
   { bg: "#10A37F", fg: "#E7FFF7" }, // green
   { bg: "#EB5757", fg: "#FFEAEA" }, // red
   { bg: "#F0BF00", fg: "#1A1500" }, // amber
-  { bg: "#BB87FC", fg: "#1B1124" }, // purple
+  { bg: "var(--color-status-purple)", fg: "var(--color-status-purple-foreground)" }, // purple
   { bg: "#4EA7FC", fg: "#0B1B33" }, // blue
   { bg: "#FF7236", fg: "#1F0F08" }, // orange
 ];
@@ -117,7 +118,7 @@ function ProjectRow({
   onDelete,
 }: {
   project: Project;
-  onSelect: () => void;
+  onSelect: (project: Project) => void;
   onDelete?: (projectId: string) => void | Promise<void>;
 }) {
   const status = rollupStatus(project);
@@ -128,11 +129,11 @@ function ProjectRow({
     <div
       role="button"
       tabIndex={0}
-      onClick={onSelect}
+      onClick={() => onSelect(project)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          onSelect();
+          onSelect(project);
         }
       }}
       className={cn(
@@ -200,10 +201,7 @@ function ProjectRow({
 
 function GroupHeader({ label, count }: { label: string; count: number }) {
   return (
-    <header
-      className="flex h-9 items-center gap-2 px-4"
-      style={{ background: "linear-gradient(90deg, #161b19 0%, #171718 100%)" }}
-    >
+    <header className="hairline-b flex h-9 items-center gap-2 bg-(--color-bg-pill-inactive) px-4">
       <span className="text-[13px] font-medium text-(--color-text-secondary-spec)">
         {label}
       </span>
@@ -322,23 +320,22 @@ export default function ProjectsPage() {
   const handleCreated = React.useCallback(
     (project: Project) => {
       setProjects((prev) => (prev ? [project, ...prev] : [project]));
+      persistSelectedProjectId(project.id);
       router.push("/");
     },
     [router],
   );
 
-  const handleSelect = React.useCallback(() => {
-    // Today the workspace view lives at "/" and renders the most-recent
-    // project; future routing can use `/workspace/[id]`.
+  const handleSelect = React.useCallback((project: Project) => {
+    persistSelectedProjectId(project.id);
     router.push("/");
   }, [router]);
 
   const handleDelete = React.useCallback(
     async (projectId: string) => {
-      // Optimistic remove + rollback on api failure. Backend ProjectStore
-      // tenant-checks before rm-rf'ing the dir, so a 403 here means the
-      // user doesn't own the project and the row should reappear.
       const before = projects ?? [];
+      const project = before.find((item) => item.id === projectId);
+      setError(null);
       setProjects((prev) =>
         prev ? prev.filter((p) => p.id !== projectId) : prev,
       );
@@ -346,8 +343,8 @@ export default function ProjectsPage() {
         await api.deleteProject(projectId);
       } catch (e: unknown) {
         setProjects(before);
-        // We surface this in the page-level error pill rather than a
-        // toast because the project card itself just disappeared.
+        const reason = e instanceof Error ? e.message : "Delete request failed";
+        setError(`Could not delete ${project?.name ?? projectId}: ${reason}`);
         console.error("deleteProject failed", e);
       }
     },
@@ -386,9 +383,9 @@ export default function ProjectsPage() {
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search projects"
             className={cn(
-              "h-6 w-[200px] rounded-[6px] border border-[#262628] bg-[#141415] pl-6 pr-2",
+              "h-6 w-[200px] rounded-[6px] border border-(--color-border-pill) bg-(--color-bg-card) pl-6 pr-2",
               "font-mono text-[12px] text-(--color-text-primary) placeholder:text-(--color-text-quaternary-spec)",
-              "transition-colors hover:border-[#34343a]",
+              "shadow-[var(--shadow-glass)] transition-colors hover:border-(--color-border-strong)",
               "focus-visible:border-(--color-brand-indigo) focus-visible:outline-none",
             )}
           />

@@ -21,6 +21,7 @@ export interface ApprovalCheckpointsProps {
 }
 
 type PersistedState = ApprovalState | "skipped";
+const APPROVAL_GATE_STAGES: StageId[] = ["idea", "literature", "method"];
 
 // Iter-27: localStorage keys retained ONLY for one-time migration from
 // pre-iter-27 installs. After successful migration the entries are
@@ -69,6 +70,19 @@ export function getBlockingApproval(
     return gate;
   }
   return null;
+}
+
+export function isApprovalNeeded(project: Project, stage: StageId): boolean {
+  if (!APPROVAL_GATE_STAGES.includes(stage)) return false;
+  if (project.approvals?.auto_skip) return false;
+  const gateStage = project.stages[stage];
+  if (!gateStage || gateStage.status !== "done") return false;
+  const state = project.approvals?.per_stage?.[stage] ?? "pending";
+  return state !== "approved" && state !== "skipped";
+}
+
+export function getPendingApprovalStages(project: Project): StageId[] {
+  return APPROVAL_GATE_STAGES.filter((stage) => isApprovalNeeded(project, stage));
 }
 
 /** React hook returning ``{blockedBy, isBlocked}`` for a given stage.

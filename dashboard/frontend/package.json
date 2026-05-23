@@ -3,11 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
-    "build": "next build --turbopack",
-    "start": "next start"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "next typegen && tsc --noEmit --incremental false",
+    "test:e2e": "env -u FORCE_COLOR -u NO_COLOR playwright test",
+    "video:studio": "remotion studio remotion/index.tsx",
+    "video:still": "remotion still remotion/index.tsx PlatoProductHuntDemo out/plato-product-hunt-frame.png --frame=360 --scale=0.5",
+    "video:render": "remotion render remotion/index.tsx PlatoProductHuntDemo out/plato-product-hunt-demo.mp4 --codec=h264 --pixel-format=yuv420p"
   },
   "dependencies": {
+    "@clerk/nextjs": "^7.3.1",
+    "@phosphor-icons/react": "^2.1.10",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-popover": "^1.1.15",
@@ -21,18 +28,25 @@
     "cmdk": "^1.1.1",
     "lucide-react": "^1.14.0",
     "next": "15.5.15",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
+    "react": "^19.1.4",
+    "react-dom": "^19.1.4",
     "react-pdf": "^10.4.1",
     "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
+    "@remotion/cli": "^4.0.462",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "remotion": "^4.0.462",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "overrides": {
+    "@remotion/renderer": {
+      "source-map": "0.7.4"
+    }
   }
 }

@@ -9,6 +9,7 @@ queued-run fixture from the dashboard suite — and write the
 ``runs/<run_id>/manifest.json`` files by hand to exercise just the
 tenant-boundary logic.
 """
+
 from __future__ import annotations
 
 import json
@@ -19,9 +20,7 @@ from pathlib import Path
 import pytest
 
 # Make the dashboard backend src importable.
-_DASHBOARD_SRC = (
-    Path(__file__).resolve().parents[2] / "dashboard" / "backend" / "src"
-)
+_DASHBOARD_SRC = Path(__file__).resolve().parents[2] / "dashboard" / "backend" / "src"
 if str(_DASHBOARD_SRC) not in sys.path:
     sys.path.insert(0, str(_DASHBOARD_SRC))
 
@@ -30,7 +29,7 @@ def _write_manifest(project_dir: Path, run_id: str, user_id: str | None) -> Path
     """Drop a minimal-but-valid ``runs/<run_id>/manifest.json``."""
     runs_dir = project_dir / "runs" / run_id
     runs_dir.mkdir(parents=True, exist_ok=True)
-    payload = {
+    payload: dict[str, object] = {
         "run_id": run_id,
         "workflow": "test_workflow",
         "started_at": datetime.now(timezone.utc).isoformat(),
@@ -75,11 +74,14 @@ def app_client(required_mode: Path):
 
     # Reset stale module-level run state between tests.
     from plato_dashboard.worker import run_manager
+
     run_manager._active_runs.clear()
     run_manager._run_tasks.clear()
     run_manager._subprocesses.clear()
+    run_manager._run_dirs.clear()
 
     from plato_dashboard.events import bus as bus_mod
+
     bus_mod._bus = None
 
     from plato_dashboard.api.server import create_app
@@ -110,7 +112,7 @@ def test_required_mode_creates_per_user_namespaces(
     app_client, required_mode: Path
 ) -> None:
     """Two users → two on-disk roots under ``users/<id>/``."""
-    plato_home = required_mode / "projects"  # parent for users/<id>/
+    plato_home = required_mode / "projects"
     a_proj = app_client.post(
         "/api/v1/projects",
         json={"name": "alice's"},
@@ -123,10 +125,10 @@ def test_required_mode_creates_per_user_namespaces(
     ).json()
 
     # Each user lands under users/<id>/<pid>/.
-    assert (_user_root(plato_home.parent, "alice") / a_proj["id"]).exists()
-    assert (_user_root(plato_home.parent, "bob") / b_proj["id"]).exists()
+    assert (_user_root(plato_home, "alice") / a_proj["id"]).exists()
+    assert (_user_root(plato_home, "bob") / b_proj["id"]).exists()
     # Cross-namespace pollution check.
-    assert not (_user_root(plato_home.parent, "alice") / b_proj["id"]).exists()
+    assert not (_user_root(plato_home, "alice") / b_proj["id"]).exists()
 
 
 def test_user_b_cannot_fetch_user_a_run(
@@ -143,7 +145,7 @@ def test_user_b_cannot_fetch_user_a_run(
     )
     assert a_resp.status_code == 201
     pid_a = a_resp.json()["id"]
-    a_project_dir = _user_root(plato_home.parent, "alice") / pid_a
+    a_project_dir = _user_root(plato_home, "alice") / pid_a
     _write_manifest(a_project_dir, run_id="r_alice_1", user_id="alice")
 
     # Pre-load the run into the in-memory registry so the route doesn't
@@ -151,6 +153,7 @@ def test_user_b_cannot_fetch_user_a_run(
     # subprocess-spawning path in a unit test, so reach in directly.
     from plato_dashboard.domain.models import Run, utcnow
     from plato_dashboard.worker import run_manager
+
     run_manager._active_runs["r_alice_1"] = Run(
         id="r_alice_1",
         project_id=pid_a,
@@ -197,6 +200,7 @@ def test_legacy_unauth_path_unaffected(
 
     from fastapi.testclient import TestClient
     from plato_dashboard.worker import run_manager
+
     run_manager._active_runs.clear()
     run_manager._run_tasks.clear()
     run_manager._subprocesses.clear()
@@ -227,11 +231,12 @@ def test_required_mode_run_self_access_works(
         headers={"X-Plato-User": "alice"},
     )
     pid = a_resp.json()["id"]
-    project_dir = _user_root(plato_home.parent, "alice") / pid
+    project_dir = _user_root(plato_home, "alice") / pid
     _write_manifest(project_dir, run_id="r_alice_2", user_id="alice")
 
     from plato_dashboard.domain.models import Run, utcnow
     from plato_dashboard.worker import run_manager
+
     run_manager._active_runs["r_alice_2"] = Run(
         id="r_alice_2",
         project_id=pid,

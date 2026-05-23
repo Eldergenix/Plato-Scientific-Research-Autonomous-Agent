@@ -1,24 +1,24 @@
 from langgraph.graph import END
+from typing import Any, cast
 
 from .parameters import GraphState
 
 
 # idea - methods router
-def citation_router (state: GraphState) -> str:
+def citation_router(state: GraphState) -> str:
     """Route the post-refine_results stage.
 
-    When ``add_citations`` is true we run the citation pipeline
-    (``citations_node`` -> ``citation_validator_node`` -> claim/evidence
-    matrix); otherwise we skip the BibTeX work but still run claim
-    extraction so the reviewer panel can see an evidence matrix.
+    When ``add_citations`` is true we run the citation pipeline. Otherwise we
+    still route through ``citation_validator_node`` so no-citation drafts cannot
+    bypass the mandatory reference gate.
     """
 
-    if   state['paper']['add_citations'] is True:
-        return 'citations_node'
-    elif state['paper']['add_citations'] is False:
-        return 'claim_evidence_fanout'
+    if state["paper"]["add_citations"] is True:
+        return "citations_node"
+    elif state["paper"]["add_citations"] is False:
+        return "citation_validator_node"
     else:
-        raise Exception('Wrong add_citations value')
+        raise Exception("Wrong add_citations value")
 
 
 # Phase 3 — R6: severity-gated revision-loop router.
@@ -34,8 +34,8 @@ def revision_router(state: GraphState):
 
     Either condition failing terminates the loop.
     """
-    digest = state.get("critique_digest") or {}
-    revision_state = state.get("revision_state") or {}
+    digest = cast(Any, state.get("critique_digest")) or {}
+    revision_state = cast(Any, state.get("revision_state")) or {}
 
     try:
         max_severity = int(digest.get("max_severity", 0) or 0)

@@ -1,4 +1,5 @@
 """Phase 4 — R11 adoption: tests for the per-node :class:`FileScope` declarations."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -21,17 +22,13 @@ def project_dir(tmp_path: Path) -> Path:
 
 
 def test_abstract_scope_writes_to_paper_abstract(project_dir: Path) -> None:
-    out = ScopedWriter(project_dir, ABSTRACT_SCOPE).write(
-        "paper/abstract.tex", "x"
-    )
+    out = ScopedWriter(project_dir, ABSTRACT_SCOPE).write("paper/abstract.tex", "x")
     assert out.read_text() == "x"
     assert out == (project_dir / "paper" / "abstract.tex").resolve()
 
 
 def test_methods_scope_writes_to_paper_methods(project_dir: Path) -> None:
-    out = ScopedWriter(project_dir, METHODS_SCOPE).write(
-        "paper/methods.tex", "y"
-    )
+    out = ScopedWriter(project_dir, METHODS_SCOPE).write("paper/methods.tex", "y")
     assert out.read_text() == "y"
 
 

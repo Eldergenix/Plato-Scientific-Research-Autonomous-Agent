@@ -10,6 +10,7 @@ import { CapabilitiesBanner } from "@/components/shell/capabilities-banner";
 import { CreateProjectModal } from "@/components/projects/create-project-modal";
 import { Sheet } from "@/components/ui/sheet";
 import { api } from "@/lib/api";
+import { persistSelectedProjectId, pickPreferredProject } from "@/lib/use-project";
 
 /**
  * Wrap any non-workspace page so it inherits the Linear sidebar + bottom bar.
@@ -33,12 +34,20 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   const [createOpen, setCreateOpen] = React.useState(false);
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
   const [caps, setCaps] = React.useState<{ is_demo: boolean; notes: string[] } | null>(null);
+  const [teamName, setTeamName] = React.useState<string | undefined>();
 
   React.useEffect(() => {
     let cancelled = false;
     api.capabilities()
       .then((c) => !cancelled && setCaps({ is_demo: c.is_demo, notes: c.notes }))
       .catch(() => !cancelled && setCaps(null));
+    api.listProjects()
+      .then((projects) => {
+        if (cancelled) return;
+        const selected = projects.length > 0 ? pickPreferredProject(projects) : null;
+        setTeamName(selected?.name?.trim() || undefined);
+      })
+      .catch(() => !cancelled && setTeamName(undefined));
     return () => {
       cancelled = true;
     };
@@ -52,7 +61,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   }, [pathname]);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-(--color-bg-page) text-(--color-text-primary)">
+    <div className="flex h-[100dvh] w-full overflow-hidden bg-(--color-bg-page) text-(--color-text-primary)">
       {/* Desktop sidebar — hidden below the md breakpoint so the
           hamburger drawer can take over without overlapping content. */}
       <div className="hidden md:flex">
@@ -61,6 +70,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           onToggle={() => setCollapsed((c) => !c)}
           onOpenCommand={() => setCmdOpen(true)}
           onCreateProject={() => setCreateOpen(true)}
+          projectName={teamName}
         />
       </div>
 
@@ -74,7 +84,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         srOnly
         side="left"
         hideCloseButton
-        className="w-[280px]"
+        className="w-[min(280px,calc(100vw-24px))]"
       >
         <Sidebar
           collapsed={false}
@@ -87,6 +97,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             setMobileNavOpen(false);
             setCreateOpen(true);
           }}
+          projectName={teamName}
         />
       </Sheet>
 
@@ -95,7 +106,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             md:hidden breakpoint matches the desktop-sidebar visibility
             so the two never coexist on screen. */}
         <div
-          className="flex h-12 items-center gap-2 px-3 hairline-b bg-(--color-bg-marketing) md:hidden"
+          className="flex min-h-12 items-center gap-2 px-3 hairline-b bg-(--color-bg-marketing) md:hidden"
           data-testid="mobile-shell-header"
         >
           <button
@@ -114,24 +125,24 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
         {caps?.is_demo && <CapabilitiesBanner isDemo notes={caps.notes} />}
 
-        <div className="flex-1 min-h-0 flex flex-col p-1.5 pl-0">
+        <div className="flex-1 min-h-0 flex flex-col p-1.5 md:pl-0">
           <main
+            id="main-content"
             className="flex-1 min-h-0 flex flex-col bg-(--color-bg-card) overflow-hidden"
             style={{
+              "--color-bg-page": "var(--color-bg-card)",
               border: "1px solid var(--color-border-card)",
               borderRadius: 12,
               boxShadow:
                 "0 4px 4px -1px rgba(0, 0, 0, 0.04), 0 1px 1px rgba(0, 0, 0, 0.08)",
-            }}
+            } as React.CSSProperties}
           >
             {children}
           </main>
 
           <BottomBar
             onAskAi={() => setCmdOpen(true)}
-            onOpenHistory={() => {
-              /* run history panel — Phase 4 */
-            }}
+            onOpenHistory={() => router.push("/history")}
           />
         </div>
       </div>
@@ -145,7 +156,11 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       <CreateProjectModal
         open={createOpen}
         onOpenChange={setCreateOpen}
-        onCreated={() => router.push("/")}
+        onCreated={(project) => {
+          persistSelectedProjectId(project.id);
+          setTeamName(project.name.trim() || undefined);
+          router.push("/");
+        }}
       />
     </div>
   );

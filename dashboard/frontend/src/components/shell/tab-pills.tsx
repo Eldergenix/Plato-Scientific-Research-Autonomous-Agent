@@ -1,11 +1,75 @@
 "use client";
 
 import * as React from "react";
+import {
+  BooksIcon,
+  CheckCircleIcon,
+  CircleNotchIcon,
+  ClockCounterClockwiseIcon,
+  CodeIcon,
+  CoinsIcon,
+  CrownIcon,
+  DatabaseIcon,
+  FileTextIcon,
+  FunnelIcon,
+  ListChecksIcon,
+  MicroscopeIcon,
+  NewspaperIcon,
+  PlugsConnectedIcon,
+  RowsIcon,
+  SparkleIcon,
+  StampIcon,
+  StackIcon,
+  TestTubeIcon,
+  WarningCircleIcon,
+  WrenchIcon,
+} from "@phosphor-icons/react";
+import type { Icon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 
 export interface TabPillItem {
   id: string;
   label: string;
+  icon?: Icon;
+  indicator?: "approval" | "failed";
+}
+
+const TAB_ICON_BY_KEY: Record<string, Icon> = {
+  active: CircleNotchIcon,
+  "all events": RowsIcon,
+  "all time": ClockCounterClockwiseIcon,
+  all: StackIcon,
+  approve: CheckCircleIcon,
+  backlog: ListChecksIcon,
+  cheap: CoinsIcon,
+  completed: CheckCircleIcon,
+  "custom mcp": CodeIcon,
+  data: DatabaseIcon,
+  edits: SparkleIcon,
+  errors: WarningCircleIcon,
+  failed: WarningCircleIcon,
+  experiments: TestTubeIcon,
+  mcp: PlugsConnectedIcon,
+  month: ClockCounterClockwiseIcon,
+  papers: FileTextIcon,
+  premium: CrownIcon,
+  references: BooksIcon,
+  research: MicroscopeIcon,
+  runs: CircleNotchIcon,
+  stamp: StampIcon,
+  summary: NewspaperIcon,
+  today: ClockCounterClockwiseIcon,
+  tools: WrenchIcon,
+  week: ClockCounterClockwiseIcon,
+};
+
+function resolveTabIcon(tab: TabPillItem): Icon {
+  return (
+    tab.icon ??
+    TAB_ICON_BY_KEY[tab.id] ??
+    TAB_ICON_BY_KEY[tab.label.toLowerCase()] ??
+    FunnelIcon
+  );
 }
 
 export interface TabPillsProps {
@@ -61,6 +125,13 @@ export function TabPills({
     >
       {tabs.map((tab, i) => {
         const isActive = tab.id === activeId;
+        const Icon = resolveTabIcon(tab);
+        const indicatorClass =
+          tab.indicator === "approval"
+            ? "bg-(--color-status-green-spec)"
+            : tab.indicator === "failed"
+              ? "bg-(--color-status-red-spec)"
+              : "";
         return (
           <button
             key={tab.id}
@@ -86,6 +157,22 @@ export function TabPills({
             )}
             style={{ paddingTop: "6.25px", paddingBottom: "6.25px" }}
           >
+            {tab.indicator ? (
+              <span
+                className="relative mr-1.5 flex size-3 shrink-0 items-center justify-center"
+                aria-hidden
+              >
+                <span className={cn("absolute inline-flex size-2 animate-ping rounded-full opacity-75", indicatorClass)} />
+                <span className={cn("relative inline-flex size-2 rounded-full", indicatorClass)} />
+              </span>
+            ) : (
+              <Icon
+                aria-hidden
+                size={12}
+                weight={isActive ? "fill" : "regular"}
+                className="mr-1.5 shrink-0"
+              />
+            )}
             {tab.label}
           </button>
         );

@@ -125,6 +125,42 @@ def test_per_user_preferences_are_isolated(tmp_project_root: Path) -> None:
     assert bob["default_domain"] == "astro"
 
 
+def test_lab_preferences_are_isolated_from_personal_user(
+    tmp_project_root: Path,
+) -> None:
+    client = _client()
+
+    client.put(
+        "/api/v1/user/preferences",
+        headers={"X-Plato-User": "lab_org_alpha"},
+        json={"default_domain": "biology", "models_by_stage": {"paper": "gpt-5"}},
+    )
+    client.put(
+        "/api/v1/user/preferences",
+        headers={"X-Plato-User": "user_scientist_a"},
+        json={"default_domain": "astro", "models_by_stage": {"paper": "claude"}},
+    )
+
+    lab = client.get(
+        "/api/v1/user/preferences", headers={"X-Plato-User": "lab_org_alpha"}
+    ).json()
+    personal = client.get(
+        "/api/v1/user/preferences", headers={"X-Plato-User": "user_scientist_a"}
+    ).json()
+
+    assert lab["default_domain"] == "biology"
+    assert lab["models_by_stage"] == {"paper": "gpt-5"}
+    assert personal["default_domain"] == "astro"
+    assert personal["models_by_stage"] == {"paper": "claude"}
+
+    assert (
+        tmp_project_root / "users" / "lab_org_alpha" / "preferences.json"
+    ).is_file()
+    assert (
+        tmp_project_root / "users" / "user_scientist_a" / "preferences.json"
+    ).is_file()
+
+
 def test_put_returns_401_when_required_mode_and_no_user_header(
     tmp_project_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -144,6 +180,17 @@ def test_get_returns_401_when_required_mode_and_no_user_header(
     monkeypatch.setenv("PLATO_AUTH", "enabled")
 
     resp = _client().get("/api/v1/user/preferences")
+    assert resp.status_code == 401
+
+
+def test_get_returns_401_when_dashboard_auth_required_and_no_user_header(
+    tmp_project_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("PLATO_AUTH", raising=False)
+    monkeypatch.setenv("PLATO_DASHBOARD_AUTH_REQUIRED", "1")
+
+    resp = _client().get("/api/v1/user/preferences")
+
     assert resp.status_code == 401
 
 

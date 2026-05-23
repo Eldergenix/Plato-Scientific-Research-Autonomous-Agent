@@ -13,10 +13,15 @@ The registry is process-global by design. Callers that need isolation in
 tests should snapshot ``_REGISTRY``, clear it, and restore it (mirroring
 the existing ``ADAPTER_REGISTRY`` test pattern).
 """
+
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 import inspect
-from typing import Awaitable, Callable, Literal, Union
+import os
+from collections.abc import Iterator
+from typing import Any, Awaitable, Callable, Literal, Union, cast
 
 from pydantic import BaseModel, ConfigDict
 
@@ -62,6 +67,18 @@ class Tool(BaseModel):
 
 
 _REGISTRY: dict[str, Tool] = {}
+_DISABLED_TOOLS: set[str] = set()
+_DISABLED_TOOLS_CONTEXT: ContextVar[frozenset[str] | None] = ContextVar(
+    "plato_disabled_tools",
+    default=None,
+)
+
+
+def _parse_disabled_tools_env() -> set[str]:
+    raw = os.environ.get("PLATO_DISABLED_TOOLS", "")
+    if not raw.strip():
+        return set()
+    return {name.strip() for name in raw.split(",") if name.strip()}
 
 
 def register(tool: Tool, *, overwrite: bool = False) -> Tool:
@@ -78,9 +95,7 @@ def register(tool: Tool, *, overwrite: bool = False) -> Tool:
 def get(name: str) -> Tool:
     """Return the registered :class:`Tool` for ``name`` or raise ``KeyError``."""
     if name not in _REGISTRY:
-        raise KeyError(
-            f"Unknown tool {name!r}. Registered: {sorted(_REGISTRY)}"
-        )
+        raise KeyError(f"Unknown tool {name!r}. Registered: {sorted(_REGISTRY)}")
     return _REGISTRY[name]
 
 
@@ -89,10 +104,41 @@ def list_tools(category: str | None = None) -> list[str]:
     if category is None:
         return sorted(_REGISTRY)
     return sorted(
-        name
-        for name, tool in _REGISTRY.items()
-        if tool.metadata.category == category
+        name for name, tool in _REGISTRY.items() if tool.metadata.category == category
     )
+
+
+def set_disabled_tools(names: set[str] | list[str] | tuple[str, ...]) -> None:
+    """Set process-wide disabled tools for trusted single-user runtimes."""
+    _DISABLED_TOOLS.clear()
+    _DISABLED_TOOLS.update(name for name in names if name)
+
+
+def get_disabled_tools() -> set[str]:
+    """Return tools disabled by process state, env, or request context."""
+    disabled = set(_DISABLED_TOOLS)
+    disabled.update(_parse_disabled_tools_env())
+    contextual = _DISABLED_TOOLS_CONTEXT.get()
+    if contextual:
+        disabled.update(contextual)
+    return disabled
+
+
+@contextmanager
+def disabled_tools_context(
+    names: set[str] | list[str] | tuple[str, ...],
+) -> Iterator[None]:
+    """Temporarily disable tools for the current context."""
+    token = _DISABLED_TOOLS_CONTEXT.set(frozenset(name for name in names if name))
+    try:
+        yield
+    finally:
+        _DISABLED_TOOLS_CONTEXT.reset(token)
+
+
+def is_enabled(name: str) -> bool:
+    """Return False when ``name`` is currently disabled."""
+    return name not in get_disabled_tools()
 
 
 def call(
@@ -122,6 +168,11 @@ def call(
     caller awaits it. We do not auto-schedule: agent nodes already run on an
     event loop and double-scheduling would be wrong.
     """
+    if not is_enabled(name):
+        raise PermissionError(
+            f"Tool {name!r} is disabled by the active tooling configuration."
+        )
+
     tool = get(name)
 
     if allowed_permissions is not None:
@@ -152,7 +203,7 @@ def is_async(name: str) -> bool:
     fn = get(name).fn
     while hasattr(fn, "func") and not inspect.iscoroutinefunction(fn):
         # functools.partial / wrapt-style proxies: drill in.
-        fn = fn.func  # type: ignore[attr-defined]
+        fn = cast(Any, fn).func
     return inspect.iscoroutinefunction(fn)
 
 
@@ -164,6 +215,10 @@ __all__ = [
     "register",
     "get",
     "list_tools",
+    "set_disabled_tools",
+    "get_disabled_tools",
+    "disabled_tools_context",
+    "is_enabled",
     "call",
     "is_async",
 ]

@@ -11,6 +11,7 @@ Phase 1 ships the schema, the recorder, and entry-point hooks in
 ``Plato``. Per-node telemetry (tokens/costs/source ids per node) lands
 in Phase 3 with the eval harness.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -115,7 +116,9 @@ class ManifestRecorder:
         recorder.finish(status="success")
     """
 
-    def __init__(self, project_dir: str | os.PathLike[str], manifest: RunManifest) -> None:
+    def __init__(
+        self, project_dir: str | os.PathLike[str], manifest: RunManifest
+    ) -> None:
         self.project_dir = Path(project_dir)
         self.manifest = manifest
         self._dir = self.project_dir / "runs" / manifest.run_id
@@ -171,7 +174,9 @@ class ManifestRecorder:
                 setattr(self.manifest, key, value)
         self.flush()
 
-    def add_tokens(self, *, input_tokens: int = 0, output_tokens: int = 0, cost_usd: float = 0.0) -> None:
+    def add_tokens(
+        self, *, input_tokens: int = 0, output_tokens: int = 0, cost_usd: float = 0.0
+    ) -> None:
         with self._lock:
             self.manifest.tokens_in += input_tokens
             self.manifest.tokens_out += output_tokens

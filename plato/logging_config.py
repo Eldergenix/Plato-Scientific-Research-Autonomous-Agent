@@ -19,6 +19,7 @@ Layout:
       are capped at ``WARNING`` so the user sees Plato output, not
       framework chatter.
 """
+
 from __future__ import annotations
 
 import contextvars

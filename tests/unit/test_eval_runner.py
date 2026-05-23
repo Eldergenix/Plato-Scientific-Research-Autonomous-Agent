@@ -1,4 +1,5 @@
 """Phase 3 — R7: tests for the evaluation harness (no real LLM/network)."""
+
 from __future__ import annotations
 
 import asyncio
@@ -26,7 +27,7 @@ def test_golden_task_validates_harmonic_oscillator_fixture():
     payload = json.loads((GOLDEN_DIR / "harmonic_oscillator.json").read_text())
     task = GoldenTask.model_validate(payload)
     assert task.id == "harmonic_oscillator"
-    assert "harmonic" in task.expected_idea_keywords
+    assert any("harmonic" in keyword for keyword in task.expected_idea_keywords)
     assert task.domain == "astro"
 
 
@@ -58,7 +59,9 @@ def test_discover_tasks_returns_empty_for_missing_dir(tmp_path: Path):
     assert discover_tasks(tmp_path / "nope") == []
 
 
-def _vresult(*, doi_resolved: bool = False, arxiv_resolved: bool = False, retracted: bool = False) -> ValidationResult:
+def _vresult(
+    *, doi_resolved: bool = False, arxiv_resolved: bool = False, retracted: bool = False
+) -> ValidationResult:
     return ValidationResult(
         source_id="x",
         doi_resolved=doi_resolved,
@@ -93,8 +96,12 @@ def test_unsupported_claim_rate_four_claims_two_supported():
     """4 claims, 2 supported → 0.5."""
     claims = [Claim(id=str(i), text=f"claim {i}") for i in range(4)]
     links = [
-        EvidenceLink(claim_id="0", source_id="s1", support="supports", strength="moderate"),
-        EvidenceLink(claim_id="1", source_id="s2", support="supports", strength="strong"),
+        EvidenceLink(
+            claim_id="0", source_id="s1", support="supports", strength="moderate"
+        ),
+        EvidenceLink(
+            claim_id="1", source_id="s2", support="supports", strength="strong"
+        ),
         # Other links exist but only 'supports' counts.
         EvidenceLink(claim_id="2", source_id="s3", support="refutes", strength="weak"),
     ]
@@ -179,7 +186,9 @@ class _FakePlato:
             "cost_usd": self.cost_per_call,
             "domain": "astro",
         }
-        (run_dir / "manifest.json").write_text(json.dumps(payload, indent=2, sort_keys=True))
+        (run_dir / "manifest.json").write_text(
+            json.dumps(payload, indent=2, sort_keys=True)
+        )
 
     def set_data_description(self, data_description: str) -> None:
         self.calls.append("set_data_description")
@@ -221,7 +230,9 @@ def _basic_tasks() -> list[GoldenTask]:
 
 def test_eval_runner_run_writes_summary_json(tmp_path: Path):
     """Mock plato_factory; runner emits per-task metrics + summary.json."""
-    runner = EvalRunner(_basic_tasks(), output_dir=tmp_path / "results", max_cost_usd=1.0)
+    runner = EvalRunner(
+        _basic_tasks(), output_dir=tmp_path / "results", max_cost_usd=1.0
+    )
     factory_calls: list[str] = []
 
     def factory(task: GoldenTask, project_dir: Path):
@@ -341,10 +352,30 @@ def test_aggregate_metrics_reads_validation_and_evidence_artifacts(tmp_path: Pat
     (project / "validation_report.json").write_text(
         json.dumps(
             [
-                {"source_id": "a", "doi_resolved": True, "retracted": False, "checked_at": started.isoformat()},
-                {"source_id": "b", "arxiv_resolved": True, "retracted": False, "checked_at": started.isoformat()},
-                {"source_id": "c", "doi_resolved": True, "retracted": False, "checked_at": started.isoformat()},
-                {"source_id": "d", "doi_resolved": False, "arxiv_resolved": False, "checked_at": started.isoformat()},
+                {
+                    "source_id": "a",
+                    "doi_resolved": True,
+                    "retracted": False,
+                    "checked_at": started.isoformat(),
+                },
+                {
+                    "source_id": "b",
+                    "arxiv_resolved": True,
+                    "retracted": False,
+                    "checked_at": started.isoformat(),
+                },
+                {
+                    "source_id": "c",
+                    "doi_resolved": True,
+                    "retracted": False,
+                    "checked_at": started.isoformat(),
+                },
+                {
+                    "source_id": "d",
+                    "doi_resolved": False,
+                    "arxiv_resolved": False,
+                    "checked_at": started.isoformat(),
+                },
             ]
         )
     )
@@ -356,9 +387,24 @@ def test_aggregate_metrics_reads_validation_and_evidence_artifacts(tmp_path: Pat
             {"id": "c2", "text": "claim 2"},
             {"id": "c3", "text": "claim 3"},
             {"id": "c4", "text": "claim 4"},
-            {"claim_id": "c1", "source_id": "a", "support": "supports", "strength": "moderate"},
-            {"claim_id": "c2", "source_id": "b", "support": "supports", "strength": "strong"},
-            {"claim_id": "c3", "source_id": "c", "support": "refutes", "strength": "weak"},
+            {
+                "claim_id": "c1",
+                "source_id": "a",
+                "support": "supports",
+                "strength": "moderate",
+            },
+            {
+                "claim_id": "c2",
+                "source_id": "b",
+                "support": "supports",
+                "strength": "strong",
+            },
+            {
+                "claim_id": "c3",
+                "source_id": "c",
+                "support": "refutes",
+                "strength": "weak",
+            },
         ]
     )
     (project / "evidence_matrix.jsonl").write_text(matrix)
@@ -380,7 +426,7 @@ def test_discover_tasks_picks_up_gw231123_followup():
     assert "gw231123_followup" in by_id
     task = by_id["gw231123_followup"]
     assert "GW231123" in task.expected_idea_keywords
-    assert task.gold_sources == ["10.3847/2041-8213/ad5ce4"]
+    assert [source.doi for source in task.gold_sources] == ["10.3847/2041-8213/ad5ce4"]
 
 
 def test_discover_tasks_picks_up_cmb_lensing_residuals():

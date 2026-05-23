@@ -15,7 +15,7 @@ def methods_fast(state: GraphState, config: RunnableConfig):
     no message history, and would re-run the LLM on resume.
     """
 
-    print('Generating methods...', end="", flush=True)
+    print("Generating methods...", end="", flush=True)
 
     PROMPT = methods_fast_prompt(state)
     state, result = LLM_call_stream(PROMPT, state, node_name="methods_fast")
@@ -24,7 +24,7 @@ def methods_fast(state: GraphState, config: RunnableConfig):
     # remove LLM added lines
     text = clean_section(text, "METHODS")
 
-    with open(state['files']['methods'], 'w') as f:
+    with open(state["files"]["methods"], "w") as f:
         f.write(text)
 
     print(f"done {state['tokens']['ti']} {state['tokens']['to']}")

@@ -18,6 +18,7 @@ A ``validation_report.json`` is always written to
 ``state["store"]`` is wired (a :class:`plato.state.store.Store`), each
 ``ValidationResult`` is also persisted via ``Store.add_validation``.
 """
+
 from __future__ import annotations
 
 import json
@@ -25,12 +26,14 @@ import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional, cast
 
 from langchain_core.runnables import RunnableConfig
 
-from ..state.models import Source, ValidationResult
-from ..tools.citation_validator import CitationValidator
+from ..state.models import RetrievedVia, Source
+from ..tools.citation_matching import coerce_authors, coerce_year
+from ..tools.citation_reports import STRICT_ACCURACY_THRESHOLD
+from ..tools.citation_validator import CitationValidator, build_validation_report
 
 if TYPE_CHECKING:  # pragma: no cover — annotation only
     from .parameters import GraphState
@@ -222,10 +225,15 @@ def _entry_to_source(entry: Any, idx: int) -> Source | None:
         return None
 
     doi = entry.get("doi") or None
-    arxiv_id = entry.get("arxiv_id") or entry.get("arxiv") or entry.get("eprint") or None
+    arxiv_id = (
+        entry.get("arxiv_id") or entry.get("arxiv") or entry.get("eprint") or None
+    )
     title = entry.get("title") or entry.get("key") or f"reference-{idx}"
     url = entry.get("url") or entry.get("pdf_url") or None
     src_id = entry.get("id") or entry.get("key") or f"ref-{idx}"
+    authors = coerce_authors(entry.get("authors") or entry.get("author"))
+    year = coerce_year(entry.get("year"))
+    venue = entry.get("venue") or entry.get("journal") or entry.get("booktitle") or None
 
     if doi:
         retrieved_via = "crossref"
@@ -241,13 +249,16 @@ def _entry_to_source(entry: Any, idx: int) -> Source | None:
         doi=doi,
         arxiv_id=arxiv_id,
         title=str(title),
+        authors=authors,
+        year=year,
+        venue=str(venue) if venue else None,
         url=url,
-        retrieved_via=retrieved_via,
+        retrieved_via=cast(RetrievedVia, retrieved_via),
         fetched_at=now,
     )
 
 
-def _collect_sources(state: dict) -> list[Source]:
+def _collect_sources(state: Any) -> list[Source]:
     """Pick the most informative reference list available on the state."""
     if not isinstance(state, dict):
         return []
@@ -290,7 +301,7 @@ def _collect_sources(state: dict) -> list[Source]:
     return []
 
 
-def _resolve_run_dir(state: dict) -> tuple[str, Path | None]:
+def _resolve_run_dir(state: Any) -> tuple[str, Path | None]:
     """Return ``(run_id, run_dir)`` — directory is None if no project folder."""
     run_id = state.get("run_id") if isinstance(state, dict) else None
     if not run_id:
@@ -306,14 +317,9 @@ def _resolve_run_dir(state: dict) -> tuple[str, Path | None]:
     return run_id, run_dir
 
 
-def _passed(result: ValidationResult) -> bool:
-    """A reference passes if its DOI or arXiv id resolves."""
-    return bool(result.doi_resolved or result.arxiv_resolved)
-
-
 async def citation_validator_node(
     state: "GraphState",
-    config: RunnableConfig | None = None,
+    config: Optional[RunnableConfig] = None,
 ) -> dict:
     """LangGraph node: validate references and emit ``validation_report.json``.
 
@@ -330,11 +336,26 @@ async def citation_validator_node(
             "validation_rate": 0.0,
             "total": 0,
             "passed": 0,
+            "total_references": 0,
+            "verified_references": 0,
+            "unverified_count": 0,
+            "likely_hallucinations": 0,
+            "accuracy_gate": {
+                "threshold": STRICT_ACCURACY_THRESHOLD,
+                "passed": False,
+                "reason": "no references were available for validation",
+            },
             "failures": [],
+            "warnings": [],
+            "references": [],
         }
         if run_dir is not None:
             (run_dir / "validation_report.json").write_text(
                 json.dumps(report, indent=2, sort_keys=True)
+            )
+        if state.get("enforce_reference_gate", True):
+            raise RuntimeError(
+                "Reference verification failed: no references were available for validation."
             )
         return {"validation_report": report, "run_id": run_id}
 
@@ -342,21 +363,7 @@ async def citation_validator_node(
         results = await validator.validate_batch(sources)
 
     store = state.get("store") if isinstance(state, dict) else None
-    failures: list[dict[str, Any]] = []
-    passed_count = 0
     for src, result in zip(sources, results):
-        if _passed(result):
-            passed_count += 1
-        else:
-            failures.append(
-                {
-                    "source_id": src.id,
-                    "doi": src.doi,
-                    "arxiv_id": src.arxiv_id,
-                    "title": src.title,
-                    "error": result.error,
-                }
-            )
         if store is not None:
             try:
                 store.add_validation(result)
@@ -364,24 +371,19 @@ async def citation_validator_node(
                 # Persistence is best-effort; never crash the graph on store error.
                 pass
 
-    total = len(sources)
-    rate = passed_count / total if total else 0.0
-    report = {
-        "run_id": run_id,
-        "validation_rate": rate,
-        "total": total,
-        "passed": passed_count,
-        # ``unverified_count`` mirrors the architectural-plan acceptance
-        # criterion ("unverified_count must equal 0" in the Phase-2
-        # gate). It is total minus passed so a failure_url-only entry
-        # still counts as unverified.
-        "unverified_count": total - passed_count,
-        "failures": failures,
-    }
+    report = build_validation_report(run_id, sources, results)
 
     if run_dir is not None:
         (run_dir / "validation_report.json").write_text(
             json.dumps(report, indent=2, sort_keys=True)
+        )
+
+    gate = cast(dict[str, Any], report.get("accuracy_gate") or {})
+    if gate.get("passed") is False and state.get("enforce_reference_gate", True):
+        raise RuntimeError(
+            "Reference verification failed: "
+            f"{report['passed']}/{report['total']} references passed; "
+            f"{report['likely_hallucinations']} likely hallucinations."
         )
 
     return {"validation_report": report, "run_id": run_id}

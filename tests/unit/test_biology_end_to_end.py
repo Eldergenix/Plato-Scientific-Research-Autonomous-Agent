@@ -7,10 +7,11 @@ Mirrors the _FakePlato pattern from test_eval_runner.py, but:
 2. Drives the runner against the protein_structure_alphafold golden task
    with a fake Plato that records the resolved domain and writes a
    manifest carrying ``domain="biology"``.
-3. Confirms the fake retrieval call only sees the biology adapter set
-   (``pubmed`` / ``openalex`` / ``semantic_scholar``) — never astro
-   adapters like ``arxiv`` or ``ads``.
+3. Confirms the fake retrieval call only sees the biology adapter set,
+   including the no-key/free public sources — never astro-only adapters
+   like ``arxiv`` or ``ads``.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -34,6 +35,28 @@ PROTEIN_TASK_PATH = GOLDEN_DIR / "protein_structure_alphafold.json"
 # Astro-only adapter names. If any of these leak into a biology run we
 # must fail loudly — that's a regression of the domain-routed retrieval.
 ASTRO_ONLY_ADAPTERS = {"arxiv", "ads"}
+
+ASTRO_RETRIEVAL_SOURCES = [
+    "arxiv",
+    "openalex",
+    "crossref",
+    "doaj",
+    "datacite",
+    "opencitations",
+    "ads",
+    "semantic_scholar",
+]
+
+BIOLOGY_RETRIEVAL_SOURCES = [
+    "pubmed",
+    "europe_pmc",
+    "openalex",
+    "crossref",
+    "doaj",
+    "datacite",
+    "opencitations",
+    "semantic_scholar",
+]
 
 
 class _FakeBiologyPlato:
@@ -114,7 +137,7 @@ def test_biology_domain_resolves_through_plato_init_path():
     """Constructing a Plato-shaped object with domain='biology' resolves the right profile."""
     plato = _FakeBiologyPlato(Path("/tmp/unused-for-init-check"), domain="biology")
     assert plato.domain.name == "biology"
-    assert plato.domain.retrieval_sources == ["pubmed", "openalex", "semantic_scholar"]
+    assert plato.domain.retrieval_sources == BIOLOGY_RETRIEVAL_SOURCES
     assert plato.domain.keyword_extractor == "mesh"
     assert plato.domain.novelty_corpus == "pubmed"
 
@@ -123,7 +146,19 @@ def test_biology_profile_journal_presets_match_spec():
     """Sanity-check the §5.5 journal preset list at the source of truth."""
     biology = get_domain("biology")
     assert biology.journal_presets == [
-        "NATURE", "CELL", "SCIENCE", "PLOS_BIO", "ELIFE", "NONE",
+        "NATURE",
+        "SCIENCE",
+        "SCIENCE_ADVANCES",
+        "NEJM",
+        "LANCET",
+        "CELL",
+        "JAMA",
+        "NATURE_REVIEWS_MOL_CELL_BIO",
+        "CHEMICAL_REVIEWS",
+        "PLOS_BIO",
+        "ELIFE",
+        "ARXIV",
+        "NONE",
     ]
 
 
@@ -133,7 +168,9 @@ def test_protein_structure_task_has_biology_domain():
     assert task.domain == "biology"
     assert "AlphaFold" in task.expected_idea_keywords
     # Gold sources must include the AlphaFold paper DOI (per spec).
-    assert "10.1038/s41586-021-03819-2" in task.gold_sources
+    assert any(
+        source.doi == "10.1038/s41586-021-03819-2" for source in task.gold_sources
+    )
 
 
 def test_eval_runner_biology_end_to_end_writes_manifest_with_biology_domain(
@@ -201,13 +238,10 @@ def test_eval_runner_biology_run_only_uses_biology_adapters(tmp_path: Path) -> N
 
     assert len(captured) == 1
     sources = set(captured[0].retrieval_sources_seen)
-    # The biology adapter set is exactly these three.
-    assert sources == {"pubmed", "openalex", "semantic_scholar"}
+    assert sources == set(BIOLOGY_RETRIEVAL_SOURCES)
     # And critically: no astro-only adapter ever got asked.
     leaked = sources & ASTRO_ONLY_ADAPTERS
-    assert not leaked, (
-        f"biology run leaked into astro-only adapters: {leaked}"
-    )
+    assert not leaked, f"biology run leaked into astro-only adapters: {leaked}"
 
 
 def test_summary_json_includes_biology_task(tmp_path: Path) -> None:
@@ -232,8 +266,8 @@ def test_summary_json_includes_biology_task(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     "domain_name,expected_sources",
     [
-        ("astro", ["semantic_scholar", "arxiv", "openalex", "ads"]),
-        ("biology", ["pubmed", "openalex", "semantic_scholar"]),
+        ("astro", ASTRO_RETRIEVAL_SOURCES),
+        ("biology", BIOLOGY_RETRIEVAL_SOURCES),
     ],
 )
 def test_domain_specific_adapter_sets_are_disjoint_in_unique_sources(

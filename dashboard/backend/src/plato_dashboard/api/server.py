@@ -1,33 +1,42 @@
 from __future__ import annotations
-import asyncio
 import json
 import logging
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import AsyncIterator
+from typing import Any, AsyncIterator, cast
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from ..auth import auth_required, extract_user_id
+from ..auth import (
+    USER_COOKIE,
+    USER_HEADER,
+    auth_required,
+    extract_user_id,
+    has_trusted_proxy_secret,
+    proxy_secret_configuration_error,
+    proxy_secret_configured,
+)
 from ..domain.models import (
     Capabilities,
     CreateProjectRequest,
     KeysPayload,
+    PublicationSettings,
     Project,
     Run,
     StageContent,
     StageId,
     StageRunRequest,
     WriteStageRequest,
+    utcnow,
 )
 from ..events.bus import EventBus, get_bus
 from ..settings import Settings, get_settings
-from ..storage.key_store import KeyStore
+from ..storage.key_store import ENV_KEYS, KeyStore, key_store_path_for_user
 from ..storage.project_store import ProjectStore
 from ..worker.run_manager import (
     cancel_run,
@@ -58,14 +67,53 @@ from .loop_control import router as loop_router
 from .novelty import router as novelty_router
 from .research_signals import router as research_signals_router
 from .retrieval_summary import router as retrieval_summary_router
+from .publications import router as publications_router
+from .scientific_capabilities import router as scientific_capabilities_router
+from .scientific_scores import router as scientific_scores_router
+from .tooling import router as tooling_router
 from .user_preferences import router as user_preferences_router
 from .idea_history import router as idea_history_router
 from .cost_caps import router as cost_caps_router
 from .approvals import router as approvals_router, compute_blocking_approval
 
+_SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+    "Cross-Origin-Opener-Policy": "same-origin",
+}
+
+_PUBLIC_BACKEND_API_PATHS = {
+    "/api/v1/health",
+    "/api/v1/capabilities",
+}
+
+
+def _is_public_backend_request(request: Request) -> bool:
+    path = request.url.path
+    if path in _PUBLIC_BACKEND_API_PATHS:
+        return True
+    if request.method not in {"GET", "HEAD"}:
+        return False
+    if path in {"/api/v1/publications", "/api/v1/publications/rss.xml"}:
+        return True
+    prefix = "/api/v1/publications/"
+    if not path.startswith(prefix):
+        return False
+    publication_id = path[len(prefix) :]
+    return bool(publication_id) and "/" not in publication_id
+
+
+def _attach_security_headers(response):  # noqa: ANN001
+    for key, value in _SECURITY_HEADERS.items():
+        if key not in response.headers:
+            response.headers[key] = value
+    return response
+
 
 def _resolve_project_root(settings: Settings, user_id: str | None) -> Path:
-    """Per-user namespace under ``~/.plato/users/<user_id>/`` when authed.
+    """Per-user namespace under ``<project_root>/users/<user_id>/`` when authed.
 
     Falls back to ``settings.project_root`` (the legacy single-user path)
     when ``user_id`` is None so single-user installs keep their existing
@@ -73,8 +121,7 @@ def _resolve_project_root(settings: Settings, user_id: str | None) -> Path:
     """
     if user_id is None:
         return settings.project_root
-    base = settings.project_root.parent  # ~/.plato/
-    return base / "users" / user_id
+    return settings.project_root / "users" / user_id
 
 
 def _get_user_id(request: Request) -> str | None:
@@ -92,7 +139,7 @@ def _get_store(
             status_code=401,
             detail={
                 "code": "auth_required",
-                "message": "Missing required header 'X-Plato-User'.",
+                "message": f"Missing required header '{USER_HEADER}' or cookie '{USER_COOKIE}'.",
             },
         )
     root = _resolve_project_root(settings, user_id)
@@ -101,11 +148,66 @@ def _get_store(
     # Without this, the iter-2 tenant guard short-circuits at the
     # ``self.user_id is None`` early-return and routers stay solely
     # responsible for cross-tenant isolation. See storage/project_store.py.
-    return ProjectStore(root, user_id=user_id)
+    return ProjectStore(
+        root,
+        user_id=user_id,
+        allow_legacy_unbound=not auth_required(),
+    )
 
 
-def _get_keys(settings: Settings = Depends(get_settings)) -> KeyStore:
-    return KeyStore(settings.keys_path)
+def _get_keys(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+) -> KeyStore:
+    return KeyStore(
+        key_store_path_for_user(settings.project_root, settings.keys_path, _get_user_id(request))
+    )
+
+
+_LLM_KEY_PROVIDERS = ("OPENAI", "GEMINI", "ANTHROPIC", "HUGGINGFACE", "PERPLEXITY")
+_LLM_REQUIRED_STAGES: set[StageId] = {
+    "idea",
+    "literature",
+    "method",
+    "results",
+    "paper",
+    "referee",
+}
+_STAGE_IDS: set[str] = {
+    "data",
+    "idea",
+    "literature",
+    "method",
+    "results",
+    "paper",
+    "referee",
+}
+
+
+def _has_any_llm_key(settings: Settings) -> bool:
+    """Return True when at least one LLM provider key is available."""
+    keys = KeyStore(settings.keys_path)
+    return any(keys.resolve(provider) for provider in _LLM_KEY_PROVIDERS)
+
+
+def _require_llm_key_for_stage(stage: StageId, settings: Settings) -> None:
+    """Fail fast before spawning a run that cannot reach an LLM."""
+    if stage not in _LLM_REQUIRED_STAGES or _has_any_llm_key(settings):
+        return
+    env_vars = [ENV_KEYS[p] for p in _LLM_KEY_PROVIDERS]
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "code": "missing_llm_key",
+            "stage": stage,
+            "message": (
+                "Configure at least one LLM provider key before launching "
+                f"the {stage} stage."
+            ),
+            "providers": list(_LLM_KEY_PROVIDERS),
+            "env_vars": env_vars,
+        },
+    )
 
 
 def _load_run_manifest_user(project_dir: Path, run_id: str) -> str | None:
@@ -120,6 +222,98 @@ def _load_run_manifest_user(project_dir: Path, run_id: str) -> str | None:
         return None
     user = payload.get("user_id")
     return user if isinstance(user, str) else None
+
+
+def _load_run_config_from_events(run_dir: Path) -> dict[str, Any]:
+    """Read the launch config from the first persisted ``stage.started`` event."""
+    events_path = run_dir / "events.jsonl"
+    try:
+        with events_path.open(encoding="utf-8") as f:
+            for line in f:
+                try:
+                    evt = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(evt, dict) or evt.get("kind") != "stage.started":
+                    continue
+                config = evt.get("config")
+                return config if isinstance(config, dict) else {}
+    except OSError:
+        return {}
+    return {}
+
+
+def _load_run_status_from_disk(run_dir: Path) -> Run | None:
+    """Hydrate a finished/restarted run from ``runs/<id>/status.json``."""
+    status_path = run_dir / "status.json"
+    try:
+        with status_path.open(encoding="utf-8") as f:
+            raw = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+
+    config = _load_run_config_from_events(run_dir)
+    raw_stage = raw.get("stage")
+    if not isinstance(raw_stage, str) or raw_stage not in _STAGE_IDS:
+        return None
+    stage = cast(StageId, raw_stage)
+    try:
+        return Run(
+            id=str(raw.get("id") or raw.get("run_id") or run_dir.name),
+            project_id=str(raw.get("project_id") or ""),
+            stage=stage,
+            mode=config.get("mode", "fast"),
+            status=raw.get("status", "queued"),
+            started_at=raw.get("started_at"),
+            finished_at=raw.get("finished_at"),
+            error=raw.get("error"),
+            config=config,
+            pid=raw.get("pid"),
+            token_input=int(raw.get("token_input") or 0),
+            token_output=int(raw.get("token_output") or 0),
+        )
+    except (TypeError, ValueError):
+        return None
+
+
+def _list_persisted_runs(project_dir: Path) -> list[Run]:
+    runs_dir = project_dir / "runs"
+    if not runs_dir.is_dir():
+        return []
+    runs: list[Run] = []
+    for run_dir in runs_dir.iterdir():
+        if not run_dir.is_dir():
+            continue
+        run = _load_run_status_from_disk(run_dir)
+        if run is not None:
+            runs.append(run)
+    return runs
+
+
+def _read_run_events(project_dir: Path, run_id: str) -> list[dict[str, Any]]:
+    events_path = project_dir / "runs" / run_id / "events.jsonl"
+    if not events_path.is_file():
+        raise HTTPException(
+            404, detail={"code": "run_events_not_found", "run_id": run_id}
+        )
+
+    events: list[dict[str, Any]] = []
+    try:
+        with events_path.open(encoding="utf-8") as f:
+            for line in f:
+                try:
+                    evt = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(evt, dict):
+                    events.append(evt)
+    except OSError as exc:
+        raise HTTPException(
+            500, detail={"code": "run_events_read_failed", "run_id": run_id}
+        ) from exc
+    return events
 
 
 def _enforce_project_tenant(
@@ -238,10 +432,32 @@ def _enforce_run_tenant(
         status_code = 403 if required else 404
         raise HTTPException(
             status_code=status_code,
-            detail={
-                "code": "run_forbidden" if status_code == 403 else "run_not_found"
-            },
+            detail={"code": "run_forbidden" if status_code == 403 else "run_not_found"},
         )
+
+
+def _enforce_project_run_access(
+    store: ProjectStore, pid: str, run_id: str, requester_user_id: str | None
+) -> None:
+    """Authorize a project-scoped run endpoint.
+
+    Freshly-started runs can be active before the child process has written
+    ``manifest.json``. In Clerk-required deployments, the older
+    ``_enforce_run_tenant`` check failed closed during that early window,
+    which broke SSE attachment and cancellation for runs that the requester
+    had just launched. Project ownership is the stable boundary for these
+    routes; when the in-memory run belongs to the same project, allow access
+    after project authorization and fall back to the persisted manifest check
+    for historical runs.
+    """
+    _enforce_project_tenant(store, pid, requester_user_id)
+    active = get_run(run_id)
+    if active is not None and active.project_id == pid:
+        return
+    persisted = _load_run_status_from_disk(store.project_dir(pid) / "runs" / run_id)
+    if persisted is not None and persisted.project_id == pid:
+        return
+    _enforce_run_tenant(store.project_dir(pid), run_id, requester_user_id)
 
 
 @asynccontextmanager
@@ -261,9 +477,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
         "Plato Dashboard starting on http://%s:%s", settings.host, settings.port
     )
     logger.info("  project root: %s", settings.project_root)
-    logger.info(
-        "  demo mode: %s · auth: %s", settings.demo_mode, settings.auth
-    )
+    logger.info("  demo mode: %s · auth: %s", settings.demo_mode, settings.auth)
     yield
 
 
@@ -284,6 +498,48 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def _apply_security_headers(request: Request, call_next):  # noqa: ANN001
+        return _attach_security_headers(await call_next(request))
+
+    @app.middleware("http")
+    async def _enforce_backend_proxy_secret(request: Request, call_next):  # noqa: ANN001
+        proxy_secret_error = proxy_secret_configuration_error()
+        if (
+            proxy_secret_error
+            and request.url.path.startswith("/api/v1/")
+            and not _is_public_backend_request(request)
+        ):
+            return _attach_security_headers(
+                JSONResponse(
+                    status_code=503,
+                    content={
+                        "detail": {
+                            "code": "proxy_secret_misconfigured",
+                            "message": proxy_secret_error,
+                        },
+                    },
+                )
+            )
+        if (
+            proxy_secret_configured()
+            and request.url.path.startswith("/api/v1/")
+            and not _is_public_backend_request(request)
+            and not has_trusted_proxy_secret(request)
+        ):
+            return _attach_security_headers(
+                JSONResponse(
+                    status_code=401,
+                    content={
+                        "detail": {
+                            "code": "proxy_secret_required",
+                            "message": "Private dashboard API requests must pass through the trusted Plato proxy.",
+                        },
+                    },
+                )
+            )
+        return await call_next(request)
 
     # Per-request run_id correlation. Reads ``X-Plato-Run-Id`` (set by
     # the frontend on every fetch via use-project / loop-api) and binds
@@ -313,12 +569,26 @@ def create_app() -> FastAPI:
     app.include_router(critiques_router, prefix="/api/v1", tags=["critiques"])
     app.include_router(domains_router, prefix="/api/v1", tags=["domains"])
     app.include_router(executors_router, prefix="/api/v1", tags=["executors"])
-    app.include_router(executor_preferences_router, prefix="/api/v1", tags=["preferences"])
+    app.include_router(
+        executor_preferences_router, prefix="/api/v1", tags=["preferences"]
+    )
     app.include_router(license_audit_router, prefix="/api/v1", tags=["licenses"])
     app.include_router(loop_router)  # already prefixed with /api/v1/loop
     app.include_router(novelty_router, prefix="/api/v1", tags=["novelty"])
-    app.include_router(research_signals_router, prefix="/api/v1", tags=["research_signals"])
+    app.include_router(publications_router, prefix="/api/v1", tags=["publications"])
+    app.include_router(
+        research_signals_router, prefix="/api/v1", tags=["research_signals"]
+    )
     app.include_router(retrieval_summary_router, prefix="/api/v1", tags=["retrieval"])
+    app.include_router(
+        scientific_capabilities_router,
+        prefix="/api/v1",
+        tags=["scientific_capabilities"],
+    )
+    app.include_router(
+        scientific_scores_router, prefix="/api/v1", tags=["scientific_scores"]
+    )
+    app.include_router(tooling_router, prefix="/api/v1", tags=["tooling"])
     app.include_router(user_preferences_router, prefix="/api/v1", tags=["preferences"])
     app.include_router(idea_history_router, prefix="/api/v1", tags=["idea_history"])
     app.include_router(cost_caps_router, prefix="/api/v1", tags=["cost_caps"])
@@ -376,6 +646,40 @@ def create_app() -> FastAPI:
         _enforce_project_tenant(store, pid, _get_user_id(request))
         store.delete(pid)
 
+    @app.get(
+        "/api/v1/projects/{pid}/publication_settings",
+        response_model=PublicationSettings,
+    )
+    def get_publication_settings(
+        pid: str,
+        request: Request,
+        store: ProjectStore = Depends(_get_store),
+    ) -> PublicationSettings:
+        _enforce_project_tenant(store, pid, _get_user_id(request))
+        try:
+            return store.load(pid).publication_settings
+        except FileNotFoundError as exc:
+            raise HTTPException(404, detail={"code": "project_not_found"}) from exc
+
+    @app.put(
+        "/api/v1/projects/{pid}/publication_settings",
+        response_model=PublicationSettings,
+    )
+    def update_publication_settings(
+        pid: str,
+        body: PublicationSettings,
+        request: Request,
+        store: ProjectStore = Depends(_get_store),
+    ) -> PublicationSettings:
+        _enforce_project_tenant(store, pid, _get_user_id(request))
+        try:
+            project = store.load(pid)
+        except FileNotFoundError as exc:
+            raise HTTPException(404, detail={"code": "project_not_found"}) from exc
+        project.publication_settings = body
+        store.save(project)
+        return project.publication_settings
+
     # ------------------------------------------------------------ stages
     @app.get("/api/v1/projects/{pid}/state/{stage}", response_model=StageContent | None)
     async def read_stage(
@@ -385,7 +689,10 @@ def create_app() -> FastAPI:
         store: ProjectStore = Depends(_get_store),
     ) -> StageContent | None:
         _enforce_project_tenant(store, pid, _get_user_id(request))
-        return await store.read_stage(pid, stage)
+        try:
+            return await store.read_stage(pid, stage)
+        except FileNotFoundError as exc:
+            raise HTTPException(404, detail={"code": "project_not_found"}) from exc
 
     @app.put("/api/v1/projects/{pid}/state/{stage}", response_model=StageContent)
     async def write_stage(
@@ -401,7 +708,9 @@ def create_app() -> FastAPI:
         return await store.write_stage(pid, stage, body.markdown, origin="edited")
 
     # ------------------------------------------------------------ runs
-    @app.post("/api/v1/projects/{pid}/stages/{stage}/run", response_model=Run, status_code=202)
+    @app.post(
+        "/api/v1/projects/{pid}/stages/{stage}/run", response_model=Run, status_code=202
+    )
     async def run_stage(
         pid: str,
         stage: StageId,
@@ -410,6 +719,7 @@ def create_app() -> FastAPI:
         bus: EventBus = Depends(get_bus),
         store: ProjectStore = Depends(_get_store),
         caps: Capabilities = Depends(get_capabilities),
+        settings: Settings = Depends(get_settings),
     ) -> Run:
         # Iter-24 SECURITY: enforce tenant ownership BEFORE consulting
         # ``count_active_runs`` or invoking ``start_run`` so a
@@ -426,9 +736,7 @@ def create_app() -> FastAPI:
         try:
             proj = store.load(pid)
         except FileNotFoundError as exc:
-            raise HTTPException(
-                404, detail={"code": "project_not_found"}
-            ) from exc
+            raise HTTPException(404, detail={"code": "project_not_found"}) from exc
         cap = proj.cost_caps
         if (
             cap is not None
@@ -475,6 +783,7 @@ def create_app() -> FastAPI:
             )
         require_stage_allowed(stage, caps)
         require_under_budget(caps)
+        _require_llm_key_for_stage(stage, settings)
         if count_active_runs() >= caps.max_concurrent_runs:
             raise HTTPException(
                 status_code=429,
@@ -506,8 +815,10 @@ def create_app() -> FastAPI:
         request: Request,
         store: ProjectStore = Depends(_get_store),
     ) -> Run:
-        _enforce_run_tenant(store.project_dir(pid), run_id, _get_user_id(request))
+        _enforce_project_run_access(store, pid, run_id, _get_user_id(request))
         run = get_run(run_id)
+        if run is None:
+            run = _load_run_status_from_disk(store.project_dir(pid) / "runs" / run_id)
         if run is None:
             raise HTTPException(404, detail={"code": "run_not_found"})
         return run
@@ -519,7 +830,7 @@ def create_app() -> FastAPI:
         request: Request,
         store: ProjectStore = Depends(_get_store),
     ) -> dict:
-        _enforce_run_tenant(store.project_dir(pid), run_id, _get_user_id(request))
+        _enforce_project_run_access(store, pid, run_id, _get_user_id(request))
         ok = await cancel_run(run_id)
         return {"cancelled": ok}
 
@@ -531,7 +842,7 @@ def create_app() -> FastAPI:
         bus: EventBus = Depends(get_bus),
         store: ProjectStore = Depends(_get_store),
     ) -> StreamingResponse:
-        _enforce_run_tenant(store.project_dir(pid), run_id, _get_user_id(request))
+        _enforce_project_run_access(store, pid, run_id, _get_user_id(request))
 
         async def generator() -> AsyncIterator[bytes]:
             yield b": connected\n\n"
@@ -539,11 +850,26 @@ def create_app() -> FastAPI:
                 yield f"data: {json.dumps(evt)}\n\n".encode()
                 if evt.get("kind") == "stage.finished":
                     return
+
         return StreamingResponse(
             generator(),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
+
+    @app.get(
+        "/api/v1/projects/{pid}/runs/{run_id}/events/history",
+        response_model=list[dict[str, Any]],
+    )
+    def run_events_history(
+        pid: str,
+        run_id: str,
+        request: Request,
+        store: ProjectStore = Depends(_get_store),
+    ) -> list[dict[str, Any]]:
+        project_dir = store.project_dir(pid)
+        _enforce_project_run_access(store, pid, run_id, _get_user_id(request))
+        return _read_run_events(project_dir, run_id)
 
     @app.get("/api/v1/projects/{pid}/runs", response_model=list[Run])
     def list_runs(
@@ -552,7 +878,14 @@ def create_app() -> FastAPI:
         store: ProjectStore = Depends(_get_store),
     ) -> list[Run]:
         _enforce_project_tenant(store, pid, _get_user_id(request))
-        return list_active_runs(pid)
+        by_id = {run.id: run for run in _list_persisted_runs(store.project_dir(pid))}
+        for run in list_active_runs(pid):
+            by_id[run.id] = run
+        return sorted(
+            by_id.values(),
+            key=lambda run: run.started_at or run.finished_at or utcnow(),
+            reverse=True,
+        )
 
     # ------------------------------------------------------------ files
     @app.get("/api/v1/projects/{pid}/plots", response_model=list[dict])
@@ -563,10 +896,14 @@ def create_app() -> FastAPI:
     ) -> list[dict]:
         _enforce_project_tenant(store, pid, _get_user_id(request))
         return [
-            {"name": p.name, "url": f"/api/v1/projects/{pid}/files/input_files/plots/{p.name}"}
+            {
+                "name": p.name,
+                "url": f"/api/v1/projects/{pid}/files/input_files/plots/{p.name}",
+            }
             for p in store.list_plots(pid)
         ]
 
+    @app.head("/api/v1/projects/{pid}/files/{relpath:path}")
     @app.get("/api/v1/projects/{pid}/files/{relpath:path}")
     def get_file(
         pid: str,
@@ -590,9 +927,7 @@ def create_app() -> FastAPI:
         try:
             target.relative_to(root)
         except ValueError as exc:
-            raise HTTPException(
-                403, detail={"code": "path_traversal_blocked"}
-            ) from exc
+            raise HTTPException(403, detail={"code": "path_traversal_blocked"}) from exc
 
         if not target.is_file():
             raise HTTPException(404)
@@ -608,27 +943,75 @@ def create_app() -> FastAPI:
         keys.save(payload)
         return keys.status().model_dump()
 
+    @app.get("/api/v1/keys/huggingface/account")
+    async def huggingface_account(keys: KeyStore = Depends(_get_keys)) -> dict:
+        key = keys.resolve("HUGGINGFACE")
+        if not key:
+            return {"connected": False, "account": None, "error": "no key configured"}
+
+        probe = _PROVIDER_PROBES["HUGGINGFACE"]
+        timeout = httpx.Timeout(8.0)
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await _send_probe(client, probe, key)
+        except httpx.TimeoutException:
+            return {"connected": False, "account": None, "error": "timeout"}
+        except httpx.HTTPError as exc:
+            return {
+                "connected": False,
+                "account": None,
+                "error": f"network error: {exc.__class__.__name__}: {exc}"[:200],
+            }
+
+        if not 200 <= resp.status_code < 300:
+            return {
+                "connected": False,
+                "account": None,
+                "error": _extract_provider_error(resp),
+            }
+        try:
+            body = resp.json()
+        except ValueError:
+            return {
+                "connected": False,
+                "account": None,
+                "error": "invalid Hugging Face account response",
+            }
+        return {
+            "connected": True,
+            "account": _shape_huggingface_account(body),
+            "error": None,
+        }
+
     @app.get("/api/v1/projects/{pid}/usage")
-    def project_usage(
-        pid: str, store: ProjectStore = Depends(_get_store)
-    ) -> dict:
+    def project_usage(pid: str, store: ProjectStore = Depends(_get_store)) -> dict:
         from ..worker.token_tracker import aggregate_project_usage
+
         project_dir = store.project_dir(pid)
         if not project_dir.exists():
             raise HTTPException(404, detail={"code": "project_not_found"})
         usage = aggregate_project_usage(project_dir)
-        return usage.model_dump() if hasattr(usage, "model_dump") else {
-            "total_input": usage.total_input,
-            "total_output": usage.total_output,
-            "total_cost_cents": usage.total_cost_cents,
-            "by_stage": {k: v.__dict__ for k, v in usage.by_stage.items()},
-            "by_model": {k: v.__dict__ for k, v in usage.by_model.items()},
-            "by_run": list(usage.by_run),
-        }
+        return (
+            usage.model_dump()
+            if hasattr(usage, "model_dump")
+            else {
+                "total_input": usage.total_input,
+                "total_output": usage.total_output,
+                "total_cost_cents": usage.total_cost_cents,
+                "by_stage": {k: v.__dict__ for k, v in usage.by_stage.items()},
+                "by_model": {k: v.__dict__ for k, v in usage.by_model.items()},
+                "by_run": list(usage.by_run),
+            }
+        )
 
     @app.get("/api/v1/runs/{run_id}/usage")
-    def run_usage(run_id: str) -> dict:
+    def run_usage(
+        run_id: str,
+        request: Request,
+        store: ProjectStore = Depends(_get_store),
+    ) -> dict:
         from ..worker.token_tracker import _ledger_lock, _run_ledger, get_run_usage
+
         # Distinguish "no entry yet" from "tracked with zero tokens" by
         # checking ledger membership directly — get_run_usage always
         # returns a StageTokens, never None.
@@ -636,6 +1019,14 @@ def create_app() -> FastAPI:
             tracked = run_id in _run_ledger
         if not tracked:
             raise HTTPException(404, detail={"code": "run_not_tracked"})
+
+        requester = _get_user_id(request)
+        if requester is not None or auth_required():
+            active = get_run(run_id)
+            if active is None:
+                raise HTTPException(403, detail={"code": "run_forbidden"})
+            _enforce_project_tenant(store, active.project_id, requester)
+
         u = get_run_usage(run_id)
         return {
             "model": u.model,
@@ -692,7 +1083,14 @@ def create_app() -> FastAPI:
     # silently re-break the root route.
     here = Path(__file__).resolve()
     static_dir = next(
-        (p for p in (here.parents[4] / "frontend" / "out", here.parents[3] / "frontend" / "out") if p.exists()),
+        (
+            p
+            for p in (
+                here.parents[4] / "frontend" / "out",
+                here.parents[3] / "frontend" / "out",
+            )
+            if p.exists()
+        ),
         None,
     )
     if static_dir is not None:
@@ -732,6 +1130,16 @@ _PROVIDER_PROBES: dict[str, dict] = {
             "messages": [{"role": "user", "content": "hi"}],
         },
     },
+    "HUGGINGFACE": {
+        "method": "GET",
+        "url": "https://huggingface.co/api/whoami-v2",
+        "headers_fn": lambda key: {"Authorization": f"Bearer {key}"},
+        "account_fn": lambda body: (
+            body.get("name") or body.get("fullname") or body.get("email")
+            if isinstance(body, dict)
+            else None
+        ),
+    },
     "PERPLEXITY": {
         # Perplexity exposes /models on some accounts; if it 404s we fall back
         # to a 1-token chat completion so we still get an auth signal.
@@ -755,12 +1163,39 @@ _PROVIDER_PROBES: dict[str, dict] = {
     "SEMANTIC_SCHOLAR": {
         "method": "GET",
         "url": (
-            "https://api.semanticscholar.org/graph/v1/paper/search"
-            "?query=test&limit=1"
+            "https://api.semanticscholar.org/graph/v1/paper/search?query=test&limit=1"
         ),
         "headers_fn": lambda key: {"x-api-key": key},
     },
 }
+
+
+def _shape_huggingface_account(body: Any) -> dict[str, Any]:
+    if not isinstance(body, dict):
+        return {}
+
+    orgs = []
+    for org in body.get("orgs") or body.get("organizations") or []:
+        if not isinstance(org, dict):
+            continue
+        orgs.append(
+            {
+                "name": org.get("name") or org.get("displayName"),
+                "fullname": org.get("fullname"),
+                "role": org.get("role") or org.get("roleInOrg"),
+                "type": org.get("type"),
+            }
+        )
+
+    return {
+        "name": body.get("name"),
+        "fullname": body.get("fullname"),
+        "email": body.get("email"),
+        "type": body.get("type"),
+        "isPro": body.get("isPro"),
+        "avatarUrl": body.get("avatarUrl"),
+        "orgs": orgs,
+    }
 
 
 def _extract_provider_error(resp: httpx.Response) -> str:
@@ -785,7 +1220,9 @@ def _extract_provider_error(resp: httpx.Response) -> str:
     return f"HTTP {resp.status_code}"
 
 
-async def _send_probe(client: httpx.AsyncClient, probe: dict, key: str) -> httpx.Response:
+async def _send_probe(
+    client: httpx.AsyncClient, probe: dict, key: str
+) -> httpx.Response:
     method = probe["method"]
     url = probe["url_fn"](key) if "url_fn" in probe else probe["url"]
     headers = probe["headers_fn"](key)
@@ -818,7 +1255,16 @@ async def _probe_provider(provider: str, key: str) -> dict:
 
     latency = int((time.perf_counter() - started) * 1000)
     if 200 <= resp.status_code < 300:
-        return {"ok": True, "latency_ms": latency, "error": None}
+        result: dict[str, object] = {"ok": True, "latency_ms": latency, "error": None}
+        account_fn = probe.get("account_fn")
+        if callable(account_fn):
+            try:
+                account = account_fn(resp.json())
+            except ValueError:
+                account = None
+            if account:
+                result["account"] = account
+        return result
     return {
         "ok": False,
         "latency_ms": latency,

@@ -8,6 +8,7 @@ counters the snapshot logic reads. Tests stay sub-second.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncGenerator, Generator
 from pathlib import Path
 
 import httpx
@@ -58,7 +59,7 @@ class _FakeLoop:
 # Fixtures
 # --------------------------------------------------------------------------- #
 @pytest.fixture
-def loop_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FastAPI:
+def loop_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[FastAPI, None, None]:
     """Build a minimal FastAPI app with only the loop router mounted.
 
     The test app stays decoupled from server.py so the spec's "do not
@@ -89,13 +90,13 @@ def loop_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FastAPI:
 
 
 @pytest.fixture
-def client(loop_app: FastAPI) -> TestClient:
+def client(loop_app: FastAPI) -> Generator[TestClient, None, None]:
     with TestClient(loop_app) as c:
         yield c
 
 
 @pytest.fixture
-async def async_client(loop_app: FastAPI):
+async def async_client(loop_app: FastAPI) -> AsyncGenerator[httpx.AsyncClient, None]:
     transport = httpx.ASGITransport(app=loop_app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as ac:
         yield ac
@@ -239,8 +240,10 @@ def test_list_returns_started_loops(client: TestClient) -> None:
     assert {a["loop_id"], b["loop_id"]} <= ids
 
 
-def test_auth_required_blocks_missing_header(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """In auth-required mode, every endpoint requires X-Plato-User."""
+def test_auth_required_blocks_missing_identity(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """In auth-required mode, every endpoint requires header or cookie identity."""
     monkeypatch.setenv("PLATO_AUTH", "enabled")
 
     # Rebuild the app inside the auth-required env.
@@ -267,6 +270,41 @@ def test_auth_required_blocks_missing_header(monkeypatch: pytest.MonkeyPatch, tm
             headers={"X-Plato-User": "alice"},
         )
         assert resp_ok.status_code == 200
+
+    loop_control.reset_registry()
+
+
+def test_auth_required_accepts_dashboard_cookie(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The production dashboard login cookie must authorize loop endpoints."""
+    monkeypatch.setenv("PLATO_AUTH", "enabled")
+
+    from plato_dashboard.api import loop_control
+
+    loop_control.reset_registry()
+    monkeypatch.setattr(
+        loop_control,
+        "_build_loop",
+        lambda req: _FakeLoop(project_dir=req.project_dir, tsv_path=tmp_path / "r.tsv"),
+    )
+    app = FastAPI()
+    app.include_router(loop_control.router)
+
+    with TestClient(app) as c:
+        c.cookies.set("plato_user", "alice")
+        resp = c.post(
+            "/api/v1/loop/start",
+            json=_start_payload(),
+        )
+        assert resp.status_code == 200
+        started = resp.json()
+
+        status_resp = c.get(
+            f"/api/v1/loop/{started['loop_id']}/status",
+        )
+        assert status_resp.status_code == 200
+        assert status_resp.json()["loop_id"] == started["loop_id"]
 
     loop_control.reset_registry()
 

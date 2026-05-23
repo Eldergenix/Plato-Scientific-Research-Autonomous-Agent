@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Pill } from "@/components/ui/pill";
 import { ModelPicker } from "@/components/ui/model-picker";
 import { api } from "@/lib/api";
+import type { StageRunBody } from "@/lib/api";
 import { cn, formatRelativeTime } from "@/lib/utils";
 
 interface Turn {
@@ -29,7 +30,7 @@ export interface IdeaStageProps {
   origin?: "ai" | "edited";
   lastEditedAt?: string;
   model?: string;
-  onRun?: () => void;
+  onRun?: (body?: StageRunBody) => void | Promise<void>;
 }
 
 export function IdeaStage({
@@ -299,7 +300,11 @@ function TranscriptPane({ turns }: { turns: Turn[] }) {
 }
 
 
-function EmptyIdeaHint({ onRun }: { onRun?: () => void }) {
+function EmptyIdeaHint({
+  onRun,
+}: {
+  onRun?: (body?: StageRunBody) => void | Promise<void>;
+}) {
   return (
     <div className="mt-6 surface-card border-dashed border-(--color-border-standard) p-5 text-center">
       <Lightbulb size={20} strokeWidth={1.5} className="mx-auto text-(--color-text-quaternary)" />
@@ -310,7 +315,13 @@ function EmptyIdeaHint({ onRun }: { onRun?: () => void }) {
         Run the idea generator to seed a research direction, or click Edit to write one yourself.
       </p>
       {onRun && (
-        <Button variant="primary" size="sm" className="mt-3" onClick={onRun}>
+        <Button
+          variant="primary"
+          size="sm"
+          className="mt-3"
+          onClick={() => void onRun()}
+          data-run-button="true"
+        >
           <Sparkles size={12} strokeWidth={1.5} />
           Run idea generation
         </Button>
@@ -324,20 +335,18 @@ function IdeaSidePanel({
   onRun,
 }: {
   projectId?: string;
-  onRun?: () => void;
+  onRun?: (body?: StageRunBody) => void | Promise<void>;
 }) {
-  // Iter-23: 7 model-picker selects (+ mode + iterations) now thread
-  // through to ``api.startRun(projectId, "idea", { mode, models })``
-  // when ``projectId`` is set. Falls back to the legacy no-op
-  // ``onRun()`` callback otherwise (e.g. when rendered from the empty
-  // EMPTY_PROJECT first-paint state where no project exists yet).
+  // Keep configured idea runs on the dashboard's single run path so
+  // the header, log stream, activity monitor, and cancel controls all
+  // attach to the same run id.
   const [mode, setMode] = React.useState<"fast" | "cmbagent">("fast");
   const [iterations, setIterations] = React.useState(4);
   const [maker, setMaker] = React.useState("gpt-5");
   const [hater, setHater] = React.useState("o3-mini");
-  const [planner, setPlanner] = React.useState("gpt-4.1");
+  const [planner, setPlanner] = React.useState("gpt-5.5-2026-04-23");
   const [reviewer, setReviewer] = React.useState("o3-mini");
-  const [orchestration, setOrchestration] = React.useState("gpt-4.1");
+  const [orchestration, setOrchestration] = React.useState("gpt-5.5-2026-04-23");
   const [formatter, setFormatter] = React.useState("o3-mini");
   const [submitting, setSubmitting] = React.useState(false);
   const [submitError, setSubmitError] = React.useState<string | null>(null);
@@ -368,41 +377,25 @@ function IdeaSidePanel({
 
   const handleRun = React.useCallback(async () => {
     setSubmitError(null);
-    if (projectId) {
-      const models: Record<string, string> = {
-        idea_maker: maker,
-        idea_hater: hater,
-        planner,
-        plan_reviewer: reviewer,
-        orchestration,
-        formatter,
-      };
-      try {
-        setSubmitting(true);
-        // Iter-3: forward the iteration budget the user picked. Backend
-        // StageRunRequest accepts the field; previously it was collected
-        // and dropped, making the +/- control decorative.
-        await api.startRun(projectId, "idea", { mode, models, iterations });
-        // Fire the legacy callback too for parents that listen for
-        // post-submit refreshes (e.g. switching panes).
-        onRun?.();
-        // Refresh history once the run is acknowledged so the user
-        // sees their new entry pending in the list.
-        void refreshHistory();
-      } catch (e: unknown) {
-        setSubmitError(
-          e instanceof Error ? e.message : "Failed to start run",
-        );
-      } finally {
-        setSubmitting(false);
-      }
-    } else {
-      // Without projectId we can't dispatch — preserve the original
-      // no-op behaviour so the button still feels responsive.
-      onRun?.();
+    if (!onRun) return;
+    const models: Record<string, string> = {
+      idea_maker_model: maker,
+      idea_hater_model: hater,
+      planner_model: planner,
+      plan_reviewer_model: reviewer,
+      orchestration_model: orchestration,
+      formatter_model: formatter,
+    };
+    try {
+      setSubmitting(true);
+      await onRun({ mode, models, iterations });
+      void refreshHistory();
+    } catch (e: unknown) {
+      setSubmitError(e instanceof Error ? e.message : "Failed to start run");
+    } finally {
+      setSubmitting(false);
     }
   }, [
-    projectId,
     mode,
     maker,
     hater,

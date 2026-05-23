@@ -15,6 +15,7 @@ node's actual write paths under ``state['files']['Folder']``. When a
 node grows a new artifact, the matching scope must be widened in
 the same PR or the write will raise :class:`plato.io.ScopeError`.
 """
+
 from __future__ import annotations
 
 from plato.io import FileScope

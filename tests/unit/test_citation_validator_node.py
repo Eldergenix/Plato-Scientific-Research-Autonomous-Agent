@@ -6,6 +6,7 @@ the suite never reaches the network. Each test confirms the node:
 - Aggregates a validation_rate and writes ``validation_report.json``.
 - Returns a ``validation_report`` state update keyed by ``run_id``.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -20,12 +21,15 @@ from plato.paper_agents import citation_validator_node as node_module
 from plato.state.models import Source, ValidationResult
 
 
-def _state(tmp_path: Path, references=None, sources=None, paper_refs: str | None = None) -> dict:
+def _state(
+    tmp_path: Path, references=None, sources=None, paper_refs: str | None = None
+) -> dict:
     paper = {"References": paper_refs or ""}
     state: dict = {
         "files": {"Folder": str(tmp_path)},
         "paper": paper,
         "run_id": "run-test-001",
+        "enforce_reference_gate": False,
     }
     if references is not None:
         state["references"] = references
@@ -34,11 +38,20 @@ def _state(tmp_path: Path, references=None, sources=None, paper_refs: str | None
     return state
 
 
-def _vr(source_id: str, *, doi_resolved=False, arxiv_resolved=False, error=None) -> ValidationResult:
+def _vr(
+    source_id: str,
+    *,
+    doi_resolved=False,
+    arxiv_resolved=False,
+    error=None,
+) -> ValidationResult:
+    passed = bool(doi_resolved or arxiv_resolved)
     return ValidationResult(
         source_id=source_id,
         doi_resolved=doi_resolved,
         arxiv_resolved=arxiv_resolved,
+        status="verified" if passed else "unverified",
+        verdict="UNLIKELY" if passed else "UNCERTAIN",
         retracted=False,
         error=error,
         checked_at=datetime.now(timezone.utc),
@@ -74,10 +87,13 @@ def test_three_refs_two_pass_one_fails(tmp_path):
     report = out["validation_report"]
     assert report["total"] == 3
     assert report["passed"] == 2
+    assert report["total_references"] == 3
+    assert report["verified_references"] == 2
     assert abs(report["validation_rate"] - (2 / 3)) < 1e-9
     assert len(report["failures"]) == 1
     assert report["failures"][0]["source_id"] == "r2"
     assert report["failures"][0]["error"] == "404"
+    assert report["accuracy_gate"]["passed"] is False
 
     # validation_report.json on disk
     report_path = tmp_path / "runs" / "run-test-001" / "validation_report.json"
@@ -85,6 +101,8 @@ def test_three_refs_two_pass_one_fails(tmp_path):
     persisted = json.loads(report_path.read_text())
     assert persisted["total"] == 3
     assert persisted["passed"] == 2
+    assert persisted["total_references"] == 3
+    assert persisted["verified_references"] == 2
 
     # state update is also keyed
     assert out["run_id"] == "run-test-001"
@@ -102,6 +120,8 @@ def test_empty_references_writes_empty_report_no_crash(tmp_path):
     report = out["validation_report"]
     assert report["total"] == 0
     assert report["passed"] == 0
+    assert report["total_references"] == 0
+    assert report["verified_references"] == 0
     assert report["validation_rate"] == 0.0
     assert report["failures"] == []
 
@@ -109,6 +129,22 @@ def test_empty_references_writes_empty_report_no_crash(tmp_path):
     assert report_path.exists()
     persisted = json.loads(report_path.read_text())
     assert persisted["total"] == 0
+    assert persisted["accuracy_gate"]["passed"] is False
+
+
+def test_empty_references_raise_when_gate_is_enforced(tmp_path):
+    state = _state(tmp_path)
+    state["enforce_reference_gate"] = True
+
+    with (
+        patch.object(node_module, "CitationValidator") as ctor,
+        pytest.raises(RuntimeError, match="no references were available"),
+    ):
+        asyncio.run(node_module.citation_validator_node(state))
+
+    ctor.assert_not_called()
+    report_path = tmp_path / "runs" / "run-test-001" / "validation_report.json"
+    assert report_path.exists()
 
 
 def test_state_validation_report_set_after_run(tmp_path):
@@ -198,3 +234,19 @@ def test_run_id_generated_when_missing(tmp_path):
     assert out["run_id"]
     assert isinstance(out["run_id"], str)
     assert len(out["run_id"]) >= 8
+
+
+def test_reference_gate_raises_when_accuracy_below_threshold(tmp_path):
+    refs = [{"id": "r1", "doi": "10.9999/fake", "title": "Fake"}]
+    state = _state(tmp_path, references=refs)
+    state["enforce_reference_gate"] = True
+    results = [_vr("r1", doi_resolved=False)]
+
+    with (
+        _patch_validator(results),
+        pytest.raises(
+            RuntimeError,
+            match="Reference verification failed",
+        ),
+    ):
+        asyncio.run(node_module.citation_validator_node(state))

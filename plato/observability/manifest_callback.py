@@ -6,6 +6,7 @@ We extract the provider's token-usage block, sum into the recorder's running
 a small per-model price table. Unknown models contribute zero cost (no crash —
 the manifest still records token counts).
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
@@ -19,16 +20,18 @@ if TYPE_CHECKING:
 # Per-million-token prices (input, output) snapshotted 2026-04. Only models
 # Plato actually wires today are listed; unknown models silently fall through.
 _PRICE_PER_M: dict[str, tuple[float, float]] = {
-    "gpt-4o-mini":          (0.15,  0.60),
-    "gpt-4o":               (2.50, 10.00),
-    "gpt-4.1":              (3.00, 12.00),
-    "gpt-4.1-mini":         (0.40,  1.60),
-    "gpt-5":                (5.00, 25.00),
-    "o3-mini":              (1.10,  4.40),
-    "claude-sonnet-4-5":    (3.00, 15.00),
-    "claude-4.1-opus":      (15.00, 75.00),
-    "gemini-2.5-flash":     (0.075, 0.30),
-    "gemini-2.5-pro":       (1.25,  5.00),
+    "gpt-4o-mini": (0.15, 0.60),
+    "gpt-4o": (2.50, 10.00),
+    "gpt-4.1": (3.00, 12.00),
+    "gpt-4.1-mini": (0.40, 1.60),
+    "gpt-5": (5.00, 25.00),
+    "gpt-5.5": (0.00, 0.00),
+    "gpt-5.5-2026-04-23": (0.00, 0.00),
+    "o3-mini": (1.10, 4.40),
+    "claude-sonnet-4-5": (3.00, 15.00),
+    "claude-4.1-opus": (15.00, 75.00),
+    "gemini-2.5-flash": (0.075, 0.30),
+    "gemini-2.5-pro": (1.25, 5.00),
 }
 
 

@@ -11,6 +11,7 @@ JSON parse. We accept either layout — flat ``runs/<id>/`` directly under
 ``project_root``, or nested ``<project>/runs/<id>/`` — so the dashboard
 works regardless of how the user runs Plato.
 """
+
 from __future__ import annotations
 
 import json
@@ -112,9 +113,11 @@ def _enforce_tenant(run_dir: Path, run_id: str, requester: str | None) -> None:
 def _find_run_dir(project_root: Path, run_id: str) -> Path | None:
     """Locate ``runs/<run_id>`` under ``project_root``.
 
-    Looks at two layouts:
+    Looks at three layouts:
     - ``<project_root>/runs/<run_id>/`` — when the project root *is* the
       project directory (single-project install).
+    - ``<project_root>/users/<user>/<project>/runs/<run_id>/`` — when the
+      dashboard stores authenticated user/Lab projects in tenant namespaces.
     - ``<project_root>/<project>/runs/<run_id>/`` — when the dashboard
       manages multiple projects (the normal case).
 
@@ -127,9 +130,21 @@ def _find_run_dir(project_root: Path, run_id: str) -> Path | None:
     if flat.is_dir():
         return flat
 
+    users_root = project_root / "users"
+    if users_root.is_dir():
+        for user_dir in users_root.iterdir():
+            if not user_dir.is_dir():
+                continue
+            for project_dir in user_dir.iterdir():
+                if not project_dir.is_dir():
+                    continue
+                candidate = project_dir / "runs" / run_id
+                if candidate.is_dir():
+                    return candidate
+
     # Multi-project layout: scan one level deep.
     for child in project_root.iterdir():
-        if not child.is_dir():
+        if not child.is_dir() or child.name == "users":
             continue
         candidate = child / "runs" / run_id
         if candidate.is_dir():
@@ -160,7 +175,9 @@ def get_manifest(
     _enforce_tenant(run_dir, run_id, requester)
     manifest_path = run_dir / "manifest.json"
     if not manifest_path.is_file():
-        raise HTTPException(404, detail={"code": "manifest_not_found", "run_id": run_id})
+        raise HTTPException(
+            404, detail={"code": "manifest_not_found", "run_id": run_id}
+        )
     return _read_json(manifest_path)
 
 
@@ -207,9 +224,7 @@ def get_evidence_matrix(
     return {"claims": claims, "evidence_links": links}
 
 
-@router.get(
-    "/runs/{run_id}/validation_report", response_model=ValidationReportResponse
-)
+@router.get("/runs/{run_id}/validation_report", response_model=ValidationReportResponse)
 def get_validation_report(
     run_id: str,
     request: Request,

@@ -26,19 +26,29 @@ def client(tmp_project_root: Path) -> TestClient:
     return TestClient(app)
 
 
-def _make_run(project_root: Path, run_id: str, project_id: str = "prj_a") -> Path:
-    run_dir = project_root / project_id / "runs" / run_id
+def _make_run(
+    project_root: Path,
+    run_id: str,
+    project_id: str = "prj_a",
+    user_id: str | None = None,
+) -> Path:
+    base = project_root / "users" / user_id if user_id is not None else project_root
+    run_dir = base / project_id / "runs" / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     return run_dir
 
 
-def _write_clarifications(run_dir: Path, questions: list[str], needs: bool = True) -> None:
+def _write_clarifications(
+    run_dir: Path, questions: list[str], needs: bool = True
+) -> None:
     (run_dir / "clarifications.json").write_text(
         json.dumps({"questions": questions, "needs_clarification": needs})
     )
 
 
-def _write_manifest_extra(run_dir: Path, questions: list[str], needs: bool = True) -> None:
+def _write_manifest_extra(
+    run_dir: Path, questions: list[str], needs: bool = True
+) -> None:
     (run_dir / "manifest.json").write_text(
         json.dumps(
             {
@@ -173,24 +183,51 @@ def test_post_unknown_run_returns_404(client: TestClient) -> None:
     assert resp.status_code == 404
 
 
-def test_cross_tenant_returns_403(
+def test_cross_tenant_is_hidden_when_auth_is_optional(
     client: TestClient, tmp_project_root: Path
 ) -> None:
-    """When meta.json carries a different owner, callers get 403."""
+    """When manifest.json carries a different owner, optional auth hides it."""
     run_dir = _make_run(tmp_project_root, "run_tenant")
     _write_clarifications(run_dir, ["Q1"])
-    (run_dir / "meta.json").write_text(json.dumps({"owner": "alice"}))
+    _write_manifest_extra(run_dir, ["Q1"])
+    manifest = json.loads((run_dir / "manifest.json").read_text())
+    manifest["user_id"] = "alice"
+    (run_dir / "manifest.json").write_text(json.dumps(manifest))
 
     resp = client.get(
         "/api/v1/runs/run_tenant/clarifications",
-        headers={"X-User-Id": "bob"},
+        headers={"X-Plato-User": "bob"},
     )
-    assert resp.status_code == 403
-    assert resp.json()["detail"]["code"] == "cross_tenant_forbidden"
+    assert resp.status_code == 404
+    assert resp.json()["detail"]["code"] == "run_not_found"
 
-    # Same owner → 200
+    # Same owner -> 200
     ok = client.get(
         "/api/v1/runs/run_tenant/clarifications",
-        headers={"X-User-Id": "alice"},
+        headers={"X-Plato-User": "alice"},
     )
     assert ok.status_code == 200
+
+
+def test_tenant_namespaced_run_is_discoverable(
+    client: TestClient, tmp_project_root: Path
+) -> None:
+    run_dir = _make_run(
+        tmp_project_root,
+        "run_tenant_namespaced",
+        project_id="prj_lab",
+        user_id="alice",
+    )
+    _write_clarifications(run_dir, ["Q1"])
+    _write_manifest_extra(run_dir, ["Q1"])
+    manifest = json.loads((run_dir / "manifest.json").read_text())
+    manifest["user_id"] = "alice"
+    (run_dir / "manifest.json").write_text(json.dumps(manifest))
+
+    resp = client.get(
+        "/api/v1/runs/run_tenant_namespaced/clarifications",
+        headers={"X-Plato-User": "alice"},
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["questions"] == ["Q1"]

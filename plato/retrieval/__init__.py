@@ -2,11 +2,13 @@
 Phase 2 — retrieval foundation.
 
 Each external literature source (arXiv, OpenAlex, ADS, Crossref, PubMed,
-Semantic Scholar) implements the :class:`SourceAdapter` Protocol and
-registers itself via :func:`register_adapter`. The retrieval orchestrator
+Europe PMC, DataCite, DOAJ, OpenCitations, Semantic Scholar) implements the
+:class:`SourceAdapter` Protocol and registers itself via :func:`register_adapter`.
+The retrieval orchestrator
 (``plato/retrieval/orchestrator.py``) consumes a ``DomainProfile`` to
 decide which adapters to fan out to and merges results.
 """
+
 from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
@@ -60,7 +62,8 @@ def list_adapters() -> list[str]:
 
 
 # Side-effect import: ensures every concrete adapter (arxiv, openalex,
-# crossref, ads, pubmed, semantic_scholar) calls register_adapter() at
+# crossref, ads, pubmed, europe_pmc, datacite, doaj, opencitations,
+# semantic_scholar) calls register_adapter() at
 # package import time. Done at the bottom so register_adapter / Source /
 # ADAPTER_REGISTRY are all defined before the adapter modules reference
 # them. Without this, ADAPTER_REGISTRY stays empty and orchestrator.retrieve()

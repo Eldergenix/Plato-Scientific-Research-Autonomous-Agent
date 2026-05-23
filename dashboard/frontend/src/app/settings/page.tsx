@@ -4,11 +4,15 @@ import * as React from "react";
 import Link from "next/link";
 import {
   ChevronRight,
+  Atom,
+  Building2,
+  CreditCard,
   Globe2,
   Monitor,
   Moon,
   ScrollText,
   Server,
+  ShieldCheck,
   Sun,
   Trash2,
   CheckCircle2,
@@ -23,8 +27,8 @@ import { cn } from "@/lib/utils";
 // manually rather than re-exported to avoid pulling that page's heavy
 // transitive deps into the settings route.
 const DEFAULT_MODELS: Array<{ id: string; label: string; model: string }> = [
-  { id: "idea", label: "Idea", model: "gpt-4.1" },
-  { id: "literature", label: "Literature", model: "gpt-4.1-mini" },
+  { id: "idea", label: "Idea", model: "gpt-5.5-2026-04-23" },
+  { id: "literature", label: "Literature", model: "gpt-5.5-2026-04-23" },
   { id: "method", label: "Method", model: "claude-4.1-opus" },
   { id: "results", label: "Results", model: "gpt-5" },
   { id: "paper", label: "Paper", model: "claude-4.1-opus" },
@@ -43,6 +47,22 @@ const SETTINGS_SECTIONS: Array<{
   icon: LucideIcon;
   testId: string;
 }> = [
+  {
+    href: "/settings/account",
+    label: "Account",
+    description:
+      "Manage profile, email addresses, password, verification, and security settings.",
+    icon: ShieldCheck,
+    testId: "settings-link-account",
+  },
+  {
+    href: "/settings/organization",
+    label: "Organization",
+    description:
+      "Manage Clerk Labs, memberships, invitations, and organization profile settings.",
+    icon: Building2,
+    testId: "settings-link-organization",
+  },
   {
     href: "/settings/domains",
     label: "Domains",
@@ -66,6 +86,22 @@ const SETTINGS_SECTIONS: Array<{
       "Audit third-party license compatibility and download a CycloneDX SBOM.",
     icon: ScrollText,
     testId: "settings-link-licenses",
+  },
+  {
+    href: "/settings/scientific-analysis",
+    label: "Scientific analysis",
+    description:
+      "Review optional analysis stacks, artifact contracts, and repeatability checks.",
+    icon: Atom,
+    testId: "settings-link-scientific-analysis",
+  },
+  {
+    href: "/settings/billing",
+    label: "Labs & billing",
+    description:
+      "Manage Clerk Labs, individual plans, Lab subscriptions, seats, trials, and usage policy.",
+    icon: CreditCard,
+    testId: "settings-link-billing",
   },
 ];
 
@@ -145,7 +181,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-(--color-bg-page) px-6 py-8">
+    <div className="h-full min-h-0 overflow-y-auto bg-(--color-bg-page) px-6 py-8">
       <div className="mx-auto max-w-4xl space-y-6">
         {/* Header card */}
         <header className="surface-linear-card p-5">
@@ -166,7 +202,7 @@ export default function SettingsPage() {
             title="Configuration"
             subtitle="Server-side settings that affect every project in this workspace."
           />
-          <ul className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <ul className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {SETTINGS_SECTIONS.map((section) => {
               const Icon = section.icon;
               return (

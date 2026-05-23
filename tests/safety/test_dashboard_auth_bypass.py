@@ -17,19 +17,14 @@ bypass shapes:
 Stream C may or may not be merged when this test runs — gate everything
 behind ``importorskip``.
 """
+
 from __future__ import annotations
 
 import pytest
+from starlette.requests import Request
 
 # Skip the entire module if the dashboard auth shim isn't available yet.
 auth = pytest.importorskip("plato_dashboard.auth")
-
-
-# ``starlette.requests.Request`` is the easiest way to fabricate a
-# FastAPI ``Request`` with custom headers — the dashboard imports it
-# transitively, so it's already in the env.
-starlette_requests = pytest.importorskip("starlette.requests")
-Request = starlette_requests.Request
 
 
 def _make_request(headers: dict[str, str] | None = None) -> Request:
@@ -93,30 +88,21 @@ def test_crlf_in_header_does_not_smuggle_a_second_header():
 
     A naive implementation could let an attacker pass
     ``"alice\\r\\nX-Forwarded-For: bob"`` and have ``X-Forwarded-For``
-    show up as a second logical header. Confirm Starlette folds the
-    raw bytes into a single header value.
+    show up as a second logical header. The dashboard rejects the poisoned
+    identity outright and Starlette does not expose a forged second header.
     """
     poisoned = "alice\nX-Forwarded-For: bob"
     req = _make_request({"X-Plato-User": poisoned})
 
-    # The value comes back exactly as supplied (modulo strip), and no
-    # second logical header was created.
-    user_id = auth.extract_user_id(req)
-    assert user_id is not None
-    assert "alice" in user_id
+    assert auth.extract_user_id(req) is None
     assert req.headers.get("X-Forwarded-For") is None
 
 
-def test_crlf_in_header_value_is_returned_verbatim_after_strip():
-    """We don't validate the *content* of the header — that's the proxy's
-    job — but we must not crash and must not silently drop the value."""
+def test_crlf_in_header_value_is_rejected_after_strip():
+    """A value that still contains CRLF after strip is not a safe user id."""
     poisoned = "  alice\r\nX-Forwarded-For: bob  "
     req = _make_request({"X-Plato-User": poisoned})
-    user_id = auth.extract_user_id(req)
-    assert user_id is not None
-    # Leading/trailing whitespace was stripped.
-    assert not user_id.startswith(" ")
-    assert not user_id.endswith(" ")
+    assert auth.extract_user_id(req) is None
 
 
 # ---------------------------------------------------------------------------
@@ -191,7 +177,8 @@ def test_optional_mode_present_header_is_honored(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Header is a single source of truth — no fallback to query string / cookie
+# Header/cookie identity is explicit — no fallback to query string or
+# misleading cookie names
 # ---------------------------------------------------------------------------
 
 
@@ -209,7 +196,18 @@ def test_query_string_user_param_is_ignored():
     assert auth.extract_user_id(req) is None
 
 
-def test_cookie_is_ignored():
+def test_header_named_cookie_is_ignored():
     """A cookie named ``X-Plato-User`` must not impersonate the header."""
     req = _make_request({"Cookie": "X-Plato-User=alice"})
+    assert auth.extract_user_id(req) is None
+
+
+def test_dashboard_user_cookie_is_honored():
+    """The dashboard login flow stores the tenant id in ``plato_user``."""
+    req = _make_request({"Cookie": "plato_user=alice"})
+    assert auth.extract_user_id(req) == "alice"
+
+
+def test_unsafe_dashboard_user_cookie_is_rejected():
+    req = _make_request({"Cookie": "plato_user=../alice"})
     assert auth.extract_user_id(req) is None

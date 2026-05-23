@@ -1,4 +1,5 @@
 """Phase 1 — §5.9: DomainProfile registry behaves as expected."""
+
 from __future__ import annotations
 
 import pytest
@@ -17,6 +18,10 @@ def test_astro_profile_registered_by_default():
     assert astro.name == "astro"
     assert "ads" in astro.retrieval_sources
     assert "arxiv" in astro.retrieval_sources
+    assert "crossref" in astro.retrieval_sources
+    assert "datacite" in astro.retrieval_sources
+    assert "doaj" in astro.retrieval_sources
+    assert "opencitations" in astro.retrieval_sources
     assert "AAS" in astro.journal_presets
     assert astro.executor == "cmbagent"
 

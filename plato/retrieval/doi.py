@@ -4,6 +4,7 @@ DOI and arXiv-id parsing utilities.
 Pure stdlib helpers used by the retrieval adapters and citation validators.
 No I/O, no third-party deps.
 """
+
 from __future__ import annotations
 
 import re

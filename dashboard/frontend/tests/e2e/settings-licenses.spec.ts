@@ -1,5 +1,7 @@
 import { test, expect, type Route } from "./fixtures";
 
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3201";
+
 /**
  * /settings/licenses: license audit + SBOM viewer.
  *
@@ -62,6 +64,7 @@ const SBOM_FIXTURE = {
 
 async function mockBackend(page: import("@playwright/test").Page) {
   await page.route("**/api/v1/license_audit", async (route: Route) => {
+    expect(route.request().headers()["cookie"]).toContain("plato_user=alice");
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -69,6 +72,7 @@ async function mockBackend(page: import("@playwright/test").Page) {
     });
   });
   await page.route("**/api/v1/sbom", async (route: Route) => {
+    expect(route.request().headers()["cookie"]).toContain("plato_user=alice");
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -78,6 +82,18 @@ async function mockBackend(page: import("@playwright/test").Page) {
 }
 
 test.describe("settings/licenses page", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.context().addCookies([
+      {
+        name: "plato_user",
+        value: "alice",
+        url: BASE_URL,
+        httpOnly: true,
+        sameSite: "Lax",
+      },
+    ]);
+  });
+
   test("renders stats, table, and SBOM summary from mocked endpoints", async ({
     page,
   }) => {
@@ -149,6 +165,7 @@ test.describe("settings/licenses page", () => {
 
     let sbomFetchCount = 0;
     await page.route("**/api/v1/sbom", async (route: Route) => {
+      expect(route.request().headers()["cookie"]).toContain("plato_user=alice");
       sbomFetchCount += 1;
       await route.fulfill({
         status: 200,

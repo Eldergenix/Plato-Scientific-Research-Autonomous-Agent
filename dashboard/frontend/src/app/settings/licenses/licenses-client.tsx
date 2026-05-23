@@ -22,9 +22,9 @@ import {
   type LicenseDistribution,
 } from "@/components/license/license-table";
 import { SbomSummary } from "@/components/license/sbom-summary";
+import { dashboardApiBase } from "@/lib/api-base";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:7878/api/v1";
+const API_BASE = dashboardApiBase();
 
 interface LicenseAuditPayload {
   summary: LicenseSummary;
@@ -34,6 +34,7 @@ interface LicenseAuditPayload {
 
 async function fetchAudit(): Promise<LicenseAuditPayload> {
   const r = await fetch(`${API_BASE}/license_audit`, {
+    credentials: "include",
     headers: { Accept: "application/json" },
   });
   if (!r.ok) {
