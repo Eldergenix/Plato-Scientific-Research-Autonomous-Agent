@@ -28,8 +28,10 @@ import json
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+from plato_dashboard.api.manifests import _find_run_dir
 from plato_dashboard.api.server import create_app
 from plato_dashboard.auth import AUTH_REQUIRED_ENV
 from plato_dashboard.domain.models import Run, utcnow
@@ -370,6 +372,24 @@ def test_active_run_still_refuses_cross_project_access(
         assert resp.status_code in (403, 404)
     finally:
         rm._active_runs.pop(run.id, None)
+
+
+def test_run_artifact_lookup_rejects_unsafe_run_id(
+    authed_client: TestClient, tmp_project_root: Path
+) -> None:
+    """Run ids are filesystem path segments and must never resolve via ``..``."""
+    pid = _create_project_as(authed_client, "alice")
+
+    with pytest.raises(HTTPException) as exc_info:
+        _find_run_dir(tmp_project_root, "..")
+    assert exc_info.value.status_code == 404
+
+    resp = authed_client.get(
+        f"/api/v1/projects/{pid}/runs/bad.run",
+        headers={"X-Plato-User": "alice"},
+    )
+    assert resp.status_code == 404
+    assert resp.json()["detail"]["code"] == "run_not_found"
 
 
 def test_list_plots_refuses_cross_tenant(authed_client: TestClient) -> None:

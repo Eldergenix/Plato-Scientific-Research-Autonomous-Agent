@@ -15,6 +15,7 @@ works regardless of how the user runs Plato.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,7 @@ from ..settings import Settings, get_settings
 
 
 router = APIRouter()
+_RUN_ID_RE = re.compile(r"\A[A-Za-z0-9_-]{1,128}\Z")
 
 
 # ---------------------------------------------------------------------------
@@ -67,6 +69,16 @@ def _user_id(req: Request) -> str | None:
     from ..auth import extract_user_id
 
     return extract_user_id(req)
+
+
+def validate_run_id(run_id: str) -> str:
+    """Reject run ids that are unsafe as filesystem path segments."""
+    if not isinstance(run_id, str) or not _RUN_ID_RE.match(run_id):
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "run_not_found", "run_id": run_id},
+        )
+    return run_id
 
 
 def _enforce_tenant(run_dir: Path, run_id: str, requester: str | None) -> None:
@@ -123,6 +135,8 @@ def _find_run_dir(project_root: Path, run_id: str) -> Path | None:
 
     Returns the first match or ``None``.
     """
+    run_id = validate_run_id(run_id)
+
     if not project_root.exists():
         return None
 
