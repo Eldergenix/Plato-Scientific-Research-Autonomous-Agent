@@ -9,6 +9,7 @@ Pure functions in this module derive metrics from the Phase 2 data model
 (``ValidationResult``, ``Claim``, ``EvidenceLink``) so the same code can
 score both real Plato runs and unit-test fixtures without any LLM calls.
 """
+
 from __future__ import annotations
 
 from collections.abc import Iterable
@@ -67,9 +68,7 @@ def citation_validation_rate(validations: Iterable[ValidationResult]) -> float:
     if not items:
         return 0.0
     valid = sum(
-        1
-        for v in items
-        if (v.doi_resolved or v.arxiv_resolved) and not v.retracted
+        1 for v in items if (v.doi_resolved or v.arxiv_resolved) and not v.retracted
     )
     return valid / len(items)
 

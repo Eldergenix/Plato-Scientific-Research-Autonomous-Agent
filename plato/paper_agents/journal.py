@@ -2,11 +2,13 @@ from typing import Callable
 from pydantic import BaseModel
 from enum import Enum
 
+
 class Journal(str, Enum):
     """Enum which includes the different journals considered."""
+
     NONE = None
     """No journal, use standard latex presets with unsrt for bibliography style."""
-    AAS  = "AAS"
+    AAS = "AAS"
     """American Astronomical Society journals, including the Astrophysical Journal."""
     APS = "APS"
     """Physical Review Journals from the American Physical Society, including Physical Review Letters, PRA, etc."""
@@ -45,8 +47,10 @@ class Journal(str, Enum):
     ELIFE = "ELIFE"
     """eLife journal. Requires elife.cls (``tlmgr install elife``) — falls back to article."""
 
+
 class LatexPresets(BaseModel):
     """Latex presets to be set depending on the journal"""
+
     article: str
     """Article preset or .cls file."""
     layout: str = ""

@@ -5,6 +5,7 @@ Hits the Directory of Open Access Journals article search API. The public
 article search endpoint requires no API key and returns article metadata
 for fully open-access journals.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone

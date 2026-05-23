@@ -8,6 +8,7 @@ The retrieval orchestrator
 (``plato/retrieval/orchestrator.py``) consumes a ``DomainProfile`` to
 decide which adapters to fan out to and merges results.
 """
+
 from __future__ import annotations
 
 from typing import Protocol, runtime_checkable

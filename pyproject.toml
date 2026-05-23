@@ -44,6 +44,8 @@ dependencies = [
   "urllib3>=2.7,<3",
   "uuid-utils>=0.16,<0.17",
   "json5",
+  "starlette>=1.0.1",
+  "xgboost<2.1",
   "pip",
 ]
 

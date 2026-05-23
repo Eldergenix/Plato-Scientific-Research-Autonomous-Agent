@@ -1,4 +1,5 @@
 """Unit tests for :mod:`plato.retrieval.sources.datacite`."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -19,14 +20,20 @@ SAMPLE_PAYLOAD: dict[str, Any] = {
             "type": "dois",
             "attributes": {
                 "doi": "10.5281/ZENODO.12345",
-                "creators": [{"name": "Doe, Ada"}, {"givenName": "Grace", "familyName": "Hopper"}],
+                "creators": [
+                    {"name": "Doe, Ada"},
+                    {"givenName": "Grace", "familyName": "Hopper"},
+                ],
                 "titles": [{"title": "A reproducible benchmark dataset"}],
                 "publisher": "Zenodo",
                 "publicationYear": 2025,
                 "types": {"resourceTypeGeneral": "Dataset"},
                 "descriptions": [
                     {"description": "General note", "descriptionType": "Other"},
-                    {"description": "Benchmark data for method validation.", "descriptionType": "Abstract"},
+                    {
+                        "description": "Benchmark data for method validation.",
+                        "descriptionType": "Abstract",
+                    },
                 ],
                 "url": "https://zenodo.org/records/12345",
                 "contentUrl": "https://zenodo.org/records/12345/files/paper.pdf",

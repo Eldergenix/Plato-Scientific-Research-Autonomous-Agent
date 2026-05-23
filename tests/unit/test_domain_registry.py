@@ -1,4 +1,5 @@
 """Phase 1 — §5.9: DomainProfile registry behaves as expected."""
+
 from __future__ import annotations
 
 import pytest

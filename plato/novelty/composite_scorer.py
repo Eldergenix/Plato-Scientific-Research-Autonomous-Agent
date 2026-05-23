@@ -8,6 +8,7 @@ catches both kinds of false positive.
 
 The caller passes the LLM score in; this scorer doesn't run an LLM itself.
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
@@ -43,9 +44,7 @@ class CompositeNoveltyScorer:
         llm_weight: float = 0.5,
     ) -> None:
         if not 0.0 <= llm_weight <= 1.0:
-            raise ValueError(
-                f"llm_weight must be in [0, 1]; got {llm_weight!r}"
-            )
+            raise ValueError(f"llm_weight must be in [0, 1]; got {llm_weight!r}")
         self.embedding_scorer = embedding_scorer or EmbeddingScorer()
         self.llm_weight = llm_weight
 
@@ -57,16 +56,13 @@ class CompositeNoveltyScorer:
         llm_score: float,
     ) -> CompositeNoveltyScore:
         if not 0.0 <= llm_score <= 1.0:
-            raise ValueError(
-                f"llm_score must be in [0, 1]; got {llm_score!r}"
-            )
+            raise ValueError(f"llm_score must be in [0, 1]; got {llm_score!r}")
 
         embedding_result = await self.embedding_scorer.score(idea, corpus)
         embedding_score = embedding_result.score
 
         combined = (
-            self.llm_weight * llm_score
-            + (1.0 - self.llm_weight) * embedding_score
+            self.llm_weight * llm_score + (1.0 - self.llm_weight) * embedding_score
         )
         agreement = abs(llm_score - embedding_score) < _AGREEMENT_THRESHOLD
 

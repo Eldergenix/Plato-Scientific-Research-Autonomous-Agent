@@ -1,4 +1,5 @@
 """Phase 2 contract tests for the shared scientific-research models."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone

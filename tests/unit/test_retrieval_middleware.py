@@ -9,6 +9,7 @@ path callers (a 200 response flows through untouched).
 
 All network is mocked. Sleeps are mocked too so the suite stays fast.
 """
+
 from __future__ import annotations
 
 from email.utils import format_datetime
@@ -33,7 +34,9 @@ from plato.retrieval.middleware import (
 # ---------------------------------------------------------------------------
 
 
-def _resp(status: int, body: str = "", headers: dict[str, str] | None = None) -> httpx.Response:
+def _resp(
+    status: int, body: str = "", headers: dict[str, str] | None = None
+) -> httpx.Response:
     request = httpx.Request("GET", "https://example.test/x")
     return httpx.Response(
         status_code=status,
@@ -162,6 +165,7 @@ class TestRateLimitBackoff:
     @pytest.mark.asyncio
     async def test_gives_up_after_max_retries(self, no_sleep: list[float]) -> None:
         backoff = RateLimitBackoff(max_retries=2, base_delay=0.1, max_delay=1.0)
+
         # Always 429 — we should see exactly 2 sleeps then return the last 429.
         async def request() -> httpx.Response:
             return _resp(429)
@@ -206,9 +210,9 @@ class TestETagCache:
     @pytest.mark.asyncio
     async def test_first_get_is_a_miss_and_stores_etag(self, tmp_path) -> None:
         cache = ETagCache(cache_dir=tmp_path)
-        client = _StubClient([
-            _resp(200, "hello", headers={"ETag": "v1", "Content-Type": "text/plain"})
-        ])
+        client = _StubClient(
+            [_resp(200, "hello", headers={"ETag": "v1", "Content-Type": "text/plain"})]
+        )
 
         out = await cache.get(client, "https://example.test/x")
         assert out.status_code == 200

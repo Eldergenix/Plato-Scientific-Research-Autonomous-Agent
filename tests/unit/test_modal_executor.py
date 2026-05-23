@@ -15,6 +15,7 @@ unit test into a paid integration test. Instead we exercise:
 
 A real-Modal test lives in tests/integration/ behind an env var.
 """
+
 from __future__ import annotations
 
 import json
@@ -32,6 +33,7 @@ from plato.executor.modal_backend import (
 
 
 # --- _extract_code_cells ---------------------------------------------------
+
 
 def test_extract_code_cells_picks_python_fences() -> None:
     md = """
@@ -68,6 +70,7 @@ def test_extract_code_cells_handles_empty_inputs() -> None:
 
 # --- _parse_runner_envelope ------------------------------------------------
 
+
 def test_parse_runner_envelope_round_trips_payload() -> None:
     raw = (
         "irrelevant header noise\n"
@@ -93,6 +96,7 @@ def test_parse_runner_envelope_returns_none_on_invalid_json() -> None:
 
 
 # --- run() early returns ---------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_run_returns_clean_result_when_no_code(tmp_path: Path) -> None:

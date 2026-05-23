@@ -39,47 +39,50 @@ def _make_state(project_dir: Path) -> GraphState:
     temp_dir.mkdir(parents=True, exist_ok=True)
     llm_calls = paper_folder / "LLM_calls.txt"
 
-    return cast(GraphState, {
-        "messages": [],
-        "files": {
-            "Folder": str(paper_folder),
-            "Paper_folder": str(paper_folder),
-            "Temp": str(temp_dir),
-            "Paper_v1": str(paper_folder / "paper_v1.tex"),
-            "LLM_calls": str(llm_calls),
-            "Error": str(paper_folder / "Error.txt"),
+    return cast(
+        GraphState,
+        {
+            "messages": [],
+            "files": {
+                "Folder": str(paper_folder),
+                "Paper_folder": str(paper_folder),
+                "Temp": str(temp_dir),
+                "Paper_v1": str(paper_folder / "paper_v1.tex"),
+                "LLM_calls": str(llm_calls),
+                "Error": str(paper_folder / "Error.txt"),
+            },
+            "idea": {"Idea": "x", "Methods": "y", "Results": "z"},
+            "paper": {
+                "Title": "",
+                "Abstract": "",
+                "Keywords": "",
+                "Introduction": "",
+                "Methods": "",
+                "Results": "",
+                "Conclusions": "",
+                "References": "",
+                "summary": "",
+                "journal": Journal.NONE,
+                "add_citations": False,
+                "cmbagent_keywords": False,
+            },
+            "tokens": {"ti": 0, "to": 0, "i": 0, "o": 0},
+            "llm": {
+                "model": "stub",
+                "max_output_tokens": 1024,
+                "llm": None,
+                "temperature": 0.0,
+            },
+            "latex": {"section_to_fix": ""},
+            "keys": None,
+            "time": {"start": 0.0},
+            "writer": "scientist",
+            "params": {"num_keywords": 3},
+            "critiques": {},
+            "critique_digest": None,
+            "revision_state": {"iteration": 0, "max_iterations": 2},
         },
-        "idea": {"Idea": "x", "Methods": "y", "Results": "z"},
-        "paper": {
-            "Title": "",
-            "Abstract": "",
-            "Keywords": "",
-            "Introduction": "",
-            "Methods": "",
-            "Results": "",
-            "Conclusions": "",
-            "References": "",
-            "summary": "",
-            "journal": Journal.NONE,
-            "add_citations": False,
-            "cmbagent_keywords": False,
-        },
-        "tokens": {"ti": 0, "to": 0, "i": 0, "o": 0},
-        "llm": {
-            "model": "stub",
-            "max_output_tokens": 1024,
-            "llm": None,
-            "temperature": 0.0,
-        },
-        "latex": {"section_to_fix": ""},
-        "keys": None,
-        "time": {"start": 0.0},
-        "writer": "scientist",
-        "params": {"num_keywords": 3},
-        "critiques": {},
-        "critique_digest": None,
-        "revision_state": {"iteration": 0, "max_iterations": 2},
-    })
+    )
 
 
 @pytest.fixture

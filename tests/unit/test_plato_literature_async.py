@@ -14,7 +14,9 @@ def test_semantic_scholar_literature_uses_async_graph_invocation(tmp_path, monke
         "No dataset has been uploaded yet.\n\nSynthetic classification benchmark",
         encoding="utf-8",
     )
-    (input_dir / IDEA_FILE).write_text("Compare logistic regression and random forest.", encoding="utf-8")
+    (input_dir / IDEA_FILE).write_text(
+        "Compare logistic regression and random forest.", encoding="utf-8"
+    )
 
     called = {}
 
@@ -30,7 +32,10 @@ def test_semantic_scholar_literature_uses_async_graph_invocation(tmp_path, monke
             called["state"] = state
             called["config"] = config
             literature = tmp_path / INPUT_FILES / LITERATURE_FILE
-            literature.write_text("Idea novel\n\nSynthetic benchmark literature summary.", encoding="utf-8")
+            literature.write_text(
+                "Idea novel\n\nSynthetic benchmark literature summary.",
+                encoding="utf-8",
+            )
 
     def fake_build_lg_graph(*, mermaid_diagram=False, checkpointer=None):
         called["mermaid_diagram"] = mermaid_diagram

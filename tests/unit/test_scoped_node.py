@@ -80,7 +80,9 @@ def test_async_node_out_of_scope_raises(project_dir: Path) -> None:
     wrapped = scoped_node(node, FileScope(write=["allowed.txt"]))
 
     with pytest.raises(ScopeError):
-        asyncio.run(cast(Coroutine[Any, Any, dict[str, Any]], wrapped(_state(project_dir))))
+        asyncio.run(
+            cast(Coroutine[Any, Any, dict[str, Any]], wrapped(_state(project_dir)))
+        )
 
 
 def test_wrapper_does_not_mutate_caller_state(project_dir: Path) -> None:

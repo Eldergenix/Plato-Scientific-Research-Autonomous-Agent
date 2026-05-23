@@ -1,4 +1,5 @@
 """Phase 2 (R4) tests for ``plato.retrieval.orchestrator.retrieve``."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -127,9 +128,7 @@ async def test_retrieve_survives_an_adapter_raising():
     register_adapter(_FakeAdapter("good", [survivor_source]))
     register_adapter(_BoomAdapter("bad"))
 
-    out = await retrieve(
-        "anything", limit=5, adapter_names=["good", "bad"]
-    )
+    out = await retrieve("anything", limit=5, adapter_names=["good", "bad"])
 
     assert len(out) == 1
     assert out[0].arxiv_id == "2401.SURV"

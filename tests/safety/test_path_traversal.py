@@ -8,6 +8,7 @@ smuggle attempting to truncate the path on the C side.
 
 If any of these slip through, a node could write outside its scope.
 """
+
 from __future__ import annotations
 
 import os
@@ -252,8 +253,9 @@ def test_valid_relative_path_writes_successfully(tmp_path: Path):
     target = writer.write("nested/dir/out.txt", "hello")
     assert target.read_text() == "hello"
     # Resolved path is under project_dir.
-    assert tmp_path.resolve() in target.resolve().parents or target.resolve().parent.is_relative_to(
-        tmp_path.resolve()
+    assert (
+        tmp_path.resolve() in target.resolve().parents
+        or target.resolve().parent.is_relative_to(tmp_path.resolve())
     )
 
 

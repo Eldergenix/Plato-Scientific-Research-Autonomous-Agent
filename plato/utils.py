@@ -6,9 +6,7 @@ import warnings
 
 from .llm import LLM, models
 
-_NO_DATASET_SENTINELS = (
-    "no dataset has been uploaded yet",
-)
+_NO_DATASET_SENTINELS = ("no dataset has been uploaded yet",)
 
 
 def input_check(str_input: str) -> str:

@@ -129,7 +129,9 @@ class SklearnSyntheticExecutor:
                 all_y: list[int] = []
                 all_p: list[float] = []
 
-                for fold_idx, (train_idx, test_idx) in enumerate(cv.split(x, y), start=1):
+                for fold_idx, (train_idx, test_idx) in enumerate(
+                    cv.split(x, y), start=1
+                ):
                     x_train, y_train = x[train_idx], y[train_idx]
                     x_test, y_test = x[test_idx], y[test_idx]
                     x_train, y_train = _apply_sampling(
@@ -147,7 +149,10 @@ class SklearnSyntheticExecutor:
                     else:
                         pipeline = make_pipeline(StandardScaler(), clone(estimator))
 
-                    if scenario.preprocessing == "skew_weighted" and model_name == "logistic_regression":
+                    if (
+                        scenario.preprocessing == "skew_weighted"
+                        and model_name == "logistic_regression"
+                    ):
                         pipeline.steps[-1] = (
                             pipeline.steps[-1][0],
                             LogisticRegression(
@@ -157,7 +162,10 @@ class SklearnSyntheticExecutor:
                                 random_state=random_state,
                             ),
                         )
-                    elif scenario.preprocessing == "skew_weighted" and model_name == "random_forest":
+                    elif (
+                        scenario.preprocessing == "skew_weighted"
+                        and model_name == "random_forest"
+                    ):
                         pipeline.steps[-1] = (
                             pipeline.steps[-1][0],
                             RandomForestClassifier(
@@ -254,7 +262,9 @@ class SklearnSyntheticExecutor:
             random_state=random_state,
             summary=summary,
             best=best,
-            baseline_auc=float(baseline["roc_auc_mean"].iloc[0]) if not baseline.empty else None,
+            baseline_auc=float(baseline["roc_auc_mean"].iloc[0])
+            if not baseline.empty
+            else None,
             comparison=comparison,
             csv_path=csv_path,
             summary_path=summary_path,
@@ -317,7 +327,9 @@ def _make_dataset(
     return x, y
 
 
-def _apply_sampling(x_train: Any, y_train: Any, strategy: str, rng: Any) -> tuple[Any, Any]:
+def _apply_sampling(
+    x_train: Any, y_train: Any, strategy: str, rng: Any
+) -> tuple[Any, Any]:
     import numpy as np
 
     if strategy not in {"skew_oversample", "skew_undersample"}:
@@ -334,10 +346,14 @@ def _apply_sampling(x_train: Any, y_train: Any, strategy: str, rng: Any) -> tupl
         return x_train, y_train
 
     if strategy == "skew_oversample":
-        sampled_minority = rng.choice(minority_idx, size=len(majority_idx), replace=True)
+        sampled_minority = rng.choice(
+            minority_idx, size=len(majority_idx), replace=True
+        )
         selected = np.concatenate([majority_idx, sampled_minority])
     else:
-        sampled_majority = rng.choice(majority_idx, size=len(minority_idx), replace=False)
+        sampled_majority = rng.choice(
+            majority_idx, size=len(minority_idx), replace=False
+        )
         selected = np.concatenate([sampled_majority, minority_idx])
     rng.shuffle(selected)
     return x_train[selected], y_train[selected]
@@ -376,7 +392,9 @@ def _paired_comparison(
         "contender_key": contender_key,
         "statistic": float(stat),
         "p_value": float(p_value),
-        "delta_auc": float(sum(contender) / len(contender) - sum(baseline) / len(baseline)),
+        "delta_auc": float(
+            sum(contender) / len(contender) - sum(baseline) / len(baseline)
+        ),
     }
 
 
@@ -401,7 +419,9 @@ def _plot_auc(summary: Any, plots_dir: Path, timestamp: str) -> Path:
     return path
 
 
-def _plot_calibration(predictions: list[dict[str, Any]], plots_dir: Path, timestamp: str) -> Path:
+def _plot_calibration(
+    predictions: list[dict[str, Any]], plots_dir: Path, timestamp: str
+) -> Path:
     import matplotlib.pyplot as plt
     from sklearn.calibration import calibration_curve
 
@@ -415,7 +435,13 @@ def _plot_calibration(predictions: list[dict[str, Any]], plots_dir: Path, timest
             n_bins=8,
             strategy="uniform",
         )
-        ax.plot(mean_pred, frac_pos, marker="o", linewidth=1.5, label=f"{item['scenario']} / {item['model']}")
+        ax.plot(
+            mean_pred,
+            frac_pos,
+            marker="o",
+            linewidth=1.5,
+            label=f"{item['scenario']} / {item['model']}",
+        )
     ax.set_xlabel("Mean predicted probability")
     ax.set_ylabel("Observed positive fraction")
     ax.set_title("Reliability curves for top-performing configurations")

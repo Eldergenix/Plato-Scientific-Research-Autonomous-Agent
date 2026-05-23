@@ -6,6 +6,7 @@ tables, reproducibility metadata, and optional plot artifacts so downstream
 agents can carry real calculations into Methods and Results sections instead
 of paraphrasing unverifiable claims.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -58,7 +59,9 @@ class ScientificAnalysisResult(BaseModel):
     checks: list[dict[str, Any]] = Field(default_factory=list)
 
 
-def run_scientific_analysis(payload: ScientificAnalysisInput) -> ScientificAnalysisResult:
+def run_scientific_analysis(
+    payload: ScientificAnalysisInput,
+) -> ScientificAnalysisResult:
     """Execute one deterministic scientific calculation or plotting workflow."""
     operations = {
         "formula_mass": _formula_mass,
@@ -135,9 +138,7 @@ def _formula_mass(payload: ScientificAnalysisInput) -> ScientificAnalysisResult:
     for row in rows:
         row["mass_fraction"] = row["mass_contribution_g_mol"] / molar_mass
 
-    equation_terms = " + ".join(
-        f"{row['count']}\\,{row['element']}" for row in rows
-    )
+    equation_terms = " + ".join(f"{row['count']}\\,{row['element']}" for row in rows)
     markdown = (
         f"Formula mass for `{formula}` is **{molar_mass:.6f} g/mol**. "
         "The calculation sums each atom count multiplied by its standard "
@@ -230,7 +231,9 @@ def _harmonic_oscillator(payload: ScientificAnalysisInput) -> ScientificAnalysis
     t_end = float(payload.data.get("t_end", 2.0 * math.pi))
     n_points = int(payload.data.get("n_points", 200))
     if mass <= 0 or spring_constant <= 0 or n_points < 5:
-        raise ValueError("mass and spring_constant must be positive; n_points must be >= 5")
+        raise ValueError(
+            "mass and spring_constant must be positive; n_points must be >= 5"
+        )
 
     omega = math.sqrt(spring_constant / mass)
     period = 2.0 * math.pi / omega
@@ -403,7 +406,10 @@ def _linear_regression(payload: ScientificAnalysisInput) -> ScientificAnalysisRe
         )
         fig, ax = plt.subplots(figsize=(5, 5))
         ax.scatter(y, fitted, color="#4f46e5")
-        lims = [min(float(y.min()), float(fitted.min())), max(float(y.max()), float(fitted.max()))]
+        lims = [
+            min(float(y.min()), float(fitted.min())),
+            max(float(y.max()), float(fitted.max())),
+        ]
         ax.plot(lims, lims, "k--", linewidth=1)
         ax.set_xlabel("Observed")
         ax.set_ylabel("Fitted")
@@ -465,15 +471,23 @@ def _single_cell_qc(payload: ScientificAnalysisInput) -> ScientificAnalysisResul
         dtype=float,
     )
     genes = payload.data.get("genes") or ["MT-ND1", "ACTB", "MS4A1"]
-    cells = payload.data.get("cells") or [f"cell_{i + 1}" for i in range(counts.shape[0])]
+    cells = payload.data.get("cells") or [
+        f"cell_{i + 1}" for i in range(counts.shape[0])
+    ]
     mt_prefix = str(payload.data.get("mt_prefix") or "MT-")
-    if counts.ndim != 2 or counts.shape[1] != len(genes) or counts.shape[0] != len(cells):
+    if (
+        counts.ndim != 2
+        or counts.shape[1] != len(genes)
+        or counts.shape[0] != len(cells)
+    ):
         raise ValueError("counts must be a 2D matrix matching genes and cells")
 
     mt_mask = np.asarray([str(gene).startswith(mt_prefix) for gene in genes])
     total_counts = counts.sum(axis=1)
     detected_genes = (counts > 0).sum(axis=1)
-    mt_counts = counts[:, mt_mask].sum(axis=1) if mt_mask.any() else np.zeros(counts.shape[0])
+    mt_counts = (
+        counts[:, mt_mask].sum(axis=1) if mt_mask.any() else np.zeros(counts.shape[0])
+    )
     pct_mt = np.divide(
         mt_counts * 100.0,
         total_counts,
@@ -508,8 +522,12 @@ def _single_cell_qc(payload: ScientificAnalysisInput) -> ScientificAnalysisResul
         pd.DataFrame(gene_rows).to_csv(gene_path, index=False)
         artifacts.extend(
             [
-                ScientificArtifact(path=str(cell_path), kind="csv", description="Per-cell QC metrics."),
-                ScientificArtifact(path=str(gene_path), kind="csv", description="Per-gene QC metrics."),
+                ScientificArtifact(
+                    path=str(cell_path), kind="csv", description="Per-cell QC metrics."
+                ),
+                ScientificArtifact(
+                    path=str(gene_path), kind="csv", description="Per-gene QC metrics."
+                ),
             ]
         )
         fig, ax = plt.subplots(figsize=(6, 4))
@@ -522,7 +540,11 @@ def _single_cell_qc(payload: ScientificAnalysisInput) -> ScientificAnalysisResul
         fig.savefig(png_path, dpi=180)
         plt.close(fig)
         artifacts.append(
-            ScientificArtifact(path=str(png_path), kind="png", description="Single-cell QC scatter plot.")
+            ScientificArtifact(
+                path=str(png_path),
+                kind="png",
+                description="Single-cell QC scatter plot.",
+            )
         )
 
     markdown = (
@@ -540,7 +562,10 @@ def _single_cell_qc(payload: ScientificAnalysisInput) -> ScientificAnalysisResul
         operation=payload.operation,
         markdown=markdown,
         latex=latex,
-        tables=[{"name": "cell_qc", "rows": cell_rows}, {"name": "gene_qc", "rows": gene_rows}],
+        tables=[
+            {"name": "cell_qc", "rows": cell_rows},
+            {"name": "gene_qc", "rows": gene_rows},
+        ],
         values={
             "n_cells": int(counts.shape[0]),
             "n_genes": int(counts.shape[1]),
@@ -561,7 +586,9 @@ def _single_cell_qc(payload: ScientificAnalysisInput) -> ScientificAnalysisResul
 def _quantum_pauli(payload: ScientificAnalysisInput) -> ScientificAnalysisResult:
     import numpy as np
 
-    pauli = str(payload.data.get("operator") or payload.data.get("pauli") or "X").upper()
+    pauli = str(
+        payload.data.get("operator") or payload.data.get("pauli") or "X"
+    ).upper()
     matrices = {
         "X": np.asarray([[0, 1], [1, 0]], dtype=complex),
         "Y": np.asarray([[0, -1j], [1j, 0]], dtype=complex),
@@ -602,7 +629,9 @@ def _quantum_pauli(payload: ScientificAnalysisInput) -> ScientificAnalysisResult
     out_dir = _artifact_dir(payload)
     if out_dir is not None:
         json_path = out_dir / "quantum_pauli_invariants.json"
-        json_path.write_text(json.dumps(values, indent=2, sort_keys=True), encoding="utf-8")
+        json_path.write_text(
+            json.dumps(values, indent=2, sort_keys=True), encoding="utf-8"
+        )
         artifacts.append(
             ScientificArtifact(
                 path=str(json_path),
@@ -659,7 +688,11 @@ def _publication_plot(payload: ScientificAnalysisInput) -> ScientificAnalysisRes
         data_path = out_dir / "plot_data.csv"
         pd.DataFrame({x_label: x, y_label: y}).to_csv(data_path, index=False)
         artifacts.append(
-            ScientificArtifact(path=str(data_path), kind="csv", description="Data used to render the plot.")
+            ScientificArtifact(
+                path=str(data_path),
+                kind="csv",
+                description="Data used to render the plot.",
+            )
         )
 
         fig, ax = plt.subplots(figsize=(6, 4))
@@ -678,7 +711,9 @@ def _publication_plot(payload: ScientificAnalysisInput) -> ScientificAnalysisRes
         fig.savefig(png_path, dpi=180)
         plt.close(fig)
         artifacts.append(
-            ScientificArtifact(path=str(png_path), kind="png", description="Matplotlib static plot.")
+            ScientificArtifact(
+                path=str(png_path), kind="png", description="Matplotlib static plot."
+            )
         )
 
         if _module_available("plotly"):
@@ -690,17 +725,27 @@ def _publication_plot(payload: ScientificAnalysisInput) -> ScientificAnalysisRes
             elif chart_type == "bar":
                 plotly_fig = px.bar(df, x=x_label, y=y_label, title=title)
             else:
-                plotly_fig = px.line(df, x=x_label, y=y_label, title=title, markers=True)
+                plotly_fig = px.line(
+                    df, x=x_label, y=y_label, title=title, markers=True
+                )
             html_path = out_dir / "publication_plot.html"
             plotly_fig.write_html(html_path, include_plotlyjs=True, full_html=True)
             artifacts.append(
-                ScientificArtifact(path=str(html_path), kind="html", description="Standalone interactive Plotly plot.")
+                ScientificArtifact(
+                    path=str(html_path),
+                    kind="html",
+                    description="Standalone interactive Plotly plot.",
+                )
             )
 
     markdown = (
         f"Generated a **{chart_type}** plot with **{len(x)} points**. "
         "The output includes the source data table and static manuscript figure"
-        + (" plus an interactive Plotly HTML artifact." if _module_available("plotly") else ".")
+        + (
+            " plus an interactive Plotly HTML artifact."
+            if _module_available("plotly")
+            else "."
+        )
     )
     latex = (
         "\\subsubsection{Plot generation}\n"

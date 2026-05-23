@@ -10,6 +10,7 @@ cannot silently bias its own scores.
 The actual model call is encapsulated in ``LLMJudge._call_judge`` so
 unit tests can mock it without any network I/O.
 """
+
 from __future__ import annotations
 
 import statistics
@@ -159,7 +160,13 @@ class LLMJudge:
             )
         elif any(
             key in llm_config.name
-            for key in ["deepseek-ai/", "Qwen/", "meta-llama/", "moonshotai/", "nvidia/"]
+            for key in [
+                "deepseek-ai/",
+                "Qwen/",
+                "meta-llama/",
+                "moonshotai/",
+                "nvidia/",
+            ]
         ):
             client = cast(Any, ChatOpenAI)(
                 model=llm_config.name,
@@ -172,7 +179,9 @@ class LLMJudge:
                 openai_api_base="https://router.huggingface.co/v1",
             )
         else:
-            raise ValueError(f"No chat provider configured for judge model {llm_config.name!r}.")
+            raise ValueError(
+                f"No chat provider configured for judge model {llm_config.name!r}."
+            )
 
         result = await cast(Any, client).ainvoke([HumanMessage(content=prompt)])
         text = getattr(result, "content", "") or ""

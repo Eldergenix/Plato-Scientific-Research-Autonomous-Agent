@@ -59,7 +59,7 @@ jobs:
             plato/novelty \
             plato/loop \
             plato/domain \
-            plato/observability.py
+            plato/observability
 
       - name: Mypy (loose — legacy modules)
         # Pre-Phase-1 code is not yet fully typed. Reported but does not

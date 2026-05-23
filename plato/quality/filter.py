@@ -9,6 +9,7 @@ Rejection precedence — retraction wins. A retracted source is rejected
 even if its venue is on the allowlist, because retraction is a hard signal
 about the work itself, while venue is a heuristic about provenance.
 """
+
 from __future__ import annotations
 
 import logging

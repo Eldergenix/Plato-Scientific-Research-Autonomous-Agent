@@ -18,6 +18,7 @@ Design notes
   importing ``plato.retrieval.sources.arxiv`` is enough to make
   ``"arxiv"`` show up in :data:`plato.retrieval.ADAPTER_REGISTRY`.
 """
+
 from __future__ import annotations
 
 import logging

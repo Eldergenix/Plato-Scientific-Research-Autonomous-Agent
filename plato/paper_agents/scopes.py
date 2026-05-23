@@ -14,6 +14,7 @@ scope so that incremental migration does not require widening the list.
 Until that refactor lands, only the ``temp/`` paths see writes; the
 ``paper/`` paths are inert.
 """
+
 from __future__ import annotations
 
 from plato.io import FileScope

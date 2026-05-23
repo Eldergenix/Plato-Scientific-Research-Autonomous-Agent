@@ -8,6 +8,7 @@ so the test is fast, deterministic, and free of LLM/network dependencies. The
 behavior under test is purely the LangGraph checkpoint contract that
 ``make_checkpointer`` plugs into.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -93,8 +94,7 @@ def test_memory_checkpointer_does_not_persist_across_instances():
     snapshot = graph_second.get_state(config=config)
 
     assert snapshot.values == {}, (
-        "MemorySaver must not leak state across instances; "
-        f"got {snapshot.values!r}."
+        f"MemorySaver must not leak state across instances; got {snapshot.values!r}."
     )
     assert snapshot.created_at is None
 
@@ -130,10 +130,7 @@ def test_two_threads_isolated(tmp_path: Path):
     )
     assert out_a2 == {"counter": 6}
 
-    snap_b_after = graph_resumed.get_state(
-        config={"configurable": {"thread_id": "B"}}
-    )
+    snap_b_after = graph_resumed.get_state(config={"configurable": {"thread_id": "B"}})
     assert snap_b_after.values == {"counter": 1}, (
-        "Mutating thread A must not affect thread B; "
-        f"got B={snap_b_after.values!r}."
+        f"Mutating thread A must not affect thread B; got B={snap_b_after.values!r}."
     )

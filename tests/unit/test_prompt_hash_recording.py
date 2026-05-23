@@ -1,4 +1,5 @@
 """R9 — verify LLM_call / LLM_call_stream record sha256(prompt) when a recorder is in scope."""
+
 from __future__ import annotations
 
 import hashlib

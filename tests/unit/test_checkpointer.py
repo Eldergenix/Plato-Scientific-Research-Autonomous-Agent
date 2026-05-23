@@ -1,4 +1,5 @@
 """Phase 1 — R2: make_checkpointer() factory."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -83,6 +84,7 @@ def test_unknown_backend_raises():
 def _sqlite_available() -> bool:
     try:
         import langgraph.checkpoint.sqlite  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -102,5 +104,7 @@ class _no_warn:
     def __exit__(self, *a):
         result = self._cm.__exit__(*a)
         runtime = [w for w in self._caught if issubclass(w.category, RuntimeWarning)]
-        assert not runtime, f"unexpected RuntimeWarning(s): {[str(w.message) for w in runtime]}"
+        assert not runtime, (
+            f"unexpected RuntimeWarning(s): {[str(w.message) for w in runtime]}"
+        )
         return result

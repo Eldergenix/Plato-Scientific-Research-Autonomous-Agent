@@ -6,11 +6,19 @@ from dotenv import load_dotenv
 # Whitelist of attribute names that may be read/written via [] subscripts.
 # Without this, ``keys["OPENAI_API_KEY"]`` would silently set/return None on
 # a typo'd attribute name and the user would never notice.
-_ALLOWED_KEYS = frozenset({
-    "ANTHROPIC", "GEMINI", "OPENAI", "HUGGINGFACE", "PERPLEXITY",
-    "SEMANTIC_SCHOLAR", "LANGFUSE_PUBLIC", "LANGFUSE_SECRET",
-    "LANGFUSE_HOST",
-})
+_ALLOWED_KEYS = frozenset(
+    {
+        "ANTHROPIC",
+        "GEMINI",
+        "OPENAI",
+        "HUGGINGFACE",
+        "PERPLEXITY",
+        "SEMANTIC_SCHOLAR",
+        "LANGFUSE_PUBLIC",
+        "LANGFUSE_SECRET",
+        "LANGFUSE_HOST",
+    }
+)
 
 # Backwards-compatible aliases. Pre-iter-2 callers indexed via the env-var
 # spelling ("OPENAI_API_KEY", "GOOGLE_API_KEY", etc.). Translating those
@@ -61,23 +69,24 @@ class KeyManager(BaseModel):
     LANGFUSE_HOST: str | None = ""
 
     def get_keys_from_env(self) -> None:
-
         load_dotenv()
 
-        self.OPENAI           = os.getenv("OPENAI_API_KEY")
-        self.GEMINI           = os.getenv("GOOGLE_API_KEY")
-        self.ANTHROPIC        = os.getenv("ANTHROPIC_API_KEY") #not strictly needed
-        self.HUGGINGFACE      = (
+        self.OPENAI = os.getenv("OPENAI_API_KEY")
+        self.GEMINI = os.getenv("GOOGLE_API_KEY")
+        self.ANTHROPIC = os.getenv("ANTHROPIC_API_KEY")  # not strictly needed
+        self.HUGGINGFACE = (
             os.getenv("HUGGINGFACE_API_KEY")
             or os.getenv("HUGGINGFACE_HUB_TOKEN")
             or os.getenv("HF_TOKEN")
         )
-        self.PERPLEXITY       = os.getenv("PERPLEXITY_API_KEY") #only for citations
-        self.SEMANTIC_SCHOLAR = os.getenv("SEMANTIC_SCHOLAR_KEY") #only for fast semantic scholar
+        self.PERPLEXITY = os.getenv("PERPLEXITY_API_KEY")  # only for citations
+        self.SEMANTIC_SCHOLAR = os.getenv(
+            "SEMANTIC_SCHOLAR_KEY"
+        )  # only for fast semantic scholar
         # Optional observability — only consumed if `langfuse` is installed.
-        self.LANGFUSE_PUBLIC  = os.getenv("LANGFUSE_PUBLIC_KEY")
-        self.LANGFUSE_SECRET  = os.getenv("LANGFUSE_SECRET_KEY")
-        self.LANGFUSE_HOST    = os.getenv("LANGFUSE_HOST")
+        self.LANGFUSE_PUBLIC = os.getenv("LANGFUSE_PUBLIC_KEY")
+        self.LANGFUSE_SECRET = os.getenv("LANGFUSE_SECRET_KEY")
+        self.LANGFUSE_HOST = os.getenv("LANGFUSE_HOST")
 
     def clear(self) -> None:
         """Wipe every cached key value back to None.

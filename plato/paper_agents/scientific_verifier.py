@@ -223,9 +223,7 @@ def _reference_validation_stats(
     if not validation_report:
         return 0, 0, 0.0, None
     total = int(
-        validation_report.get("total_references")
-        or validation_report.get("total")
-        or 0
+        validation_report.get("total_references") or validation_report.get("total") or 0
     )
     verified = int(
         validation_report.get("verified_references")

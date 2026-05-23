@@ -7,6 +7,7 @@ contains a DOI, it returns verifiable bibliographic metadata from
 OpenCitations' public Meta API; otherwise it returns an empty list without
 touching the network.
 """
+
 from __future__ import annotations
 
 import re

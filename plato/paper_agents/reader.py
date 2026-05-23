@@ -174,7 +174,7 @@ def preprocess_node(state: GraphState, config: RunnableConfig):
         if file.is_file():
             # Compute hash
             with open(file, "rb") as fh:
-                file_hash = hashlib.md5(fh.read()).hexdigest()
+                file_hash = hashlib.sha256(fh.read()).hexdigest()
 
             if file_hash in hash_dict:
                 repeated_dir.mkdir(exist_ok=True)

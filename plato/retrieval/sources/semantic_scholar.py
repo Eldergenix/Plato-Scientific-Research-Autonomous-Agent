@@ -14,6 +14,7 @@ Reads ``SEMANTIC_SCHOLAR_KEY`` from the environment for the higher
 rate-limit tier; without a key the public endpoint still works (with
 stricter limits).
 """
+
 from __future__ import annotations
 
 import os
@@ -43,7 +44,7 @@ def _read_api_key() -> str | None:
     return None
 
 
-def _extract_doi(external_ids: dict[str, Any] | None) -> str | None:
+def _extract_doi(external_ids: Any) -> str | None:
     """Pull a normalized DOI out of Semantic Scholar's ``externalIds`` block."""
     if not isinstance(external_ids, dict):
         return None
@@ -53,7 +54,7 @@ def _extract_doi(external_ids: dict[str, Any] | None) -> str | None:
     return normalize_doi(raw)
 
 
-def _extract_arxiv_id(external_ids: dict[str, Any] | None) -> str | None:
+def _extract_arxiv_id(external_ids: Any) -> str | None:
     """Pull an arXiv id out of ``externalIds``; strip the ``arXiv:`` prefix."""
     if not isinstance(external_ids, dict):
         return None
@@ -130,7 +131,9 @@ class SemanticScholarAdapter:
             arxiv_id = _extract_arxiv_id(external)
             authors = _extract_authors(item.get("authors"))
             year = item.get("year") if isinstance(item.get("year"), int) else None
-            abstract = item.get("abstract") if isinstance(item.get("abstract"), str) else None
+            abstract = (
+                item.get("abstract") if isinstance(item.get("abstract"), str) else None
+            )
             url = item.get("url") if isinstance(item.get("url"), str) else None
             venue = item.get("venue") if isinstance(item.get("venue"), str) else None
             pdf_url = _extract_pdf_url(item.get("openAccessPdf"))

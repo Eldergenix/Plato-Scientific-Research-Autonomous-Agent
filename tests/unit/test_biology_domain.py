@@ -1,4 +1,5 @@
 """Phase 2/5 — biology DomainProfile is registered alongside astro."""
+
 from __future__ import annotations
 
 from plato.domain import get_domain, list_domains

@@ -1,4 +1,5 @@
 """Unit tests for :mod:`plato.retrieval.sources.europe_pmc`."""
+
 from __future__ import annotations
 
 from typing import Any

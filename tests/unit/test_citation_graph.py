@@ -1,4 +1,5 @@
 """Phase 5 / Workflow #7 — tests for the OpenAlex citation-graph expansion."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -45,7 +46,9 @@ def _work_payload(
     return payload
 
 
-def _response(payload: dict[str, Any], url: str = "https://api.openalex.org/works") -> httpx.Response:
+def _response(
+    payload: dict[str, Any], url: str = "https://api.openalex.org/works"
+) -> httpx.Response:
     return httpx.Response(200, json=payload, request=httpx.Request("GET", url))
 
 
@@ -279,9 +282,7 @@ async def test_expand_citations_dedup_across_seeds() -> None:
         raise AssertionError(f"Unexpected URL: {url}")
 
     with patch("httpx.AsyncClient.get", new=AsyncMock(side_effect=_fake_get)):
-        out = await expand_citations(
-            [seed_a, seed_b], direction="referenced_works"
-        )
+        out = await expand_citations([seed_a, seed_b], direction="referenced_works")
 
     assert {s.openalex_id for s in out} == {"WSHARED"}
     assert len(out) == 1

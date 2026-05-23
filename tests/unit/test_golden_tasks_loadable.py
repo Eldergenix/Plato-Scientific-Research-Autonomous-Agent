@@ -1,4 +1,5 @@
 """Programmatic sweep over evals/golden/*.json — catches typos in any one file."""
+
 from __future__ import annotations
 
 import json
@@ -20,7 +21,9 @@ def _golden_paths() -> list[Path]:
 def test_golden_directory_has_at_least_five_tasks():
     """R7 acceptance criterion: at least 5 golden tasks ship in-repo."""
     paths = _golden_paths()
-    assert len(paths) >= 5, f"expected ≥5 golden tasks, got {len(paths)}: {[p.name for p in paths]}"
+    assert len(paths) >= 5, (
+        f"expected ≥5 golden tasks, got {len(paths)}: {[p.name for p in paths]}"
+    )
 
 
 @pytest.mark.parametrize("path", _golden_paths(), ids=lambda p: p.stem)

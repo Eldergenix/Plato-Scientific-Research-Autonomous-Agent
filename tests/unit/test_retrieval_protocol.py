@@ -1,4 +1,5 @@
 """Phase 2 contract tests for the SourceAdapter protocol and registry."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone

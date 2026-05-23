@@ -16,6 +16,7 @@ on Ctrl-C. Git is treated as an *optional* checkpoint store: if ``git``
 is unavailable or the project_dir isn't a repo, the loop logs a warning
 once and runs without commits.
 """
+
 from __future__ import annotations
 
 import inspect
@@ -250,7 +251,9 @@ class ResearchLoop:
             return f"max_iters reached ({self.max_iters})"
         elapsed_h = (time.monotonic() - started_at) / 3600.0
         if elapsed_h >= self.time_budget_hours:
-            return f"time budget exceeded ({elapsed_h:.2f}h >= {self.time_budget_hours}h)"
+            return (
+                f"time budget exceeded ({elapsed_h:.2f}h >= {self.time_budget_hours}h)"
+            )
         cost = self._cumulative_cost()
         if cost >= self.max_cost_usd:
             return f"cost cap reached ({cost:.2f} >= {self.max_cost_usd})"
@@ -288,7 +291,9 @@ class ResearchLoop:
         self._ensure_branch()
 
         try:
-            self._prev_sigint_handler = signal.signal(signal.SIGINT, self._handle_interrupt)
+            self._prev_sigint_handler = signal.signal(
+                signal.SIGINT, self._handle_interrupt
+            )
         except (ValueError, OSError):
             # signal() raises ValueError if not in main thread; that's fine for tests.
             self._prev_sigint_handler = None

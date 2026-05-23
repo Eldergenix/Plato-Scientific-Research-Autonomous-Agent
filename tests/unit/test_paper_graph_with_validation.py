@@ -5,6 +5,7 @@ The full paper graph should compile cleanly with the new
 and ``evidence_matrix_node`` registered, and the citation router should
 keep both branches (citations on/off) routable.
 """
+
 from __future__ import annotations
 
 from langgraph.checkpoint.memory import MemorySaver

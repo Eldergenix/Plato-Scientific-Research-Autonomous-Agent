@@ -13,6 +13,7 @@ through ``flush()`` to the on-disk ``manifest.json``. If anyone ever
 breaks the hand-off between the LLM call site and the recorder, this
 test goes red.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -43,7 +44,11 @@ def _build_state(
       - ``state['recorder']`` — the optional ManifestRecorder
     """
     return {
-        "llm": {"llm": fake_llm, "max_output_tokens": 1_000_000, "stream_verbose": False},
+        "llm": {
+            "llm": fake_llm,
+            "max_output_tokens": 1_000_000,
+            "stream_verbose": False,
+        },
         "tokens": {"i": 0, "o": 0, "ti": 0, "to": 0},
         "files": {
             "LLM_calls": str(project_dir / "llm_calls.txt"),
@@ -171,7 +176,9 @@ def test_recorder_failure_is_swallowed_so_paper_run_proceeds(tmp_path: Path) -> 
         def update(self, **fields: Any) -> None:
             raise RuntimeError("disk full")
 
-    state = _build_state(project, recorder=_BadRecorder(), fake_llm=_fake_llm_with_invoke())
+    state = _build_state(
+        project, recorder=_BadRecorder(), fake_llm=_fake_llm_with_invoke()
+    )
     # Must not raise.
     _, content = LLM_call("hello", state, node_name="will_fail")
     assert content == "ok"

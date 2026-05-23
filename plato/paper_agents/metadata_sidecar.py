@@ -94,7 +94,16 @@ def _normalize_references(references: list[Any] | None) -> list[dict[str, Any]]:
         if not isinstance(ref, dict):
             continue
         entry: dict[str, Any] = {}
-        for field in ("doi", "arxiv_id", "arxiv", "title", "authors", "year", "url", "venue"):
+        for field in (
+            "doi",
+            "arxiv_id",
+            "arxiv",
+            "title",
+            "authors",
+            "year",
+            "url",
+            "venue",
+        ):
             v = ref.get(field)
             if v:
                 entry[field] = v

@@ -6,6 +6,7 @@ not a substitute for sandboxing model output — they are a first-line
 filter so calling code can decide whether to drop, flag, or quote a
 suspicious span before feeding it into a prompt.
 """
+
 from __future__ import annotations
 
 import re
@@ -48,7 +49,7 @@ _ROLE_HIJACK_PHRASES = (
 _BASE64_RE = re.compile(r"[A-Za-z0-9+/=]{201,}")
 # Unicode "tag" block U+E0000..U+E007F (used for invisible tag-character
 # attacks) plus U+202E (right-to-left override).
-_HIDDEN_UNICODE_RE = re.compile(r"[\U000E0000-\U000E007F‮]")
+_HIDDEN_UNICODE_RE = re.compile(r"[\U000E0000-\U000E007F\u202e]")
 
 
 def detect_injection_signals(text: str) -> list[str]:
