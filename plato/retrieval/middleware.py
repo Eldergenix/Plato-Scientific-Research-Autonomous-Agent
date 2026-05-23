@@ -533,7 +533,7 @@ class RetrievalClient:
                 kwargs["headers"] = headers
             if params is not None:
                 kwargs["params"] = params
-            return await self._client.get(url, **kwargs)  # type: ignore[union-attr]
+            return await self._client.get(url, **kwargs)
 
         try:
             if self._backoff is not None:

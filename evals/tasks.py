@@ -9,6 +9,7 @@ without touching Python.
 The harness loads every JSON file in the directory, validates each
 against ``GoldenTask``, and feeds the resulting list into ``EvalRunner``.
 """
+
 from __future__ import annotations
 
 import json
@@ -74,9 +75,7 @@ class GoldenTask(BaseModel):
         if isinstance(obj, dict) and isinstance(obj.get("gold_sources"), list):
             obj = {
                 **obj,
-                "gold_sources": [
-                    GoldSource.from_any(g) for g in obj["gold_sources"]
-                ],
+                "gold_sources": [GoldSource.from_any(g) for g in obj["gold_sources"]],
             }
         return super().model_validate(obj, *args, **kwargs)
 

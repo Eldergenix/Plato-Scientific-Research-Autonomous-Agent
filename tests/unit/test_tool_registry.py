@@ -1,4 +1,5 @@
 """§5.4 tests — typed Tool registry, permission gates, and built-in registrations."""
+
 from __future__ import annotations
 
 import asyncio

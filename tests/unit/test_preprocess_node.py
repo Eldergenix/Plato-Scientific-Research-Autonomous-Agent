@@ -5,8 +5,12 @@ from plato.langgraph_agents.reader import preprocess_node
 def test_preprocess_literature_returns_initialized_literature_state(tmp_path):
     input_dir = tmp_path / INPUT_FILES
     input_dir.mkdir()
-    (input_dir / DESCRIPTION_FILE).write_text("Synthetic classification benchmark", encoding="utf-8")
-    (input_dir / IDEA_FILE).write_text("Compare logistic regression and random forest.", encoding="utf-8")
+    (input_dir / DESCRIPTION_FILE).write_text(
+        "Synthetic classification benchmark", encoding="utf-8"
+    )
+    (input_dir / IDEA_FILE).write_text(
+        "Compare logistic regression and random forest.", encoding="utf-8"
+    )
 
     state = {
         "task": "literature",
@@ -40,7 +44,9 @@ def test_preprocess_literature_returns_initialized_literature_state(tmp_path):
 def test_preprocess_referee_accepts_seeded_idea_state(tmp_path):
     input_dir = tmp_path / INPUT_FILES
     input_dir.mkdir()
-    (input_dir / DESCRIPTION_FILE).write_text("Synthetic classification benchmark", encoding="utf-8")
+    (input_dir / DESCRIPTION_FILE).write_text(
+        "Synthetic classification benchmark", encoding="utf-8"
+    )
 
     state = {
         "task": "referee",

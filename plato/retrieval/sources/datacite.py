@@ -5,6 +5,7 @@ Hits the public DataCite REST API for DOI metadata. DataCite covers
 datasets, software, reports, preprints, and other citable research outputs
 that often do not show up cleanly in article-only indexes.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -120,7 +121,9 @@ def _extract_venue(attrs: dict[str, Any]) -> str | None:
 
     types = attrs.get("types")
     if isinstance(types, dict):
-        return _text(types.get("resourceTypeGeneral")) or _text(types.get("resourceType"))
+        return _text(types.get("resourceTypeGeneral")) or _text(
+            types.get("resourceType")
+        )
     return None
 
 

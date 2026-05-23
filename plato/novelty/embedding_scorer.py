@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import os
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
 from pydantic import BaseModel, Field
@@ -47,9 +47,9 @@ class OpenAIEmbeddingBackend:
         self.model = model
         self.name = f"openai:{model}"
         self._api_key = api_key or os.getenv("OPENAI_API_KEY")
-        self._client = None
+        self._client: Any | None = None
 
-    def _get_client(self):
+    def _get_client(self) -> Any:
         if self._client is not None:
             return self._client
         try:
@@ -60,11 +60,6 @@ class OpenAIEmbeddingBackend:
                 "Install plato with `pip install plato[novelty]` or "
                 "`pip install openai`."
             ) from exc
-        if openai is None:
-            raise ImportError(
-                "OpenAIEmbeddingBackend requires the 'openai' package; "
-                "the import resolved to None."
-            )
         self._client = openai.OpenAI(api_key=self._api_key)
         return self._client
 
@@ -94,7 +89,9 @@ class StubEmbeddingBackend:
         # Python's built-in ``hash``, which is salted per-process.
         out: list[float] = []
         for i in range(self.dim):
-            h = hashlib.sha1(f"{text}|{i}".encode("utf-8")).digest()
+            h = hashlib.sha1(
+                f"{text}|{i}".encode("utf-8"), usedforsecurity=False
+            ).digest()
             out.append(int.from_bytes(h[:4], "big") % 1000 / 1000.0)
         return out
 

@@ -11,6 +11,7 @@ expanded forms without needing a curated alias map.
 ``score`` is currently 0/1 but is the seam where ranked tiers (e.g. flagship
 vs. workshop) would land later.
 """
+
 from __future__ import annotations
 
 from typing import Iterable

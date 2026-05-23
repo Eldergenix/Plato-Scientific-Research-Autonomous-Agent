@@ -1,0 +1,8 @@
+# Safety check still reads the legacy v2 policy format. The open database does
+# not expose severity data for filtering, so this file exists to keep advisory
+# reports reproducible while pip-audit enforces the dependency CVE gate.
+security:
+    ignore-cvss-severity-below: 0
+    ignore-cvss-unknown-severity: False
+    ignore-vulnerabilities: {}
+    continue-on-vulnerability-error: False

@@ -1,4 +1,5 @@
 """Phase 2 (R4) tests for the arXiv ``SourceAdapter``."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, Mock, patch

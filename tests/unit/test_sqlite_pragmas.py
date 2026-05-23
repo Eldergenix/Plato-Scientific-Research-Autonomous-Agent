@@ -14,6 +14,7 @@ These tests pin the four PRAGMAs the iter-18 hardening sets so a
 future refactor that swaps the connection setup can't silently regress
 the contract.
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -32,6 +33,7 @@ from plato.state.checkpointer import (
 def _sqlite_saver_available() -> bool:
     try:
         import langgraph.checkpoint.sqlite  # noqa: F401
+
         return True
     except ImportError:
         return False

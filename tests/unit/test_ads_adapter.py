@@ -4,6 +4,7 @@ Tests must never make real network calls — :mod:`httpx.AsyncClient.get` is
 patched on each test that exercises the request path. Token state is
 controlled per-test via ``monkeypatch``.
 """
+
 from __future__ import annotations
 
 import json
@@ -59,7 +60,9 @@ async def test_search_parses_sample_json(monkeypatch: pytest.MonkeyPatch) -> Non
 
     captured: dict[str, Any] = {}
 
-    async def fake_get(self: httpx.AsyncClient, url: str, headers: dict[str, str] | None = None):
+    async def fake_get(
+        self: httpx.AsyncClient, url: str, headers: dict[str, str] | None = None
+    ):
         captured["url"] = url
         captured["headers"] = headers or {}
         request = httpx.Request("GET", url)

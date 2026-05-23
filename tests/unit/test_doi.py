@@ -1,4 +1,5 @@
 """Unit tests for :mod:`plato.retrieval.doi`."""
+
 from __future__ import annotations
 
 import pytest
@@ -74,10 +75,7 @@ def test_parse_doi_invalid(raw: str | None) -> None:
 
 
 def test_normalize_doi_strips_whitespace_and_url() -> None:
-    assert (
-        normalize_doi("   https://doi.org/10.1234/ABC.def   ")
-        == "10.1234/abc.def"
-    )
+    assert normalize_doi("   https://doi.org/10.1234/ABC.def   ") == "10.1234/abc.def"
 
 
 def test_normalize_doi_none_passthrough() -> None:

@@ -20,10 +20,13 @@ def _state(tmp_path: Path, *, methods: str, results: str) -> GraphState:
     paper.mkdir(parents=True)
     artifacts.mkdir(parents=True)
     (artifacts / "metrics.csv").write_text("x,y\n1,2\n", encoding="utf-8")
-    return cast(GraphState, {
-        "files": {"Folder": str(project), "Paper_folder": str(paper)},
-        "paper": {"Methods": methods, "Results": results},
-    })
+    return cast(
+        GraphState,
+        {
+            "files": {"Folder": str(project), "Paper_folder": str(paper)},
+            "paper": {"Methods": methods, "Results": results},
+        },
+    )
 
 
 def test_scientific_verification_passes_when_provenance_is_present(tmp_path: Path):
@@ -100,25 +103,31 @@ def test_scientific_verification_accepts_executor_artifacts(tmp_path: Path):
     )
     (figure_artifacts / "roc_auc_by_scenario.png").write_bytes(b"png")
 
-    state = cast(GraphState, {
-        "files": {"Folder": str(project), "Paper_folder": str(paper)},
-        "paper": {
-            "Methods": (
-                "We ran a deterministic synthetic tabular benchmark with "
-                "logistic regression and random forest classifiers using seed 1729."
-            ),
-            "Results": (
-                "Validation checks passed. ROC-AUC was 0.99 and calibration "
-                "figures were exported as PNG and CSV artifacts."
-            ),
+    state = cast(
+        GraphState,
+        {
+            "files": {"Folder": str(project), "Paper_folder": str(paper)},
+            "paper": {
+                "Methods": (
+                    "We ran a deterministic synthetic tabular benchmark with "
+                    "logistic regression and random forest classifiers using seed 1729."
+                ),
+                "Results": (
+                    "Validation checks passed. ROC-AUC was 0.99 and calibration "
+                    "figures were exported as PNG and CSV artifacts."
+                ),
+            },
         },
-    })
+    )
 
     report = build_scientific_verification_report(state)
 
     assert report.passed is True
     assert "sklearn_synthetic" in report.detected_operations
-    assert "plots/sklearn_synthetic/synthetic_benchmark_metrics.csv" in report.artifact_inventory
+    assert (
+        "plots/sklearn_synthetic/synthetic_benchmark_metrics.csv"
+        in report.artifact_inventory
+    )
     assert "input_files/plots/roc_auc_by_scenario.png" in report.artifact_inventory
 
 
@@ -128,19 +137,22 @@ def test_scientific_verification_accepts_reference_backed_quantitative_claims(
     project = tmp_path / "project"
     paper = project / "paper"
     paper.mkdir(parents=True)
-    state = cast(GraphState, {
-        "files": {"Folder": str(project), "Paper_folder": str(paper)},
-        "paper": {
-            "Methods": "We synthesized the cited clinical trial evidence.",
-            "Results": "Prior work reported a hazard ratio of 0.72 across 421 patients.",
+    state = cast(
+        GraphState,
+        {
+            "files": {"Folder": str(project), "Paper_folder": str(paper)},
+            "paper": {
+                "Methods": "We synthesized the cited clinical trial evidence.",
+                "Results": "Prior work reported a hazard ratio of 0.72 across 421 patients.",
+            },
+            "validation_report": {
+                "total_references": 3,
+                "verified_references": 3,
+                "validation_rate": 1.0,
+                "accuracy_gate": {"passed": True},
+            },
         },
-        "validation_report": {
-            "total_references": 3,
-            "verified_references": 3,
-            "validation_rate": 1.0,
-            "accuracy_gate": {"passed": True},
-        },
-    })
+    )
 
     report = build_scientific_verification_report(state)
 
@@ -155,20 +167,25 @@ def test_scientific_verification_finds_scientific_analysis_artifacts(
 ):
     project = tmp_path / "project"
     paper = project / "paper"
-    artifacts = project / "scientific_analysis_artifacts" / "linear_regression_deadbeef01"
+    artifacts = (
+        project / "scientific_analysis_artifacts" / "linear_regression_deadbeef01"
+    )
     paper.mkdir(parents=True)
     artifacts.mkdir(parents=True)
     (artifacts / "metrics.json").write_text('{"r2": 0.99}', encoding="utf-8")
-    state = cast(GraphState, {
-        "files": {"Folder": str(project), "Paper_folder": str(paper)},
-        "paper": {
-            "Methods": (
-                "We used run_scientific_analysis linear_regression with CSV JSON "
-                "outputs, reproducibility metadata, validation checks, and random seed 7."
-            ),
-            "Results": "Validation R^2 was 0.99.",
+    state = cast(
+        GraphState,
+        {
+            "files": {"Folder": str(project), "Paper_folder": str(paper)},
+            "paper": {
+                "Methods": (
+                    "We used run_scientific_analysis linear_regression with CSV JSON "
+                    "outputs, reproducibility metadata, validation checks, and random seed 7."
+                ),
+                "Results": "Validation R^2 was 0.99.",
+            },
         },
-    })
+    )
 
     report = build_scientific_verification_report(state)
 

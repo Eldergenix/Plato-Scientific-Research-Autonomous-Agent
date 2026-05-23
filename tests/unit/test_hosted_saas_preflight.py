@@ -108,15 +108,25 @@ def test_env_examples_include_strict_hosted_readiness_contract() -> None:
     frontend_env = FRONTEND_ENV_EXAMPLE.read_text(encoding="utf-8")
 
     assert "check-local-production-gates.sh" in root_env
-    assert "check-hosted-saas-preflight.sh --railway --service plato --environment production --hosted-required --strict" in root_env
-    assert "--variables-file /path/to/railway-variables.json" in README.read_text(encoding="utf-8")
+    assert (
+        "check-hosted-saas-preflight.sh --railway --service plato --environment production --hosted-required --strict"
+        in root_env
+    )
+    assert "--variables-file /path/to/railway-variables.json" in README.read_text(
+        encoding="utf-8"
+    )
     for name in complete_hosted_values():
         assert f"{name}=" in root_env
         if (
             name.startswith("NEXT_PUBLIC_")
             or name.startswith("CLERK_")
             or name.startswith("PLATO_HOSTED_")
-            or name in {"PLATO_AUTH_PROVIDER", "PLATO_BACKEND_PROXY_SECRET", "PLATO_PUBLIC_ORIGIN"}
+            or name
+            in {
+                "PLATO_AUTH_PROVIDER",
+                "PLATO_BACKEND_PROXY_SECRET",
+                "PLATO_PUBLIC_ORIGIN",
+            }
         ):
             assert f"{name}=" in frontend_env
     assert "PLATO_HOSTED_USAGE_LEDGER_PATH=" in root_env
@@ -146,7 +156,10 @@ def test_hosted_saas_preflight_fails_when_proxy_secret_missing() -> None:
 
     assert result.returncode == 1
     assert "PLATO_BACKEND_PROXY_SECRET: missing" in result.stdout
-    assert "PLATO_BACKEND_PROXY_SECRET must be set to at least 32 characters" in result.stdout
+    assert (
+        "PLATO_BACKEND_PROXY_SECRET must be set to at least 32 characters"
+        in result.stdout
+    )
 
 
 def test_hosted_saas_preflight_requires_durable_publication_database() -> None:
@@ -200,7 +213,9 @@ def test_hosted_saas_preflight_allows_warnings_without_strict_mode() -> None:
 
     assert result.returncode == 0
     assert "Warnings:" in result.stdout
-    assert "PLATO_PUBLIC_ORIGIN should be the canonical HTTPS app origin" in result.stdout
+    assert (
+        "PLATO_PUBLIC_ORIGIN should be the canonical HTTPS app origin" in result.stdout
+    )
     assert "OK: hosted SaaS/Lab required variables are present." in result.stdout
 
 
@@ -237,7 +252,10 @@ def test_hosted_saas_preflight_rejects_bad_public_origin_and_proxy_url() -> None
 
     assert result.returncode == 1
     assert "PLATO_PUBLIC_ORIGIN must be an HTTPS origin without a path" in result.stdout
-    assert "NEXT_PUBLIC_CLERK_PROXY_URL must point to the /__clerk proxy path" in result.stdout
+    assert (
+        "NEXT_PUBLIC_CLERK_PROXY_URL must point to the /__clerk proxy path"
+        in result.stdout
+    )
 
 
 def test_hosted_saas_preflight_rejects_proxy_url_on_wrong_host() -> None:
@@ -247,7 +265,10 @@ def test_hosted_saas_preflight_rejects_proxy_url_on_wrong_host() -> None:
     result = run_checker(values)
 
     assert result.returncode == 1
-    assert "NEXT_PUBLIC_CLERK_PROXY_URL must use the PLATO_PUBLIC_ORIGIN host" in result.stdout
+    assert (
+        "NEXT_PUBLIC_CLERK_PROXY_URL must use the PLATO_PUBLIC_ORIGIN host"
+        in result.stdout
+    )
 
 
 def test_hosted_saas_preflight_rejects_external_clerk_app_paths() -> None:
@@ -347,8 +368,16 @@ def write_fake_railway_and_curl(
     curl_failures_before_success: int = 0,
 ) -> dict[str, str]:
     values_for_fixture = values or complete_hosted_values()
-    json_exit = railway_variables_exit if railway_variables_json_exit is None else railway_variables_json_exit
-    kv_exit = railway_variables_exit if railway_variables_kv_exit is None else railway_variables_kv_exit
+    json_exit = (
+        railway_variables_exit
+        if railway_variables_json_exit is None
+        else railway_variables_json_exit
+    )
+    kv_exit = (
+        railway_variables_exit
+        if railway_variables_kv_exit is None
+        else railway_variables_kv_exit
+    )
     values_file = tmp_path / "values.json"
     values_kv_file = tmp_path / "values.env"
     railway_args_file = tmp_path / "railway-args.txt"
@@ -373,9 +402,9 @@ def write_fake_railway_and_curl(
                 "#!/usr/bin/env bash",
                 'printf "%s\\n" "$@" >> "$RAILWAY_ARGS_FILE"',
                 'if [ "$1" = "variables" ]; then',
-                '  attempts=0',
+                "  attempts=0",
                 '  if [ -f "$RAILWAY_VARIABLE_ATTEMPTS_FILE" ]; then attempts="$(cat "$RAILWAY_VARIABLE_ATTEMPTS_FILE")"; fi',
-                '  attempts=$((attempts + 1))',
+                "  attempts=$((attempts + 1))",
                 '  printf "%s" "$attempts" > "$RAILWAY_VARIABLE_ATTEMPTS_FILE"',
                 f"  if [ \"$attempts\" -le '{railway_variables_failures_before_success}' ]; then echo 'Transient fetch failure' >&2; exit 8; fi",
                 '  if printf "%s\\n" "$@" | grep -qx -- "--json"; then',
@@ -411,9 +440,9 @@ def write_fake_railway_and_curl(
                 '  if [ "$1" = "-o" ]; then out="$2"; shift; fi',
                 "  shift",
                 "done",
-                'attempts=0',
+                "attempts=0",
                 'if [ -f "$CURL_ATTEMPTS_FILE" ]; then attempts="$(cat "$CURL_ATTEMPTS_FILE")"; fi',
-                'attempts=$((attempts + 1))',
+                "attempts=$((attempts + 1))",
                 'printf "%s" "$attempts" > "$CURL_ATTEMPTS_FILE"',
                 f"if [ \"$attempts\" -le '{curl_failures_before_success}' ]; then",
                 '  printf \'{"status":"error","code":404,"message":"Application not found"}\' > "$out"',
@@ -421,20 +450,20 @@ def write_fake_railway_and_curl(
                 "  exit 0",
                 "fi",
                 'case "$url" in',
-                '  */api/v1/health)',
+                "  */api/v1/health)",
                 '    printf \'{"ok":true,"demo_mode":false}\' > "$out"',
                 "    printf '200'",
                 "    ;;",
-                '  */api/v1/auth/me)',
-                f"    printf {auth_body!r} > \"$out\"",
+                "  */api/v1/auth/me)",
+                f'    printf {auth_body!r} > "$out"',
                 f"    printf '{auth_status}'",
                 "    ;;",
-                '  */api/v1/projects)',
+                "  */api/v1/projects)",
                 '    printf \'{"code":"auth_required"}\' > "$out"',
                 f"    printf '{projects_status}'",
                 "    ;;",
-                '  */login|*/settings/account|*/settings/organization|*/settings/billing)',
-                f"    printf {page_body!r} > \"$out\"",
+                "  */login|*/settings/account|*/settings/organization|*/settings/billing)",
+                f'    printf {page_body!r} > "$out"',
                 f"    printf '{page_status}'",
                 "    ;;",
                 "  *)",
@@ -462,7 +491,9 @@ def write_fake_railway_and_curl(
     }
 
 
-def test_production_readiness_passes_with_clean_live_checks_and_logs(tmp_path: Path) -> None:
+def test_production_readiness_passes_with_clean_live_checks_and_logs(
+    tmp_path: Path,
+) -> None:
     env = write_fake_railway_and_curl(tmp_path)
 
     result = run_readiness(
@@ -501,7 +532,10 @@ def test_production_readiness_fails_on_log_markers(tmp_path: Path) -> None:
     assert "deployment log scan found warning/error markers" in result.stderr
     assert "Next steps to clear production blockers" in result.stdout
     assert "Hosted variables look complete in Railway." in result.stdout
-    assert "Deploy the current checkout once so local warning fixes reach Railway" in result.stdout
+    assert (
+        "Deploy the current checkout once so local warning fixes reach Railway"
+        in result.stdout
+    )
     assert "railway up" in result.stdout
     assert "railway variables --service plato" not in result.stdout
     assert "0123456789abcdef0123456789abcdef" not in result.stdout
@@ -513,7 +547,9 @@ def test_production_readiness_fails_on_preflight_warnings(tmp_path: Path) -> Non
     values.pop("PLATO_PUBLIC_ORIGIN")
     env = write_fake_railway_and_curl(tmp_path, values=values)
 
-    result = run_readiness("--skip-logs", "--origin", "https://discovering.app", env=env)
+    result = run_readiness(
+        "--skip-logs", "--origin", "https://discovering.app", env=env
+    )
 
     assert result.returncode == 1
     assert "Warnings:" in result.stdout
@@ -524,7 +560,9 @@ def test_production_readiness_fails_on_preflight_warnings(tmp_path: Path) -> Non
         in result.stdout
     )
     assert "PLATO_PUBLIC_ORIGIN=https://discovering.app" in result.stdout
-    assert "PLATO_BACKEND_PROXY_SECRET=\"$(openssl rand -base64 32)\"" not in result.stdout
+    assert (
+        'PLATO_BACKEND_PROXY_SECRET="$(openssl rand -base64 32)"' not in result.stdout
+    )
     assert "NEXT_PUBLIC_PLATO_HOSTED_BILLING=enabled" not in result.stdout
     assert "Production readiness checks failed." in result.stderr
 
@@ -534,15 +572,25 @@ def test_production_readiness_does_not_guess_variables_when_railway_read_fails(
 ) -> None:
     env = write_fake_railway_and_curl(tmp_path, railway_variables_exit=7)
 
-    result = run_readiness("--skip-logs", "--origin", "https://discovering.app", env=env)
+    result = run_readiness(
+        "--skip-logs", "--origin", "https://discovering.app", env=env
+    )
 
     assert result.returncode == 1
     assert "failed to read Railway variables" in result.stderr
     assert "Restore Railway CLI variable access" in result.stdout
     assert "cannot safely infer which hosted variables are missing" in result.stdout
-    assert "railway variables --json --service plato --environment production" in result.stdout
-    assert "PLATO_BACKEND_PROXY_SECRET=\"$(openssl rand -base64 32)\"" not in result.stdout
-    assert "railway variables --service plato --environment production --skip-deploys" not in result.stdout
+    assert (
+        "railway variables --json --service plato --environment production"
+        in result.stdout
+    )
+    assert (
+        'PLATO_BACKEND_PROXY_SECRET="$(openssl rand -base64 32)"' not in result.stdout
+    )
+    assert (
+        "railway variables --service plato --environment production --skip-deploys"
+        not in result.stdout
+    )
 
 
 def test_production_readiness_retries_transient_railway_variable_read(
@@ -553,7 +601,9 @@ def test_production_readiness_retries_transient_railway_variable_read(
         railway_variables_failures_before_success=2,
     )
 
-    result = run_readiness("--skip-logs", "--origin", "https://discovering.app", env=env)
+    result = run_readiness(
+        "--skip-logs", "--origin", "https://discovering.app", env=env
+    )
 
     assert result.returncode == 0
     assert "OK: production readiness checks passed." in result.stdout
@@ -570,7 +620,9 @@ def test_production_readiness_falls_back_to_kv_when_json_variables_fail(
         railway_variables_kv_exit=0,
     )
 
-    result = run_readiness("--skip-logs", "--origin", "https://discovering.app", env=env)
+    result = run_readiness(
+        "--skip-logs", "--origin", "https://discovering.app", env=env
+    )
 
     assert result.returncode == 0
     assert "OK: production readiness checks passed." in result.stdout
@@ -579,7 +631,9 @@ def test_production_readiness_falls_back_to_kv_when_json_variables_fail(
     assert "0123456789abcdef0123456789abcdef" not in result.stdout
 
 
-def test_production_readiness_accepts_local_json_variables_snapshot(tmp_path: Path) -> None:
+def test_production_readiness_accepts_local_json_variables_snapshot(
+    tmp_path: Path,
+) -> None:
     env = write_fake_railway_and_curl(tmp_path, railway_variables_exit=7)
     variables_file = tmp_path / "manual-variables.json"
     variables_file.write_text(json.dumps(complete_hosted_values()), encoding="utf-8")
@@ -600,7 +654,9 @@ def test_production_readiness_accepts_local_json_variables_snapshot(tmp_path: Pa
     assert "0123456789abcdef0123456789abcdef" not in result.stdout
 
 
-def test_production_readiness_accepts_local_kv_variables_snapshot(tmp_path: Path) -> None:
+def test_production_readiness_accepts_local_kv_variables_snapshot(
+    tmp_path: Path,
+) -> None:
     env = write_fake_railway_and_curl(tmp_path, railway_variables_exit=7)
     variables_file = tmp_path / "manual-variables.env"
     variables_file.write_text(
@@ -653,15 +709,20 @@ def test_production_readiness_remediation_lists_each_missing_hosted_variable(
     values.pop("NEXT_PUBLIC_PLATO_HOSTED_BILLING")
     env = write_fake_railway_and_curl(tmp_path, values=values)
 
-    result = run_readiness("--skip-logs", "--origin", "https://discovering.app", env=env)
+    result = run_readiness(
+        "--skip-logs", "--origin", "https://discovering.app", env=env
+    )
 
     assert result.returncode == 1
     assert "Next steps to clear production blockers" in result.stdout
-    assert "PLATO_BACKEND_PROXY_SECRET=\"$(openssl rand -base64 32)\"" in result.stdout
+    assert 'PLATO_BACKEND_PROXY_SECRET="$(openssl rand -base64 32)"' in result.stdout
     assert "PLATO_BACKEND_PROXY_SECRET=${PLATO_BACKEND_PROXY_SECRET}" in result.stdout
     assert "PLATO_PUBLIC_ORIGIN=https://discovering.app" in result.stdout
     assert "NEXT_PUBLIC_PLATO_HOSTED_BILLING=enabled" in result.stdout
-    assert "Deploy the current checkout once after those variables are set" in result.stdout
+    assert (
+        "Deploy the current checkout once after those variables are set"
+        in result.stdout
+    )
     assert "0123456789abcdef0123456789abcdef" not in result.stdout
 
 
@@ -672,11 +733,19 @@ def test_production_readiness_remediation_does_not_hide_secret_preflight_failure
     values.pop("CLERK_SECRET_KEY")
     env = write_fake_railway_and_curl(tmp_path, values=values)
 
-    result = run_readiness("--skip-logs", "--origin", "https://discovering.app", env=env)
+    result = run_readiness(
+        "--skip-logs", "--origin", "https://discovering.app", env=env
+    )
 
     assert result.returncode == 1
-    assert "CLERK_SECRET_KEY is missing or does not look like a Clerk secret key" in result.stdout
-    assert "Resolve the hosted preflight errors or warnings printed above." in result.stdout
+    assert (
+        "CLERK_SECRET_KEY is missing or does not look like a Clerk secret key"
+        in result.stdout
+    )
+    assert (
+        "Resolve the hosted preflight errors or warnings printed above."
+        in result.stdout
+    )
     assert "Secret-valued variables such as Clerk keys" in result.stdout
     assert "Hosted variables look complete in Railway." not in result.stdout
     assert "railway variables --service plato" not in result.stdout
@@ -691,7 +760,9 @@ def test_production_readiness_fails_when_signed_out_auth_status_is_not_required(
         auth_body='{"user_id":"stale-local-user","auth_required":false}',
     )
 
-    result = run_readiness("--skip-logs", "--origin", "https://discovering.app", env=env)
+    result = run_readiness(
+        "--skip-logs", "--origin", "https://discovering.app", env=env
+    )
 
     assert result.returncode == 1
     assert "HTTP 200 https://discovering.app/api/v1/auth/me" in result.stdout
@@ -706,7 +777,9 @@ def test_production_readiness_retries_transient_application_not_found_routes(
 ) -> None:
     env = write_fake_railway_and_curl(tmp_path, curl_failures_before_success=2)
 
-    result = run_readiness("--skip-logs", "--origin", "https://discovering.app", env=env)
+    result = run_readiness(
+        "--skip-logs", "--origin", "https://discovering.app", env=env
+    )
 
     assert result.returncode == 0
     assert "OK: production readiness checks passed." in result.stdout
@@ -720,36 +793,52 @@ def test_production_readiness_reports_stable_application_not_found_routes(
 ) -> None:
     env = write_fake_railway_and_curl(tmp_path, curl_failures_before_success=99)
 
-    result = run_readiness("--skip-logs", "--origin", "https://discovering.app", env=env)
+    result = run_readiness(
+        "--skip-logs", "--origin", "https://discovering.app", env=env
+    )
 
     assert result.returncode == 1
     assert "HTTP 404 https://discovering.app/api/v1/health" in result.stdout
     assert "health check failed" in result.stderr
-    assert "Restore the public domain routing/deployment for https://discovering.app" in result.stdout
+    assert (
+        "Restore the public domain routing/deployment for https://discovering.app"
+        in result.stdout
+    )
     assert "Reconnect the domain to the plato service" in result.stdout
-    assert "Routes that ended in Railway Application not found after retries:" in result.stdout
+    assert (
+        "Routes that ended in Railway Application not found after retries:"
+        in result.stdout
+    )
     assert "       - /api/v1/health" in result.stdout
     assert "       - /settings/billing" in result.stdout
     assert "railway up" in result.stdout
 
 
-def test_production_readiness_fails_when_projects_boundary_is_public(tmp_path: Path) -> None:
+def test_production_readiness_fails_when_projects_boundary_is_public(
+    tmp_path: Path,
+) -> None:
     env = write_fake_railway_and_curl(tmp_path, projects_status=200)
 
-    result = run_readiness("--skip-logs", "--origin", "https://discovering.app", env=env)
+    result = run_readiness(
+        "--skip-logs", "--origin", "https://discovering.app", env=env
+    )
 
     assert result.returncode == 1
     assert "HTTP 200 https://discovering.app/api/v1/projects" in result.stdout
     assert "expected unauthenticated /api/v1/projects to return 401" in result.stderr
 
 
-def test_production_readiness_fails_when_hosted_pages_render_errors(tmp_path: Path) -> None:
+def test_production_readiness_fails_when_hosted_pages_render_errors(
+    tmp_path: Path,
+) -> None:
     env = write_fake_railway_and_curl(
         tmp_path,
         page_body="<html><body>Application error</body></html>",
     )
 
-    result = run_readiness("--skip-logs", "--origin", "https://discovering.app", env=env)
+    result = run_readiness(
+        "--skip-logs", "--origin", "https://discovering.app", env=env
+    )
 
     assert result.returncode == 1
     assert "HTTP 200 https://discovering.app/settings/account" in result.stdout
@@ -765,7 +854,9 @@ def test_production_readiness_fails_when_hosted_pages_render_saas_fallbacks(
         page_body='<html><body data-clerk-publishable-key="pk_test"><section data-testid="billing-auth-config-error">hosted config error</section></body></html>',
     )
 
-    result = run_readiness("--skip-logs", "--origin", "https://discovering.app", env=env)
+    result = run_readiness(
+        "--skip-logs", "--origin", "https://discovering.app", env=env
+    )
 
     assert result.returncode == 1
     assert "HTTP 200 https://discovering.app/settings/billing" in result.stdout
@@ -776,13 +867,17 @@ def test_production_readiness_fails_when_hosted_pages_render_saas_fallbacks(
     assert "Production readiness checks failed." in result.stderr
 
 
-def test_production_readiness_fails_when_hosted_page_marker_is_missing(tmp_path: Path) -> None:
+def test_production_readiness_fails_when_hosted_page_marker_is_missing(
+    tmp_path: Path,
+) -> None:
     env = write_fake_railway_and_curl(
         tmp_path,
         page_body="<html><body>self-hosted fallback</body></html>",
     )
 
-    result = run_readiness("--skip-logs", "--origin", "https://discovering.app", env=env)
+    result = run_readiness(
+        "--skip-logs", "--origin", "https://discovering.app", env=env
+    )
 
     assert result.returncode == 1
     assert "HTTP 200 https://discovering.app/login" in result.stdout

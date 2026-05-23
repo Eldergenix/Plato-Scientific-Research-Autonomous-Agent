@@ -15,6 +15,7 @@ To run locally::
     export PLATO_TEST_E2B=1
     pytest tests/integration/test_e2b_executor_live.py
 """
+
 from __future__ import annotations
 
 import os

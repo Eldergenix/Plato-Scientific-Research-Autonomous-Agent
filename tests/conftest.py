@@ -10,6 +10,7 @@ that depend on import order.
 The fixture is **autouse** at function scope so every individual test
 gets a clean slate without having to opt in.
 """
+
 from __future__ import annotations
 
 import pytest

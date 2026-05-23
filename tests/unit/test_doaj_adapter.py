@@ -1,4 +1,5 @@
 """Unit tests for :mod:`plato.retrieval.sources.doaj`."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -22,7 +23,10 @@ SAMPLE_PAYLOAD: dict[str, Any] = {
                     {"id": "10.7554/eLife.101531", "type": "doi"},
                     {"id": "2050-084X", "type": "eissn"},
                 ],
-                "journal": {"title": "eLife", "publisher": "eLife Sciences Publications Ltd"},
+                "journal": {
+                    "title": "eLife",
+                    "publisher": "eLife Sciences Publications Ltd",
+                },
                 "year": "2025",
                 "author": [{"name": "Yutaro Hama"}, {"name": "Yuko Fujioka"}],
                 "title": "The triad interaction of ULK1, ATG13, and FIP200",
@@ -83,7 +87,10 @@ async def test_search_skips_unusable_rows() -> None:
     payload = {
         "results": [
             {"id": "missing-bibjson"},
-            {"id": "missing-title", "bibjson": {"identifier": [{"type": "doi", "id": "10.1/x"}]}},
+            {
+                "id": "missing-title",
+                "bibjson": {"identifier": [{"type": "doi", "id": "10.1/x"}]},
+            },
             {"id": "valid", "bibjson": {"title": "Valid open article"}},
         ]
     }

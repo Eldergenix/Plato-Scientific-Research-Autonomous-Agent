@@ -1,4 +1,5 @@
 """Phase 2 — R5: SQLite store contract tests."""
+
 from __future__ import annotations
 
 import sqlite3
@@ -225,7 +226,5 @@ def test_wal_mode_is_active(tmp_path: Path):
     db = tmp_path / "research.db"
     Store(db)  # connecting triggers PRAGMA journal_mode=WAL
     with sqlite3.connect(str(db)) as conn:
-        (mode,) = conn.execute(
-            "SELECT * FROM pragma_journal_mode()"
-        ).fetchone()
+        (mode,) = conn.execute("SELECT * FROM pragma_journal_mode()").fetchone()
     assert mode.lower() == "wal"

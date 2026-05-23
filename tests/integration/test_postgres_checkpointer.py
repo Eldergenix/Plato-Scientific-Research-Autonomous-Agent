@@ -15,6 +15,7 @@ default ``pytest`` run on a developer laptop and the lightweight
 
 To run locally: ``docker run -p 5432:5432 -e POSTGRES_PASSWORD=plato postgres:16; export PLATO_POSTGRES_DSN=postgresql://postgres:plato@localhost:5432/postgres; pytest tests/integration/test_postgres_checkpointer.py``.
 """
+
 from __future__ import annotations
 
 import os
@@ -178,12 +179,8 @@ def test_two_threads_isolated(fresh_postgres: str):
     with make_checkpointer("postgres", dsn=fresh_postgres) as cp_resumed:
         graph_resumed = _build(cp_resumed, halt_after=1)
 
-        snap_a = graph_resumed.get_state(
-            config={"configurable": {"thread_id": "A"}}
-        )
-        snap_b = graph_resumed.get_state(
-            config={"configurable": {"thread_id": "B"}}
-        )
+        snap_a = graph_resumed.get_state(config={"configurable": {"thread_id": "A"}})
+        snap_b = graph_resumed.get_state(config={"configurable": {"thread_id": "B"}})
         assert snap_a.values == {"counter": 1}
         assert snap_b.values == {"counter": 1}
 

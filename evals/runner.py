@@ -17,6 +17,7 @@ Stream A pipeline writes alongside.
 The runner can be invoked via ``python -m evals.runner`` or
 ``python -m evals`` for the nightly CI workflow.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -213,15 +214,15 @@ class EvalRunner:
         # 1. Pull the drafted artifacts from the project_dir.
         idea_text = _read_artifact(project_dir, "input_files/idea.md")
         method_text = _read_artifact(project_dir, "input_files/methods.md")
-        paper_text = _read_artifact(project_dir, "paper/paper_v1.tex") or (idea_text or "") + "\n" + (method_text or "")
+        paper_text = _read_artifact(project_dir, "paper/paper_v1.tex") or (
+            idea_text or ""
+        ) + "\n" + (method_text or "")
 
         # 2. Compute keyword recall against task.expected_idea_keywords.
         if task.expected_idea_keywords and (idea_text or method_text):
             haystack = ((idea_text or "") + " " + (method_text or "")).lower()
             hits = sum(
-                1
-                for kw in task.expected_idea_keywords
-                if kw.lower() in haystack
+                1 for kw in task.expected_idea_keywords if kw.lower() in haystack
             )
             metrics.keyword_recall = hits / len(task.expected_idea_keywords)
 
@@ -251,9 +252,7 @@ class EvalRunner:
                 # rigor + grounding into novelty_consistency as a
                 # stand-in until a dedicated novelty signal lands.
                 metrics.paper_coherence = float(result.coherence)
-                metrics.referee_severity_max = max(
-                    0.0, 5.0 - float(result.rigor)
-                )
+                metrics.referee_severity_max = max(0.0, 5.0 - float(result.rigor))
                 metrics.novelty_consistency = float(result.novelty)
             except Exception:  # noqa: BLE001
                 # Surface as a tool error but don't kill the panel.
@@ -372,8 +371,7 @@ def _validation_rate_from_artifacts(project_dir: Path) -> float:
     valid = sum(
         1
         for r in rows
-        if (r.get("doi_resolved") or r.get("arxiv_resolved"))
-        and not r.get("retracted")
+        if (r.get("doi_resolved") or r.get("arxiv_resolved")) and not r.get("retracted")
     )
     return valid / len(rows)
 
@@ -437,9 +435,7 @@ def _summarize(results: dict[str, Metrics]) -> dict[str, Any]:
     ]
     for field in fields:
         values = [
-            getattr(m, field)
-            for m in results.values()
-            if getattr(m, field) is not None
+            getattr(m, field) for m in results.values() if getattr(m, field) is not None
         ]
         if not values:
             summary["metrics"][field] = {"count": 0}

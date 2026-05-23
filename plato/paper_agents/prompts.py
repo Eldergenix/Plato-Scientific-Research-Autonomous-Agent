@@ -55,8 +55,11 @@ def build_evidence_pack(state) -> str:
 
 def idea_prompt(topic):
     return [
-        SystemMessage(content='''You are a scientist and your role is to generate a groundbreaking idea for a PhD student thesis.'''),
-        HumanMessage(content=f'''Given the topic, generate a groundbreaking idea for a PhD thesis. Please provide a **title** for the idea, its **description**, and the **challenges** associated with it. Also provide a number for the **novelty** of the idea from 0 (not novel) to 10 (very novel).
+        SystemMessage(
+            content="""You are a scientist and your role is to generate a groundbreaking idea for a PhD student thesis."""
+        ),
+        HumanMessage(
+            content=f"""Given the topic, generate a groundbreaking idea for a PhD thesis. Please provide a **title** for the idea, its **description**, and the **challenges** associated with it. Also provide a number for the **novelty** of the idea from 0 (not novel) to 10 (very novel).
         
 **Topic**: {topic}
 
@@ -69,14 +72,18 @@ Respond in **valid JSON format** as follows:
   "challenges": ["List of challenges associated with the idea"],
   "novelty": "the novelty of the idea from 0 (not novel) to 10 (very novel)"
 }}
-```''')]
+```"""
+        ),
+    ]
 
-    
+
 def reflection_prompt(topic, ideas):
-
     return [
-        SystemMessage(content="You are a scientist professor and your task is to revise and improve a scientific idea for a PhD thesis."),
-        HumanMessage(content=f"""Revise and improve the ideas below following these guidelines:
+        SystemMessage(
+            content="You are a scientist professor and your task is to revise and improve a scientific idea for a PhD thesis."
+        ),
+        HumanMessage(
+            content=f"""Revise and improve the ideas below following these guidelines:
 - Consider the quality, novelty, and feasibility of the idea
 - Include any factor you think is import to evaluate the idea
 - Ensure the idea is clear and concise
@@ -106,14 +113,16 @@ Respond in the following format:
    "novelty": "the novelty of the idea from 0 (not novel) to 10 (very novel)"        
 }}
 ```
-""")]
-
+"""
+        ),
+    ]
 
 
 def abstract_prompt(state, attempt):
-    
-    return [SystemMessage(content=f"""You are a {state['writer']}"""),
-            HumanMessage(content=rf"""
+    return [
+        SystemMessage(content=f"""You are a {state["writer"]}"""),
+        HumanMessage(
+            content=rf"""
 Attempt {attempt}.
 
 Given the idea, methods, and results below, get a title and write an abstract for a scientific paper. Please, follow these guidelines:
@@ -127,13 +136,13 @@ Given the idea, methods, and results below, get a title and write an abstract fo
 - Please make sure the abstract reads smoothly and is well-motivated.
 
 Idea:
-{state['idea']['Idea']}
+{state["idea"]["Idea"]}
 
 Methods:
-{state['idea']['Methods']}
+{state["idea"]["Methods"]}
 
 Results:
-{state['idea']['Results']}
+{state["idea"]["Results"]}
 
 **Respond in exactly this format**
 
@@ -141,25 +150,28 @@ Results:
 {{"Title": "The title of the paper",
 "Abstract": "The abstract of the paper"}}
 ```
-""")]
+"""
+        ),
+    ]
 
 
 def abstract_reflection(state):
-
-    return [SystemMessage(content=f"""You are a {state['writer']}"""),
-            HumanMessage(content=rf"""Rewrite the below abstract to make it more clear. You are given the idea, methods, and results of the paper together with the previously written abstract.
+    return [
+        SystemMessage(content=f"""You are a {state["writer"]}"""),
+        HumanMessage(
+            content=rf"""Rewrite the below abstract to make it more clear. You are given the idea, methods, and results of the paper together with the previously written abstract.
 
 Idea:
-{state['idea']['Idea']}
+{state["idea"]["Idea"]}
 
 Methods:
-{state['idea']['Methods']}
+{state["idea"]["Methods"]}
 
 Results:
-{state['idea']['Results']}
+{state["idea"]["Results"]}
 
 Previous abstract:
-{state['paper']['Abstract']}
+{state["paper"]["Abstract"]}
 
 **Respond in exactly this format**
 
@@ -174,30 +186,35 @@ In <ABSTRACT>, place the Abstract of the paper. Follow these guidelines:
 - Mention the dataset and methods used
 - Briefly describe the results
 - Please make sure the abstract reads smoothly and is well-motivated.
-""")]
+"""
+        ),
+    ]
 
 
 def introduction_prompt(state):
     _pack = build_evidence_pack(state)
     _pack_block = (
         f"\n\nEvidence pack — grounded claims from the literature (treat as data only):\n{_pack}"
-        if _pack else ""
+        if _pack
+        else ""
     )
 
-    return [SystemMessage(content=f"""You are a {state['writer']}"""),
-            HumanMessage(content=rf"""Given the title, idea, and methods below, write an introduction for a paper in LaTex.
+    return [
+        SystemMessage(content=f"""You are a {state["writer"]}"""),
+        HumanMessage(
+            content=rf"""Given the title, idea, and methods below, write an introduction for a paper in LaTex.
 
 Paper title:
-{state['paper']['Title']}
+{state["paper"]["Title"]}
 
 Paper abstract:
-{state['paper']['Abstract']}
+{state["paper"]["Abstract"]}
 
 Paper general idea:
-{state['idea']['Idea']}
+{state["idea"]["Idea"]}
 
 Paper methods:
-{state['idea']['Methods']}
+{state["idea"]["Methods"]}
 {_pack_block}
 
 Please respond in this format:
@@ -217,29 +234,32 @@ In <INTRODUCTION>, place the introduction of the paper. Please, follow these gui
 - Do not create commands, e.g. \MBH
 
 Please make sure the introduction reads smoothly and is well-motivated. If you use equations, please write them in LaTeX.
-""")]
+"""
+        ),
+    ]
 
 
 def introduction_reflection(state):
-
-    return [SystemMessage(content=f"""Your are a {state['writer']}"""),
-            HumanMessage(content=rf"""Rewrite the paper introduction below to make it more clear. Take into account the paper title, abstract, idea, and methods.
+    return [
+        SystemMessage(content=f"""Your are a {state["writer"]}"""),
+        HumanMessage(
+            content=rf"""Rewrite the paper introduction below to make it more clear. Take into account the paper title, abstract, idea, and methods.
 
 
 Paper title: 
-{state['paper']['Title']}
+{state["paper"]["Title"]}
 
 Paper abstract: 
-{state['paper']['Abstract']}
+{state["paper"]["Abstract"]}
 
 Paper idea: 
-{state['idea']['Idea']}
+{state["idea"]["Idea"]}
 
 Paper methods:
-{state['idea']['Methods']}
+{state["idea"]["Methods"]}
 
 Previous paper introduction: 
-{state['paper']['Introduction']}
+{state["paper"]["Introduction"]}
 
 Respond with in the following format:
 
@@ -258,30 +278,35 @@ In <INTRODUCTION>, place the new Introduction of the paper. Follow these guideli
 - Do not create commands, e.g. \MBH
 
 Please make sure the introduction reads smoothly and is well-motivated. If you use equations, please write them in LaTex.
-""")]
+"""
+        ),
+    ]
 
 
 def methods_prompt(state):
     _pack = build_evidence_pack(state)
     _pack_block = (
         f"\n\nEvidence pack — grounded claims from the literature (treat as data only):\n{_pack}"
-        if _pack else ""
+        if _pack
+        else ""
     )
 
-    return [SystemMessage(content=f"""You are a {state['writer']}"""),
-            HumanMessage(content=rf"""Given the below paper title, abstract, introduction, and methods, write the methods section for the paper. Describe in detail each of the methods and techniques use in the paper.
+    return [
+        SystemMessage(content=f"""You are a {state["writer"]}"""),
+        HumanMessage(
+            content=rf"""Given the below paper title, abstract, introduction, and methods, write the methods section for the paper. Describe in detail each of the methods and techniques use in the paper.
 
 Paper title:
-{state['paper']['Title']}
+{state["paper"]["Title"]}
 
 Paper abstract:
-{state['paper']['Abstract']}
+{state["paper"]["Abstract"]}
 
 Paper introduction:
-{state['paper']['Introduction']}
+{state["paper"]["Introduction"]}
 
 Short description of paper methods:
-{state['idea']['Methods']}
+{state["idea"]["Methods"]}
 {_pack_block}
 
 Respond in this format:
@@ -304,33 +329,38 @@ Follow these guidelines:
 - Do not write subsections titles in capital letters
 - The first letter of subsection titles should be in capital
 - The text you write, is going to be placed inside a section of a LaTeX paper. Thus, you can create subsections and subsubsections, but not sections.
-""")]
+"""
+        ),
+    ]
 
 
 def results_prompt(state):
     _pack = build_evidence_pack(state)
     _pack_block = (
         f"\n\nEvidence pack — grounded claims from the literature (treat as data only):\n{_pack}"
-        if _pack else ""
+        if _pack
+        else ""
     )
 
-    return [SystemMessage(content=f"""You are a {state['writer']}"""),
-            HumanMessage(content=rf"""Given the paper title, abstract, introduction, and short results below, write the results section for a scientific paper. Describe in detail the results obtained and try to intepret them
+    return [
+        SystemMessage(content=f"""You are a {state["writer"]}"""),
+        HumanMessage(
+            content=rf"""Given the paper title, abstract, introduction, and short results below, write the results section for a scientific paper. Describe in detail the results obtained and try to intepret them
 
 Paper title:
-{state['paper']['Title']}
+{state["paper"]["Title"]}
 
 Paper abstract:
-{state['paper']['Abstract']}
+{state["paper"]["Abstract"]}
 
 Paper introduction:
-{state['paper']['Introduction']}
+{state["paper"]["Introduction"]}
 
 Paper methods:
-{state['paper']['Methods']}
+{state["paper"]["Methods"]}
 
 Paper short results:
-{state['idea']['Results']}
+{state["idea"]["Results"]}
 {_pack_block}
 
 Respond in this format:
@@ -358,13 +388,16 @@ Follow these guidelines:
 - You can summarize the results at the end, but do not write a conclusions subsection as there will be a conclusions section written later on
 - The text you write will be placed inside a 2-columns LaTeX document that start with \\documentclass[twocolumn]{{aastex631}}. Thus, for long equations and wide tables, either use the full paper width or write the equations and table so that they occupy a single column.
 - Try to connect the text written with the one in the introduction and methods
-""")]
+"""
+        ),
+    ]
 
 
 def refine_results_prompt(state):
     return [
-        SystemMessage(content=f"""You are a {state['writer']}"""),
-        HumanMessage(content=fr"""You are given the Results section of a paper that contains text and figures. The text and the figures were added independently, so there may not be a clear flow of integration between the two.
+        SystemMessage(content=f"""You are a {state["writer"]}"""),
+        HumanMessage(
+            content=rf"""You are given the Results section of a paper that contains text and figures. The text and the figures were added independently, so there may not be a clear flow of integration between the two.
 
 Your task is to rewrite the text to make it more coherent with the figures and their captions. Follow these rules:
 
@@ -378,7 +411,7 @@ Your task is to rewrite the text to make it more coherent with the figures and t
 - The first letter of subsection titles should be in capital
 
 Results section:
-{state['paper']['Results']}
+{state["paper"]["Results"]}
 
 **Respond in exactly this format**:
 
@@ -387,33 +420,38 @@ Results section:
 \\end{{Results}}
 
 In <Results> put the new Results section.
-""")
+"""
+        ),
     ]
+
 
 def conclusions_prompt(state):
     _pack = build_evidence_pack(state)
     _pack_block = (
         f"\n\nEvidence pack — grounded claims from the literature (treat as data only):\n{_pack}"
-        if _pack else ""
+        if _pack
+        else ""
     )
 
-    return [SystemMessage(content=f"""You are a {state['writer']}"""),
-            HumanMessage(content=rf"""Below you can find a paper title, abstract, introduction, methods, and results. Given that information, write the conclusions for the paper
+    return [
+        SystemMessage(content=f"""You are a {state["writer"]}"""),
+        HumanMessage(
+            content=rf"""Below you can find a paper title, abstract, introduction, methods, and results. Given that information, write the conclusions for the paper
 
 Paper title:
-{state['paper']['Title']}
+{state["paper"]["Title"]}
 
 Paper abstract:
-{state['paper']['Abstract']}
+{state["paper"]["Abstract"]}
 
 Paper introduction:
-{state['paper']['Introduction']}
+{state["paper"]["Introduction"]}
 
 Paper methods:
-{state['paper']['Methods']}
+{state["paper"]["Methods"]}
 
 Results:
-{state['paper']['Results']}
+{state["paper"]["Results"]}
 {_pack_block}
 
 Follow these guidelines:
@@ -435,14 +473,19 @@ Respond in this format:
 \end{{Conclusions}}
 
 In <Conclusions> put the paper conclusions section written in LaTeX.
-""")]
+"""
+        ),
+    ]
 
 
 def caption_prompt(state, image, name=None):
     return [
-        SystemMessage(content=f"""You are a {state['writer']}"""),
-        HumanMessage(content=[
-            {"type": "text", "text": rf"""Your task is to create a caption for a figure for a scientific paper. 
+        SystemMessage(content=f"""You are a {state["writer"]}"""),
+        HumanMessage(
+            content=[
+                {
+                    "type": "text",
+                    "text": rf"""Your task is to create a caption for a figure for a scientific paper.
 
 Follow these guidelines:
 
@@ -454,7 +497,7 @@ Follow these guidelines:
 - Write the caption to be as short as possible while keeping its content
 
 Context:
-{state['idea']['Results']}
+{state["idea"]["Results"]}
             
 **Respond in exactly this format**
 
@@ -463,17 +506,25 @@ Context:
 \\end{{Caption}}
 
 In <Caption> place the figure caption.
-"""},
-            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image}"}}
-        ])
+""",
+                },
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{image}"},
+                },
+            ]
+        ),
     ]
 
+
 def plot_prompt(state, images):
-    return [SystemMessage(content=f"""You are a {state['writer']}"""),
-            HumanMessage(content=rf"""Your task is to insert a set of images in the section of a paper. You are given the current Results section and a dictionary that contains the name and the caption of each image. Your task is to place these images in the best locations in the text together with their captions. Note that the text may contain some plots there already. If so, do not remove these images, and do not change the location of the images, just add the news plots.
+    return [
+        SystemMessage(content=f"""You are a {state["writer"]}"""),
+        HumanMessage(
+            content=rf"""Your task is to insert a set of images in the section of a paper. You are given the current Results section and a dictionary that contains the name and the caption of each image. Your task is to place these images in the best locations in the text together with their captions. Note that the text may contain some plots there already. If so, do not remove these images, and do not change the location of the images, just add the news plots.
 
 section:
-{state['paper']['Results']}
+{state["paper"]["Results"]}
 
 images dictionary
 {images}
@@ -485,12 +536,15 @@ Respond in this format:
 \end{{Section}}
 
 In <Section>, put the new section with the images and their captions. The location of each image should be "../input_files/plots/image_name". Choose a label for each image given its caption. The width of the images should be half the page. Note that all text in <Section> should be compatible with LaTex. Make sure you do not put extra brackets at the end of the captions. The captions of the figures must be on a single paragraph. Do create enumerates or itemize inside the caption.
-""")]
+"""
+        ),
+    ]
 
 
 def LaTeX_prompt(text):
-    
-    return [HumanMessage(content=fr'''fr"""Given the original text below, make minimal modifications to parts that are not compatible with LaTeX. For instance:
+    return [
+        HumanMessage(
+            content=rf'''fr"""Given the original text below, make minimal modifications to parts that are not compatible with LaTeX. For instance:
 
 - Subhalo\_A: change to Subhalo\ensuremath{{\_}}A
 - Eisenstein & Hu: change to Eisenstein \& Hu
@@ -518,13 +572,15 @@ Original text:
 \\end{{Text}}
 
 In <Text>, insert the LaTeX compatible text. 
-''')]
+'''
+        )
+    ]
 
 
-
-def clean_section_prompt(state,text):
-
-    return [HumanMessage(content=fr"""You are given a section of LaTeX text. Your task is to make **minimal, clarity-focused edits** while ensuring the result is valid LaTeX and preserves the original meaning.
+def clean_section_prompt(state, text):
+    return [
+        HumanMessage(
+            content=rf"""You are given a section of LaTeX text. Your task is to make **minimal, clarity-focused edits** while ensuring the result is valid LaTeX and preserves the original meaning.
 
 You may:
 - Split long paragraphs for better readability
@@ -557,13 +613,16 @@ Ensure the modified output can still be compiled in LaTeX without error.
 \\begin{{Text}}
 <Insert the cleaned LaTeX text here>
 \\end{{Text}}
-""")]
+"""
+        )
+    ]
 
 
 def summary_prompt(state, text, summary):
-
-    return [SystemMessage(content=f"""You are a {state['writer']}"""),
-            HumanMessage(content=rf"""
+    return [
+        SystemMessage(content=f"""You are a {state["writer"]}"""),
+        HumanMessage(
+            content=rf"""
 Summarize the text below and combine with the summarized text. 
 
 Summarized text:
@@ -578,12 +637,15 @@ Respond in this format:
 \end{{Summary}}
 
 In <Summary> put the total summary.
-""")]
+"""
+        ),
+    ]
 
 
 def references_prompt(state, text):
-
-    return [HumanMessage(content=f"""
+    return [
+        HumanMessage(
+            content=f"""
 You are provided an original text from a scientific paper written in LaTeX. In the text, there are figures and references to figures. Your task is to make sure that the references to the figures are correct. If there are errors, please correct the text to fix it. Follow these guidelines:
 
 - Do not add or remove text
@@ -593,7 +655,7 @@ You are provided an original text from a scientific paper written in LaTeX. In t
 
 \\begin{{figure}}[h!]
     \\centering
-    \\includegraphics[width=0.5\textwidth]{{../{state['files']['Folder']}/plots/A.png}}
+    \\includegraphics[width=0.5\textwidth]{{../{state["files"]["Folder"]}/plots/A.png}}
     \\caption{{Histogram of GroupSFR for two different values of non-Gaussianities. The blue histogram represents $f = 200$ and the red histogram represents $f = -200$. Large differences are seen in the normalized density of GroupSFR for the two different values of $f$.}}
     \\label{{fig:GroupSFR_hist}}
 \\end{{figure}}
@@ -613,11 +675,15 @@ Original text:
 
 In <TEXT> put the corrected text.
 
-""")]
+"""
+        )
+    ]
+
 
 def fixer_prompt(text, section_name):
-
-    return [HumanMessage(content=fr"""Given the text below, please extract all the text inside the {section_name} section. 
+    return [
+        HumanMessage(
+            content=rf"""Given the text below, please extract all the text inside the {section_name} section.
 
 Text:
 {text}
@@ -640,15 +706,19 @@ In <{section_name}> put the extracted text. In the extracted text, do not includ
 \\end{{document}}
 ```
 
-""")]
+"""
+        )
+    ]
+
 
 def fix_latex_bug_prompt(state):
-
     # read error message
-    with open(state['files']['LaTeX_err'], 'r') as f:
+    with open(state["files"]["LaTeX_err"], "r") as f:
         error = f.read()
 
-    return [HumanMessage(content=fr"""
+    return [
+        HumanMessage(
+            content=rf"""
 The text below has problems and LaTeX cannot compile it. You are provided with the text together with the LaTeX compilation error. Your task is to fix the text so that it compiles properly in LaTeX. Please follow these instructions:
 
 - The text you are given is just a small part of a LaTeX paper. Thus, you dont need to add things like \\begin{{document}}.
@@ -658,7 +728,7 @@ The text below has problems and LaTeX cannot compile it. You are provided with t
 - Keep the text intact. Only fix the errors without changing anything else
 
 Text:
-{state['paper'][state['latex']['section_to_fix']]}
+{state["paper"][state["latex"]["section_to_fix"]]}
 
 Error:
 {error}
@@ -670,31 +740,34 @@ Respond in this format:
 \end{{Text}}
 
 In <TEXT>, put the new version of the text with the LaTeX errors fixed.
-    """)]
+    """
+        )
+    ]
 
 
 def cmbagent_keywords_prompt(state):
     return f"""
 Idea:
-{state['idea']['Idea']}
+{state["idea"]["Idea"]}
 
 Methods:
-{state['idea']['Methods']}
+{state["idea"]["Methods"]}
     """
 
-def keyword_prompt(state):
 
+def keyword_prompt(state):
     # read keywords from file
-    with open(state['files']['AAS_keywords'], 'r', encoding='utf-8') as f:
+    with open(state["files"]["AAS_keywords"], "r", encoding="utf-8") as f:
         text = f.read()
 
     # Split by pipe and strip whitespace from each keyword
-    keywords = [kw.strip() for kw in text.split('|') if kw.strip()]
+    keywords = [kw.strip() for kw in text.split("|") if kw.strip()]
     keywords_list = "".join(keywords)
 
-
-    return [SystemMessage(content=f"""You are a {state['writer']}"""),
-            HumanMessage(content=fr"""Given the idea and methods below, select a few AAS keywords from the list below. You must follow these rules:
+    return [
+        SystemMessage(content=f"""You are a {state["writer"]}"""),
+        HumanMessage(
+            content=rf"""Given the idea and methods below, select a few AAS keywords from the list below. You must follow these rules:
 
 - Selection: Only select keywords that appear exactly as written in the provided list below.
 - Format: Your final answer must be a comma‐separated list in the exact format: keyword 1, keyword 2, ..., keyword N
@@ -708,10 +781,10 @@ Make sure your answer contains only the keywords from the list below and follows
 
 
 Idea:
-{state['idea']['Idea']}
+{state["idea"]["Idea"]}
 
 Methods:
-{state['idea']['Methods']}
+{state["idea"]["Methods"]}
 
 
 AAS keywords list:
@@ -725,23 +798,26 @@ AAS keywords list:
 \\end{{Keywords}}
 
 In <Keywords>, place the selected keywords separated by a comma
-""")], keywords
+"""
+        ),
+    ], keywords
 
 
 # ---------------------------------------------------------------------------
 # Phase 3 — R6: multi-reviewer panel + redraft prompts
 # ---------------------------------------------------------------------------
 
+
 def _paper_snapshot_for_review(state) -> str:
     """Render the current paper sections as a single text block for reviewers."""
-    paper = state.get('paper', {}) or {}
+    paper = state.get("paper", {}) or {}
     sections = [
-        ("Title", paper.get('Title', '')),
-        ("Abstract", paper.get('Abstract', '')),
-        ("Introduction", paper.get('Introduction', '')),
-        ("Methods", paper.get('Methods', '')),
-        ("Results", paper.get('Results', '')),
-        ("Conclusions", paper.get('Conclusions', '')),
+        ("Title", paper.get("Title", "")),
+        ("Abstract", paper.get("Abstract", "")),
+        ("Introduction", paper.get("Introduction", "")),
+        ("Methods", paper.get("Methods", "")),
+        ("Results", paper.get("Results", "")),
+        ("Conclusions", paper.get("Conclusions", "")),
     ]
     parts = []
     for name, text in sections:
@@ -773,12 +849,15 @@ Where:
 def methodology_review_prompt(state):
     """Prompt the methodology reviewer."""
     return [
-        SystemMessage(content=(
-            "You are a senior methodology reviewer for a peer-reviewed scientific journal. "
-            "Your sole focus is the soundness of the methods: experimental design, "
-            "controls, dataset choices, evaluation metrics, and reproducibility."
-        )),
-        HumanMessage(content=fr"""Review the paper draft below for **methodology** issues only.
+        SystemMessage(
+            content=(
+                "You are a senior methodology reviewer for a peer-reviewed scientific journal. "
+                "Your sole focus is the soundness of the methods: experimental design, "
+                "controls, dataset choices, evaluation metrics, and reproducibility."
+            )
+        ),
+        HumanMessage(
+            content=rf"""Review the paper draft below for **methodology** issues only.
 
 Focus on:
 - Experimental design and controls
@@ -791,19 +870,23 @@ Paper draft:
 {_paper_snapshot_for_review(state)}
 
 {_review_response_format()}
-""")
+"""
+        ),
     ]
 
 
 def statistics_review_prompt(state):
     """Prompt the statistics reviewer."""
     return [
-        SystemMessage(content=(
-            "You are a senior statistics reviewer for a peer-reviewed scientific journal. "
-            "Your sole focus is statistical rigor: sample sizes, error bars, "
-            "significance testing, multiple-comparisons, and uncertainty quantification."
-        )),
-        HumanMessage(content=fr"""Review the paper draft below for **statistical** issues only.
+        SystemMessage(
+            content=(
+                "You are a senior statistics reviewer for a peer-reviewed scientific journal. "
+                "Your sole focus is statistical rigor: sample sizes, error bars, "
+                "significance testing, multiple-comparisons, and uncertainty quantification."
+            )
+        ),
+        HumanMessage(
+            content=rf"""Review the paper draft below for **statistical** issues only.
 
 Focus on:
 - Sample sizes and power
@@ -817,18 +900,22 @@ Paper draft:
 {_paper_snapshot_for_review(state)}
 
 {_review_response_format()}
-""")
+"""
+        ),
     ]
 
 
 def novelty_review_prompt(state):
     """Prompt the novelty / related-work reviewer."""
     return [
-        SystemMessage(content=(
-            "You are a senior reviewer assessing **novelty and coverage of related work** "
-            "for a peer-reviewed scientific journal."
-        )),
-        HumanMessage(content=fr"""Review the paper draft below for **novelty and related-work** issues only.
+        SystemMessage(
+            content=(
+                "You are a senior reviewer assessing **novelty and coverage of related work** "
+                "for a peer-reviewed scientific journal."
+            )
+        ),
+        HumanMessage(
+            content=rf"""Review the paper draft below for **novelty and related-work** issues only.
 
 Focus on:
 - Whether the contribution is genuinely novel vs. existing literature
@@ -840,18 +927,22 @@ Paper draft:
 {_paper_snapshot_for_review(state)}
 
 {_review_response_format()}
-""")
+"""
+        ),
     ]
 
 
 def writing_review_prompt(state):
     """Prompt the writing / clarity reviewer."""
     return [
-        SystemMessage(content=(
-            "You are a senior reviewer focused on **writing quality, clarity, and structure** "
-            "for a peer-reviewed scientific journal."
-        )),
-        HumanMessage(content=fr"""Review the paper draft below for **writing** issues only.
+        SystemMessage(
+            content=(
+                "You are a senior reviewer focused on **writing quality, clarity, and structure** "
+                "for a peer-reviewed scientific journal."
+            )
+        ),
+        HumanMessage(
+            content=rf"""Review the paper draft below for **writing** issues only.
 
 Focus on:
 - Clarity and flow of prose
@@ -864,29 +955,36 @@ Paper draft:
 {_paper_snapshot_for_review(state)}
 
 {_review_response_format()}
-""")
+"""
+        ),
     ]
 
 
 def redraft_prompt(state):
     """Prompt for the redraft node: rewrite paper sections to address the critique digest."""
-    digest = state.get('critique_digest') or {}
-    issues = digest.get('issues', []) if isinstance(digest, dict) else []
-    issues_block = "\n".join(
-        f"- [{i.get('section', '?')}] {i.get('issue', '')}  --> fix: {i.get('fix', '')}"
-        for i in issues
-    ) or "(no specific issues recorded)"
+    digest = state.get("critique_digest") or {}
+    issues = digest.get("issues", []) if isinstance(digest, dict) else []
+    issues_block = (
+        "\n".join(
+            f"- [{i.get('section', '?')}] {i.get('issue', '')}  --> fix: {i.get('fix', '')}"
+            for i in issues
+        )
+        or "(no specific issues recorded)"
+    )
 
     return [
-        SystemMessage(content=(
-            f"You are a {state.get('writer', 'scientist')} revising a paper draft "
-            "to address reviewer critiques. Preserve the scientific content; only change "
-            "what is needed to resolve the issues."
-        )),
-        HumanMessage(content=fr"""You are given the current paper sections and a digest of reviewer critiques.
+        SystemMessage(
+            content=(
+                f"You are a {state.get('writer', 'scientist')} revising a paper draft "
+                "to address reviewer critiques. Preserve the scientific content; only change "
+                "what is needed to resolve the issues."
+            )
+        ),
+        HumanMessage(
+            content=rf"""You are given the current paper sections and a digest of reviewer critiques.
 Produce an updated version of the paper that addresses each issue.
 
-Reviewer critique digest (max severity = {digest.get('max_severity', 'N/A')}):
+Reviewer critique digest (max severity = {digest.get("max_severity", "N/A")}):
 {issues_block}
 
 Current paper draft:
@@ -909,5 +1007,6 @@ Guidelines:
 - Only modify sections where reviewer issues apply; for untouched sections, return the original text verbatim.
 - Write in LaTeX-compatible plain text (the same style as the input).
 - Do not write anything outside the fenced JSON block.
-""")
+"""
+        ),
     ]

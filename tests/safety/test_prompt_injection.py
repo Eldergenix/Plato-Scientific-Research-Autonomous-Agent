@@ -12,6 +12,7 @@ node defends against that with two layers:
 This test patches the retrieval orchestrator with a single malicious
 ``Source`` and asserts both layers fire. It does NOT call any LLM.
 """
+
 from __future__ import annotations
 
 import logging
@@ -88,7 +89,9 @@ async def test_malicious_abstract_is_wrapped_and_signals_logged(caplog):
 
         # The wrapped abstract must show up in the produced paper string.
         papers_str = out["literature"]["papers"]
-        assert isinstance(papers_str, list) and papers_str, "expected at least one paper string"
+        assert isinstance(papers_str, list) and papers_str, (
+            "expected at least one paper string"
+        )
         joined = "\n".join(papers_str)
         assert '<external kind="abstract">' in joined
         assert "</external>" in joined
@@ -107,7 +110,9 @@ async def test_malicious_abstract_is_wrapped_and_signals_logged(caplog):
         assert any(
             "override_instruction" in r.getMessage() and "9999.0001" in r.getMessage()
             for r in warning_records
-        ), f"expected injection warning, got: {[r.getMessage() for r in warning_records]}"
+        ), (
+            f"expected injection warning, got: {[r.getMessage() for r in warning_records]}"
+        )
 
 
 def test_signals_detected_for_malicious_abstract():

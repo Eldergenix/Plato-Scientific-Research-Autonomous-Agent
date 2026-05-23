@@ -13,6 +13,7 @@ The filter logs (via ``logging.getLogger("plato.quality")``) the per-reason
 reject counts so downstream stages get an audit trail without changing the
 returned data shape.
 """
+
 from __future__ import annotations
 
 from .filter import QualityFilter

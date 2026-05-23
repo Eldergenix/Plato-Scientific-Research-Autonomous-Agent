@@ -1,4 +1,5 @@
 """Helpers for trajectory tests: record node-call order and check sequences."""
+
 from __future__ import annotations
 
 import inspect
@@ -20,14 +21,17 @@ class TrajectoryRecorder:
 
     def wrap(self, name: str, fn: Callable[..., Any]) -> Callable[..., Any]:
         if inspect.iscoroutinefunction(fn):
+
             async def aw(state, config):
                 self.calls.append(name)
                 return await fn(state, config)
+
             return aw
 
         def sw(state, config):
             self.calls.append(name)
             return fn(state, config)
+
         return sw
 
 

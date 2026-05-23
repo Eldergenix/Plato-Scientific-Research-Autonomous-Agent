@@ -10,6 +10,7 @@ without having to parse LaTeX. We pin:
 * ``write_paper_metadata`` is atomic — a crash mid-write must never
   leave a half-written sidecar visible — and idempotent.
 """
+
 from __future__ import annotations
 
 import json

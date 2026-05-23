@@ -6,6 +6,7 @@ column is ``OriginalPaperDOI``. We normalize DOIs to lowercase and strip
 whitespace + a leading ``doi:`` / ``https://doi.org/`` prefix so callers can
 pass DOIs from any source format and still hit the set.
 """
+
 from __future__ import annotations
 
 import csv
@@ -18,7 +19,7 @@ def _normalize_doi(doi: str) -> str:
     s = doi.strip().lower()
     for prefix in ("https://doi.org/", "http://doi.org/", "doi:"):
         if s.startswith(prefix):
-            s = s[len(prefix):]
+            s = s[len(prefix) :]
             break
     return s
 

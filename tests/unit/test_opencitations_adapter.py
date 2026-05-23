@@ -1,4 +1,5 @@
 """Unit tests for :mod:`plato.retrieval.sources.opencitations`."""
+
 from __future__ import annotations
 
 from typing import Any

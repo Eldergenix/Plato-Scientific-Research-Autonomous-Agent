@@ -5,6 +5,7 @@ Hits Europe PMC's public REST search endpoint and maps
 ``resultList.result[*]`` into :class:`plato.state.models.Source` records.
 The endpoint is public and requires no API key.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -71,7 +72,9 @@ def _extract_authors(item: dict[str, Any]) -> list[str]:
     author_string = _text(item.get("authorString"))
     if not author_string:
         return []
-    return [part.strip().rstrip(".") for part in author_string.split(",") if part.strip()]
+    return [
+        part.strip().rstrip(".") for part in author_string.split(",") if part.strip()
+    ]
 
 
 def _extract_venue(item: dict[str, Any]) -> str | None:
@@ -91,7 +94,9 @@ def _extract_venue(item: dict[str, Any]) -> str | None:
 
 def _full_text_urls(item: dict[str, Any]) -> list[dict[str, Any]]:
     full_text_list = item.get("fullTextUrlList")
-    raw = full_text_list.get("fullTextUrl") if isinstance(full_text_list, dict) else None
+    raw = (
+        full_text_list.get("fullTextUrl") if isinstance(full_text_list, dict) else None
+    )
     if not isinstance(raw, list):
         return []
     return [entry for entry in raw if isinstance(entry, dict)]
@@ -152,7 +157,9 @@ def _map_item_to_source(item: dict[str, Any]) -> Source | None:
 
     journal_info = item.get("journalInfo")
     journal_year = (
-        journal_info.get("yearOfPublication") if isinstance(journal_info, dict) else None
+        journal_info.get("yearOfPublication")
+        if isinstance(journal_info, dict)
+        else None
     )
 
     return Source(

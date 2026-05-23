@@ -46,7 +46,12 @@ def _make_state(**overrides: Any) -> dict:
             "cmbagent_keywords": False,
         },
         "tokens": {"ti": 0, "to": 0, "i": 0, "o": 0},
-        "llm": {"model": "stub", "max_output_tokens": 1024, "llm": None, "temperature": 0.0},
+        "llm": {
+            "model": "stub",
+            "max_output_tokens": 1024,
+            "llm": None,
+            "temperature": 0.0,
+        },
         "latex": {"section_to_fix": ""},
         "keys": None,
         "time": {"start": 0.0},
@@ -281,7 +286,14 @@ def test_redraft_node_updates_paper_and_increments_iteration():
     state = _make_state(
         critique_digest={
             "max_severity": 4,
-            "issues": [{"reviewer": "methodology", "section": "methods", "issue": "x", "fix": "y"}],
+            "issues": [
+                {
+                    "reviewer": "methodology",
+                    "section": "methods",
+                    "issue": "x",
+                    "fix": "y",
+                }
+            ],
             "iteration": 0,
         },
         revision_state={"iteration": 0, "max_iterations": 2},
@@ -345,7 +357,9 @@ def test_revision_loop_terminates_when_severity_drops():
         "issues": [{"section": "methods", "issue": "weak", "fix": "strengthen"}],
     }
     with patch.object(
-        reviewer_panel, "LLM_call", side_effect=_llm_call_returning(high_severity_payload)
+        reviewer_panel,
+        "LLM_call",
+        side_effect=_llm_call_returning(high_severity_payload),
     ):
         for reviewer_fn in (
             reviewer_panel.methodology_reviewer,
@@ -384,7 +398,9 @@ def test_revision_loop_terminates_when_severity_drops():
     # ---- Second reviewer pass: all severity 1 ----
     low_severity_payload = {"severity": 1, "issues": []}
     with patch.object(
-        reviewer_panel, "LLM_call", side_effect=_llm_call_returning(low_severity_payload)
+        reviewer_panel,
+        "LLM_call",
+        side_effect=_llm_call_returning(low_severity_payload),
     ):
         for reviewer_fn in (
             reviewer_panel.methodology_reviewer,

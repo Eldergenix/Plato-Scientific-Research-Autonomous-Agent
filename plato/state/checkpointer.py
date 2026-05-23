@@ -19,6 +19,7 @@ The sqlite/postgres backends are imported lazily so installs without the
 extra checkpointer packages still work — they fall back to memory with
 a one-time warning.
 """
+
 from __future__ import annotations
 
 import os
@@ -42,6 +43,7 @@ def _memory_saver():
     from langgraph.checkpoint.memory import MemorySaver
 
     return MemorySaver()
+
 
 _DEFAULT_SQLITE_PATH = "~/.plato/state.db"
 

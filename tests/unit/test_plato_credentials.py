@@ -63,7 +63,9 @@ def test_get_results_allows_sklearn_synthetic_without_hosted_model_keys(
     plato = _make_plato(tmp_path)
     plato.research.data_description = "Synthetic binary classification benchmark."
     plato.research.idea = "Compare calibrated classifiers on synthetic tabular data."
-    plato.research.methodology = "Use deterministic synthetic data and report cross-validated metrics."
+    plato.research.methodology = (
+        "Use deterministic synthetic data and report cross-validated metrics."
+    )
 
     plato.get_results(executor="sklearn_synthetic")
 

@@ -10,8 +10,17 @@ from .config import REPO_DIR  # noqa: E402
 from .domain import DomainProfile, register_domain, get_domain, list_domains  # noqa: E402
 
 __all__ = [
-    'Plato', 'Research', 'Journal', 'REPO_DIR', 'LLM', 'models', 'KeyManager',
-    'DomainProfile', 'register_domain', 'get_domain', 'list_domains',
+    "Plato",
+    "Research",
+    "Journal",
+    "REPO_DIR",
+    "LLM",
+    "models",
+    "KeyManager",
+    "DomainProfile",
+    "register_domain",
+    "get_domain",
+    "list_domains",
 ]
 
 from importlib.metadata import version, PackageNotFoundError  # noqa: E402

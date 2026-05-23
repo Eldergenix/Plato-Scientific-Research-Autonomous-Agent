@@ -10,6 +10,7 @@ The helper itself (``def LLM_call`` / ``def LLM_call_stream``) is
 exempt, as is anything inside a ``# noqa: node-name`` comment, in case a
 future reviewer panel reviewer needs a one-off bypass.
 """
+
 from __future__ import annotations
 
 import re
@@ -19,9 +20,7 @@ import pytest
 
 
 # Only scan the production package, not tests / docs / vendored LaTeX.
-_PROD_ROOTS = (
-    Path(__file__).parent.parent.parent / "plato",
-)
+_PROD_ROOTS = (Path(__file__).parent.parent.parent / "plato",)
 # Anything matching this pattern is the function declaration itself.
 _DEF_RE = re.compile(r"\bdef\s+LLM_call(_stream)?\b")
 # Anything matching this is a call site we need to inspect.
@@ -35,7 +34,9 @@ def _python_sources() -> list[Path]:
     return out
 
 
-@pytest.mark.parametrize("source_path", _python_sources(), ids=lambda p: str(p.relative_to(_PROD_ROOTS[0])))
+@pytest.mark.parametrize(
+    "source_path", _python_sources(), ids=lambda p: str(p.relative_to(_PROD_ROOTS[0]))
+)
 def test_every_llm_call_passes_node_name(source_path: Path) -> None:
     """Each ``LLM_call(...)`` / ``LLM_call_stream(...)`` call must include ``node_name=``."""
     text = source_path.read_text(encoding="utf-8", errors="ignore")
@@ -48,7 +49,11 @@ def test_every_llm_call_passes_node_name(source_path: Path) -> None:
             continue
         # Skip docstrings/comments — only Python statement lines matter.
         stripped = line.strip()
-        if stripped.startswith("#") or stripped.startswith('"""') or stripped.startswith("'''"):
+        if (
+            stripped.startswith("#")
+            or stripped.startswith('"""')
+            or stripped.startswith("'''")
+        ):
             continue
         # Skip conditional opt-out for one-off bypasses.
         if "# noqa: node-name" in line:

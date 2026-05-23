@@ -9,6 +9,7 @@ This is opt-in: existing tools in :mod:`plato.paper_agents.tools` still
 write files directly. New nodes that want a smaller blast radius can
 declare a :class:`FileScope` and route writes through the writer.
 """
+
 from __future__ import annotations
 
 import fnmatch
@@ -190,9 +191,7 @@ class ScopedWriter:
         # Use lexical equality on resolved paths — both are already resolved.
         while cur != self.project_dir:
             if cur.is_symlink():
-                raise ScopeError(
-                    f"refusing to follow symlink: {cur}"
-                )
+                raise ScopeError(f"refusing to follow symlink: {cur}")
             parent = cur.parent
             if parent == cur:
                 # Reached filesystem root without hitting project_dir; the

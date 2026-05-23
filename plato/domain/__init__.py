@@ -12,6 +12,7 @@ retrieval to consume `DomainProfile.retrieval_sources` via the
 `SourceAdapter` registry; later phases plug in `KeywordExtractor`,
 `JournalPreset`, and `Executor` registries the same way.
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel, Field

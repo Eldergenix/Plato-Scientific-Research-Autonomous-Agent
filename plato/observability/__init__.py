@@ -16,6 +16,7 @@ Install the optional Langfuse dependency with::
 
     pip install "plato[obs]"
 """
+
 from __future__ import annotations
 
 import os
@@ -35,10 +36,10 @@ if TYPE_CHECKING:
 # replacement is a fixed-length placeholder so partial-string equality
 # checks downstream don't accidentally skip the redaction.
 _SECRET_PATTERNS = [
-    re.compile(r"sk-[A-Za-z0-9_-]{16,}"),                # OpenAI / many vendors
-    re.compile(r"sk-ant-[A-Za-z0-9_-]{16,}"),            # Anthropic
-    re.compile(r"AIza[0-9A-Za-z_-]{16,}"),               # Google API keys
-    re.compile(r"pplx-[A-Za-z0-9_-]{16,}"),              # Perplexity
+    re.compile(r"sk-[A-Za-z0-9_-]{16,}"),  # OpenAI / many vendors
+    re.compile(r"sk-ant-[A-Za-z0-9_-]{16,}"),  # Anthropic
+    re.compile(r"AIza[0-9A-Za-z_-]{16,}"),  # Google API keys
+    re.compile(r"pplx-[A-Za-z0-9_-]{16,}"),  # Perplexity
     re.compile(r"Bearer\s+[A-Za-z0-9._\-]{16,}", re.I),  # generic bearer tokens
 ]
 _REDACTED = "<REDACTED-SECRET>"
@@ -47,8 +48,14 @@ _REDACTED = "<REDACTED-SECRET>"
 # lowercase form contains one of these substrings is dropped before the
 # Langfuse handler sees it.
 _DROP_METADATA_KEYS = (
-    "authorization", "auth", "api_key", "apikey", "secret",
-    "password", "token", "private_key",
+    "authorization",
+    "auth",
+    "api_key",
+    "apikey",
+    "secret",
+    "password",
+    "token",
+    "private_key",
 )
 
 
@@ -133,11 +140,20 @@ class _RedactingCallbackHandler:
     """
 
     _INTERCEPTED_EVENTS = {
-        "on_llm_start", "on_chat_model_start", "on_llm_new_token",
-        "on_llm_end", "on_llm_error",
-        "on_chain_start", "on_chain_end", "on_chain_error",
-        "on_tool_start", "on_tool_end", "on_tool_error",
-        "on_text", "on_agent_action", "on_agent_finish",
+        "on_llm_start",
+        "on_chat_model_start",
+        "on_llm_new_token",
+        "on_llm_end",
+        "on_llm_error",
+        "on_chain_start",
+        "on_chain_end",
+        "on_chain_error",
+        "on_tool_start",
+        "on_tool_end",
+        "on_tool_error",
+        "on_text",
+        "on_agent_action",
+        "on_agent_finish",
     }
 
     def __init__(self, inner: Any) -> None:
@@ -146,10 +162,12 @@ class _RedactingCallbackHandler:
     def __getattr__(self, name: str) -> Any:
         attr = getattr(self._inner, name)
         if name in self._INTERCEPTED_EVENTS and callable(attr):
+
             def _scrubbed(*args: Any, **kwargs: Any) -> Any:
                 args = tuple(_scrub(a) for a in args)
                 kwargs = {k: _scrub(v) for k, v in kwargs.items()}
                 return attr(*args, **kwargs)
+
             return _scrubbed
         return attr
 

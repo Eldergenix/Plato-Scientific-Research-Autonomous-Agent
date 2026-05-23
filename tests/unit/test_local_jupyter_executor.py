@@ -9,6 +9,7 @@ helpers (``_extract_code_cells``) and the early-return paths
 A real kernel-execution test lives in tests/integration/ and is
 gated behind an env var.
 """
+
 from __future__ import annotations
 
 import sys
@@ -23,6 +24,7 @@ from plato.executor.local_jupyter import (
 
 
 # --- _extract_code_cells ----------------------------------------------------
+
 
 def test_extract_code_cells_picks_python_fences() -> None:
     md = """
@@ -95,6 +97,7 @@ print("real one")
 
 
 # --- run() early-return paths ----------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_run_returns_clean_result_when_no_code(tmp_path: Any) -> None:
@@ -188,7 +191,9 @@ async def test_run_explicit_code_kwarg_overrides_methodology(
 
     fake_module = types.ModuleType("jupyter_client.manager")
     fake_module.KernelManager = _StubKM  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "jupyter_client", types.ModuleType("jupyter_client"))
+    monkeypatch.setitem(
+        sys.modules, "jupyter_client", types.ModuleType("jupyter_client")
+    )
     monkeypatch.setitem(sys.modules, "jupyter_client.manager", fake_module)
 
     executor = LocalJupyterExecutor()

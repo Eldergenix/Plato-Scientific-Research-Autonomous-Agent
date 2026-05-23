@@ -5,6 +5,7 @@ is stored on the instance and propagated through ``_start_manifest`` so
 that ``RunManifest.user_id`` reflects the requesting tenant in every
 ``runs/<run_id>/manifest.json`` written during a workflow.
 """
+
 from __future__ import annotations
 
 import json
