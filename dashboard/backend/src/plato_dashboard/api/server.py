@@ -51,6 +51,7 @@ from .capabilities import (
     require_under_budget,
 )
 from .manifests import router as manifests_router
+from .manifests import validate_run_id
 
 # Frontend pass routers — see streams F1, F2, F4, F6, F7, F8, F9, F10, F11+F12.
 # (F5's citation_graph_view router is auto-mounted by api/__init__.py.)
@@ -212,6 +213,7 @@ def _require_llm_key_for_stage(stage: StageId, settings: Settings) -> None:
 
 def _load_run_manifest_user(project_dir: Path, run_id: str) -> str | None:
     """Read ``user_id`` from a run's manifest.json. Returns None on miss."""
+    run_id = validate_run_id(run_id)
     manifest_path = project_dir / "runs" / run_id / "manifest.json"
     if not manifest_path.exists():
         return None
@@ -293,6 +295,7 @@ def _list_persisted_runs(project_dir: Path) -> list[Run]:
 
 
 def _read_run_events(project_dir: Path, run_id: str) -> list[dict[str, Any]]:
+    run_id = validate_run_id(run_id)
     events_path = project_dir / "runs" / run_id / "events.jsonl"
     if not events_path.is_file():
         raise HTTPException(
@@ -411,6 +414,8 @@ def _enforce_run_tenant(
     """
     from ..auth import auth_required as _auth_required
 
+    run_id = validate_run_id(run_id)
+
     if requester_user_id is None and not _auth_required():
         return
 
@@ -450,6 +455,7 @@ def _enforce_project_run_access(
     after project authorization and fall back to the persisted manifest check
     for historical runs.
     """
+    run_id = validate_run_id(run_id)
     _enforce_project_tenant(store, pid, requester_user_id)
     active = get_run(run_id)
     if active is not None and active.project_id == pid:
@@ -1012,6 +1018,7 @@ def create_app() -> FastAPI:
     ) -> dict:
         from ..worker.token_tracker import _ledger_lock, _run_ledger, get_run_usage
 
+        run_id = validate_run_id(run_id)
         # Distinguish "no entry yet" from "tracked with zero tokens" by
         # checking ledger membership directly — get_run_usage always
         # returns a StageTokens, never None.
