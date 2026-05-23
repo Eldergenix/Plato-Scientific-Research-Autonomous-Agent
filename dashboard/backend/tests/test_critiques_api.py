@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
@@ -17,7 +18,7 @@ def _make_run_dir(project_root: Path, run_id: str, project: str | None = "proj_a
 
 
 @pytest.fixture
-def critiques_app(tmp_project_root: Path) -> tuple[TestClient, Path]:
+def critiques_app(tmp_project_root: Path) -> Generator[tuple[TestClient, Path], None, None]:
     """Mount the critiques router on a bare FastAPI app.
 
     We don't use ``create_app`` here because the integration commit is what

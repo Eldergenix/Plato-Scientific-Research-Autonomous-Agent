@@ -1,4 +1,5 @@
 """Phase 1 — R9: RunManifest + ManifestRecorder."""
+
 from __future__ import annotations
 
 import json

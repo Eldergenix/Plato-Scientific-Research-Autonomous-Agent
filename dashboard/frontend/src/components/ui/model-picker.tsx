@@ -7,7 +7,13 @@ import type { ModelDef, Provider } from "@/lib/types";
 import { MODELS, MODEL_GROUPS, MODELS_BY_ID } from "@/lib/models";
 import { cn } from "@/lib/utils";
 
-type AvailableProvider = "openai" | "gemini" | "anthropic" | "perplexity" | "semantic_scholar";
+type AvailableProvider =
+  | "openai"
+  | "gemini"
+  | "anthropic"
+  | "huggingface"
+  | "perplexity"
+  | "semantic_scholar";
 
 export interface ModelPickerProps {
   value: string;
@@ -23,19 +29,20 @@ export interface ModelPickerProps {
 // Per-stage recommendations. Hand-tuned defaults that map cmbagent best-fit
 // models to each Plato stage.
 const RECOMMENDED_BY_STAGE: Record<NonNullable<ModelPickerProps["recommendedFor"]>, string> = {
-  idea: "gpt-4.1",
+  idea: "gpt-5.5-2026-04-23",
   method: "claude-4.1-opus",
   results: "gpt-5",
-  paper: "gpt-4.1",
+  paper: "gpt-5.5-2026-04-23",
   referee: "claude-4.1-opus",
-  literature: "gpt-4.1-mini",
+  literature: "gpt-5.5-2026-04-23",
 };
 
 const PROVIDER_DOT: Record<Provider, string> = {
   anthropic: "#f0bf00",
   openai: "#27a644",
   gemini: "#4ea7fc",
-  perplexity: "#bb87fc",
+  huggingface: "#ff9d00",
+  perplexity: "var(--color-status-purple)",
   semantic_scholar: "#ff7236",
 };
 
@@ -43,6 +50,7 @@ const PROVIDER_ADD_KEY_LABEL: Record<Provider, string> = {
   anthropic: "Add Anthropic key",
   openai: "Add OpenAI key",
   gemini: "Add Google key",
+  huggingface: "Add Hugging Face token",
   perplexity: "Add Perplexity key",
   semantic_scholar: "Add Semantic Scholar key",
 };
@@ -76,7 +84,10 @@ function ModelBadge({ kind }: { kind: "Recommended" | "Cheap" | "Strong" }) {
   const style: Record<typeof kind, { bg: string; fg: string }> = {
     Recommended: { bg: "rgba(94,106,210,0.15)", fg: "#828fff" },
     Cheap: { bg: "rgba(39,166,68,0.12)", fg: "#27a644" },
-    Strong: { bg: "rgba(187,135,252,0.12)", fg: "#bb87fc" },
+    Strong: {
+      bg: "color-mix(in srgb, var(--color-status-purple) 12%, transparent)",
+      fg: "var(--color-status-purple)",
+    },
   };
   const s = style[kind];
   return (

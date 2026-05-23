@@ -7,6 +7,7 @@ shipped ``gold_sources`` as bare strings. iter 12 added a
 to keep both shapes loadable. These tests pin that contract so a
 future refactor can't regress.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -102,9 +103,7 @@ def test_mixed_legacy_and_structured_gold_sources() -> None:
 
 
 def test_empty_gold_sources_default() -> None:
-    task = GoldenTask.model_validate(
-        {"id": "empty", "data_description": "no sources"}
-    )
+    task = GoldenTask.model_validate({"id": "empty", "data_description": "no sources"})
     assert task.gold_sources == []
 
 

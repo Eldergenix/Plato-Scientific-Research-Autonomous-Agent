@@ -1,6 +1,9 @@
-"""Per-installation API key store.
+"""Encrypted dashboard API key store.
 
-- Lives at ``~/.plato/keys.json`` (mode 0600).
+- Single-user deployments use ``~/.plato/keys.json`` (mode 0600).
+- Multi-tenant deployments store in-app keys under
+  ``<project_root>/users/<tenant_id>/keys.json`` so personal and Lab
+  workspaces do not share provider credentials.
 - Encrypted at rest with a Fernet key derived from a machine-local salt
   stored alongside the file. This is *obfuscation*, not strong protection;
   on a single-user desktop it's enough to keep keys out of accidental git
@@ -11,11 +14,10 @@
 
 from __future__ import annotations
 import base64
-import json
 import os
 import stat
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
@@ -27,6 +29,7 @@ ENV_KEYS = {
     "OPENAI": "OPENAI_API_KEY",
     "GEMINI": "GOOGLE_API_KEY",
     "ANTHROPIC": "ANTHROPIC_API_KEY",
+    "HUGGINGFACE": "HUGGINGFACE_API_KEY",
     "PERPLEXITY": "PERPLEXITY_API_KEY",
     "SEMANTIC_SCHOLAR": "SEMANTIC_SCHOLAR_KEY",
     # R8 — observability. The dashboard's Langfuse integration reads
@@ -36,6 +39,29 @@ ENV_KEYS = {
     "LANGFUSE_SECRET": "LANGFUSE_SECRET_KEY",
     "LANGFUSE_HOST": "LANGFUSE_HOST",
 }
+
+ENV_KEY_ALIASES = {
+    "HUGGINGFACE": (
+        "HUGGINGFACE_API_KEY",
+        "HUGGINGFACE_HUB_TOKEN",
+        "HF_TOKEN",
+    ),
+}
+
+
+def _env_names(provider: str) -> tuple[str, ...]:
+    if provider in ENV_KEY_ALIASES:
+        return ENV_KEY_ALIASES[provider]
+    env_var = ENV_KEYS.get(provider)
+    return (env_var,) if env_var else ()
+
+
+def _env_value(provider: str) -> str | None:
+    for env_var in _env_names(provider):
+        value = os.environ.get(env_var)
+        if value:
+            return value
+    return None
 
 
 def _derive_key(salt: bytes) -> bytes:
@@ -49,6 +75,30 @@ def _derive_key(salt: bytes) -> bytes:
     return base64.urlsafe_b64encode(kdf.derive(seed))
 
 
+def key_store_path_for_user(
+    project_root: Path,
+    fallback_keys_path: Path,
+    user_id: str | None,
+) -> Path:
+    if user_id:
+        return project_root / "users" / user_id / "keys.json"
+    return fallback_keys_path
+
+
+def key_store_path_for_project_dir(
+    project_root: Path,
+    fallback_keys_path: Path,
+    project_dir: Path,
+) -> Path:
+    try:
+        relative = project_dir.resolve().relative_to((project_root / "users").resolve())
+    except ValueError:
+        return fallback_keys_path
+    if not relative.parts:
+        return fallback_keys_path
+    return key_store_path_for_user(project_root, fallback_keys_path, relative.parts[0])
+
+
 class KeyStore:
     def __init__(self, path: Path):
         self.path = path
@@ -56,6 +106,7 @@ class KeyStore:
 
     def _fernet(self) -> Fernet:
         if not self.salt_path.exists():
+            self.salt_path.parent.mkdir(parents=True, exist_ok=True)
             # Atomic salt creation via O_CREAT|O_EXCL: two concurrent
             # callers can't both decide to write a fresh salt and have
             # the second overwrite the first. If two processes race,
@@ -85,6 +136,7 @@ class KeyStore:
 
     def save(self, payload: KeysPayload) -> None:
         # Merge: never overwrite a previously-stored key with None.
+        self.path.parent.mkdir(parents=True, exist_ok=True)
         existing = self.load()
         merged = existing.model_copy(update={k: v for k, v in payload.model_dump().items() if v is not None})
         encrypted = self._fernet().encrypt(merged.model_dump_json().encode())
@@ -98,9 +150,9 @@ class KeyStore:
 
     def status(self) -> KeysStatus:
         stored = self.load()
-        result: dict[str, str] = {}
-        for k, env_var in ENV_KEYS.items():
-            if os.environ.get(env_var):
+        result: dict[str, Literal["unset", "from_env", "in_app"]] = {}
+        for k in ENV_KEYS:
+            if _env_value(k):
                 result[k] = "from_env"
             elif getattr(stored, k):
                 result[k] = "in_app"
@@ -109,8 +161,8 @@ class KeyStore:
         return KeysStatus(**result)
 
     def resolve(self, provider: str) -> Optional[str]:
-        env_var = ENV_KEYS.get(provider)
-        if env_var and os.environ.get(env_var):
-            return os.environ[env_var]
+        env_value = _env_value(provider)
+        if env_value:
+            return env_value
         stored = self.load()
         return getattr(stored, provider, None)

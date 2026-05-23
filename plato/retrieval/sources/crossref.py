@@ -5,6 +5,7 @@ Hits ``https://api.crossref.org/works`` and maps ``message.items[*]`` into
 :class:`plato.state.models.Source` records. Auto-registers itself in the
 adapter registry on import.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone

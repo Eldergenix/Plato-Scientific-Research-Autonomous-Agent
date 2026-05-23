@@ -257,10 +257,16 @@ function SidePanel({
         Use cmbagent&rsquo;s preprocess_task to summarize and structure your data description.
       </p>
       <div className="mt-3 space-y-2">
-        <Field label="Summarizer model" value="gpt-4.1-mini" />
+        <Field label="Summarizer model" value="gpt-5.5-2026-04-23" />
         <Field label="Formatter model" value="o3-mini" />
       </div>
-      <Button variant="ghost" size="md" className="mt-3 w-full" onClick={onEnhanceClick}>
+      <Button
+        variant="ghost"
+        size="md"
+        className="mt-3 w-full"
+        onClick={onEnhanceClick}
+        data-run-button="true"
+      >
         <Sparkles size={13} strokeWidth={1.5} />
         Run enhance
       </Button>

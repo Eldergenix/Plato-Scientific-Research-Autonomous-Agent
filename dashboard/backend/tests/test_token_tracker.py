@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from plato_dashboard.worker.token_tracker import (
     aggregate_project_usage,
     clear_run_ledger,

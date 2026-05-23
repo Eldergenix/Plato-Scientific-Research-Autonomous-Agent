@@ -1,4 +1,5 @@
 """Phase 2 contract tests for the shared scientific-research models."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -36,9 +37,23 @@ def test_source_rejects_unknown_retrieved_via():
         Source(
             id="x",
             title="t",
-            retrieved_via="nasa-grants",  # type: ignore[arg-type]
+            retrieved_via="nasa-grants",
             fetched_at=datetime.now(timezone.utc),
         )
+
+
+@pytest.mark.parametrize(
+    "retrieved_via",
+    ["europe_pmc", "datacite", "doaj", "opencitations"],
+)
+def test_source_accepts_no_key_retrieval_adapters(retrieved_via: str):
+    s = Source(
+        id=f"{retrieved_via}:x",
+        title="t",
+        retrieved_via=retrieved_via,  # type: ignore[arg-type]
+        fetched_at=datetime.now(timezone.utc),
+    )
+    assert s.retrieved_via == retrieved_via
 
 
 def test_claim_defaults():
@@ -59,7 +74,7 @@ def test_evidence_link_supports_label_validation():
         EvidenceLink(
             claim_id="c1",
             source_id="s1",
-            support="maybe",  # type: ignore[arg-type]
+            support="maybe",
             strength="strong",
         )
 

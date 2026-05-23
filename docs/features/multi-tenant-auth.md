@@ -22,6 +22,40 @@ plato dashboard
 In multi-tenant mode every request must carry `X-Plato-User: <id>`.
 Missing or invalid headers return 401.
 
+Split frontend/backend or hosted deployments should also pin backend
+access to the trusted proxy:
+
+```bash
+export PLATO_BACKEND_PROXY_SECRET="$(openssl rand -hex 32)"
+```
+
+Set the same value on the Next.js dashboard runtime. When this secret is
+configured, the FastAPI backend rejects private `/api/v1/*` requests
+that do not carry `X-Plato-Proxy-Secret`, even if
+`PLATO_DASHBOARD_AUTH_REQUIRED` was not enabled. Public health,
+capabilities, and publication-feed reads remain reachable.
+
+Hosted Clerk deployments can enable Clerk Billing with
+`NEXT_PUBLIC_PLATO_HOSTED_BILLING=enabled`. Plato still owns the
+trial publication guard and the product's displayed contract values:
+`PLATO_HOSTED_TRIAL_PUBLICATIONS_PER_WEEK`,
+`PLATO_HOSTED_USER_PRO_FEE_CENTS`,
+`PLATO_HOSTED_USER_RESEARCHER_FEE_CENTS`,
+`PLATO_HOSTED_LAB_BASE_FEE_CENTS`, and
+`PLATO_HOSTED_LAB_SEAT_FEE_CENTS`.
+
+Hosted Clerk mode fails closed unless `PLATO_BACKEND_PROXY_SECRET` is
+also set on the Next.js runtime with at least 32 characters. Without
+that shared secret, the frontend could derive Clerk tenants while the
+backend is still outside the private trusted-proxy posture required for
+production.
+
+Hosted public deployments should also set `PLATO_PUBLIC_ORIGIN` to the
+canonical HTTPS dashboard origin, for example
+`https://discovering.app`. Plato uses that value for Clerk proxy URLs
+and sign-in return URLs; when it is unset the dashboard falls back to
+validated request host metadata.
+
 ## Why the header pattern
 
 Plato deliberately doesn't own identity:
@@ -37,9 +71,11 @@ So the contract is:
 
 1. Proxy authenticates the user against the real IdP.
 2. Proxy sets `X-Plato-User: <id>` on every request to the dashboard.
-3. The proxy must strip any client-supplied `X-Plato-User` before
+3. Proxy sets `X-Plato-Proxy-Secret` when `PLATO_BACKEND_PROXY_SECRET`
+   is configured on the backend.
+4. The proxy must strip any client-supplied `X-Plato-User` before
    rewriting it (otherwise a client can spoof the id directly).
-4. The dashboard validates the value against
+5. The dashboard validates the value against
    `[A-Za-z0-9._-]{1,64}` and uses it as a path segment under
    `<project_root>/users/<user_id>/`.
 
@@ -48,7 +84,7 @@ So the contract is:
 | Surface               | Scoped how                                      |
 |-----------------------|-------------------------------------------------|
 | Project store         | `<project_root>/users/<id>/projects/<pid>/`     |
-| Key store             | `~/.plato/keys.json` (per-process today; may move per-user) |
+| Key store             | `<project_root>/users/<id>/keys.json`; single-user fallback `~/.plato/keys.json` |
 | Run manifests         | manifest's `user_id` field; cross-tenant reads → 403 |
 | Validation reports    | `_enforce_run_tenant` on every read             |
 | Evidence matrix       | same enforcement                                |

@@ -8,6 +8,7 @@ monkeypatch ``httpx.AsyncClient.get`` to deliver one 429 followed by a
 valid 200 payload and confirm the adapter returns the mapped Source after
 the backoff fires — proving the middleware is in the call path.
 """
+
 from __future__ import annotations
 
 from typing import Any

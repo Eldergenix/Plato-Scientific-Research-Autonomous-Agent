@@ -15,7 +15,6 @@ The fixtures aim for fast, deterministic tests:
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 from typing import AsyncIterator, Iterator
 

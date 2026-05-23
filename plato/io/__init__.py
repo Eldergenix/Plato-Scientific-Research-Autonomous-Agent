@@ -10,6 +10,7 @@ adopt :class:`ScopedWriter` get a small, auditable safety net against
 path-traversal, symlink escape, and accidental writes outside the
 intended sandbox.
 """
+
 from __future__ import annotations
 
 from .scoped_node import scoped_node

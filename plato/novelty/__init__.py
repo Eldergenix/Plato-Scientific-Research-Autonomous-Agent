@@ -18,6 +18,7 @@ Public surface:
 The scorers do not call an LLM themselves; the LLM score is provided by
 the existing ``novelty_decider`` node.
 """
+
 from __future__ import annotations
 
 from plato.novelty.composite_scorer import (

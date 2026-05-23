@@ -21,7 +21,6 @@ this router after construction.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
@@ -29,56 +28,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from ..domain.models import JsonObjectResponse
 from ..settings import Settings, get_settings
+from .manifests import _enforce_tenant, _find_run_dir, _read_json, _user_id
 
 
 router = APIRouter()
-
-
-# --------------------------------------------------------------------------- #
-# Helpers (local copies — manifests.py is not in this worktree).
-# --------------------------------------------------------------------------- #
-def _user_id(req: Request) -> str | None:
-    """Read ``X-Plato-User`` header. ``None`` when unset.
-
-    Mirrors the convention used by the (forthcoming) manifest router so a
-    later refactor can hoist this into a shared module without touching
-    callers.
-    """
-    return req.headers.get("X-Plato-User")
-
-
-def _find_run_dir(project_root: Path, run_id: str) -> Path | None:
-    """Locate ``runs/<run_id>`` under ``project_root``.
-
-    Supports both layouts:
-
-    - ``<project_root>/runs/<run_id>/`` (single-project install).
-    - ``<project_root>/<project>/runs/<run_id>/`` (dashboard, multi-project).
-    """
-    if not project_root.exists():
-        return None
-
-    flat = project_root / "runs" / run_id
-    if flat.is_dir():
-        return flat
-
-    for child in project_root.iterdir():
-        if not child.is_dir():
-            continue
-        candidate = child / "runs" / run_id
-        if candidate.is_dir():
-            return candidate
-    return None
-
-
-def _read_json(path: Path) -> Any:
-    try:
-        return json.loads(path.read_text())
-    except json.JSONDecodeError as exc:
-        raise HTTPException(
-            status_code=500,
-            detail={"code": "citation_graph_corrupt", "message": str(exc)},
-        ) from exc
 
 
 # --------------------------------------------------------------------------- #
@@ -193,39 +146,28 @@ def _read_graph_payload(run_dir: Path) -> dict:
         manifest = _read_json(manifest_path)
         if isinstance(manifest, dict):
             extra = manifest.get("extra")
-            if isinstance(extra, dict) and isinstance(extra.get("citation_graph"), dict):
+            if isinstance(extra, dict) and isinstance(
+                extra.get("citation_graph"), dict
+            ):
                 return _normalise_payload(extra["citation_graph"])
 
     return _empty_payload()
 
 
-def _check_tenant(run_dir: Path, request_user: str | None) -> None:
-    """403 if the manifest's ``user_id`` disagrees with the request user.
-
-    A run without a manifest, or a manifest without ``user_id``, is
-    treated as un-owned and accessible to anyone — same posture as the
-    rest of the dashboard pre-auth.
-    """
-    if request_user is None:
-        return
-    manifest_path = run_dir / "manifest.json"
-    if not manifest_path.is_file():
-        return
+def _enforce_citation_tenant(run_dir: Path, run_id: str, request: Request) -> None:
+    requester = _user_id(request)
     try:
-        manifest = json.loads(manifest_path.read_text())
-    except json.JSONDecodeError:
-        return
-    if not isinstance(manifest, dict):
-        return
-    owner = manifest.get("user_id")
-    if isinstance(owner, str) and owner and owner != request_user:
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "code": "cross_tenant_blocked",
-                "message": "This run belongs to a different user.",
-            },
-        )
+        _enforce_tenant(run_dir, run_id, requester)
+    except HTTPException as exc:
+        if requester is not None and exc.status_code in (403, 404):
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "cross_tenant_blocked",
+                    "message": "This run belongs to a different user.",
+                },
+            ) from exc
+        raise
 
 
 # --------------------------------------------------------------------------- #
@@ -243,7 +185,7 @@ def get_citation_graph(
             status_code=404,
             detail={"code": "run_not_found", "run_id": run_id},
         )
-    _check_tenant(run_dir, _user_id(request))
+    _enforce_citation_tenant(run_dir, run_id, request)
     return _read_graph_payload(run_dir)
 
 

@@ -1,4 +1,5 @@
 """Unit tests for :mod:`plato.retrieval.sources.openalex`."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -73,8 +74,7 @@ def test_reconstruct_abstract_word_appears_multiple_times() -> None:
         "biology": [6],
     }
     assert (
-        _reconstruct_abstract(inverted)
-        == "Proteins are essential to life to biology"
+        _reconstruct_abstract(inverted) == "Proteins are essential to life to biology"
     )
 
 

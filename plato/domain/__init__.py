@@ -12,6 +12,7 @@ retrieval to consume `DomainProfile.retrieval_sources` via the
 `SourceAdapter` registry; later phases plug in `KeywordExtractor`,
 `JournalPreset`, and `Executor` registries the same way.
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
@@ -75,9 +76,31 @@ def list_domains() -> list[str]:
 register_domain(
     DomainProfile(
         name="astro",
-        retrieval_sources=["semantic_scholar", "arxiv", "openalex", "ads"],
+        retrieval_sources=[
+            "arxiv",
+            "openalex",
+            "crossref",
+            "doaj",
+            "datacite",
+            "opencitations",
+            "ads",
+            "semantic_scholar",
+        ],
         keyword_extractor="cmbagent",
-        journal_presets=["NONE", "AAS", "APS", "JHEP", "PASJ", "ICML", "NeurIPS"],
+        journal_presets=[
+            "NONE",
+            "ARXIV",
+            "AAS",
+            "APS",
+            "JHEP",
+            "PASJ",
+            "ICML",
+            "NeurIPS",
+            "NATURE",
+            "SCIENCE",
+            "SCIENCE_ADVANCES",
+            "REVIEWS_OF_MODERN_PHYSICS",
+        ],
         executor="cmbagent",
         novelty_corpus="arxiv:astro-ph",
     )
@@ -87,9 +110,32 @@ register_domain(
 register_domain(
     DomainProfile(
         name="biology",
-        retrieval_sources=["pubmed", "openalex", "semantic_scholar"],
+        retrieval_sources=[
+            "pubmed",
+            "europe_pmc",
+            "openalex",
+            "crossref",
+            "doaj",
+            "datacite",
+            "opencitations",
+            "semantic_scholar",
+        ],
         keyword_extractor="mesh",
-        journal_presets=["NATURE", "CELL", "SCIENCE", "PLOS_BIO", "ELIFE", "NONE"],
+        journal_presets=[
+            "NATURE",
+            "SCIENCE",
+            "SCIENCE_ADVANCES",
+            "NEJM",
+            "LANCET",
+            "CELL",
+            "JAMA",
+            "NATURE_REVIEWS_MOL_CELL_BIO",
+            "CHEMICAL_REVIEWS",
+            "PLOS_BIO",
+            "ELIFE",
+            "ARXIV",
+            "NONE",
+        ],
         # Iter-21: biology defaults to ``local_jupyter`` — a domain-neutral
         # executor that runs arbitrary Python in a kernel without dragging
         # in astro-specific tooling. Users who want a sandboxed alternative

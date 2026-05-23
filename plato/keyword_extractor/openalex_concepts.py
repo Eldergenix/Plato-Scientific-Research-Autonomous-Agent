@@ -12,6 +12,7 @@ also avoid pulling in `httpx` as a hard dep — `urllib` is sufficient.
 
 Reference: https://docs.openalex.org/api-entities/concepts
 """
+
 from __future__ import annotations
 
 import json

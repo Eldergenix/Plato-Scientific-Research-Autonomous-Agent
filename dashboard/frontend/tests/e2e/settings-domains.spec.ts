@@ -1,5 +1,7 @@
 import { test, expect, type Route } from "./fixtures";
 
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3201";
+
 /**
  * Settings → Domains: pick a profile, inspect its full schema, set it as
  * the user's default. The backend is mocked end-to-end so the spec is
@@ -36,6 +38,7 @@ test.describe("settings/domains", () => {
 
     await page.route("**/api/v1/user/preferences", async (route: Route) => {
       const req = route.request();
+      expect(req.headers()["cookie"]).toContain("plato_user=alice");
       if (req.method() === "PUT") {
         const body = req.postDataJSON() as { default_domain: string };
         storedDefault = body.default_domain;
@@ -61,6 +64,15 @@ test.describe("settings/domains", () => {
   });
 
   test("renders biology card after switching the dropdown", async ({ page }) => {
+    await page.context().addCookies([
+      {
+        name: "plato_user",
+        value: "alice",
+        url: BASE_URL,
+        httpOnly: true,
+        sameSite: "Lax",
+      },
+    ]);
     await page.goto("/settings/domains");
 
     // Header.
@@ -92,6 +104,15 @@ test.describe("settings/domains", () => {
   test("Set as default surfaces the Default pill and a toast", async ({
     page,
   }) => {
+    await page.context().addCookies([
+      {
+        name: "plato_user",
+        value: "alice",
+        url: BASE_URL,
+        httpOnly: true,
+        sameSite: "Lax",
+      },
+    ]);
     await page.goto("/settings/domains");
 
     // Switch to biology.

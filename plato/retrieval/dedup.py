@@ -11,6 +11,7 @@ order: ``doi`` → ``arxiv_id`` → ``openalex_id`` → lower-cased title. This
 keeps the common case (a DOI is shared across adapters) cheap and falls
 back to titles only when nothing more authoritative is available.
 """
+
 from __future__ import annotations
 
 from ..state.models import Source
@@ -20,12 +21,7 @@ __all__ = ["dedup_sources"]
 
 def _dedup_key(source: Source) -> str:
     """Return the strongest stable identifier for ``source`` as a dedup key."""
-    return (
-        source.doi
-        or source.arxiv_id
-        or source.openalex_id
-        or source.title.lower()
-    )
+    return source.doi or source.arxiv_id or source.openalex_id or source.title.lower()
 
 
 def dedup_sources(sources: list[Source]) -> list[Source]:

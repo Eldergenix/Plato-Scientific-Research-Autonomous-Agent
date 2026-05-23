@@ -9,8 +9,11 @@ import {
   Wrench,
   SkipForward,
   AlertTriangle,
+  Download,
+  Gauge,
   Loader2,
 } from "lucide-react";
+import type { ScientificScores, ScientificScoreAxis } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 // react-pdf is loaded lazily so a missing dependency / SSR doesn't blow up
@@ -64,18 +67,21 @@ export interface PaperSection {
 
 export interface PaperPreviewProps {
   pdfUrl?: string;
+  submissionZipUrl?: string;
   sections: PaperSection[];
   versions?: Array<{ id: string; label: string; current?: boolean }>;
+  scores?: ScientificScores;
   onRetrySection?: (sectionId: string) => void;
   onAutoFix?: (sectionId: string) => void;
   onSelectVersion?: (versionId: string) => void;
 }
 
-type Tab = "pdf" | "sections" | "latex";
+type Tab = "pdf" | "sections" | "scores" | "latex";
 
 const TABS: Array<{ id: Tab; label: string; icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }> }> = [
   { id: "pdf", label: "PDF", icon: FileText },
   { id: "sections", label: "Sections", icon: AlignLeft },
+  { id: "scores", label: "Scores", icon: Gauge },
   { id: "latex", label: "LaTeX", icon: FileCode },
 ];
 
@@ -96,8 +102,10 @@ const TABS: Array<{ id: Tab; label: string; icon: React.ComponentType<{ size?: n
 
 export function PaperPreview({
   pdfUrl,
+  submissionZipUrl,
   sections = [],
   versions,
+  scores,
   onRetrySection,
   onAutoFix,
   onSelectVersion,
@@ -148,9 +156,19 @@ export function PaperPreview({
           })}
         </div>
 
-        {versions && versions.length > 0 && (
+        {(submissionZipUrl || (versions && versions.length > 0)) && (
           <div className="flex items-center gap-1">
-            {versions.map((v) => {
+            {submissionZipUrl ? (
+              <a
+                href={submissionZipUrl}
+                className="tab-pill gap-1.5"
+                download
+              >
+                <Download size={12} strokeWidth={1.75} />
+                Submission ZIP
+              </a>
+            ) : null}
+            {(versions ?? []).map((v) => {
               const active = v.current;
               return (
                 <button
@@ -194,6 +212,7 @@ export function PaperPreview({
               onActivate={setActiveSectionId}
             />
           )}
+          {tab === "scores" && <ScoresTab scores={scores} />}
           {tab === "latex" && (
             <LatexTab
               sections={sections}
@@ -349,7 +368,7 @@ function PdfTab({ pdfUrl }: { pdfUrl?: string }) {
                   pageNumber={i + 1}
                   width={720}
                   renderAnnotationLayer={false}
-                  renderTextLayer
+                  renderTextLayer={false}
                 />
               </div>
             ))
@@ -462,6 +481,151 @@ function SimpleMarkdown({ source }: { source: string }) {
         </p>
       ))}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Scientific scores tab
+// ---------------------------------------------------------------------------
+
+function ScoresTab({ scores }: { scores?: ScientificScores }) {
+  if (!scores) {
+    return (
+      <Placeholder
+        icon={<Gauge size={28} strokeWidth={1.25} />}
+        title="No scores yet"
+        body="Run the Paper stage to score originality, impact, and findings from this project's artifacts."
+      />
+    );
+  }
+
+  const axes: Array<[string, ScientificScoreAxis]> = [
+    ["Originality", scores.axes.originality],
+    ["Impact", scores.axes.impact],
+    ["Findings", scores.axes.findings],
+  ];
+
+  return (
+    <div className="px-5 py-4 space-y-4">
+      <div className="rounded-[8px] border border-(--color-border-card) bg-(--color-bg-card) px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.08em] text-(--color-text-tertiary-spec)">
+              Paper potential
+            </div>
+            <div className="mt-1 text-[13px] font-medium text-(--color-text-primary-strong)">
+              {scores.overall.label}
+            </div>
+          </div>
+          <ScoreBadge score={scores.overall.score} label={scores.overall.label} />
+        </div>
+        <p className="mt-2 max-w-2xl text-[12.5px] leading-[1.6] text-(--color-text-secondary)">
+          {scores.overall.summary}
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        {axes.map(([name, axis]) => (
+          <ScoreAxisRow key={name} name={name} axis={axis} />
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-2 text-[11.5px] text-(--color-text-tertiary-spec)">
+        <InputChip active={scores.inputs.has_data}>Data</InputChip>
+        <InputChip active={scores.inputs.has_literature}>Literature</InputChip>
+        <InputChip active={scores.inputs.has_results}>Results</InputChip>
+        <InputChip active={scores.inputs.has_paper_pdf}>PDF</InputChip>
+        <span className="rounded-[999px] border border-(--color-border-card) px-2 py-1">
+          {scores.inputs.plot_count} plots
+        </span>
+        <span className="rounded-[999px] border border-(--color-border-card) px-2 py-1">
+          {scores.inputs.metric_mentions} metrics
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function ScoreAxisRow({ name, axis }: { name: string; axis: ScientificScoreAxis }) {
+  return (
+    <section className="rounded-[8px] border border-(--color-border-card) bg-(--color-bg-card) px-4 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <h3 className="text-[13px] font-medium text-(--color-text-primary-strong)">
+              {name}
+            </h3>
+            <span className="text-[11px] text-(--color-text-tertiary-spec)">
+              {axis.label}
+            </span>
+          </div>
+          <p className="mt-1 text-[12.5px] leading-[1.55] text-(--color-text-secondary)">
+            {axis.summary}
+          </p>
+        </div>
+        <ScoreBadge score={axis.score} label={axis.label} />
+      </div>
+      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-(--color-ghost-bg)">
+        <div
+          className="h-full rounded-full bg-(--color-brand-interactive)"
+          style={{ width: `${Math.round(axis.score * 100)}%` }}
+        />
+      </div>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <SignalList title="Signals" items={axis.signals} empty="No strong positive signal detected." />
+        <SignalList title="Cautions" items={axis.cautions} empty="No major caution detected." />
+      </div>
+    </section>
+  );
+}
+
+function ScoreBadge({ score, label }: { score: number; label: string }) {
+  return (
+    <div className="flex h-12 w-16 flex-none flex-col items-center justify-center rounded-[8px] border border-(--color-border-card) bg-(--color-bg-page)">
+      <span className="text-[16px] font-semibold text-(--color-text-primary-strong)">
+        {Math.round(score * 100)}
+      </span>
+      <span className="max-w-full truncate px-1 text-[9.5px] text-(--color-text-tertiary-spec)">
+        {label}
+      </span>
+    </div>
+  );
+}
+
+function SignalList({
+  title,
+  items,
+  empty,
+}: {
+  title: string;
+  items: string[];
+  empty: string;
+}) {
+  return (
+    <div>
+      <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-(--color-text-tertiary-spec)">
+        {title}
+      </div>
+      <ul className="mt-1.5 space-y-1.5 text-[12px] leading-[1.45] text-(--color-text-secondary)">
+        {(items.length ? items : [empty]).map((item) => (
+          <li key={item} className="flex gap-2">
+            <span className="mt-[0.45em] h-1 w-1 flex-none rounded-full bg-(--color-text-quaternary)" />
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function InputChip({ active, children }: { active: boolean; children: React.ReactNode }) {
+  return (
+    <span
+      data-state={active ? "active" : "inactive"}
+      className="rounded-[999px] border border-(--color-border-card) px-2 py-1 data-[state=active]:text-(--color-text-primary-strong)"
+    >
+      {children}
+    </span>
   );
 }
 

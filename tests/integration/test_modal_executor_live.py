@@ -19,6 +19,7 @@ the unit-test suite has full coverage of the ``run()`` early-return and
 ImportError paths via stub-modal monkeypatching; this module proves the
 real round-trip end-to-end so we'd notice if Modal's API changes.
 """
+
 from __future__ import annotations
 
 import os

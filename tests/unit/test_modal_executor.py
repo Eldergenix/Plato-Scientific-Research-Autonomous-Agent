@@ -15,13 +15,12 @@ unit test into a paid integration test. Instead we exercise:
 
 A real-Modal test lives in tests/integration/ behind an env var.
 """
+
 from __future__ import annotations
 
-import asyncio
 import json
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -34,6 +33,7 @@ from plato.executor.modal_backend import (
 
 
 # --- _extract_code_cells ---------------------------------------------------
+
 
 def test_extract_code_cells_picks_python_fences() -> None:
     md = """
@@ -70,6 +70,7 @@ def test_extract_code_cells_handles_empty_inputs() -> None:
 
 # --- _parse_runner_envelope ------------------------------------------------
 
+
 def test_parse_runner_envelope_round_trips_payload() -> None:
     raw = (
         "irrelevant header noise\n"
@@ -95,6 +96,7 @@ def test_parse_runner_envelope_returns_none_on_invalid_json() -> None:
 
 
 # --- run() early returns ---------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_run_returns_clean_result_when_no_code(tmp_path: Path) -> None:
@@ -168,7 +170,7 @@ async def test_run_with_stub_modal_returns_envelope(
             # "-c". Capture it so the test can verify the user code
             # made it into the sandbox.
             captured_runners.append(args[-1] if args else "")
-            envelope = {
+            envelope: dict[str, Any] = {
                 "stdout": "ran cell 1",
                 "stderr": "",
                 "figures": [],
@@ -197,9 +199,9 @@ async def test_run_with_stub_modal_returns_envelope(
     import types as _types
 
     fake = _types.ModuleType("modal")
-    fake.Sandbox = _StubSandboxFactory
-    fake.App = _StubAppNamespace
-    fake.Image = _StubImageNamespace
+    setattr(fake, "Sandbox", _StubSandboxFactory)
+    setattr(fake, "App", _StubAppNamespace)
+    setattr(fake, "Image", _StubImageNamespace)
     monkeypatch.setitem(sys.modules, "modal", fake)
 
     executor = ModalExecutor()

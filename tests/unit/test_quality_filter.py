@@ -1,4 +1,5 @@
 """Phase 2 R3 stream B — source-quality filter unit tests."""
+
 from __future__ import annotations
 
 import logging

@@ -5,6 +5,7 @@ Hits ``https://api.openalex.org/works`` and maps the JSON response into
 :class:`plato.state.models.Source` records. Auto-registers itself in the
 adapter registry on import.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -130,7 +131,9 @@ class OpenAlexAdapter:
 
     name = "openalex"
 
-    def __init__(self, *, base_url: str = _OPENALEX_BASE_URL, timeout: float = 30.0) -> None:
+    def __init__(
+        self, *, base_url: str = _OPENALEX_BASE_URL, timeout: float = 30.0
+    ) -> None:
         self._base_url = base_url
         self._timeout = timeout
 

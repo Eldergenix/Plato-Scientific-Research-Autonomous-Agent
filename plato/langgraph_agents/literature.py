@@ -44,6 +44,7 @@ def _ensure_adapters_registered() -> None:
             # iterating so the others still register.
             pass
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -60,43 +61,69 @@ def novelty_decider(state: GraphState, config: RunnableConfig):
 
     # Try for three times in case it fails
     for _ in tqdm(range(5), desc="Analyzing novelty", unit="try"):
-
         state, result = LLM_call_stream(PROMPT, state, node_name="novelty_decider")
         try:
-            result    = json_parser3(result)
-            reason    = result["Reason"]
-            decision  = result["Decision"]
-            query     = result["Query"]
+            result = json_parser3(result)
+            reason = result["Reason"]
+            decision = result["Decision"]
+            query = result["Query"]
             messages = f"{state['literature']['messages']}\nIteration {state['literature']['iteration']}\ndecision:{decision}\nreason:{reason}\n"
-            iteration = state['literature']['iteration'] + 1
+            iteration = state["literature"]["iteration"] + 1
             break
         except Exception:
             time.sleep(2)
 
     else:
-        raise Exception('Failed to extract json after 5 attempts')
+        raise Exception("Failed to extract json after 5 attempts")
 
     # get the reason for the decision
-    if 'not novel' in decision.lower():
-        print('Decision made: not novel')
-        return {"literature": {**state['literature'], "reason": reason, "messages": messages,
-                               "decision": decision, "query": query, "iteration": iteration,
-                               'next_agent': "literature_summary"}}
+    if "not novel" in decision.lower():
+        print("Decision made: not novel")
+        return {
+            "literature": {
+                **state["literature"],
+                "reason": reason,
+                "messages": messages,
+                "decision": decision,
+                "query": query,
+                "iteration": iteration,
+                "next_agent": "literature_summary",
+            }
+        }
 
-    elif 'novel' in decision.lower() or iteration>=state['literature']['max_iterations']:
-        decision = 'novel'
-        print('Decision made: novel')
-        return {"literature": {**state['literature'], "reason": reason, "messages": messages,
-                               "decision": decision, "query": query, "iteration": iteration,
-                               'next_agent': "literature_summary"}}
+    elif (
+        "novel" in decision.lower()
+        or iteration >= state["literature"]["max_iterations"]
+    ):
+        decision = "novel"
+        print("Decision made: novel")
+        return {
+            "literature": {
+                **state["literature"],
+                "reason": reason,
+                "messages": messages,
+                "decision": decision,
+                "query": query,
+                "iteration": iteration,
+                "next_agent": "literature_summary",
+            }
+        }
 
     else:
         # Get the value of the "Query" field
-        print('Decision made: query')
-        print(f'Query: {query}')
-        return {"literature": {**state['literature'], "reason": reason, "messages": messages,
-                               "decision": decision, "query": query, "iteration": iteration,
-                               'next_agent': "semantic_scholar"}}
+        print("Decision made: query")
+        print(f"Query: {query}")
+        return {
+            "literature": {
+                **state["literature"],
+                "reason": reason,
+                "messages": messages,
+                "decision": decision,
+                "query": query,
+                "iteration": iteration,
+                "next_agent": "semantic_scholar",
+            }
+        }
 
 
 def _resolve_profile(state: GraphState) -> DomainProfile:
@@ -107,11 +134,11 @@ def _resolve_profile(state: GraphState) -> DomainProfile:
     (``state['domain_profile']``). Anything else falls through to the astro
     default so this node never crashes a run mid-graph.
     """
-    profile = state.get("domain_profile")  # type: ignore[arg-type]
+    profile = state.get("domain_profile")
     if isinstance(profile, DomainProfile):
         return profile
 
-    name = state.get("domain")  # type: ignore[arg-type]
+    name = state.get("domain")
     if isinstance(name, str) and name:
         try:
             return get_domain(name)
@@ -142,7 +169,7 @@ async def semantic_scholar(state: GraphState, config: Optional[RunnableConfig] =
     _ensure_adapters_registered()
 
     profile = _resolve_profile(state)
-    query = state['literature']['query']
+    query = state["literature"]["query"]
 
     # Pull from every adapter listed by the active DomainProfile, dedup,
     # and cap at 20.
@@ -173,7 +200,7 @@ async def semantic_scholar(state: GraphState, config: Optional[RunnableConfig] =
 
             wrapped_abstract = wrap_external(abstract, "abstract")
             authors = ", ".join(paper.authors)
-            idx = papers_analyzed + state['literature']['num_papers']
+            idx = papers_analyzed + state["literature"]["num_papers"]
 
             paper_str = (
                 f"{idx}. {paper.title} ({paper.year})\n"
@@ -192,27 +219,31 @@ async def semantic_scholar(state: GraphState, config: Optional[RunnableConfig] =
 
             paper_str = f"{paper_str}\n\n"
 
-            literature_log = state['files'].get('literature_log')
+            literature_log = state["files"].get("literature_log")
             if literature_log:
-                with open(literature_log, 'a') as f:
+                with open(literature_log, "a", encoding="utf-8") as f:
                     f.write(paper_str)
 
-            papers_log = state['files'].get('papers')
+            papers_log = state["files"].get("papers")
             if papers_log:
-                with open(papers_log, 'a') as f:
+                with open(papers_log, "a", encoding="utf-8") as f:
                     f.write(paper_str)
 
             papers_str.append(paper_str)
     else:
         papers_str.append("No papers found with the query.\n")
 
-    total_papers_found = state['literature']['num_papers'] + papers_analyzed
-    print('Total papers analyzed', total_papers_found)
+    total_papers_found = state["literature"]["num_papers"] + papers_analyzed
+    print("Total papers analyzed", total_papers_found)
 
-    return {"literature": {**state['literature'],
-                           'papers': papers_str,
-                           "num_papers": total_papers_found,
-                           "sources": list(sources)}}
+    return {
+        "literature": {
+            **state["literature"],
+            "papers": papers_str,
+            "num_papers": total_papers_found,
+            "sources": list(sources),
+        }
+    }
 
 
 def literature_summary(state: GraphState, config: RunnableConfig):
@@ -226,7 +257,7 @@ def literature_summary(state: GraphState, config: RunnableConfig):
     text = extract_latex_block(state, result, "SUMMARY")
 
     # write summary to file
-    with open(f"{state['files']['literature']}", 'w') as f:
+    with open(f"{state['files']['literature']}", "w", encoding="utf-8") as f:
         f.write(f"Idea {state['literature']['decision']}\n\n")
         f.write(text)
 
@@ -241,7 +272,7 @@ def literature_summary(state: GraphState, config: RunnableConfig):
     # would skip the summary entirely.
     return {
         "literature": {
-            **state['literature'],
-            'summary': text,
+            **state["literature"],
+            "summary": text,
         }
     }

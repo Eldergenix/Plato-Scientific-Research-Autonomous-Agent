@@ -1,4 +1,5 @@
 """Phase 5 unit tests for ``scripts/license_audit.py``."""
+
 from __future__ import annotations
 
 import json
@@ -135,7 +136,9 @@ def test_csv_output_has_header() -> None:
     assert "gpl3_compatible" in first_line
 
 
-def test_main_exits_zero_in_clean_environment(capsys: pytest.CaptureFixture[str]) -> None:
+def test_main_exits_zero_in_clean_environment(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     # The CI environment is curated; the audit must come back clean.
     code = license_audit.main(["--format=md"])
     assert code == 0

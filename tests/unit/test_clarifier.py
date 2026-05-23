@@ -1,10 +1,9 @@
 """Unit tests for the Workflow-#1 research-question clarifier."""
+
 from __future__ import annotations
 
 import asyncio
 from unittest.mock import patch
-
-import pytest
 
 from plato.langgraph_agents.clarifier import research_question_clarifier
 
@@ -22,15 +21,14 @@ def _state(skip: bool = False) -> dict:
 
 
 def _run(state):
-    return asyncio.run(research_question_clarifier(state, None))
+    result = research_question_clarifier(state, None)
+    return asyncio.run(result) if asyncio.iscoroutine(result) else result
 
 
 def test_skip_clarification_short_circuits_no_llm_call():
     """skip_clarification=True must return immediately without calling the LLM."""
     state = _state(skip=True)
-    with patch(
-        "plato.langgraph_agents.clarifier.LLM_call_stream"
-    ) as mocked:
+    with patch("plato.langgraph_agents.clarifier.LLM_call_stream") as mocked:
         result = _run(state)
     mocked.assert_not_called()
     assert result == {"clarifying_questions": [], "needs_clarification": False}
@@ -39,7 +37,7 @@ def test_skip_clarification_short_circuits_no_llm_call():
 def test_happy_path_returns_three_questions():
     payload = (
         "```json\n"
-        "[\"Which photometric survey?\", \"What redshift range?\", \"What target accuracy?\"]\n"
+        '["Which photometric survey?", "What redshift range?", "What target accuracy?"]\n'
         "```"
     )
     state = _state()
@@ -83,7 +81,7 @@ def test_malformed_response_retries_then_returns_no_questions():
 
 def test_retry_recovers_on_second_attempt():
     bad = "totally not JSON"
-    good = "```json\n[\"What time range?\"]\n```"
+    good = '```json\n["What time range?"]\n```'
     state = _state()
     with patch(
         "plato.langgraph_agents.clarifier.LLM_call_stream",
@@ -97,7 +95,7 @@ def test_retry_recovers_on_second_attempt():
 
 def test_blank_strings_are_filtered_out():
     """Whitespace-only entries should not flip needs_clarification."""
-    payload = "```json\n[\"\", \"   \"]\n```"
+    payload = '```json\n["", "   "]\n```'
     state = _state()
     with patch(
         "plato.langgraph_agents.clarifier.LLM_call_stream",

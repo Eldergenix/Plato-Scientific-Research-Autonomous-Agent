@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TabPills } from "@/components/shell/tab-pills";
+import { getPendingApprovalStages } from "@/components/stages/approval-checkpoints";
 import { cn, formatCost, formatTokens } from "@/lib/utils";
 import type { Project } from "@/lib/types";
 
@@ -23,7 +24,7 @@ import type { Project } from "@/lib/types";
  * Types
  * ---------------------------------------------------------------------------*/
 
-export type TopBarFilterTab = "active" | "backlog" | "all";
+export type TopBarFilterTab = "active" | "approve" | "backlog" | "failed" | "all";
 
 export interface TopBarProps {
   project: Project;
@@ -50,12 +51,6 @@ export interface TopBarProps {
  * Constants
  * ---------------------------------------------------------------------------*/
 
-const TABS: ReadonlyArray<{ id: TopBarFilterTab; label: string }> = [
-  { id: "active", label: "Active" },
-  { id: "backlog", label: "Backlog" },
-  { id: "all", label: "All" },
-] as const;
-
 const PROJECT_NAME_MAX = 40;
 
 /* -----------------------------------------------------------------------------
@@ -63,7 +58,7 @@ const PROJECT_NAME_MAX = 40;
  * ---------------------------------------------------------------------------*/
 
 /**
- * 16x16 Plato glyph — a pink (#FF0080) Lightbulb. Sits inside a 16x24
+ * 16x16 Plato glyph — tokenized pink Lightbulb. Sits inside a 16x24
  * container so vertical centering matches Linear's logo alignment.
  */
 function PlatoLogoMark() {
@@ -98,7 +93,7 @@ const Row1IconButton = React.forwardRef<
         "inline-flex items-center justify-center size-7 rounded-full",
         "text-(--color-text-tertiary-spec) bg-transparent",
         "transition-colors duration-100 ease-out",
-        "hover:bg-[rgba(255,255,255,0.05)] hover:text-(--color-text-primary-strong)",
+        "hover:bg-(--color-ghost-bg-hover) hover:text-(--color-text-primary-strong)",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-brand-interactive)",
         pressed && "text-(--color-text-primary-strong)",
         className,
@@ -138,7 +133,7 @@ const GlassIconButton = React.forwardRef<
           "text-(--color-text-row-meta)",
           "shadow-[var(--shadow-glass)]",
           "transition-colors duration-100 ease-out",
-          "hover:bg-[#232325] hover:text-(--color-text-primary-strong)",
+          "hover:bg-(--color-bg-button-glass-hover) hover:text-(--color-text-primary-strong)",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-brand-interactive)",
           className,
         )}
@@ -174,7 +169,7 @@ function CostMeter({
         "shadow-[var(--shadow-glass)]",
         "text-[12px] font-medium leading-none",
         "transition-colors duration-100 ease-out",
-        "hover:bg-[#232325] hover:text-(--color-text-primary-strong)",
+        "hidden sm:inline-flex hover:bg-(--color-bg-button-glass-hover) hover:text-(--color-text-primary-strong)",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-brand-interactive)",
       )}
     >
@@ -213,6 +208,7 @@ function RunPipelineButton({
       title={disabledReason}
       aria-disabled={disabled || undefined}
       data-testid="run-pipeline-button"
+      aria-label="Run pipeline"
       className={cn(
         "inline-flex items-center gap-1.5 h-7 px-3 rounded-full",
         "bg-(--color-brand-indigo) text-white",
@@ -226,7 +222,7 @@ function RunPipelineButton({
       )}
     >
       <Play size={12} strokeWidth={1.75} />
-      Run pipeline
+      Run
     </button>
   );
 }
@@ -264,6 +260,26 @@ export function TopBar({
   elapsedMs: _elapsedMs,
 }: TopBarProps) {
   const running = project.activeRun;
+  const approvalCount = getPendingApprovalStages(project).length;
+  const failedCount = Object.values(project.stages).filter((stage) => stage.status === "failed").length;
+  const tabs = React.useMemo(
+    () => [
+      { id: "active", label: "Active" },
+      {
+        id: "approve",
+        label: "Approve",
+        indicator: approvalCount > 0 ? "approval" : undefined,
+      },
+      { id: "backlog", label: "Backlog" },
+      {
+        id: "failed",
+        label: "Failed",
+        indicator: failedCount > 0 ? "failed" : undefined,
+      },
+      { id: "all", label: "All" },
+    ] as const,
+    [approvalCount, failedCount],
+  );
 
   const truncatedName =
     project.name.length > PROJECT_NAME_MAX
@@ -278,9 +294,9 @@ export function TopBar({
       {/* -------------------------- Row 1 -------------------------- */}
       <div
         className={cn(
-          "flex items-center justify-between gap-1.5",
-          "h-11 px-2",
-          "border-b border-[#1D1D1F]",
+          "flex min-h-11 items-center justify-between gap-1.5",
+          "px-2 py-1",
+          "border-b border-(--color-border-card)",
         )}
         style={{ borderBottomWidth: "0.5px" }}
       >
@@ -290,17 +306,17 @@ export function TopBar({
 
           <h1
             className={cn(
-              "truncate min-w-0",
+              "min-w-0 max-w-[min(42vw,320px)] truncate",
               "text-[13px] leading-4 font-medium tracking-[-0.01em]",
               "text-(--color-text-workspace)",
             )}
             title={project.name}
-            style={{ maxWidth: 320 }}
           >
             {truncatedName}
           </h1>
 
           <Row1IconButton
+            className="hidden sm:inline-flex"
             aria-label={isFavorite ? "Remove favorite" : "Add favorite"}
             pressed={isFavorite}
             onClick={onToggleFavorite}
@@ -314,6 +330,7 @@ export function TopBar({
           />
 
           <Row1IconButton
+            className="hidden sm:inline-flex"
             aria-label="Notifications"
             onClick={onOpenNotifications}
             icon={<Bell size={14} strokeWidth={1.5} />}
@@ -324,7 +341,7 @@ export function TopBar({
             Note: Linear's spec leaves this side empty (breadcrumb/share),
             but Plato's pipeline-runner UX needs run controls visible at all
             times, so we surface them here. */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex min-w-0 shrink-0 items-center gap-1.5">
           <CostMeter
             costCents={project.totalCostCents}
             tokens={project.totalTokens}
@@ -362,7 +379,7 @@ export function TopBar({
           )}
 
           <Row1IconButton
-            aria-label="More actions"
+            aria-label="Open command palette"
             onClick={onMoreActions}
             icon={<MoreHorizontal size={14} strokeWidth={1.5} />}
           />
@@ -372,15 +389,15 @@ export function TopBar({
       {/* -------------------------- Row 2 -------------------------- */}
       <div
         className={cn(
-          "flex items-center justify-between gap-1.5",
+          "flex min-h-[43.5px] items-center justify-between gap-1.5",
           "px-2",
         )}
-        style={{ height: "43.5px", paddingTop: "2px", paddingBottom: "2px" }}
+        style={{ paddingTop: "2px", paddingBottom: "2px" }}
       >
         {/* Left: tab pills + flexible spacer */}
-        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto py-1 -my-1">
           <TabPills
-            tabs={TABS}
+            tabs={tabs}
             activeId={filterTab}
             onSelect={(id) => onChangeFilter(id as TopBarFilterTab)}
             ariaLabel="Issue list filter"
@@ -389,9 +406,9 @@ export function TopBar({
         </div>
 
         {/* Right: 3 glass icon buttons */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1.5">
           <GlassIconButton
-            label="Add filter"
+            label="Cycle stage filter"
             onClick={onAddFilter}
             icon={
               <Filter
@@ -402,7 +419,7 @@ export function TopBar({
             }
           />
           <GlassIconButton
-            label="Display options"
+            label="Toggle log panel"
             onClick={onChangeDisplay}
             icon={
               <SlidersHorizontal

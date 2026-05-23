@@ -18,6 +18,7 @@ Edge assertions deliberately use ``compiled.builder.edges`` rather than
    LangGraph release that removes it produces a clear test error rather
    than a confusing ``AttributeError`` mid-assertion.
 """
+
 from __future__ import annotations
 
 import pytest

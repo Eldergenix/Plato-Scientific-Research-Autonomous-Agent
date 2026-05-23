@@ -1,7 +1,9 @@
 """Unit tests for the R11 scoped_node decorator (iter 13)."""
+
 from __future__ import annotations
 
 import asyncio
+from typing import Any, Coroutine, cast
 from pathlib import Path
 
 import pytest
@@ -16,12 +18,12 @@ def project_dir(tmp_path: Path) -> Path:
     return pd
 
 
-def _state(project_dir: Path) -> dict:
+def _state(project_dir: Path) -> dict[str, Any]:
     return {"files": {"Folder": str(project_dir)}}
 
 
 def test_sync_node_gets_scoped_writer(project_dir: Path) -> None:
-    captured: dict = {}
+    captured: dict[str, Any] = {}
 
     def node(state: dict) -> dict:
         captured["writer"] = state.get("_writer")
@@ -65,7 +67,7 @@ def test_async_node_gets_scoped_writer(project_dir: Path) -> None:
         return {}
 
     wrapped = scoped_node(node, FileScope(write=["x"]))
-    asyncio.run(wrapped(_state(project_dir)))
+    asyncio.run(cast(Coroutine[Any, Any, dict[str, Any]], wrapped(_state(project_dir))))
 
     assert isinstance(captured["writer"], ScopedWriter)
 
@@ -78,7 +80,9 @@ def test_async_node_out_of_scope_raises(project_dir: Path) -> None:
     wrapped = scoped_node(node, FileScope(write=["allowed.txt"]))
 
     with pytest.raises(ScopeError):
-        asyncio.run(wrapped(_state(project_dir)))
+        asyncio.run(
+            cast(Coroutine[Any, Any, dict[str, Any]], wrapped(_state(project_dir)))
+        )
 
 
 def test_wrapper_does_not_mutate_caller_state(project_dir: Path) -> None:
@@ -127,5 +131,7 @@ def test_wrapper_async_returns_node_result(project_dir: Path) -> None:
         return {"async_updated": True}
 
     wrapped = scoped_node(node, FileScope(write=["x"]))
-    result = asyncio.run(wrapped(_state(project_dir)))
+    result: dict[str, Any] = asyncio.run(
+        cast(Coroutine[Any, Any, dict[str, Any]], wrapped(_state(project_dir)))
+    )
     assert result == {"async_updated": True}

@@ -1,3 +1,12 @@
+# ruff: noqa: E402
+import warnings
+
+warnings.filterwarnings(
+    "ignore",
+    message=r"The default value of `allowed_objects` will change in a future version\..*",
+    category=Warning,
+)
+
 from langgraph.graph import START, StateGraph, END
 
 from .parameters import GraphState
@@ -52,16 +61,18 @@ def build_lg_graph(mermaid_diagram=False, checkpointer=None):
     # it un-scoped to avoid wrapping cost. ``counter_evidence_search``
     # and ``gap_detector`` are pure state transformations today; if
     # they grow file outputs, wrap them then.
-    builder.add_node("preprocess_node",              preprocess_node)
+    builder.add_node("preprocess_node", preprocess_node)
     builder.add_node(
         "research_question_clarifier",
         scoped_node(research_question_clarifier, CLARIFIER_SCOPE),
     )
-    builder.add_node("maker",                        scoped_node(idea_maker, IDEA_SCOPE))
-    builder.add_node("hater",                        scoped_node(idea_hater, IDEA_HATER_SCOPE))
-    builder.add_node("methods",                      scoped_node(methods_fast, METHODS_FAST_SCOPE))
-    builder.add_node("novelty",                      scoped_node(novelty_decider, NOVELTY_DECIDER_SCOPE))
-    builder.add_node("semantic_scholar",             scoped_node(semantic_scholar, SEMANTIC_SCHOLAR_SCOPE))
+    builder.add_node("maker", scoped_node(idea_maker, IDEA_SCOPE))
+    builder.add_node("hater", scoped_node(idea_hater, IDEA_HATER_SCOPE))
+    builder.add_node("methods", scoped_node(methods_fast, METHODS_FAST_SCOPE))
+    builder.add_node("novelty", scoped_node(novelty_decider, NOVELTY_DECIDER_SCOPE))
+    builder.add_node(
+        "semantic_scholar", scoped_node(semantic_scholar, SEMANTIC_SCHOLAR_SCOPE)
+    )
     builder.add_node(
         "literature_summary",
         scoped_node(literature_summary, LITERATURE_SUMMARY_SCOPE),
@@ -76,12 +87,12 @@ def build_lg_graph(mermaid_diagram=False, checkpointer=None):
         "claim_extractor",
         scoped_node(claim_extractor, CLAIM_EXTRACTOR_SCOPE),
     )
-    builder.add_node("counter_evidence_search",      counter_evidence_search)
-    builder.add_node("gap_detector",                 gap_detector)
-    builder.add_node("referee",                      scoped_node(referee, REFEREE_SCOPE))
+    builder.add_node("counter_evidence_search", counter_evidence_search)
+    builder.add_node("gap_detector", gap_detector)
+    builder.add_node("referee", scoped_node(referee, REFEREE_SCOPE))
 
     # Define edges: these determine how the control flow moves
-    builder.add_edge(START,                          "preprocess_node")
+    builder.add_edge(START, "preprocess_node")
     builder.add_conditional_edges("preprocess_node", task_router)
     # Workflow #1: gate the maker/hater debate behind the clarifier.
     builder.add_conditional_edges(
@@ -89,21 +100,20 @@ def build_lg_graph(mermaid_diagram=False, checkpointer=None):
         clarifier_router,
         {"maker": "maker", END: END},
     )
-    builder.add_conditional_edges("maker",           router)
-    builder.add_edge("hater",                        "maker")
-    builder.add_edge("methods",                      END)
-    builder.add_conditional_edges("novelty",         literature_router)
-    builder.add_edge("semantic_scholar",             "novelty")
+    builder.add_conditional_edges("maker", router)
+    builder.add_edge("hater", "maker")
+    builder.add_edge("methods", END)
+    builder.add_conditional_edges("novelty", literature_router)
+    builder.add_edge("semantic_scholar", "novelty")
     # Workflow #11 + #12 (iter-3 wiring): literature_summary →
     # claim_extractor → counter_evidence_search → gap_detector → END.
     # claim_extractor populates state["claims"]/state["evidence_links"]
     # which the next two nodes consume.
-    builder.add_edge("literature_summary",           "claim_extractor")
-    builder.add_edge("claim_extractor",              "counter_evidence_search")
-    builder.add_edge("counter_evidence_search",      "gap_detector")
-    builder.add_edge("gap_detector",                 END)
-    builder.add_edge("referee",                      END)
-    
+    builder.add_edge("literature_summary", "claim_extractor")
+    builder.add_edge("claim_extractor", "counter_evidence_search")
+    builder.add_edge("counter_evidence_search", "gap_detector")
+    builder.add_edge("gap_detector", END)
+    builder.add_edge("referee", END)
 
     if checkpointer is None:
         checkpointer = make_checkpointer()
@@ -113,6 +123,7 @@ def build_lg_graph(mermaid_diagram=False, checkpointer=None):
     if mermaid_diagram:
         try:
             import requests
+
             original_post = requests.post
 
             def patched_post(*args, **kwargs):
@@ -126,5 +137,5 @@ def build_lg_graph(mermaid_diagram=False, checkpointer=None):
             print("✅ Graph diagram saved to graph_diagram.png")
         except Exception as e:
             print(f"⚠️ Failed to generate or save graph diagram: {e}")
-            
+
     return graph

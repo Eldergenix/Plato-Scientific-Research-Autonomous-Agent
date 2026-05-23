@@ -14,6 +14,7 @@ These tests pin the four PRAGMAs the iter-18 hardening sets so a
 future refactor that swaps the connection setup can't silently regress
 the contract.
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -32,6 +33,7 @@ from plato.state.checkpointer import (
 def _sqlite_saver_available() -> bool:
     try:
         import langgraph.checkpoint.sqlite  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -145,11 +147,12 @@ def test_busy_timeout_makes_concurrent_write_wait(tmp_path: Path) -> None:
 
     # Bootstrap the schema.
     boot = sqlite3.connect(str(db))
+    _apply_concurrency_pragmas(boot)
     boot.execute("CREATE TABLE t (k INTEGER PRIMARY KEY, v TEXT)")
     boot.commit()
     boot.close()
 
-    holder = sqlite3.connect(str(db), timeout=0)
+    holder = sqlite3.connect(str(db), timeout=0, check_same_thread=False)
     holder.execute("BEGIN IMMEDIATE")  # acquire the write lock
     holder.execute("INSERT INTO t (v) VALUES ('a')")
 

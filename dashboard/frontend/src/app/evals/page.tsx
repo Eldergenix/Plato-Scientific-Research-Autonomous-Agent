@@ -2,9 +2,9 @@
 
 import * as React from "react";
 import { LineChart, X as CloseIcon } from "lucide-react";
+import { dashboardApiBase } from "@/lib/api-base";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:7878/api/v1";
+const API_BASE = dashboardApiBase();
 
 // Mirror of evals/runner.py:_summarize output shape. Each metric
 // reports {count, mean, p50, p95}; an empty count means no task in
@@ -67,7 +67,10 @@ export default function EvalsPage() {
     }
     let cancelled = false;
     setTaskMetrics({ kind: "loading" });
-    fetch(`${API_BASE}/evals/tasks/${openTask}/metrics`, { cache: "no-store" })
+    fetch(`${API_BASE}/evals/tasks/${openTask}/metrics`, {
+      cache: "no-store",
+      credentials: "include",
+    })
       .then(async (resp) => {
         if (cancelled) return;
         if (resp.status === 404) {
@@ -94,7 +97,10 @@ export default function EvalsPage() {
 
   React.useEffect(() => {
     let cancelled = false;
-    fetch(`${API_BASE}/evals/summary`, { cache: "no-store" })
+    fetch(`${API_BASE}/evals/summary`, {
+      cache: "no-store",
+      credentials: "include",
+    })
       .then(async (resp) => {
         if (cancelled) return;
         if (resp.status === 404) {

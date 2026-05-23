@@ -11,6 +11,7 @@ We deliberately do not exercise the network paths (cmbagent / OpenAlex) —
 those depend on optional deps and live network. A smoke check that the
 modules *register* their backends is enough.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -70,15 +71,16 @@ def test_register_keyword_extractor_collision_requires_overwrite() -> None:
             return {}
 
     with pytest.raises(ValueError):
-        register_keyword_extractor(_Stub())  # type: ignore[arg-type]
+        register_keyword_extractor(_Stub())
 
     # ``overwrite=True`` must succeed and replace the entry.
-    register_keyword_extractor(_Stub(), overwrite=True)  # type: ignore[arg-type]
+    register_keyword_extractor(_Stub(), overwrite=True)
     try:
         assert KEYWORD_EXTRACTOR_REGISTRY["default"].extract("anything") == {}
     finally:
         # Restore the real default extractor for downstream tests.
         from plato.keyword_extractor.default import DefaultKeywordExtractor
+
         register_keyword_extractor(DefaultKeywordExtractor(), overwrite=True)
 
 
@@ -92,6 +94,8 @@ def test_runtime_checkable_protocol_recognises_default_instance() -> None:
 def test_mesh_extractor_falls_back_to_default_when_no_vocab() -> None:
     """Without ``$PLATO_MESH_VOCAB`` configured, the mesh extractor must still return tokens."""
     extractor = get_keyword_extractor("mesh")
-    out = extractor.extract("photosynthesis photosynthesis enzyme catalysis", n_keywords=3)
+    out = extractor.extract(
+        "photosynthesis photosynthesis enzyme catalysis", n_keywords=3
+    )
     assert isinstance(out, dict)
     assert "photosynthesis" in out  # frequency-based fallback should pick it up

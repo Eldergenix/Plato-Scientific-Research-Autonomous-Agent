@@ -149,13 +149,13 @@ export function ApprovalCard({
           />
           <div className="min-w-0">
             <div
-              className="text-white truncate"
+              className="truncate text-(--color-text-primary-strong)"
               style={{ fontSize: "15px", fontWeight: 510 }}
             >
               {title}
             </div>
             <div
-              className="text-[#d0d6e0] mt-0.5"
+              className="mt-0.5 text-(--color-text-tertiary-spec)"
               style={{ fontSize: "13px", fontWeight: 450 }}
             >
               {description}

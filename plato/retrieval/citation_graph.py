@@ -27,6 +27,7 @@ against the seeds and against each previously-emitted source (via the
 visited-set + :func:`plato.retrieval.dedup.dedup_sources`), so a
 self-referential loop is filtered out.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -93,9 +94,10 @@ async def _fetch_referenced_works(
 
     works = batch_payload.get("results") or []
     sources: list[Source] = []
+    requested_ids = set(capped_ids)
     for work in works:
         mapped = _map_work_to_source(work)
-        if mapped is not None:
+        if mapped is not None and mapped.openalex_id in requested_ids:
             sources.append(mapped)
     return sources
 
@@ -105,9 +107,7 @@ async def _fetch_cited_by(
 ) -> list[Source]:
     """Fetch works that cite ``openalex_id``."""
     per_page = max(1, min(limit, _MAX_PER_PAGE))
-    url = (
-        f"{_OPENALEX_WORKS_URL}?filter=cites:{openalex_id}&per-page={per_page}"
-    )
+    url = f"{_OPENALEX_WORKS_URL}?filter=cites:{openalex_id}&per-page={per_page}"
     resp = await client.get(url)
     resp.raise_for_status()
     payload = resp.json()
@@ -236,7 +236,7 @@ async def expand_citations(
             tasks = [
                 _fetch_one(
                     client,
-                    seed.openalex_id,  # type: ignore[arg-type]
+                    seed.openalex_id,
                     direction,
                     limit_per_seed,
                     semaphore,

@@ -20,11 +20,12 @@ Implementation
 The retrieve calls are awaited via ``asyncio.gather`` so the slowest
 adapter, not the slowest variant, sets the wall-clock cost.
 """
+
 from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, Optional, cast
 
 from langchain_core.runnables import RunnableConfig
 
@@ -60,24 +61,22 @@ _PER_VARIANT_LIMIT = 10
 def _resolve_profile(state: GraphState) -> DomainProfile:
     """Mirror of ``literature._resolve_profile`` — kept private to avoid a
     cross-module import that the test suite would have to mock."""
-    profile = state.get("domain_profile")  # type: ignore[arg-type]
+    profile = state.get("domain_profile")
     if isinstance(profile, DomainProfile):
         return profile
 
-    name = state.get("domain")  # type: ignore[arg-type]
+    name = state.get("domain")
     if isinstance(name, str) and name:
         try:
             return get_domain(name)
         except KeyError:
-            logger.warning(
-                "Unknown domain %r in state; falling back to 'astro'.", name
-            )
+            logger.warning("Unknown domain %r in state; falling back to 'astro'.", name)
 
     return get_domain("astro")
 
 
 def _seed_query(state: GraphState) -> str | None:
-    literature = state.get("literature") if isinstance(state, dict) else None
+    literature = cast(Any, state.get("literature"))
     if isinstance(literature, dict):
         q = literature.get("query")
         if isinstance(q, str) and q.strip():
@@ -93,12 +92,12 @@ def _seed_query(state: GraphState) -> str | None:
 def _existing_sources(state: GraphState) -> list[Source]:
     """Pull the already-retrieved sources from either of the two state slots."""
     out: list[Source] = []
-    literature = state.get("literature") if isinstance(state, dict) else None
+    literature = cast(Any, state.get("literature"))
     if isinstance(literature, dict):
-        for s in literature.get("sources") or []:
+        for s in cast(Any, literature.get("sources")) or []:
             if isinstance(s, Source):
                 out.append(s)
-    for s in state.get("sources") or []:  # type: ignore[arg-type]
+    for s in cast(Any, state.get("sources")) or []:
         if isinstance(s, Source):
             out.append(s)
     return out
@@ -141,11 +140,9 @@ async def counter_evidence_search(
     fresh: list[Source] = []
     for variant, result in zip(variants, fetched_lists, strict=True):
         if isinstance(result, BaseException):
-            logger.warning(
-                "Counter-evidence variant %r raised: %s", variant, result
-            )
+            logger.warning("Counter-evidence variant %r raised: %s", variant, result)
             continue
-        for src in result:
+        for src in cast(list[Any], result):
             if not isinstance(src, Source):
                 continue
             key = src.doi or src.arxiv_id or src.openalex_id or src.title.lower()

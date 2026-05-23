@@ -34,7 +34,7 @@ from typing import Optional
 
 import aiofiles
 
-from ..domain.models import Journal, Project, Stage, StageId, StageContent, utcnow
+from ..domain.models import Journal, Project, StageId, StageContent, utcnow
 
 # Project IDs flow into filesystem paths verbatim. Restrict to the same
 # safe charset we use for X-Plato-User to block path traversal (`..`,
@@ -75,9 +75,20 @@ STAGE_FILES: dict[StageId, str] = {
     "paper": "paper/main.pdf",
 }
 
+DEFAULT_DATA_DESCRIPTION = """No dataset has been uploaded yet.
+
+Generate a literature-first scientific research idea that can be evaluated with public datasets or a clearly described synthetic benchmark. If later stages require data, make the dataset requirement explicit before proposing experiments.
+"""
+
 
 class ProjectStore:
-    def __init__(self, root: Path, *, user_id: str | None = None):
+    def __init__(
+        self,
+        root: Path,
+        *,
+        user_id: str | None = None,
+        allow_legacy_unbound: bool = True,
+    ):
         # Per-user tenant binding (iter-31): when ``user_id`` is set, every
         # read/write that touches a Project's meta verifies the project's
         # ``user_id`` matches. Routers already enforce this via
@@ -89,6 +100,7 @@ class ProjectStore:
         # tests) construct without ``user_id`` and the check is skipped.
         self.root = root
         self.user_id = user_id
+        self.allow_legacy_unbound = allow_legacy_unbound
         root.mkdir(parents=True, exist_ok=True)
 
     def _check_tenant(self, project: "Project") -> None:
@@ -102,9 +114,12 @@ class ProjectStore:
         if self.user_id is None:
             return
         if project.user_id is None:
-            # Legacy un-bound project. Permit if the store is also un-bound;
-            # otherwise treat as cross-tenant and 404.
-            return
+            # Legacy un-bound project. Required multi-tenant deployments cannot
+            # prove ownership, so bound stores fail closed unless explicitly
+            # configured for legacy compatibility.
+            if self.allow_legacy_unbound:
+                return
+            raise FileNotFoundError(project.id)
         if project.user_id != self.user_id:
             raise FileNotFoundError(project.id)
 
@@ -195,6 +210,8 @@ class ProjectStore:
             project.stages["data"].origin = "edited"
             project.stages["data"].last_run_at = utcnow()
             self.save(project)
+        else:
+            self.write_stage_sync(project.id, "data", DEFAULT_DATA_DESCRIPTION)
         return project
 
     def delete(self, pid: str) -> None:
@@ -224,7 +241,8 @@ class ProjectStore:
         async with aiofiles.open(path, "r") as f:
             text = await f.read()
         mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
-        origin = proj.stages.get(stage).origin if proj.stages.get(stage) else "ai"
+        stage_record = proj.stages.get(stage)
+        origin = stage_record.origin if stage_record is not None else "ai"
         return StageContent(stage=stage, markdown=text, updated_at=mtime, origin=origin or "ai")
 
     async def write_stage(self, pid: str, stage: StageId, markdown: str, origin: str = "edited") -> StageContent:

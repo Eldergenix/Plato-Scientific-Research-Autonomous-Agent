@@ -6,6 +6,7 @@ paths are exercised directly; the happy path uses a stub
 ``e2b_code_interpreter`` module that returns a synthesized execution
 object.
 """
+
 from __future__ import annotations
 
 import sys
@@ -23,6 +24,7 @@ from plato.executor.e2b_backend import (
 
 
 # --- _extract_code_cells ---------------------------------------------------
+
 
 def test_extract_code_cells_handles_fenced_python() -> None:
     md = """
@@ -48,6 +50,7 @@ def test_extract_code_cells_empty_input() -> None:
 
 # --- _coerce_text ---------------------------------------------------------
 
+
 def test_coerce_text_handles_str_list_none() -> None:
     assert _coerce_text(None) == ""
     assert _coerce_text("x") == "x"
@@ -58,6 +61,7 @@ def test_coerce_text_handles_str_list_none() -> None:
 
 
 # --- _extract_png ---------------------------------------------------------
+
 
 def test_extract_png_reads_direct_attr() -> None:
     class _R:
@@ -81,6 +85,7 @@ def test_extract_png_returns_none_when_missing() -> None:
 
 
 # --- run() early returns --------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_run_returns_clean_result_when_no_code(tmp_path: Path) -> None:
@@ -149,7 +154,7 @@ async def test_run_with_stub_sandbox_captures_logs_and_results(
     import types as _types
 
     fake = _types.ModuleType("e2b_code_interpreter")
-    fake.Sandbox = _StubSandbox
+    setattr(fake, "Sandbox", _StubSandbox)
     monkeypatch.setitem(sys.modules, "e2b_code_interpreter", fake)
 
     executor = E2BExecutor()
@@ -187,7 +192,7 @@ async def test_run_propagates_sandbox_error(
     import types as _types
 
     fake = _types.ModuleType("e2b_code_interpreter")
-    fake.Sandbox = _StubSandbox
+    setattr(fake, "Sandbox", _StubSandbox)
     monkeypatch.setitem(sys.modules, "e2b_code_interpreter", fake)
 
     executor = E2BExecutor()

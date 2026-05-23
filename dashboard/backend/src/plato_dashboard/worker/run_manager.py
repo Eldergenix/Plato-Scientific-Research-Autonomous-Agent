@@ -27,19 +27,22 @@ import signal
 import sys
 import time
 import traceback
+import warnings
 from datetime import datetime, timezone
+from multiprocessing.process import BaseProcess
 from pathlib import Path
 from typing import Any, Optional
 
-from ..domain.models import Run, StageId, utcnow
+from ..domain.models import ActiveRun, Project, Run, StageId, utcnow
 from ..events.bus import EventBus
 from ..settings import get_settings
-from ..storage.key_store import ENV_KEYS, KeyStore
+from ..storage.key_store import ENV_KEYS, KeyStore, key_store_path_for_project_dir
+from ..tooling import disabled_tool_names_for_project_dir
 
 # In-memory state. Promoted to Redis in Phase 2.
 _active_runs: dict[str, Run] = {}
 _run_tasks: dict[str, asyncio.Task[None]] = {}
-_subprocesses: dict[str, mp.Process] = {}
+_subprocesses: dict[str, BaseProcess] = {}
 
 # Iter-25 defense-in-depth: per-run project_dir override.
 #
@@ -62,6 +65,21 @@ _run_dirs: dict[str, Path] = {}
 _SPAWN_CTX = mp.get_context("spawn")
 _TAIL_INTERVAL_S = 0.25
 _SIGTERM_GRACE_S = 5.0
+OPENAI_DEFAULT_MODEL = "gpt-5.5-2026-04-23"
+_MODEL_ALIASES = {
+    "gpt-5.5-mini": OPENAI_DEFAULT_MODEL,
+    "gpt-5.5": OPENAI_DEFAULT_MODEL,
+}
+
+_STAGE_ARTIFACTS: dict[StageId, tuple[str, ...]] = {
+    "data": ("input_files/data_description.md",),
+    "idea": ("input_files/idea.md",),
+    "literature": ("input_files/literature.md",),
+    "method": ("input_files/methods.md",),
+    "results": ("input_files/results.md",),
+    "paper": ("paper/main.pdf", "paper/main.tex"),
+    "referee": ("input_files/referee.md",),
+}
 
 
 # --------------------------------------------------------------------------- #
@@ -182,16 +200,216 @@ def _write_status(run: Run) -> None:
         pass
 
 
-def _resolve_keys() -> dict[str, str]:
+def _read_project(project_dir: Path) -> Project | None:
+    try:
+        with (project_dir / "meta.json").open() as f:
+            return Project.model_validate(json.load(f))
+    except (OSError, ValueError):
+        return None
+
+
+def _write_project(project_dir: Path, project: Project) -> None:
+    project.updated_at = utcnow()
+    payload = json.dumps(project.model_dump(mode="json"), indent=2, default=str)
+    path = project_dir / "meta.json"
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    try:
+        tmp.write_text(payload)
+        os.replace(tmp, path)
+    except OSError:
+        pass
+
+
+def _stage_artifact_exists(project_dir: Path, stage: StageId) -> bool:
+    return any((project_dir / rel).is_file() for rel in _STAGE_ARTIFACTS.get(stage, ()))
+
+
+def _read_input_file(project_dir: Path, name: str) -> str:
+    try:
+        return (project_dir / "input_files" / name).read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+def _select_results_executor(
+    project_dir: Path,
+    config: dict[str, Any],
+    extra: dict[str, Any],
+) -> str | None:
+    explicit = config.get("executor") or extra.get("executor")
+    if isinstance(explicit, str) and explicit.strip():
+        return explicit.strip()
+
+    data_description = _read_input_file(project_dir, "data_description.md")
+    combined = "\n".join(
+        [
+            data_description,
+            _read_input_file(project_dir, "idea.md"),
+            _read_input_file(project_dir, "methods.md"),
+        ]
+    ).lower()
+    if "synthetic" not in combined:
+        return None
+
+    tabular_terms = (
+        "tabular",
+        "classification",
+        "logistic regression",
+        "random forest",
+        "roc-auc",
+        "roc auc",
+        "calibration",
+    )
+    if not any(term in combined for term in tabular_terms):
+        return None
+
+    try:
+        from plato.utils import extract_file_paths
+
+        existing_paths, missing_paths = extract_file_paths(data_description)
+    except Exception:  # noqa: BLE001 - heuristic should never fail a run
+        existing_paths = []
+        missing_paths = []
+    if existing_paths or missing_paths:
+        return None
+
+    return "sklearn_synthetic"
+
+
+def _config_or_extra(
+    config: dict[str, Any],
+    extra: dict[str, Any],
+    key: str,
+    default: Any = None,
+) -> Any:
+    if key in config:
+        return config[key]
+    if key in extra:
+        return extra[key]
+    return default
+
+
+def _coerce_bool(value: Any, *, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "on"}:
+            return True
+        if lowered in {"0", "false", "no", "off"}:
+            return False
+        return default
+    return bool(value)
+
+
+def _set_project_run_started(run: Run, project_dir: Path) -> None:
+    project = _read_project(project_dir)
+    if project is None:
+        return
+    project.active_run = ActiveRun(
+        run_id=run.id,
+        stage=run.stage,
+        started_at=run.started_at or utcnow(),
+    )
+    stage = project.stages.get(run.stage)
+    if stage is not None:
+        stage.status = "running"
+        stage.progress_label = "Running"
+    _write_project(project_dir, project)
+
+
+def _set_project_run_finished(run: Run, project_dir: Path) -> None:
+    project = _read_project(project_dir)
+    if project is None:
+        return
+
+    if project.active_run and project.active_run.run_id == run.id:
+        project.active_run = None
+
+    stage = project.stages.get(run.stage)
+    if stage is not None:
+        stage.progress_label = None
+        if run.status == "succeeded":
+            if _stage_artifact_exists(project_dir, run.stage):
+                stage.status = "done"
+                stage.origin = "ai"
+                stage.last_run_at = run.finished_at or utcnow()
+                models = run.config.get("models") if isinstance(run.config, dict) else None
+                if isinstance(models, dict):
+                    selected = models.get(run.stage) or models.get("llm")
+                    if isinstance(selected, str) and selected:
+                        stage.model = selected
+            else:
+                run.status = "failed"
+                run.error = run.error or (
+                    f"{run.stage} run finished without writing the expected artifact"
+                )
+                stage.status = "failed"
+        elif run.status == "cancelled":
+            stage.status = "failed"
+        elif run.status == "failed":
+            stage.status = "failed"
+
+    try:
+        from .token_tracker import aggregate_project_usage
+
+        usage = aggregate_project_usage(project_dir)
+        project.total_tokens = usage.total_input + usage.total_output
+        project.total_cost_cents = usage.total_cost_cents
+    except Exception:  # noqa: BLE001
+        pass
+
+    _write_project(project_dir, project)
+    _write_status(run)
+
+
+def _resolve_keys(project_dir: Path | None = None) -> dict[str, str]:
     """Pull API keys from KeyStore + env, mapped to env-var names Plato reads."""
     settings = get_settings()
-    store = KeyStore(settings.keys_path)
+    keys_path = (
+        key_store_path_for_project_dir(
+            settings.project_root,
+            settings.keys_path,
+            project_dir,
+        )
+        if project_dir is not None
+        else settings.keys_path
+    )
+    store = KeyStore(keys_path)
     out: dict[str, str] = {}
     for provider, env_var in ENV_KEYS.items():
         val = store.resolve(provider)
         if val:
             out[env_var] = val
     return out
+
+
+def _normalize_model_id(model: Any) -> Any:
+    if not isinstance(model, str):
+        return model
+    return _MODEL_ALIASES.get(model, model)
+
+
+def _normalize_model_config_for_keys(config: dict, env_keys: dict[str, str]) -> dict:
+    """Choose an available default LLM when the request omits one.
+
+    Plato's idea workflow defaults its base ``llm`` to Gemini. Hosted
+    deployments often have multiple provider keys, and the free Gemini quota
+    is easy to exhaust, so prefer OpenAI when available. Keep caller-supplied
+    models untouched except removed-model aliases; only fill the missing base
+    model.
+    """
+    original_models = config.get("models") or {}
+    models = {key: _normalize_model_id(value) for key, value in original_models.items()}
+    if "llm" not in models and env_keys.get("OPENAI_API_KEY"):
+        models["llm"] = OPENAI_DEFAULT_MODEL
+    if models == original_models:
+        return config
+    normalized = dict(config)
+    normalized["models"] = models
+    return normalized
 
 
 # --------------------------------------------------------------------------- #
@@ -235,13 +453,11 @@ class _LogStream(io.TextIOBase):
     def writable(self) -> bool:  # noqa: D401
         return True
 
-    def write(self, s: str) -> int:  # type: ignore[override]
-        if not isinstance(s, str):
-            s = str(s)
+    def write(self, s: str) -> int:
         self._buf += s
         while "\n" in self._buf:
             line, self._buf = self._buf.split("\n", 1)
-            if line.strip():
+            if line.strip() and not _should_drop_log_line(line):
                 self._writer.emit(
                     "log.line",
                     source=self._source,
@@ -252,7 +468,7 @@ class _LogStream(io.TextIOBase):
         return len(s)
 
     def flush(self) -> None:  # noqa: D401
-        if self._buf.strip():
+        if self._buf.strip() and not _should_drop_log_line(self._buf):
             self._writer.emit(
                 "log.line",
                 source=self._source,
@@ -261,6 +477,14 @@ class _LogStream(io.TextIOBase):
                 text=self._buf.rstrip(),
             )
         self._buf = ""
+
+
+def _should_drop_log_line(line: str) -> bool:
+    """Hide noisy third-party warnings that do not require user action."""
+    return (
+        "LangChainPendingDeprecationWarning" in line
+        and "allowed_objects" in line
+    ) or "from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer" in line
 
 
 # --------------------------------------------------------------------------- #
@@ -276,6 +500,12 @@ def _child_main(
     env_keys: dict[str, str],
 ) -> None:
     """Subprocess entry point. Imports Plato, dispatches on stage, emits events."""
+    warnings.filterwarnings(
+        "ignore",
+        message=r"The default value of `allowed_objects` will change in a future version\..*",
+        category=Warning,
+    )
+
     # Detach: own session/process group so killpg reaps cmbagent grandchildren.
     try:
         os.setsid()
@@ -286,6 +516,11 @@ def _child_main(
     for env_var, value in env_keys.items():
         if value:
             os.environ[env_var] = value
+    python_bin = str(Path(sys.executable).parent)
+    path_parts = os.environ.get("PATH", "").split(os.pathsep)
+    if python_bin and python_bin not in path_parts:
+        os.environ["PATH"] = os.pathsep.join([python_bin, *path_parts])
+    os.environ.setdefault("PYTHON", sys.executable)
 
     writer = _EventWriter(Path(events_file))
     sys.stdout = _LogStream(writer, source=stage, level="info")
@@ -324,7 +559,7 @@ def _child_main(
 
         if stage == "data":
             if config.get("enhance") or extra.get("enhance"):
-                summarizer = models_cfg.get("summarizer") or "gpt-4o"
+                summarizer = models_cfg.get("summarizer") or OPENAI_DEFAULT_MODEL
                 formatter = models_cfg.get("formatter") or "o3-mini"
                 plato.enhance_data_description(
                     summarizer_model=summarizer,
@@ -334,6 +569,7 @@ def _child_main(
                 print("data stage: no-op (description already saved by frontend)")
 
         elif stage == "idea":
+            extra["skip_clarification"] = extra.get("skip_clarification", True)
             kwargs = _kw(
                 "llm",
                 "idea_maker_model",
@@ -343,7 +579,11 @@ def _child_main(
                 "orchestration_model",
                 "formatter_model",
             )
-            plato.get_idea(mode=mode, **kwargs)
+            plato.get_idea(
+                mode=mode,
+                skip_clarification=bool(extra.get("skip_clarification")),
+                **kwargs,
+            )
 
         elif stage == "method":
             kwargs = _kw(
@@ -357,6 +597,9 @@ def _child_main(
             plato.get_method(mode=mode, **kwargs)
 
         elif stage == "results":
+            planning_data_dir = Path(project_dir) / "experiment_generation_output" / "planning" / "data"
+            planning_data_dir.mkdir(parents=True, exist_ok=True)
+            (planning_data_dir / ".keep").touch(exist_ok=True)
             kwargs = _kw(
                 "engineer_model",
                 "researcher_model",
@@ -370,12 +613,16 @@ def _child_main(
             max_attempts = int(config.get("max_attempts") or extra.get("max_attempts") or 10)
             restart_at = int(config.get("restart_at_step") or extra.get("restart_at_step") or -1)
             hardware = config.get("hardware_constraints") or extra.get("hardware_constraints")
+            executor_name = _select_results_executor(Path(project_dir), config, extra)
+            if executor_name:
+                print(f"results stage: using executor {executor_name}")
             plato.get_results(
                 involved_agents=list(agents),
                 max_n_steps=max_steps,
                 max_n_attempts=max_attempts,
                 restart_at_step=restart_at,
                 hardware_constraints=hardware,
+                executor=executor_name,
                 **kwargs,
             )
             # Iter-30: fan executor cell records out as code.execute
@@ -412,35 +659,60 @@ def _child_main(
                     writer.emit("code.execute", **payload)
 
         elif stage == "paper":
-            journal_name = config.get("journal") or "NONE"
+            journal_name = _config_or_extra(config, extra, "journal", "NONE") or "NONE"
             try:
                 journal = Journal[journal_name] if isinstance(journal_name, str) else Journal(journal_name)
             except (KeyError, ValueError):
                 journal = Journal.NONE
-            kwargs: dict[str, Any] = {}
+            paper_kwargs: dict[str, Any] = {}
             if models_cfg.get("llm"):
-                kwargs["llm"] = models_cfg["llm"]
+                paper_kwargs["llm"] = models_cfg["llm"]
+            max_revision_iters = int(
+                _config_or_extra(
+                    config,
+                    extra,
+                    "max_revision_iters",
+                    _config_or_extra(config, extra, "iterations", 2),
+                )
+                or 0
+            )
             plato.get_paper(
                 journal=journal,
-                writer=config.get("writer", "scientist"),
-                add_citations=bool(config.get("add_citations", True)),
-                **kwargs,
+                writer=_config_or_extra(config, extra, "writer", "scientist"),
+                add_citations=_coerce_bool(
+                    _config_or_extra(config, extra, "add_citations", True),
+                    default=True,
+                ),
+                cmbagent_keywords=_coerce_bool(
+                    _config_or_extra(config, extra, "cmbagent_keywords", False),
+                    default=False,
+                ),
+                max_revision_iters=max_revision_iters,
+                **paper_kwargs,
             )
 
         elif stage == "referee":
-            kwargs = {}
+            referee_kwargs: dict[str, Any] = {}
             if models_cfg.get("referee"):
-                kwargs["llm"] = models_cfg["referee"]
+                referee_kwargs["llm"] = models_cfg["referee"]
             elif models_cfg.get("llm"):
-                kwargs["llm"] = models_cfg["llm"]
-            plato.referee(**kwargs)
+                referee_kwargs["llm"] = models_cfg["llm"]
+            plato.referee(**referee_kwargs)
 
         elif stage == "literature":
             lit_provider = config.get("lit_provider") or extra.get("lit_provider") or "semantic_scholar"
-            kwargs = {"mode": lit_provider}
+            literature_kwargs: dict[str, Any] = {"mode": lit_provider}
             if models_cfg.get("llm"):
-                kwargs["llm"] = models_cfg["llm"]
-            plato.check_idea(**kwargs)
+                literature_kwargs["llm"] = models_cfg["llm"]
+            max_iterations = _config_or_extra(
+                config,
+                extra,
+                "max_iterations",
+                _config_or_extra(config, extra, "iterations", None),
+            )
+            if max_iterations is not None:
+                literature_kwargs["max_iterations"] = int(max_iterations)
+            plato.check_idea(**literature_kwargs)
 
         else:
             raise ValueError(f"Unknown stage: {stage}")
@@ -462,8 +734,8 @@ def _child_main(
         writer.emit("stage.finished", run_id=run_id, project_id=project_id, stage=stage, status="failed")
     finally:
         try:
-            sys.stdout.flush()  # type: ignore[union-attr]
-            sys.stderr.flush()  # type: ignore[union-attr]
+            sys.stdout.flush()
+            sys.stderr.flush()
         except Exception:  # noqa: BLE001
             pass
         writer.close()
@@ -524,7 +796,6 @@ async def _tail_events(run: Run, bus: EventBus, events_file: Path) -> None:
                         elif kind == "stage.finished":
                             run.status = evt.get("status", "failed")
                             run.finished_at = utcnow()
-                            _write_status(run)
                             # Reconcile the live ledger with the canonical
                             # on-disk LLM_calls.txt for this stage.
                             try:
@@ -555,6 +826,10 @@ async def _tail_events(run: Run, bus: EventBus, events_file: Path) -> None:
                                     pass
                             except Exception:  # noqa: BLE001
                                 pass
+                            project_dir = _run_dirs.get(
+                                run.id
+                            ) or (get_settings().project_root / run.project_id)
+                            _set_project_run_finished(run, project_dir)
                             finished_seen = True
                             break
         except OSError:
@@ -576,7 +851,10 @@ async def _tail_events(run: Run, bus: EventBus, events_file: Path) -> None:
                     run.status = "failed"
                     run.error = run.error or f"subprocess exited with code {exit_code}"
                 run.finished_at = utcnow()
-                _write_status(run)
+                project_dir = _run_dirs.get(run.id) or (
+                    get_settings().project_root / run.project_id
+                )
+                _set_project_run_finished(run, project_dir)
                 await bus.publish(
                     f"run:{run.id}",
                     {
@@ -602,7 +880,8 @@ async def _supervise(run: Run, bus: EventBus, events_file: Path) -> None:
     try:
         await _tail_events(run, bus, events_file)
         # Make sure the process has fully exited before we drop our handle.
-        await asyncio.to_thread(proc.join, 2.0)
+        await asyncio.to_thread(proc.join)
+        await asyncio.to_thread(proc.close)
     except asyncio.CancelledError:
         await _terminate_process(run.id, proc)
         run.status = "cancelled"
@@ -622,9 +901,11 @@ async def _supervise(run: Run, bus: EventBus, events_file: Path) -> None:
         raise
     finally:
         _subprocesses.pop(run.id, None)
+        _run_tasks.pop(run.id, None)
+        _run_dirs.pop(run.id, None)
 
 
-async def _terminate_process(run_id: str, proc: mp.Process) -> None:
+async def _terminate_process(run_id: str, proc: BaseProcess) -> None:
     """SIGTERM the child's process group, escalate to SIGKILL after grace."""
     pid = proc.pid
     if pid is None:
@@ -700,7 +981,15 @@ async def start_run(
     # Truncate any stale pipe from an earlier identically-named run.
     events_file.write_text("")
 
-    env_keys = _resolve_keys()
+    env_keys = _resolve_keys(resolved_project_dir)
+    disabled_tools = disabled_tool_names_for_project_dir(
+        resolved_project_dir,
+        get_settings().project_root,
+    )
+    if disabled_tools:
+        env_keys["PLATO_DISABLED_TOOLS"] = ",".join(disabled_tools)
+    config = _normalize_model_config_for_keys(config, env_keys)
+    run.config = config
 
     proc = _SPAWN_CTX.Process(
         target=_child_main,
@@ -722,6 +1011,7 @@ async def start_run(
 
     _active_runs[run.id] = run
     _subprocesses[run.id] = proc
+    _set_project_run_started(run, resolved_project_dir)
     _write_status(run)
 
     task = asyncio.create_task(_supervise(run, bus, events_file))

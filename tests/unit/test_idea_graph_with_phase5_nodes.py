@@ -3,6 +3,7 @@
 These tests exercise compile-time wiring only — they do not invoke any
 node bodies, so no LLM, retrieval, or filesystem mocks are required.
 """
+
 from __future__ import annotations
 
 from langgraph.checkpoint.memory import MemorySaver
@@ -31,7 +32,8 @@ def test_phase5_chain_edges_present():
     graph = build_lg_graph(checkpointer=MemorySaver())
     edges = _builder_edges(graph)
     chain = [
-        ("literature_summary", "counter_evidence_search"),
+        ("literature_summary", "claim_extractor"),
+        ("claim_extractor", "counter_evidence_search"),
         ("counter_evidence_search", "gap_detector"),
         ("gap_detector", "__end__"),
     ]

@@ -18,6 +18,8 @@ StageId = Literal["data", "idea", "literature", "method", "results", "paper", "r
 StageStatus = Literal["empty", "pending", "running", "done", "stale", "failed"]
 RunStatus = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 Mode = Literal["fast", "cmbagent"]
+PublicationTaskKind = Literal["section", "review", "completion", "other"]
+PublicationTaskStatus = Literal["todo", "in_progress", "blocked", "done"]
 
 
 class Journal(str, Enum):
@@ -28,6 +30,17 @@ class Journal(str, Enum):
     JHEP = "JHEP"
     NeurIPS = "NeurIPS"
     PASJ = "PASJ"
+    ARXIV = "ARXIV"
+    NATURE = "NATURE"
+    SCIENCE = "SCIENCE"
+    SCIENCE_ADVANCES = "SCIENCE_ADVANCES"
+    NEJM = "NEJM"
+    LANCET = "LANCET"
+    CELL = "CELL"
+    JAMA = "JAMA"
+    NATURE_REVIEWS_MOL_CELL_BIO = "NATURE_REVIEWS_MOL_CELL_BIO"
+    CHEMICAL_REVIEWS = "CHEMICAL_REVIEWS"
+    REVIEWS_OF_MODERN_PHYSICS = "REVIEWS_OF_MODERN_PHYSICS"
 
 
 class Stage(BaseModel):
@@ -103,6 +116,41 @@ class ApprovalsState(BaseModel):
     auto_skip: bool = False
 
 
+class PublicationAuthor(BaseModel):
+    id: str = Field(default_factory=lambda: new_id("auth"))
+    name: str = Field("", max_length=160)
+    email: Optional[str] = Field(default=None, max_length=254)
+    affiliation: Optional[str] = Field(default=None, max_length=240)
+    role: str = Field("Author", max_length=80)
+    order: int = Field(default=0, ge=0)
+
+
+class PublicationDates(BaseModel):
+    target: Optional[datetime] = None
+    submitted: Optional[datetime] = None
+    accepted: Optional[datetime] = None
+    published: Optional[datetime] = None
+
+
+class PublicationTask(BaseModel):
+    id: str = Field(default_factory=lambda: new_id("task"))
+    title: str = Field("", max_length=180)
+    kind: PublicationTaskKind = "section"
+    section: Optional[str] = Field(default=None, max_length=120)
+    assignee: Optional[str] = Field(default=None, max_length=160)
+    assignee_email: Optional[str] = Field(default=None, max_length=254)
+    status: PublicationTaskStatus = "todo"
+    due_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    notes: Optional[str] = Field(default=None, max_length=2000)
+
+
+class PublicationSettings(BaseModel):
+    authors: list[PublicationAuthor] = Field(default_factory=list)
+    dates: PublicationDates = Field(default_factory=PublicationDates)
+    tasks: list[PublicationTask] = Field(default_factory=list)
+
+
 class Project(BaseModel):
     id: str = Field(default_factory=lambda: new_id("prj"))
     name: str = "Untitled project"
@@ -128,6 +176,7 @@ class Project(BaseModel):
     # blocker-chain default (idea → literature → method) and refuses
     # downstream launches when an upstream gate hasn't been approved.
     approvals: Optional[ApprovalsState] = None
+    publication_settings: PublicationSettings = Field(default_factory=PublicationSettings)
 
     @classmethod
     def empty(cls, name: str = "Untitled project", user_id: str | None = None) -> "Project":
@@ -224,6 +273,7 @@ class KeysPayload(BaseModel):
     OPENAI: Optional[str] = None
     GEMINI: Optional[str] = None
     ANTHROPIC: Optional[str] = None
+    HUGGINGFACE: Optional[str] = None
     PERPLEXITY: Optional[str] = None
     SEMANTIC_SCHOLAR: Optional[str] = None
     LANGFUSE_PUBLIC: Optional[str] = None
@@ -235,6 +285,7 @@ class KeysStatus(BaseModel):
     OPENAI: Literal["unset", "from_env", "in_app"] = "unset"
     GEMINI: Literal["unset", "from_env", "in_app"] = "unset"
     ANTHROPIC: Literal["unset", "from_env", "in_app"] = "unset"
+    HUGGINGFACE: Literal["unset", "from_env", "in_app"] = "unset"
     PERPLEXITY: Literal["unset", "from_env", "in_app"] = "unset"
     SEMANTIC_SCHOLAR: Literal["unset", "from_env", "in_app"] = "unset"
     LANGFUSE_PUBLIC: Literal["unset", "from_env", "in_app"] = "unset"

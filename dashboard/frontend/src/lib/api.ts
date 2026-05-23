@@ -1,11 +1,15 @@
 import type {
   Journal,
+  Mode,
+  PublicationFeedAuthor,
+  PublicationSettings,
   Project,
+  ResearchPublication,
   StageId,
 } from "./types";
+import { dashboardApiBase } from "./api-base";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:7878/api/v1";
+const API_BASE = dashboardApiBase();
 
 // Discriminated union for SSE payloads emitted by the FastAPI event
 // bus (see plato_dashboard.events.bus). Consumers should switch on
@@ -26,12 +30,31 @@ export interface RunEventStageFinished {
   ts: number | string;
   stage: StageId;
   ok?: boolean;
+  status?: RunStatus;
+}
+
+export interface RunEventStageHeartbeat {
+  kind: "stage.heartbeat";
+  ts?: number | string;
+  stage?: StageId;
+  step?: number;
+  total_steps?: number;
+  attempt?: number;
+  total_attempts?: number;
 }
 
 export interface RunEventPlotCreated {
   kind: "plot.created";
   ts: number | string;
   path?: string;
+}
+
+export interface RunEventError {
+  kind: "error";
+  ts: number | string;
+  stage?: StageId;
+  message?: string;
+  traceback?: string;
 }
 
 // Iter-28 — backend already emits these via langgraph_bridge.py for
@@ -88,7 +111,9 @@ export interface RunEventUnknown {
 export type RunEvent =
   | RunEventLogLine
   | RunEventStageFinished
+  | RunEventStageHeartbeat
   | RunEventPlotCreated
+  | RunEventError
   | RunEventNodeEntered
   | RunEventNodeExited
   | RunEventCodeExecute
@@ -122,6 +147,7 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     r = await fetch(`${API_BASE}${path}`, {
       ...init,
+      credentials: "include",
       headers,
     });
   } catch (e) {
@@ -131,12 +157,7 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
     });
   }
   if (!r.ok) {
-    let detail: unknown;
-    try {
-      detail = await r.json();
-    } catch {
-      detail = await r.text();
-    }
+    const detail = await readErrorDetail(r);
     throw new ApiError(r.status, detail);
   }
   if (r.status === 204) return undefined as T;
@@ -147,21 +168,49 @@ export class ApiError extends Error {
   status: number;
   detail: unknown;
   constructor(status: number, detail: unknown) {
-    super(`API error ${status}`);
+    super(errorMessageForDetail(status, detail));
     this.status = status;
     this.detail = detail;
   }
 }
 
+async function readErrorDetail(response: Response): Promise<unknown> {
+  const body = await response.text();
+  if (!body) return null;
+  try {
+    return JSON.parse(body);
+  } catch {
+    return body;
+  }
+}
+
+function errorMessageForDetail(status: number, detail: unknown): string {
+  if (typeof detail === "string" && detail.trim()) {
+    return detail;
+  }
+  if (detail && typeof detail === "object") {
+    const message = (detail as { message?: unknown; detail?: unknown }).message;
+    if (typeof message === "string" && message.trim()) {
+      return message;
+    }
+    const nestedDetail = (detail as { detail?: unknown }).detail;
+    if (typeof nestedDetail === "string" && nestedDetail.trim()) {
+      return nestedDetail;
+    }
+  }
+  return `API error ${status}`;
+}
+
 // ---------------------------------------------------------------- shape
 // The backend uses snake_case; the frontend uses camelCase. Translate.
-type RawProject = Omit<Project, "totalTokens" | "totalCostCents" | "createdAt" | "updatedAt" | "stages" | "activeRun" | "approvals"> & {
+type RawProject = Omit<Project, "totalTokens" | "totalCostCents" | "createdAt" | "updatedAt" | "stages" | "activeRun" | "approvals" | "publicationSettings"> & {
   total_tokens: number;
   total_cost_cents: number;
   created_at: string;
   updated_at: string;
   stages: Record<string, RawStage>;
   active_run: RawActiveRun | null;
+  publication_settings?: PublicationSettings | null;
   // Iter-27: approvals come along on every Project read so
   // ``getBlockingApproval`` can evaluate the gate synchronously without
   // an extra round trip per stage.
@@ -187,6 +236,10 @@ type RawActiveRun = {
   total_attempts?: number | null;
 };
 
+function defaultPublicationSettings(): PublicationSettings {
+  return { authors: [], dates: {}, tasks: [] };
+}
+
 function adaptProject(p: RawProject): Project {
   const stages = Object.fromEntries(
     Object.entries(p.stages).map(([k, s]) => [
@@ -211,6 +264,7 @@ function adaptProject(p: RawProject): Project {
     updatedAt: p.updated_at,
     totalTokens: p.total_tokens,
     totalCostCents: p.total_cost_cents,
+    publicationSettings: p.publication_settings ?? defaultPublicationSettings(),
     stages,
     activeRun: p.active_run
       ? {
@@ -225,6 +279,132 @@ function adaptProject(p: RawProject): Project {
       : null,
     approvals: p.approvals ?? null,
   };
+}
+
+type RawPublicationFeedAuthor = {
+  id?: string | null;
+  user_id?: string | null;
+  name: string;
+  affiliation?: string | null;
+  avatar_url?: string | null;
+  role?: string | null;
+};
+
+type RawPublicationComment = {
+  id: string;
+  publication_id: string;
+  user_id: string;
+  user_name: string;
+  user_affiliation?: string | null;
+  user_avatar_url?: string | null;
+  body: string;
+  tagged_authors?: RawPublicationFeedAuthor[];
+  created_at: string;
+};
+
+type RawResearchPublication = {
+  id: string;
+  project_id: string;
+  creator_user_id: string;
+  creator_name: string;
+  creator_affiliation?: string | null;
+  creator_avatar_url?: string | null;
+  title: string;
+  description: string;
+  paper_pdf_url: string;
+  first_page_preview_url: string;
+  source_run_id?: string | null;
+  source_stage: string;
+  authors?: RawPublicationFeedAuthor[];
+  tagged_authors?: RawPublicationFeedAuthor[];
+  tags?: string[];
+  published_at: string;
+  updated_at: string;
+  like_count: number;
+  comment_count: number;
+  share_count: number;
+  comments?: RawPublicationComment[];
+};
+
+function adaptFeedAuthor(author: RawPublicationFeedAuthor): PublicationFeedAuthor {
+  return {
+    id: author.id ?? null,
+    userId: author.user_id ?? null,
+    name: author.name,
+    affiliation: author.affiliation ?? null,
+    avatarUrl: author.avatar_url ?? null,
+    role: author.role ?? null,
+  };
+}
+
+function adaptPublicationComment(comment: RawPublicationComment) {
+  return {
+    id: comment.id,
+    publicationId: comment.publication_id,
+    userId: comment.user_id,
+    userName: comment.user_name,
+    userAffiliation: comment.user_affiliation ?? null,
+    userAvatarUrl: comment.user_avatar_url ?? null,
+    body: comment.body,
+    taggedAuthors: (comment.tagged_authors ?? []).map(adaptFeedAuthor),
+    createdAt: comment.created_at,
+  };
+}
+
+function adaptResearchPublication(publication: RawResearchPublication): ResearchPublication {
+  return {
+    id: publication.id,
+    projectId: publication.project_id,
+    creatorUserId: publication.creator_user_id,
+    creatorName: publication.creator_name,
+    creatorAffiliation: publication.creator_affiliation ?? null,
+    creatorAvatarUrl: publication.creator_avatar_url ?? null,
+    title: publication.title,
+    description: publication.description,
+    paperPdfUrl: publication.paper_pdf_url,
+    firstPagePreviewUrl: publication.first_page_preview_url,
+    sourceRunId: publication.source_run_id ?? null,
+    sourceStage: publication.source_stage,
+    authors: (publication.authors ?? []).map(adaptFeedAuthor),
+    taggedAuthors: (publication.tagged_authors ?? []).map(adaptFeedAuthor),
+    tags: publication.tags ?? [],
+    publishedAt: publication.published_at,
+    updatedAt: publication.updated_at,
+    likeCount: publication.like_count,
+    commentCount: publication.comment_count,
+    shareCount: publication.share_count,
+    comments: (publication.comments ?? []).map(adaptPublicationComment),
+  };
+}
+
+function toRawFeedAuthor(author: PublicationFeedAuthor): RawPublicationFeedAuthor {
+  return {
+    id: author.id ?? undefined,
+    user_id: author.userId ?? undefined,
+    name: author.name,
+    affiliation: author.affiliation ?? undefined,
+    avatar_url: author.avatarUrl ?? undefined,
+    role: author.role ?? undefined,
+  };
+}
+
+export interface PublishPublicationBody {
+  title?: string;
+  description?: string;
+  creator_name?: string;
+  creator_affiliation?: string;
+  creator_avatar_url?: string;
+  source_run_id?: string;
+  tagged_authors?: PublicationFeedAuthor[];
+  tags?: string[];
+}
+
+export interface PublicationCommentBody {
+  body: string;
+  user_name?: string;
+  user_affiliation?: string;
+  user_avatar_url?: string;
+  tagged_authors?: PublicationFeedAuthor[];
 }
 
 // ---------------------------------------------------------------- iter-23
@@ -301,6 +481,69 @@ export interface RunUsage {
   cost_cents: number;
 }
 
+export type RunStatus =
+  | "queued"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "cancelled";
+
+export interface RunRecord {
+  id: string;
+  projectId: string;
+  stage: StageId;
+  mode: "fast" | "cmbagent";
+  status: RunStatus;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  error?: string | null;
+  config: Record<string, unknown>;
+  pid?: number | null;
+  tokenInput: number;
+  tokenOutput: number;
+}
+
+export interface StageRunBody {
+  mode?: Mode;
+  models?: Record<string, string>;
+  journal?: Journal | null;
+  add_citations?: boolean;
+  iterations?: number | null;
+  extra?: Record<string, unknown>;
+}
+
+interface RawRun {
+  id: string;
+  project_id: string;
+  stage: StageId;
+  mode: "fast" | "cmbagent";
+  status: RunStatus;
+  started_at?: string | null;
+  finished_at?: string | null;
+  error?: string | null;
+  config?: Record<string, unknown>;
+  pid?: number | null;
+  token_input?: number;
+  token_output?: number;
+}
+
+function adaptRun(r: RawRun): RunRecord {
+  return {
+    id: r.id,
+    projectId: r.project_id,
+    stage: r.stage,
+    mode: r.mode,
+    status: r.status,
+    startedAt: r.started_at ?? null,
+    finishedAt: r.finished_at ?? null,
+    error: r.error ?? null,
+    config: r.config ?? {},
+    pid: r.pid ?? null,
+    tokenInput: r.token_input ?? 0,
+    tokenOutput: r.token_output ?? 0,
+  };
+}
+
 // Iter-31 — paper artifact shape returned by api.getPaperArtifacts.
 // PaperPreview consumes sections directly; pdfUrl is wired into the
 // PDF tab when the worker has produced paper/main.pdf.
@@ -308,22 +551,109 @@ export interface PaperSectionArtifact {
   id: string;
   name: string;
   status: "compiled" | "warning" | "failed" | "pending";
+  markdown?: string;
   tex?: string;
 }
 
 export interface PaperArtifacts {
   pdfUrl?: string;
+  submissionZipUrl?: string;
   sections: PaperSectionArtifact[];
+}
+
+export interface ScientificScoreAxis {
+  score: number;
+  label: string;
+  summary: string;
+  signals: string[];
+  cautions: string[];
+}
+
+export interface ScientificScores {
+  overall: {
+    score: number;
+    label: string;
+    summary: string;
+  };
+  axes: {
+    originality: ScientificScoreAxis;
+    impact: ScientificScoreAxis;
+    findings: ScientificScoreAxis;
+  };
+  inputs: {
+    has_data: boolean;
+    has_idea: boolean;
+    has_literature: boolean;
+    has_method: boolean;
+    has_results: boolean;
+    has_paper_tex: boolean;
+    has_paper_pdf: boolean;
+    plot_count: number;
+    metric_mentions: number;
+  };
+  updated_at: string;
+}
+
+export type McpTransport = "stdio" | "http" | "sse";
+export type McpStatus = "untested" | "ok" | "error" | "inactive";
+
+export interface ToolInfo {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  permissions: string[];
+  enabled: boolean;
+  input_schema: Record<string, unknown>;
+  output_schema: Record<string, unknown>;
+}
+
+export interface McpServerInfo {
+  id: string;
+  name: string;
+  description: string;
+  transport: McpTransport;
+  target: string;
+  enabled: boolean;
+  built_in: boolean;
+  auth_configured: boolean;
+  status: McpStatus;
+  status_message?: string | null;
+  tools: string[];
+  tool_count: number;
+  created_at?: string | null;
+  updated_at?: string | null;
+  last_checked_at?: string | null;
+}
+
+export interface ToolingState {
+  tools: ToolInfo[];
+  mcp_servers: McpServerInfo[];
+  custom_mcp_servers: McpServerInfo[];
 }
 
 // Parse top-level section commands out of a LaTeX source so the Sections
 // gutter has something honest to render. We only look at the document
 // body; anything before begin{document} is preamble and section refs
 // inside macros aren't real sections.
+function latexSectionToMarkdown(sectionTex: string): string {
+  return sectionTex
+    .replace(/\\section\*?\{([^}]+)\}/g, "## $1\n\n")
+    .replace(/\\label\{[^}]*\}/g, "")
+    .replace(/\\(?:citep?|ref|eqref)\{([^}]*)\}/g, "[$1]")
+    .replace(/\\[a-zA-Z]+\*?(?:\[[^\]]*\])?\{([^{}]*)\}/g, "$1")
+    .replace(/\\[a-zA-Z]+/g, "")
+    .replace(/[{}]/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function parseTexSections(tex: string): PaperSectionArtifact[] {
   const begin = tex.indexOf("\\begin{document}");
   const body = begin >= 0 ? tex.slice(begin) : tex;
   const re = /\\section\*?\{([^}]+)\}/g;
+  const matches: Array<{ id: string; name: string; start: number }> = [];
   const out: PaperSectionArtifact[] = [];
   const seen = new Set<string>();
   let m: RegExpExecArray | null;
@@ -337,7 +667,28 @@ function parseTexSections(tex: string): PaperSectionArtifact[] {
       || `section-${out.length + 1}`;
     if (seen.has(id)) continue;
     seen.add(id);
-    out.push({ id, name, status: "compiled" });
+    matches.push({ id, name, start: m.index });
+  }
+  matches.forEach((match, index) => {
+    const next = matches[index + 1];
+    const sectionTex = body.slice(match.start, next?.start).trim();
+    out.push({
+      id: match.id,
+      name: match.name,
+      status: "compiled",
+      markdown: latexSectionToMarkdown(sectionTex),
+      tex: sectionTex,
+    });
+  });
+  if (out.length === 0 && tex.trim()) {
+    const sectionTex = tex.trim();
+    out.push({
+      id: "full-document",
+      name: "Full document",
+      status: "compiled",
+      markdown: latexSectionToMarkdown(sectionTex),
+      tex: sectionTex,
+    });
   }
   return out;
 }
@@ -356,6 +707,67 @@ export const api = {
     notes: string[];
   }> {
     return fetchJson("/capabilities");
+  },
+
+  async getTooling(): Promise<ToolingState> {
+    return fetchJson<ToolingState>("/tooling");
+  },
+
+  async setToolEnabled(toolId: string, enabled: boolean): Promise<ToolInfo> {
+    return fetchJson<ToolInfo>(`/tooling/tools/${encodeURIComponent(toolId)}`, {
+      method: "PUT",
+      body: JSON.stringify({ enabled }),
+    });
+  },
+
+  async setMcpEnabled(serverId: string, enabled: boolean): Promise<McpServerInfo> {
+    return fetchJson<McpServerInfo>(`/tooling/mcp/${encodeURIComponent(serverId)}`, {
+      method: "PUT",
+      body: JSON.stringify({ enabled }),
+    });
+  },
+
+  async testMcpServer(serverId: string): Promise<McpServerInfo> {
+    return fetchJson<McpServerInfo>(`/tooling/mcp/${encodeURIComponent(serverId)}/test`, {
+      method: "POST",
+    });
+  },
+
+  async createCustomMcpServer(body: {
+    name: string;
+    description?: string;
+    transport: McpTransport;
+    target: string;
+    auth?: string;
+    enabled?: boolean;
+  }): Promise<McpServerInfo> {
+    return fetchJson<McpServerInfo>("/tooling/mcp/custom", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+
+  async updateCustomMcpServer(
+    serverId: string,
+    body: Partial<{
+      name: string;
+      description: string;
+      transport: McpTransport;
+      target: string;
+      auth: string;
+      enabled: boolean;
+    }>,
+  ): Promise<McpServerInfo> {
+    return fetchJson<McpServerInfo>(`/tooling/mcp/custom/${encodeURIComponent(serverId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+  },
+
+  async deleteCustomMcpServer(serverId: string): Promise<void> {
+    await fetchJson(`/tooling/mcp/custom/${encodeURIComponent(serverId)}`, {
+      method: "DELETE",
+    });
   },
 
   async listProjects(): Promise<Project[]> {
@@ -397,6 +809,97 @@ export const api = {
     await fetchJson(`/projects/${pid}`, { method: "DELETE" });
   },
 
+  async getPublicationSettings(pid: string): Promise<PublicationSettings> {
+    return fetchJson<PublicationSettings>(`/projects/${pid}/publication_settings`);
+  },
+
+  async updatePublicationSettings(
+    pid: string,
+    body: PublicationSettings,
+  ): Promise<PublicationSettings> {
+    return fetchJson<PublicationSettings>(`/projects/${pid}/publication_settings`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
+  },
+
+  async listPublications(params: {
+    tag?: string;
+    q?: string;
+    author?: string;
+    limit?: number;
+  } = {}): Promise<ResearchPublication[]> {
+    const search = new URLSearchParams();
+    if (params.tag) search.set("tag", params.tag);
+    if (params.q) search.set("q", params.q);
+    if (params.author) search.set("author", params.author);
+    if (params.limit) search.set("limit", String(params.limit));
+    const suffix = search.size ? `?${search.toString()}` : "";
+    const raw = await fetchJson<{ publications: RawResearchPublication[] }>(`/publications${suffix}`);
+    return raw.publications.map(adaptResearchPublication);
+  },
+
+  async publishProjectPublication(
+    pid: string,
+    body: PublishPublicationBody,
+  ): Promise<ResearchPublication> {
+    const raw = await fetchJson<RawResearchPublication>(`/projects/${pid}/publications`, {
+      method: "POST",
+      body: JSON.stringify({
+        ...body,
+        tagged_authors: body.tagged_authors?.map(toRawFeedAuthor),
+      }),
+    });
+    return adaptResearchPublication(raw);
+  },
+
+  async commentOnPublication(
+    publicationId: string,
+    body: PublicationCommentBody,
+  ): Promise<ResearchPublication["comments"][number]> {
+    const raw = await fetchJson<RawPublicationComment>(`/publications/${publicationId}/comments`, {
+      method: "POST",
+      body: JSON.stringify({
+        ...body,
+        tagged_authors: body.tagged_authors?.map(toRawFeedAuthor),
+      }),
+    });
+    return adaptPublicationComment(raw);
+  },
+
+  async likePublication(publicationId: string): Promise<ResearchPublication> {
+    const raw = await fetchJson<RawResearchPublication>(`/publications/${publicationId}/likes/me`, {
+      method: "PUT",
+    });
+    return adaptResearchPublication(raw);
+  },
+
+  async unlikePublication(publicationId: string): Promise<ResearchPublication> {
+    const raw = await fetchJson<RawResearchPublication>(`/publications/${publicationId}/likes/me`, {
+      method: "DELETE",
+    });
+    return adaptResearchPublication(raw);
+  },
+
+  async sharePublication(publicationId: string, target = "link"): Promise<ResearchPublication> {
+    const raw = await fetchJson<RawResearchPublication>(`/publications/${publicationId}/shares`, {
+      method: "POST",
+      body: JSON.stringify({ target }),
+    });
+    return adaptResearchPublication(raw);
+  },
+
+  async tagPublicationAuthors(
+    publicationId: string,
+    authors: PublicationFeedAuthor[],
+  ): Promise<ResearchPublication> {
+    const raw = await fetchJson<RawResearchPublication>(`/publications/${publicationId}/author-tags`, {
+      method: "POST",
+      body: JSON.stringify({ authors: authors.map(toRawFeedAuthor) }),
+    });
+    return adaptResearchPublication(raw);
+  },
+
   async readStage(pid: string, stage: StageId): Promise<{ markdown: string; origin: string } | null> {
     const r = await fetchJson<{ markdown: string; origin: string } | null>(
       `/projects/${pid}/state/${stage}`,
@@ -414,27 +917,21 @@ export const api = {
   async startRun(
     pid: string,
     stage: StageId,
-    body: {
-      mode?: "fast" | "cmbagent";
-      models?: Record<string, string>;
-      // Iter-3: backend StageRunRequest (models.py:169) accepts an
-      // optional `iterations` budget. The idea-stage UI exposes a
-      // numeric input for this; previously the value was collected and
-      // dropped on the floor by this client. Forwarding it lets the
-      // user-set iteration budget actually reach the worker.
-      iterations?: number | null;
-      // Iter-3: same story for `journal` and `add_citations` — backend
-      // accepts both, frontend never sent either through the start-run
-      // body. Adding them here makes the picker controls in the new
-      // run-config drawer wire-able without further client changes.
-      journal?: Journal | null;
-      add_citations?: boolean;
-    } = {},
-  ): Promise<{ id: string; project_id: string; stage: StageId; status: string }> {
+    body: StageRunBody = {},
+  ): Promise<RawRun> {
     return fetchJson(`/projects/${pid}/stages/${stage}/run`, {
       method: "POST",
       body: JSON.stringify(body),
     });
+  },
+
+  async listRuns(pid: string): Promise<RunRecord[]> {
+    const raw = await fetchJson<RawRun[]>(`/projects/${pid}/runs`);
+    return raw.map(adaptRun);
+  },
+
+  async listRunEvents(pid: string, runId: string): Promise<RunEvent[]> {
+    return fetchJson<RunEvent[]>(`/projects/${pid}/runs/${runId}/events/history`);
   },
 
   async cancelRun(pid: string, runId: string): Promise<{ cancelled: boolean }> {
@@ -577,7 +1074,7 @@ export const api = {
     const connect = () => {
       if (stopped || finished) return;
       reconnectTimer = null;
-      es = new EventSource(url);
+      es = new EventSource(url, { withCredentials: true });
       es.onopen = () => {
         attempt = 0;
       };
@@ -621,11 +1118,16 @@ export const api = {
     return fetchJson<KeysStatus>("/keys/status");
   },
 
+  async getHuggingFaceAccount(): Promise<HuggingFaceAccountStatus> {
+    return fetchJson<HuggingFaceAccountStatus>("/keys/huggingface/account");
+  },
+
   async updateKeys(
     payload: Partial<{
       OPENAI: string;
       GEMINI: string;
       ANTHROPIC: string;
+      HUGGINGFACE: string;
       PERPLEXITY: string;
       SEMANTIC_SCHOLAR: string;
       // Iter-3: Langfuse triplet was missing from this Partial despite the
@@ -654,20 +1156,35 @@ export const api = {
   async getPaperArtifacts(pid: string): Promise<PaperArtifacts> {
     const pdfPath = `/projects/${pid}/files/paper/main.pdf`;
     const texPath = `/projects/${pid}/files/paper/main.tex`;
+    const zipPath = `/projects/${pid}/files/paper/submission_package.zip`;
     const pdfUrl = `${API_BASE}${pdfPath}`;
     const texUrl = `${API_BASE}${texPath}`;
+    const submissionZipUrl = `${API_BASE}${zipPath}`;
 
     let pdfExists = false;
+    let zipExists = false;
     try {
-      const head = await fetch(pdfUrl, { method: "HEAD" });
+      const head = await fetch(pdfUrl, {
+        method: "HEAD",
+        credentials: "include",
+      });
       pdfExists = head.ok;
     } catch {
       pdfExists = false;
     }
+    try {
+      const head = await fetch(submissionZipUrl, {
+        method: "HEAD",
+        credentials: "include",
+      });
+      zipExists = head.ok;
+    } catch {
+      zipExists = false;
+    }
 
     let sections: PaperSectionArtifact[] = [];
     try {
-      const r = await fetch(texUrl);
+      const r = await fetch(texUrl, { credentials: "include" });
       if (r.ok) {
         const tex = await r.text();
         sections = parseTexSections(tex);
@@ -678,15 +1195,25 @@ export const api = {
 
     return {
       pdfUrl: pdfExists ? pdfUrl : undefined,
+      submissionZipUrl: zipExists ? submissionZipUrl : undefined,
       sections,
     };
   },
 
+  async getScientificScores(pid: string): Promise<ScientificScores> {
+    return fetchJson<ScientificScores>(`/projects/${pid}/scientific-scores`);
+  },
+
   async testKey(
-    provider: "OPENAI" | "GEMINI" | "ANTHROPIC",
-  ): Promise<{ ok: boolean; latency_ms?: number; error?: string }> {
+    provider: "OPENAI" | "GEMINI" | "ANTHROPIC" | "HUGGINGFACE",
+  ): Promise<{ ok: boolean; latency_ms?: number; error?: string; account?: string }> {
     try {
-      return await fetchJson<{ ok: boolean; latency_ms?: number; error?: string }>(
+      return await fetchJson<{
+        ok: boolean;
+        latency_ms?: number;
+        error?: string;
+        account?: string;
+      }>(
         `/keys/test/${provider}`,
         { method: "POST" },
       );
@@ -706,6 +1233,7 @@ export interface KeysStatus {
   OPENAI: KeyState;
   GEMINI: KeyState;
   ANTHROPIC: KeyState;
+  HUGGINGFACE: KeyState;
   PERPLEXITY: KeyState;
   SEMANTIC_SCHOLAR: KeyState;
   // R8 — observability keys are stored alongside LLM provider keys.
@@ -716,4 +1244,27 @@ export interface KeysStatus {
   LANGFUSE_PUBLIC: KeyState;
   LANGFUSE_SECRET: KeyState;
   LANGFUSE_HOST: KeyState;
+}
+
+export interface HuggingFaceOrg {
+  name?: string | null;
+  fullname?: string | null;
+  role?: string | null;
+  type?: string | null;
+}
+
+export interface HuggingFaceAccount {
+  name?: string | null;
+  fullname?: string | null;
+  email?: string | null;
+  type?: string | null;
+  isPro?: boolean | null;
+  avatarUrl?: string | null;
+  orgs: HuggingFaceOrg[];
+}
+
+export interface HuggingFaceAccountStatus {
+  connected: boolean;
+  account: HuggingFaceAccount | null;
+  error?: string | null;
 }

@@ -14,9 +14,9 @@ The previous implementation hard-wired :class:`plato.experiment.Experiment`
 These tests register a recording fake executor and assert all four
 behaviours without ever touching cmbagent.
 """
+
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any
 
@@ -157,13 +157,15 @@ def test_plot_paths_are_moved_into_plots_folder(
         assert not plot_src.exists()
         moved = Path(plato.plots_folder) / "scratch.png"
         assert moved.exists()
-        assert plato.research.plot_paths == [str(plot_src)]
+        assert plato.research.plot_paths == [str(moved)]
     finally:
         EXECUTOR_REGISTRY.pop(name, None)
 
 
 def test_get_results_does_not_import_cmbagent_when_using_fake(
-    tmp_path: Path, recording_executor: _RecordingExecutor, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    recording_executor: _RecordingExecutor,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Mock ``Experiment.run_experiment`` to fail loudly if dispatch ever
     falls back to the cmbagent path. Then drive a non-cmbagent executor and
@@ -201,7 +203,7 @@ def test_cli_executor_override_used_when_kwarg_omitted(
     _seed_inputs(plato, idea="i", method="m", description="d")
 
     # Simulate the CLI's iter-21 write.
-    plato._cli_executor_override = recording_executor.name  # type: ignore[attr-defined]
+    plato._cli_executor_override = recording_executor.name
 
     plato.get_results()  # no executor kwarg → override should win
 
@@ -218,7 +220,7 @@ def test_explicit_executor_kwarg_beats_cli_override(
     try:
         plato = Plato(project_dir=str(tmp_path))
         _seed_inputs(plato, idea="i", method="m", description="d")
-        plato._cli_executor_override = other.name  # type: ignore[attr-defined]
+        plato._cli_executor_override = other.name
 
         # Explicit kwarg points at recording_executor; should win over override.
         plato.get_results(executor=recording_executor.name)
@@ -241,7 +243,7 @@ def test_cli_executor_override_beats_domain_default(
     plato = Plato(project_dir=str(tmp_path), domain=domain)
     _seed_inputs(plato, idea="i", method="m", description="d")
 
-    plato._cli_executor_override = recording_executor.name  # type: ignore[attr-defined]
+    plato._cli_executor_override = recording_executor.name
     plato.get_results()  # no kwarg → override beats domain default
 
     assert len(recording_executor.calls) == 1
@@ -260,7 +262,7 @@ def test_cli_executor_override_falsy_is_ignored(
     _seed_inputs(plato, idea="i", method="m", description="d")
 
     # Override deliberately falsy → should fall through to domain default.
-    plato._cli_executor_override = ""  # type: ignore[attr-defined]
+    plato._cli_executor_override = ""
     plato.get_results()
 
     assert len(recording_executor.calls) == 1

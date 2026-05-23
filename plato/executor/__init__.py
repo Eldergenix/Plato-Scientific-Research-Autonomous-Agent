@@ -8,13 +8,15 @@ The default backend is :class:`CmbagentExecutor`, which wraps the existing
 ``cmbagent.planning_and_control_context_carryover`` flow Plato has used
 since day one. Alternative backends (``local_jupyter``, ``modal``, ``e2b``)
 are stubbed here so a domain profile can swap executors via
-``DomainProfile.executor`` without touching Plato itself.
+``DomainProfile.executor`` without touching Plato itself. ``sklearn_synthetic``
+is a deterministic local backend for no-upload synthetic tabular studies.
 
 Concrete executors implement :class:`Executor` and register themselves at
 import time with :func:`register_executor`. The four built-in backends are
 auto-imported below so simply doing ``from plato import executor`` (or
 ``import plato.executor``) populates :data:`EXECUTOR_REGISTRY`.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -35,7 +37,9 @@ __all__ = [
 class ExecutorResult(BaseModel):
     """The contract every executor returns from :meth:`Executor.run`."""
 
-    results: str = Field(description="Markdown summary of the run, suitable for paper drafting.")
+    results: str = Field(
+        description="Markdown summary of the run, suitable for paper drafting."
+    )
     plot_paths: list[str] = Field(
         default_factory=list,
         description="Absolute paths to plot/image artifacts produced during execution.",
@@ -44,9 +48,15 @@ class ExecutorResult(BaseModel):
         default_factory=dict,
         description="Backend-specific extras (notebooks, logs, intermediate files, ...).",
     )
-    cost_usd: float = Field(default=0.0, description="Best-effort cost estimate in USD.")
-    tokens_in: int = Field(default=0, description="Total prompt tokens consumed across this run.")
-    tokens_out: int = Field(default=0, description="Total completion tokens produced across this run.")
+    cost_usd: float = Field(
+        default=0.0, description="Best-effort cost estimate in USD."
+    )
+    tokens_in: int = Field(
+        default=0, description="Total prompt tokens consumed across this run."
+    )
+    tokens_out: int = Field(
+        default=0, description="Total completion tokens produced across this run."
+    )
 
 
 @runtime_checkable
@@ -110,6 +120,7 @@ _BUILTIN_BACKENDS: tuple[str, ...] = (
     "local_jupyter",
     "modal_backend",
     "e2b_backend",
+    "sklearn_synthetic",
 )
 _builtins_loaded = False
 
@@ -130,5 +141,3 @@ def _ensure_builtins_registered() -> None:
             # installed) shouldn't block the others. Each backend
             # module handles its own optional-dep behaviour.
             pass
-
-

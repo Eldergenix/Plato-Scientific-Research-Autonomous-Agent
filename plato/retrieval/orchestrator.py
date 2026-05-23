@@ -15,6 +15,7 @@ Adapter selection priority:
 Adapters that aren't registered or that raise during ``search`` are logged
 and skipped — one flaky source never takes the whole orchestration down.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -137,9 +138,7 @@ async def retrieve_with_expansion(
     :func:`plato.retrieval.citation_graph.expand_citations`, and the
     deduped union of seeds plus expansion is returned.
     """
-    seeds = await retrieve(
-        query, limit, profile=profile, adapter_names=adapter_names
-    )
+    seeds = await retrieve(query, limit, profile=profile, adapter_names=adapter_names)
     if not expand or not seeds:
         return seeds
 

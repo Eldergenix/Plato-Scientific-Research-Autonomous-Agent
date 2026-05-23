@@ -1,4 +1,5 @@
 """Phase 2 contract tests for the SourceAdapter protocol and registry."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -6,7 +7,6 @@ from datetime import datetime, timezone
 import pytest
 
 from plato.retrieval import (
-    ADAPTER_REGISTRY,
     SourceAdapter,
     get_adapter,
     list_adapters,

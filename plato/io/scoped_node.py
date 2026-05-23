@@ -12,10 +12,14 @@ The key is dropped from the partial-update copy of state we pass to the
 underlying node, so downstream nodes never see a stale writer reference
 in their checkpoint.
 """
+
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Awaitable, Callable, Union
+import inspect
+from typing import Any, Awaitable, Callable, Optional, Union, cast
+
+from langchain_core.runnables import RunnableConfig
 
 from .scoped_writer import FileScope, ScopedWriter
 
@@ -31,30 +35,64 @@ def scoped_node(fn: NodeFn, scope: FileScope) -> NodeFn:
     picks the right call path. The wrapper signature mirrors what
     LangGraph expects: ``(state, [config]) -> partial_state``.
     """
+    accepts_config = _accepts_config(fn)
+
     if asyncio.iscoroutinefunction(fn):
-        async def _async_wrapper(state: dict[str, Any], *args: Any, **kwargs: Any) -> dict:
+
+        async def _async_wrapper(
+            state: dict[str, Any],
+            config: Optional[RunnableConfig] = None,
+        ) -> dict:
             folder = state["files"]["Folder"]
             writer = ScopedWriter(folder, scope)
             # Copy state so we don't mutate the caller's dict — same
             # reason iter-5 made idea_maker return new dicts.
             scoped_state = {**state, "_writer": writer}
-            return await fn(scoped_state, *args, **kwargs)
+            if accepts_config:
+                return cast(dict, await fn(scoped_state, config))
+            return cast(dict, await fn(scoped_state))
 
         _async_wrapper.__name__ = fn.__name__
         _async_wrapper.__qualname__ = fn.__qualname__
         _async_wrapper.__doc__ = fn.__doc__
         return _async_wrapper
 
-    def _sync_wrapper(state: dict[str, Any], *args: Any, **kwargs: Any) -> dict:
+    def _sync_wrapper(
+        state: dict[str, Any],
+        config: Optional[RunnableConfig] = None,
+    ) -> dict:
         folder = state["files"]["Folder"]
         writer = ScopedWriter(folder, scope)
         scoped_state = {**state, "_writer": writer}
-        return fn(scoped_state, *args, **kwargs)
+        if accepts_config:
+            return cast(dict, fn(scoped_state, config))
+        return cast(dict, fn(scoped_state))
 
     _sync_wrapper.__name__ = fn.__name__
     _sync_wrapper.__qualname__ = fn.__qualname__
     _sync_wrapper.__doc__ = fn.__doc__
     return _sync_wrapper
+
+
+def _accepts_config(fn: NodeFn) -> bool:
+    try:
+        signature = inspect.signature(fn)
+    except (TypeError, ValueError):
+        return True
+    positional = [
+        parameter
+        for parameter in signature.parameters.values()
+        if parameter.kind
+        in {
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            inspect.Parameter.VAR_POSITIONAL,
+        }
+    ]
+    return (
+        any(p.kind == inspect.Parameter.VAR_POSITIONAL for p in positional)
+        or len(positional) >= 2
+    )
 
 
 __all__ = ["scoped_node"]

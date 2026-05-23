@@ -3,12 +3,11 @@
 The detector is pure analysis (no LLM calls), so these tests are
 straightforward synchronous arrange/act/assert.
 """
+
 from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
-
-import pytest
 
 from plato.langgraph_agents.gap_detector import gap_detector
 from plato.state.models import Claim, EvidenceLink, Source
@@ -27,7 +26,9 @@ def _src(idx: int, *, title: str, abstract: str) -> Source:
 _DEFAULT_IDEA = "Test idea"
 
 
-def _state(*, sources=None, claims=None, evidence_links=None, idea=_DEFAULT_IDEA) -> dict:
+def _state(
+    *, sources=None, claims=None, evidence_links=None, idea=_DEFAULT_IDEA
+) -> dict:
     return {
         "sources": list(sources or []),
         "claims": list(claims or []),
@@ -37,7 +38,8 @@ def _state(*, sources=None, claims=None, evidence_links=None, idea=_DEFAULT_IDEA
 
 
 def _run(state):
-    return asyncio.run(gap_detector(state, None))
+    result = gap_detector(state, None)
+    return asyncio.run(result) if asyncio.iscoroutine(result) else result
 
 
 def test_contradiction_cluster_detected():
@@ -46,8 +48,12 @@ def test_contradiction_cluster_detected():
         Claim(id="d-001", text="DM is 27% of universe", source_id=None),
     ]
     links = [
-        EvidenceLink(claim_id="d-001", source_id="src-1", support="supports", strength="strong"),
-        EvidenceLink(claim_id="d-001", source_id="src-2", support="refutes", strength="moderate"),
+        EvidenceLink(
+            claim_id="d-001", source_id="src-1", support="supports", strength="strong"
+        ),
+        EvidenceLink(
+            claim_id="d-001", source_id="src-2", support="refutes", strength="moderate"
+        ),
     ]
     sources = [
         _src(1, title="Foo", abstract="bar"),
@@ -67,8 +73,12 @@ def test_contradiction_cluster_detected():
 def test_no_contradiction_when_only_supports():
     claims = [Claim(id="d-001", text="x", source_id=None)]
     links = [
-        EvidenceLink(claim_id="d-001", source_id="src-1", support="supports", strength="strong"),
-        EvidenceLink(claim_id="d-001", source_id="src-2", support="supports", strength="moderate"),
+        EvidenceLink(
+            claim_id="d-001", source_id="src-1", support="supports", strength="strong"
+        ),
+        EvidenceLink(
+            claim_id="d-001", source_id="src-2", support="supports", strength="moderate"
+        ),
     ]
     state = _state(claims=claims, evidence_links=links)
     result = _run(state)
@@ -163,8 +173,12 @@ def test_unclear_links_do_not_create_contradictions():
     """A claim with supports + unclear (no refutes) is NOT a contradiction."""
     claims = [Claim(id="d-001", text="x")]
     links = [
-        EvidenceLink(claim_id="d-001", source_id="src-1", support="supports", strength="strong"),
-        EvidenceLink(claim_id="d-001", source_id="src-2", support="unclear", strength="weak"),
+        EvidenceLink(
+            claim_id="d-001", source_id="src-1", support="supports", strength="strong"
+        ),
+        EvidenceLink(
+            claim_id="d-001", source_id="src-2", support="unclear", strength="weak"
+        ),
     ]
     state = _state(claims=claims, evidence_links=links)
     result = _run(state)

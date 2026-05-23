@@ -1,8 +1,9 @@
 """Phase 5 / Workflow #7 — tests for the OpenAlex citation-graph expansion."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -45,11 +46,13 @@ def _work_payload(
     return payload
 
 
-def _response(payload: dict[str, Any], url: str = "https://api.openalex.org/works") -> httpx.Response:
+def _response(
+    payload: dict[str, Any], url: str = "https://api.openalex.org/works"
+) -> httpx.Response:
     return httpx.Response(200, json=payload, request=httpx.Request("GET", url))
 
 
-def _make_get_mock(url_to_payload: dict[str, dict[str, Any]]) -> AsyncMock:
+def _make_get_mock(url_to_payload: dict[str, Any]) -> AsyncMock:
     """Return an AsyncMock whose response depends on the requested URL.
 
     Matches by *substring* so callers can express the intent ("URL contains
@@ -59,7 +62,7 @@ def _make_get_mock(url_to_payload: dict[str, dict[str, Any]]) -> AsyncMock:
     async def _fake_get(url: str, *args: Any, **kwargs: Any) -> httpx.Response:
         for needle, payload in url_to_payload.items():
             if needle in url:
-                return _response(payload, url=url)
+                return _response(cast(dict[str, Any], payload), url=url)
         raise AssertionError(f"Unexpected URL in mocked client: {url}")
 
     return AsyncMock(side_effect=_fake_get)
@@ -279,9 +282,7 @@ async def test_expand_citations_dedup_across_seeds() -> None:
         raise AssertionError(f"Unexpected URL: {url}")
 
     with patch("httpx.AsyncClient.get", new=AsyncMock(side_effect=_fake_get)):
-        out = await expand_citations(
-            [seed_a, seed_b], direction="referenced_works"
-        )
+        out = await expand_citations([seed_a, seed_b], direction="referenced_works")
 
     assert {s.openalex_id for s in out} == {"WSHARED"}
     assert len(out) == 1

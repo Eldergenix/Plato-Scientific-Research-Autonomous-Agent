@@ -17,7 +17,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from ..auth import auth_required, extract_user_id
+from ..auth import USER_COOKIE, USER_HEADER, auth_required, extract_user_id
 from ..settings import Settings, get_settings
 
 router = APIRouter()
@@ -41,7 +41,7 @@ def _resolve_user_id(request: Request) -> str | None:
             status_code=401,
             detail={
                 "code": "auth_required",
-                "message": "Missing required header 'X-Plato-User'.",
+                "message": f"Missing required header '{USER_HEADER}' or cookie '{USER_COOKIE}'.",
             },
         )
     return user_id

@@ -21,6 +21,18 @@ export function RouteError({
   reset: () => void;
   label?: string;
 }) {
+  const isChunkLoadError =
+    error.name === "ChunkLoadError" ||
+    error.message.includes("Loading chunk") ||
+    error.message.includes("ChunkLoadError");
+  const onRetry = () => {
+    if (isChunkLoadError) {
+      window.location.reload();
+      return;
+    }
+    reset();
+  };
+
   return (
     <div
       role="alert"
@@ -41,9 +53,9 @@ export function RouteError({
           </span>
         ) : null}
       </div>
-      <Button variant="primary" size="sm" onClick={reset}>
+      <Button variant="primary" size="sm" onClick={onRetry}>
         <RotateCcw size={12} strokeWidth={1.75} />
-        Try again
+        {isChunkLoadError ? "Reload" : "Try again"}
       </Button>
     </div>
   );

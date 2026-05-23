@@ -8,6 +8,7 @@ environments (CI without LLM keys, for instance), so the import is
 deferred to `extract()` and a clear error is raised at call time if it's
 missing.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -34,7 +35,7 @@ class CmbagentKeywordExtractor:
         # be importable in every environment. We only fail when an astro
         # run actually asks for keywords, not at registry-load time.
         try:
-            import cmbagent  # type: ignore[import-not-found]
+            import cmbagent
         except Exception as exc:  # pragma: no cover — exercised in error path tests
             raise RuntimeError(
                 "cmbagent is not importable in this environment; "

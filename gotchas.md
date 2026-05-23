@@ -1,0 +1,1 @@
+- Publication pipeline smoke runs must not satisfy "real data" with generated fixtures or toy datasets. Use a sourced public dataset and preserve its source, schema, and row/column counts in the project description.

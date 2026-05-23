@@ -1,7 +1,8 @@
 "use client";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:7878/api/v1";
+import { dashboardApiBase } from "@/lib/api-base";
+
+const API_BASE = dashboardApiBase();
 
 export type LoopStatusValue = "running" | "stopped" | "interrupted" | "error";
 
@@ -38,7 +39,7 @@ class LoopApiError extends Error {
   detail: unknown;
 
   constructor(status: number, detail: unknown) {
-    super(`Loop API error ${status}`);
+    super(errorMessageForDetail(status, detail));
     this.status = status;
     this.detail = detail;
   }
@@ -49,6 +50,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     r = await fetch(`${API_BASE}${path}`, {
       ...init,
+      credentials: "include",
       headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
     });
   } catch (e) {
@@ -58,12 +60,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     });
   }
   if (!r.ok) {
-    let detail: unknown;
-    try {
-      detail = await r.json();
-    } catch {
-      detail = await r.text();
-    }
+    const detail = await readErrorDetail(r);
     throw new LoopApiError(r.status, detail);
   }
   if (r.status === 204) return undefined as T;
@@ -92,3 +89,30 @@ export const loopApi = {
 };
 
 export { LoopApiError };
+
+async function readErrorDetail(response: Response): Promise<unknown> {
+  const body = await response.text();
+  if (!body) return null;
+  try {
+    return JSON.parse(body);
+  } catch {
+    return body;
+  }
+}
+
+function errorMessageForDetail(status: number, detail: unknown): string {
+  if (typeof detail === "string" && detail.trim()) {
+    return detail;
+  }
+  if (detail && typeof detail === "object") {
+    const message = (detail as { message?: unknown; detail?: unknown }).message;
+    if (typeof message === "string" && message.trim()) {
+      return message;
+    }
+    const nestedDetail = (detail as { detail?: unknown }).detail;
+    if (typeof nestedDetail === "string" && nestedDetail.trim()) {
+      return nestedDetail;
+    }
+  }
+  return `Loop API error ${status}`;
+}

@@ -5,6 +5,7 @@ which used to hit Semantic Scholar directly. After Phase 2 wiring it pulls
 from the multi-source orchestrator and wraps abstracts in ``<external>``
 markers (R12).
 """
+
 from __future__ import annotations
 
 import os

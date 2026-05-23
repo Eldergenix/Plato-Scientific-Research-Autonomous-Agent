@@ -118,20 +118,26 @@ real IdP.
 **Trust assumption:** the dashboard is **not** internet-exposed
 without an authenticating proxy in front of it. In that posture the
 header is unforgeable. In `PLATO_DASHBOARD_AUTH_REQUIRED=1` mode
-requests without a header are rejected with 401.
+requests without a header are rejected with 401. For hosted or split
+frontend/backend deployments, set `PLATO_BACKEND_PROXY_SECRET` on both
+the Next proxy and FastAPI backend; then private backend API requests
+without `X-Plato-Proxy-Secret` are rejected even if auth-required mode
+was not enabled.
 
 **Mitigations in place:**
 - `extract_user_id` strips whitespace and rejects empty values.
+- `PLATO_BACKEND_PROXY_SECRET` makes the backend trust tenant identity
+  only from the configured proxy and blocks direct private API calls.
 - `require_user_id` raises 401 in required-mode when the header is
   missing or blank.
 - `tests/safety/test_dashboard_auth_bypass.py` covers empty,
   whitespace-only, and CRLF-injection header attempts.
 
-**Residual risk:** if the dashboard is deployed without an upstream
-authenticating proxy, **anyone on the network can set the header to
-any value and impersonate any user**. This is documented and intended:
-the dashboard does not own identity. Do not bind it to a public
-interface without a proxy.
+**Residual risk:** if the dashboard is deployed without either an
+upstream authenticating proxy or `PLATO_BACKEND_PROXY_SECRET`, **anyone
+on the network can set the header to any value and impersonate any
+user**. The dashboard does not own identity. Do not bind it to a public
+interface without a proxy and the backend proxy secret.
 
 ### Out of scope
 

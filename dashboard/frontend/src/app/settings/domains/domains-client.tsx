@@ -25,10 +25,10 @@ import {
   DomainProfileCard,
   type DomainProfileFull,
 } from "@/components/domain/domain-profile-card";
+import { dashboardApiBase } from "@/lib/api-base";
 import { cn } from "@/lib/utils";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:7878/api/v1";
+const API_BASE = dashboardApiBase();
 
 interface DomainsResponse {
   domains: DomainProfileFull[];
@@ -61,11 +61,11 @@ export function DomainsClient() {
       setError(null);
       try {
         const [domainsRes, prefsRes] = await Promise.all([
-          fetch(`${API_BASE}/domains`).then((r) => {
+          fetch(`${API_BASE}/domains`, { credentials: "include" }).then((r) => {
             if (!r.ok) throw new Error(`/domains ${r.status}`);
             return r.json() as Promise<DomainsResponse>;
           }),
-          fetch(`${API_BASE}/user/preferences`).then((r) => {
+          fetch(`${API_BASE}/user/preferences`, { credentials: "include" }).then((r) => {
             if (!r.ok) throw new Error(`/user/preferences ${r.status}`);
             return r.json() as Promise<PreferencesResponse>;
           }),
@@ -117,6 +117,7 @@ export function DomainsClient() {
       try {
         const r = await fetch(`${API_BASE}/user/preferences`, {
           method: "PUT",
+          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ default_domain: name }),
         });
