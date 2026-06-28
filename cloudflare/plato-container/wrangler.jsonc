@@ -1,0 +1,43 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "plato-dashboard",
+  "main": "src/worker.ts",
+  "account_id": "848632a06864cae80cc056de74d74be1",
+  "compatibility_date": "2026-06-28",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "routes": [
+    {
+      "pattern": "plato.eldergenix.com/*",
+      "zone_name": "eldergenix.com"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "PLATO_DASHBOARD",
+        "class_name": "PlatoDashboard"
+      }
+    ]
+  },
+  "containers": [
+    {
+      "class_name": "PlatoDashboard",
+      "image": "../../dashboard/spaces/Dockerfile",
+      "image_build_context": "../..",
+      "instance_type": "standard-1",
+      "max_instances": 1,
+      "rollout_step_percentage": 100,
+      "rollout_active_grace_period": 30
+    }
+  ],
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["PlatoDashboard"]
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}

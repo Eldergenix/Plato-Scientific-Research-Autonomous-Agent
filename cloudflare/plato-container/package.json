@@ -1,0 +1,18 @@
+{
+  "name": "plato-cloudflare-container",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "deploy": "wrangler deploy --config wrangler.jsonc --containers-rollout=immediate"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "^0.3.7"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260628.0",
+    "typescript": "^5.9.2",
+    "wrangler": "^4.105.0"
+  }
+}

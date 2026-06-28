@@ -12,6 +12,7 @@ Error.txt
 */Temp
 gemini.json
 *_env/
+node_modules/
 
 
 # Byte-compiled / optimized / DLL files
