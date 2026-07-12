@@ -7,6 +7,9 @@ This directory contains a bioRxiv-oriented manuscript and the evidence used to p
 - `Plato-Bio-bioRxiv-preprint.pdf` — upload this as the single main manuscript.
 - `Plato-Bio-Supplement.pdf` — upload this as Supplemental Material.
 - `Plato-Bio-bioRxiv-preprint.docx` — editable source for author revisions.
+- `latex/plato-bio.tex` — self-contained LaTeX main manuscript.
+- `latex/plato-bio-supplement.tex` — LaTeX supplementary material.
+- `latex/references.bib` — reusable BibTeX reference library.
 - `manuscript.md` — canonical prose source.
 - `SUBMISSION_METADATA.md` — paste-ready portal metadata and the required human confirmation gate.
 
@@ -27,6 +30,9 @@ The structural benchmark downloads declared RCSB PDB and AlphaFold DB records on
 ```
 
 The builder creates the DOCX and supplemental DOCX. The repository workflow then renders both with the bundled LibreOffice renderer, visually inspects every page, and retains the generated PDFs as submission artifacts.
+
+The LaTeX package is generated from the same canonical Markdown and result
+files. See `latex/README.md` for reproducible Tectonic compilation commands.
 
 ## Interpretation boundary
 

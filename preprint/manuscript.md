@@ -86,9 +86,9 @@ After the three measurement repairs, targeted tests confirmed that biology task 
 
 ### Software validation results
 
-The complete Python suite produced no failures or errors. The targeted biology-domain, genomics-adapter, evidence/citation, and adversarial-safety suites also produced no failures or errors. Some full-suite tests were skipped because optional live dependencies, provider credentials, or a platform-specific path condition were unavailable. Figure 4 and Table 1 report exact counts from the machine-readable validation report generated for this revision.
+The complete Python suite produced no failures or errors. The targeted biology-domain, genomics-adapter, evidence/citation, and adversarial-safety suites also produced no failures or errors. Some full-suite tests were skipped because optional live dependencies, provider credentials, or a platform-specific path condition were unavailable. Figure 2 and Table 1 report exact counts from the machine-readable validation report generated for this revision.
 
-![Figure 4. Passed and skipped tests in targeted validation suites.](figures/figure_4_validation_suites.png)
+![Figure 2. Passed and skipped tests in targeted validation suites.](figures/figure_4_validation_suites.png)
 
 | Suite | Tests | Passed | Skipped | Failures/errors |
 |---|---:|---:|---:|---:|
@@ -112,15 +112,15 @@ All three targets produced high sequence coverage and sub-ångström Cα RMSD af
 | Hemoglobin β | P68871 | 1A3N B | 145 | 1.000 | 0.520 | 0.453 | 1.000 | 97.55 |
 | Myoglobin K45R comparison | P02144 | 3RGK A | 147 | 0.987 | 0.501 | 0.310 | 0.993 | 97.71 |
 
-![Figure 2. Cα RMSD for the three declared globin targets.](figures/figure_2_globin_rmsd.png)
+![Figure 3. Cα RMSD for the three declared globin targets.](figures/figure_2_globin_rmsd.png)
 
 Residue-level pLDDT was positively associated with lower aligned coordinate error in each target: hemoglobin α ρ=0.242 (P=0.00388), hemoglobin β ρ=0.353 (P=1.34×10⁻⁵), and myoglobin ρ=0.283 (P=0.000515). The restricted pLDDT range (mean 97.5–98.3) limits calibration inference, and the correlations should be interpreted as descriptive consistency rather than proof that pLDDT is fully calibrated for this family.
 
-![Figure 3. Residue-level pLDDT versus aligned Cα error.](figures/figure_3_plddt_error.png)
+![Figure 4. Residue-level pLDDT versus aligned Cα error.](figures/figure_3_plddt_error.png)
 
 ### Reproducibility artifacts
 
-The case-study output contains the two experimental PDB files, three AlphaFold models, source and output hashes, a target-level CSV, a 433-row residue-level CSV, and a JSON manifest. Re-running the analysis reconstructs all summary values and Figures 2–3. A second script reconstructs Figures 1 and 4 from the repository architecture and validation JSON. The paper source, editable Word manuscript, and submission PDF are generated from the same controlled source bundle.
+The case-study output contains the two experimental PDB files, three AlphaFold models, source and output hashes, a target-level CSV, a 433-row residue-level CSV, and a JSON manifest. Re-running the analysis reconstructs all summary values and Figures 3–4. A second script reconstructs Figures 1 and 2 from the repository architecture and validation JSON. The paper source, editable Word manuscript, and submission PDF are generated from the same controlled source bundle.
 
 ## Discussion
 
@@ -189,8 +189,8 @@ We thank the original Denario/Plato contributors for releasing the foundational 
 
 **Figure 1. Plato-Bio architecture and verification boundaries.** The main research stages are represented as an explicit graph. Lower controls emit or validate artifacts used by downstream stages. The diagram describes implemented topology and does not imply that each stage has been empirically validated end to end.
 
-**Figure 2. AlphaFold-to-experiment agreement in the declared globin panel.** Bars show global Cα RMSD after sequence-aware matching and Kabsch superposition. Values are calculated from the supplied target summary.
+**Figure 2. Targeted deterministic validation suites.** Bars show passing tests in control-specific subsets; gray denotes skipped tests. Suites overlap with the full repository suite and should not be summed.
 
-**Figure 3. Residue confidence versus aligned coordinate error.** Each point is one matched residue. pLDDT is read from the AlphaFold PDB B-factor field; error is the Euclidean Cα distance after target-level superposition.
+**Figure 3. AlphaFold-to-experiment agreement in the declared globin panel.** Bars show global Cα RMSD after sequence-aware matching and Kabsch superposition. Values are calculated from the supplied target summary.
 
-**Figure 4. Targeted deterministic validation suites.** Bars show passing tests in control-specific subsets; gray denotes skipped tests. Suites overlap with the full repository suite and should not be summed.
+**Figure 4. Residue confidence versus aligned coordinate error.** Each point is one matched residue. pLDDT is read from the AlphaFold PDB B-factor field; error is the Euclidean Cα distance after target-level superposition.
