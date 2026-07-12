@@ -1,0 +1,5 @@
+condition,task_count,mean_reciprocal_rank,recall_at_1,recall_at_10,false_novelty_rate
+frequency,5,0.5,0.0,1.0,0.0
+tfidf,5,1.0,1.0,1.0,0.0
+abc_bridge,5,1.0,1.0,1.0,0.0
+evidence_aware,5,1.0,1.0,1.0,0.0

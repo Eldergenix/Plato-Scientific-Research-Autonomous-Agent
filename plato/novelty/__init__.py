@@ -31,6 +31,16 @@ from plato.novelty.embedding_scorer import (
     NoveltyResult,
     OpenAIEmbeddingBackend,
     StubEmbeddingBackend,
+    TfidfEmbeddingBackend,
+)
+from plato.novelty.temporal import (
+    CandidateStatus,
+    EvidencePath,
+    FrozenLiteratureRecord,
+    TemporalCandidate,
+    TemporalNoveltyTask,
+    extract_concepts,
+    score_temporal_task,
 )
 
 __all__ = [
@@ -39,6 +49,14 @@ __all__ = [
     "NoveltyResult",
     "OpenAIEmbeddingBackend",
     "StubEmbeddingBackend",
+    "TfidfEmbeddingBackend",
     "CompositeNoveltyScore",
     "CompositeNoveltyScorer",
+    "CandidateStatus",
+    "EvidencePath",
+    "FrozenLiteratureRecord",
+    "TemporalCandidate",
+    "TemporalNoveltyTask",
+    "extract_concepts",
+    "score_temporal_task",
 ]

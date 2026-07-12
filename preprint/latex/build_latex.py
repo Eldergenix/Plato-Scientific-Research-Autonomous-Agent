@@ -40,6 +40,7 @@ PREAMBLE = r"""\documentclass[11pt]{article}
 
 TABLE_CAPTIONS = (
     "Deterministic software-validation results. Targeted suites overlap with the full Python suite.",
+    "Historical temporal rediscovery pilot. The benchmark contains one manually curated task.",
     "AlphaFold-to-experiment structural agreement in the declared globin panel.",
 )
 
@@ -124,7 +125,14 @@ def table_tex(rows: list[list[str]], table_number: int) -> str:
     body = [r"\begin{table}[H]", r"\centering"]
     body.append(r"\caption{" + TABLE_CAPTIONS[table_number - 1] + "}")
     body.append(rf"\label{{tab:table-{table_number}}}")
-    body.extend([r"\small", r"\resizebox{\textwidth}{!}{%", rf"\begin{{tabular}}{{{alignment}}}", r"\toprule"])
+    body.extend(
+        [
+            r"\small",
+            r"\resizebox{\textwidth}{!}{%",
+            rf"\begin{{tabular}}{{{alignment}}}",
+            r"\toprule",
+        ]
+    )
     for row_index, row in enumerate(rows):
         body.append(" & ".join(inline(cell) for cell in row) + r" \\")
         if row_index == 0:
@@ -181,7 +189,10 @@ def render_body(lines: list[str]) -> str:
             raw_rows: list[list[str]] = []
             while index < len(lines) and lines[index].strip().startswith("|"):
                 raw_rows.append(
-                    [cell.strip() for cell in lines[index].strip().strip("|").split("|")]
+                    [
+                        cell.strip()
+                        for cell in lines[index].strip().strip("|").split("|")
+                    ]
                 )
                 index += 1
             rows = [raw_rows[0], *raw_rows[2:]]
@@ -233,9 +244,13 @@ def build_main() -> Path:
     references_start = lines.index("## References")
     legends_start = lines.index("## Figure legends")
 
-    abstract_lines = [line for line in lines[abstract_start:introduction_start] if line.strip()]
+    abstract_lines = [
+        line for line in lines[abstract_start:introduction_start] if line.strip()
+    ]
     body_lines = lines[introduction_start:references_start]
-    reference_lines = [line for line in lines[references_start + 1 : legends_start] if line.strip()]
+    reference_lines = [
+        line for line in lines[references_start + 1 : legends_start] if line.strip()
+    ]
     legend_lines = lines[legends_start:]
 
     references = [r"\begin{thebibliography}{99}"]
@@ -258,7 +273,7 @@ def build_main() -> Path:
             r"\begin{abstract}",
             "\n\n".join(inline(line) for line in abstract_lines),
             r"\end{abstract}",
-            r"\textbf{Keywords:} scientific agents; bioinformatics; reproducibility; citation validation; evidence provenance; AlphaFold; structural biology",
+            r"\textbf{Keywords:} scientific agents; bioinformatics; biological novelty; literature-based discovery; temporal rediscovery; reproducibility; AlphaFold",
             r"\linenumbers",
             render_body(body_lines),
             "\n".join(references),
@@ -276,7 +291,11 @@ def sha256(path: Path) -> str:
 
 
 def latex_table(rows: list[list[str]], alignment: str) -> str:
-    body = [r"\resizebox{\textwidth}{!}{%", rf"\begin{{tabular}}{{{alignment}}}", r"\toprule"]
+    body = [
+        r"\resizebox{\textwidth}{!}{%",
+        rf"\begin{{tabular}}{{{alignment}}}",
+        r"\toprule",
+    ]
     for index, row in enumerate(rows):
         body.append(" & ".join(inline(value) for value in row) + r" \\")
         if index == 0:
@@ -287,12 +306,38 @@ def latex_table(rows: list[list[str]], alignment: str) -> str:
 
 def build_supplement() -> Path:
     results_dir = PREPRINT / "results" / "globin_benchmark"
+    diverse_dir = PREPRINT / "results" / "diverse_structure_benchmark"
+    temporal_smoke_dir = PREPRINT / "results" / "temporal_novelty_smoke"
+    temporal_history_dir = PREPRINT / "results" / "temporal_novelty_historical_pilot"
     targets = list(csv.DictReader((results_dir / "target_summary.csv").open()))
-    validation = json.loads((PREPRINT / "results" / "software_validation.json").read_text())
+    diverse_targets = list(csv.DictReader((diverse_dir / "target_summary.csv").open()))
+    diverse_candidates = list(
+        csv.DictReader((diverse_dir / "candidate_regions.csv").open())
+    )
+    smoke_summary = list(
+        csv.DictReader((temporal_smoke_dir / "condition_summary.csv").open())
+    )
+    history_summary = list(
+        csv.DictReader((temporal_history_dir / "condition_summary.csv").open())
+    )
+    validation = json.loads(
+        (PREPRINT / "results" / "software_validation.json").read_text()
+    )
     raw_rows = [["File", "Bytes", "SHA-256"]]
     for path in sorted((results_dir / "raw").glob("*.pdb")):
         raw_rows.append([path.name, str(path.stat().st_size), sha256(path)])
-    target_rows = [["Target", "Matched", "Identity", "RMSD (Å)", "Median (Å)", "Within 2 Å", "ρ", "P"]]
+    target_rows = [
+        [
+            "Target",
+            "Matched",
+            "Identity",
+            "RMSD (Å)",
+            "Median (Å)",
+            "Within 2 Å",
+            "ρ",
+            "P",
+        ]
+    ]
     for row in targets:
         target_rows.append(
             [
@@ -306,14 +351,117 @@ def build_supplement() -> Path:
                 f"{float(row['spearman_pvalue']):.3g}",
             ]
         )
-    validation_rows = [["Suite", "Tests", "Passed", "Skipped", "Failures", "Errors", "Wall s"]]
+    diverse_rows = [
+        [
+            "Target",
+            "Method",
+            "Matched",
+            "Pred. cov.",
+            "Whole RMSD",
+            "Core n",
+            "Core RMSD",
+            "Core 95% interval",
+        ]
+    ]
+    for row in diverse_targets:
+        diverse_rows.append(
+            [
+                row["target"],
+                row["experimental_method"],
+                row["matched_residues"],
+                f"{float(row['predicted_sequence_coverage']):.3f}",
+                f"{float(row['ca_rmsd_angstrom']):.3f}",
+                row["high_confidence_residues"],
+                f"{float(row['high_confidence_ca_rmsd_angstrom']):.3f}",
+                f"{float(row['high_confidence_ca_rmsd_ci95_low']):.3f}--{float(row['high_confidence_ca_rmsd_ci95_high']):.3f}",
+            ]
+        )
+    temporal_rows = [
+        ["Fixture", "Condition", "Tasks", "MRR", "R@1", "R@10", "False novelty"]
+    ]
+    for fixture, rows in (
+        ("Synthetic", smoke_summary),
+        ("Historical", history_summary),
+    ):
+        for row in rows:
+            temporal_rows.append(
+                [
+                    fixture,
+                    row["condition"],
+                    row["task_count"],
+                    f"{float(row['mean_reciprocal_rank']):.3f}",
+                    f"{float(row['recall_at_1']):.3f}",
+                    f"{float(row['recall_at_10']):.3f}",
+                    f"{float(row['false_novelty_rate']):.3f}",
+                ]
+            )
+    validation_rows = [
+        ["Suite", "Tests", "Passed", "Skipped", "Failures", "Errors", "Wall s"]
+    ]
     for name, suite in validation["suites"].items():
         passed = suite["tests"] - suite["skipped"] - suite["failures"] - suite["errors"]
         validation_rows.append(
-            [name, str(suite["tests"]), str(passed), str(suite["skipped"]), str(suite["failures"]), str(suite["errors"]), f"{suite['wall_seconds']:.2f}"]
+            [
+                name,
+                str(suite["tests"]),
+                str(passed),
+                str(suite["skipped"]),
+                str(suite["failures"]),
+                str(suite["errors"]),
+                f"{suite['wall_seconds']:.2f}",
+            ]
         )
 
-    content = [PREAMBLE, r"\title{Supplementary Material: Plato-Bio}", r"\author{Stefan Creadore}", r"\date{}", r"\begin{document}", r"\maketitle", r"\section*{S1. Reproduction commands}", r"\begin{verbatim}", ".venv/bin/python preprint/experiments/run_globin_structure_benchmark.py\n.venv/bin/python preprint/experiments/run_software_validation.py\n.venv/bin/python preprint/experiments/build_summary_figures.py", r"\end{verbatim}", r"\section*{S2. Structural input inventory}", latex_table(raw_rows, "lrl"), r"\section*{S3. Target-level structural results}", latex_table(target_rows, "lrrrrrrr"), r"The residue-level CSV contains 433 matched positions.", r"\section*{S4. Deterministic validation results}", latex_table(validation_rows, "lrrrrrr"), r"Targeted suites overlap with the full Python suite. Counts are not additive. Skips remain unvalidated live or platform-specific paths.", r"\section*{S5. Measurement-repair acceptance criteria}", r"\begin{itemize}[leftmargin=*]", r"\item A biology GoldenTask constructs Plato with the biology domain.", r"\item Method-signal recall is computed from methods.md and included in summary metrics.", r"\item Evidence JSONL persists drafted Claim rows before EvidenceLink rows.", r"\item A claim with no supporting source remains in the denominator.", r"\item A synthetic rigid transformation is recovered by the Kabsch implementation within numerical tolerance.", r"\end{itemize}", r"\section*{S6. Interpretation boundary}", r"The default evaluator executes idea and method stages only. Live LLM, E2B, Modal, hosted PostgreSQL, and authenticated Hugging Face paths require external credentials or services. Same-model reviewer roles are self-critique, not peer review. The autonomous-loop adapters do not establish autonomous scientific improvement.", r"\section*{S7. bioRxiv packaging notes}", r"The main manuscript is supplied as one PDF with embedded figures and tables. Supplemental data are separate. No clinical, human-subject, animal, or identifiable-person data are included. Generative AI assistance is disclosed, and the human author remains accountable.", r"\end{document}"]
+    commands = "\n".join(
+        [
+            ".venv/bin/python preprint/experiments/run_globin_structure_benchmark.py",
+            ".venv/bin/python preprint/experiments/run_globin_structure_benchmark.py --panel-file preprint/experiments/diverse_structure_panel.json --output-dir preprint/results/diverse_structure_benchmark --figures-dir preprint/figures --benchmark-name diverse_structure_panel",
+            ".venv/bin/python preprint/experiments/run_temporal_novelty_benchmark.py --fixtures evals/biological_novelty/fixtures/engineering_smoke.json --output-dir preprint/results/temporal_novelty_smoke",
+            ".venv/bin/python preprint/experiments/run_temporal_novelty_benchmark.py --fixtures evals/biological_novelty/fixtures/historical_pilot.json --output-dir preprint/results/temporal_novelty_historical_pilot",
+            ".venv/bin/python preprint/experiments/run_software_validation.py",
+        ]
+    )
+    content = [
+        PREAMBLE,
+        r"\title{Supplementary Material: Plato-Bio}",
+        r"\author{Stefan Creadore}",
+        r"\date{}",
+        r"\begin{document}",
+        r"\maketitle",
+        r"\section*{S1. Reproduction commands}",
+        r"\begin{verbatim}",
+        commands,
+        r"\end{verbatim}",
+        r"\section*{S2. Original structural input inventory}",
+        latex_table(raw_rows, "lrl"),
+        r"The diverse panel contains 30 cached coordinate files; individual hashes and source metadata are in its manifest.",
+        r"\section*{S3. Original globin results}",
+        latex_table(target_rows, "lrrrrrrr"),
+        r"The original residue-level CSV contains 433 matched positions.",
+        r"\section*{S4. Diverse structural-screen results}",
+        latex_table(diverse_rows, "llrrrrrr"),
+        rf"The predeclared rule emitted {len(diverse_candidates)} regions; every row is labeled novelty status not established.",
+        r"\section*{S5. Temporal rediscovery results}",
+        latex_table(temporal_rows, "llrrrrr"),
+        r"Synthetic results validate engineering behavior only. The historical result is one manually curated retrospective case.",
+        r"\section*{S6. Deterministic validation results}",
+        latex_table(validation_rows, "lrrrrrr"),
+        r"Targeted suites overlap with the full Python suite. Counts are not additive. Skips remain unvalidated live or platform-specific paths.",
+        r"\section*{S7. Measurement-repair acceptance criteria}",
+        r"\begin{itemize}[leftmargin=*]",
+        r"\item A biology GoldenTask constructs Plato with the biology domain.",
+        r"\item Method-signal recall is computed from methods.md and included in summary metrics.",
+        r"\item Evidence JSONL persists drafted Claim rows before EvidenceLink rows.",
+        r"\item A claim with no supporting source remains in the denominator.",
+        r"\item Synthetic rigid transformations are recovered within numerical tolerance.",
+        r"\item Temporal leakage, duplicate sources, prompt-injection quarantine, and abstention are regression tested.",
+        r"\end{itemize}",
+        r"\section*{S8. Interpretation boundary}",
+        r"The default evaluator executes idea and method stages only. Live LLM, E2B, Modal, hosted PostgreSQL, and authenticated Hugging Face paths require external credentials or services. Same-model reviewer roles are self-critique, not peer review. The temporal pilot is retrospective, and structural discrepancy candidates are not established novelties.",
+        r"\section*{S9. bioRxiv packaging notes}",
+        r"The main manuscript is supplied as one PDF with embedded figures and tables. Supplemental data are separate. No clinical, human-subject, animal, or identifiable-person data are included. Generative AI assistance is disclosed, and the human author remains accountable.",
+        r"\end{document}",
+    ]
     output = LATEX / "plato-bio-supplement.tex"
     output.write_text("\n\n".join(content) + "\n", encoding="utf-8")
     return output

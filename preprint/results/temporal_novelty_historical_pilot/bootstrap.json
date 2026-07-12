@@ -1,0 +1,58 @@
+{
+  "abc_bridge": {
+    "mean_reciprocal_rank_ci95": [
+      1.0,
+      1.0
+    ],
+    "recall_at_10_ci95": [
+      1.0,
+      1.0
+    ],
+    "recall_at_1_ci95": [
+      1.0,
+      1.0
+    ]
+  },
+  "evidence_aware": {
+    "mean_reciprocal_rank_ci95": [
+      1.0,
+      1.0
+    ],
+    "recall_at_10_ci95": [
+      1.0,
+      1.0
+    ],
+    "recall_at_1_ci95": [
+      1.0,
+      1.0
+    ]
+  },
+  "frequency": {
+    "mean_reciprocal_rank_ci95": [
+      0.3333333333333333,
+      0.3333333333333333
+    ],
+    "recall_at_10_ci95": [
+      1.0,
+      1.0
+    ],
+    "recall_at_1_ci95": [
+      0.0,
+      0.0
+    ]
+  },
+  "tfidf": {
+    "mean_reciprocal_rank_ci95": [
+      0.5,
+      0.5
+    ],
+    "recall_at_10_ci95": [
+      1.0,
+      1.0
+    ],
+    "recall_at_1_ci95": [
+      0.0,
+      0.0
+    ]
+  }
+}

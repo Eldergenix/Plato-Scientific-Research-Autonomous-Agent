@@ -41,7 +41,9 @@ LIGHT_FILL = "F4F6F9"
 HEADER_FILL = "E8EEF5"
 
 
-def set_font(run, *, size=11, bold=None, italic=None, color=BLACK, name="Times New Roman"):
+def set_font(
+    run, *, size=11, bold=None, italic=None, color=BLACK, name="Times New Roman"
+):
     run.font.name = name
     run._element.get_or_add_rPr()
     run._element.rPr.rFonts.set(qn("w:ascii"), name)
@@ -158,7 +160,9 @@ def new_numbering_instance(doc: Document) -> int:
         if int(node.get(qn("w:numId"))) == style_num_id
     )
     abstract_id = source_num.find(qn("w:abstractNumId")).get(qn("w:val"))
-    next_id = max(int(node.get(qn("w:numId"))) for node in numbering.findall(qn("w:num"))) + 1
+    next_id = (
+        max(int(node.get(qn("w:numId"))) for node in numbering.findall(qn("w:num"))) + 1
+    )
     num = OxmlElement("w:num")
     num.set(qn("w:numId"), str(next_id))
     abstract = OxmlElement("w:abstractNumId")
@@ -251,7 +255,13 @@ def table_weights(rows: list[list[str]]) -> list[float]:
     return weights
 
 
-def add_table(doc: Document, rows: list[list[str]]) -> None:
+def add_table(
+    doc: Document,
+    rows: list[list[str]],
+    *,
+    font_size: float = 8.3,
+    vertical_margin_dxa: int = 90,
+) -> None:
     columns = len(rows[0])
     table = doc.add_table(rows=len(rows), cols=columns)
     table.style = "Table Grid"
@@ -270,13 +280,15 @@ def add_table(doc: Document, rows: list[list[str]]) -> None:
             set_cell_borders(cell)
             paragraph = cell.paragraphs[0]
             paragraph.alignment = (
-                WD_ALIGN_PARAGRAPH.LEFT if column_index < 3 else WD_ALIGN_PARAGRAPH.CENTER
+                WD_ALIGN_PARAGRAPH.LEFT
+                if column_index < 3
+                else WD_ALIGN_PARAGRAPH.CENTER
             )
             paragraph.paragraph_format.space_before = Pt(0)
             paragraph.paragraph_format.space_after = Pt(0)
             paragraph.paragraph_format.line_spacing = 1.05
             run = paragraph.add_run(value)
-            set_font(run, size=8.3, bold=row_index == 0, name="Arial")
+            set_font(run, size=font_size, bold=row_index == 0, name="Arial")
 
     widths = column_widths_from_weights(table_weights(rows), total_width_dxa=9792)
     apply_table_geometry(
@@ -284,7 +296,12 @@ def add_table(doc: Document, rows: list[list[str]]) -> None:
         widths,
         table_width_dxa=9792,
         indent_dxa=110,
-        cell_margins_dxa={"top": 90, "bottom": 90, "start": 110, "end": 110},
+        cell_margins_dxa={
+            "top": vertical_margin_dxa,
+            "bottom": vertical_margin_dxa,
+            "start": 110,
+            "end": 110,
+        },
     )
     after = doc.add_paragraph()
     after.paragraph_format.space_before = Pt(4)
@@ -295,7 +312,9 @@ def parse_table(lines: list[str], start: int) -> tuple[list[list[str]], int]:
     raw = []
     index = start
     while index < len(lines) and lines[index].strip().startswith("|"):
-        raw.append([cell.strip() for cell in lines[index].strip().strip("|").split("|")])
+        raw.append(
+            [cell.strip() for cell in lines[index].strip().strip("|").split("|")]
+        )
         index += 1
     rows = [raw[0]] + raw[2:] if len(raw) >= 2 else raw
     return rows, index
@@ -418,7 +437,11 @@ def build_from_markdown(source: Path, output: Path) -> None:
         elif text.startswith("¹ Eldergenix"):
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
             p.paragraph_format.space_after = Pt(10)
-        elif text.startswith("**Article category") or text.startswith("**bioRxiv") or text.startswith("**Keywords"):
+        elif (
+            text.startswith("**Article category")
+            or text.startswith("**bioRxiv")
+            or text.startswith("**Keywords")
+        ):
             p.alignment = WD_ALIGN_PARAGRAPH.LEFT
             p.paragraph_format.space_after = Pt(2)
         add_inline_markdown(p, text)
@@ -445,9 +468,24 @@ def add_simple_paragraph(doc, text, *, bold=False, italic=False, size=10.5):
 
 def build_supplement(output: Path) -> None:
     globin_dir = PREPRINT / "results" / "globin_benchmark"
-    validation = json.loads((PREPRINT / "results" / "software_validation.json").read_text())
+    diverse_dir = PREPRINT / "results" / "diverse_structure_benchmark"
+    temporal_smoke_dir = PREPRINT / "results" / "temporal_novelty_smoke"
+    temporal_history_dir = PREPRINT / "results" / "temporal_novelty_historical_pilot"
+    validation = json.loads(
+        (PREPRINT / "results" / "software_validation.json").read_text()
+    )
     targets = list(csv.DictReader((globin_dir / "target_summary.csv").open()))
     residues = list(csv.DictReader((globin_dir / "residue_metrics.csv").open()))
+    diverse_targets = list(csv.DictReader((diverse_dir / "target_summary.csv").open()))
+    diverse_candidates = list(
+        csv.DictReader((diverse_dir / "candidate_regions.csv").open())
+    )
+    smoke_summary = list(
+        csv.DictReader((temporal_smoke_dir / "condition_summary.csv").open())
+    )
+    history_summary = list(
+        csv.DictReader((temporal_history_dir / "condition_summary.csv").open())
+    )
 
     doc = Document()
     configure_styles(doc)
@@ -455,13 +493,16 @@ def build_supplement(output: Path) -> None:
     add_title_block(doc, "Supplementary Material: Plato-Bio")
     add_simple_paragraph(
         doc,
-        "A reproducibility inventory for the structural-biology case study and deterministic software validation.",
+        "A reproducibility inventory for temporal rediscovery, structural screening, and deterministic software validation.",
         italic=True,
     ).alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     doc.add_heading("S1. Reproduction commands", level=1)
     for command in (
         ".venv/bin/python preprint/experiments/run_globin_structure_benchmark.py",
+        ".venv/bin/python preprint/experiments/run_globin_structure_benchmark.py --panel-file preprint/experiments/diverse_structure_panel.json --output-dir preprint/results/diverse_structure_benchmark --figures-dir preprint/figures --benchmark-name diverse_structure_panel",
+        ".venv/bin/python preprint/experiments/run_temporal_novelty_benchmark.py --fixtures evals/biological_novelty/fixtures/engineering_smoke.json --output-dir preprint/results/temporal_novelty_smoke",
+        ".venv/bin/python preprint/experiments/run_temporal_novelty_benchmark.py --fixtures evals/biological_novelty/fixtures/historical_pilot.json --output-dir preprint/results/temporal_novelty_historical_pilot",
         ".venv/bin/python preprint/experiments/run_software_validation.py",
         ".venv/bin/python preprint/experiments/build_summary_figures.py",
     ):
@@ -476,22 +517,30 @@ def build_supplement(output: Path) -> None:
     for path in sorted((globin_dir / "raw").glob("*.pdb")):
         input_rows.append([path.name, str(path.stat().st_size), sha256(path)])
     add_table(doc, input_rows)
+    add_simple_paragraph(
+        doc,
+        f"The diverse panel contains {len(list((diverse_dir / 'raw').glob('*.pdb')))} cached PDB files. Their individual hashes, source URLs, experimental methods, and AlphaFold metadata are recorded in preprint/results/diverse_structure_benchmark/manifest.json.",
+        italic=True,
+        size=9.5,
+    )
 
     doc.add_heading("S3. Target-level structural results", level=1)
-    target_rows = [[
-        "Target", "Matched", "Identity", "RMSD Å", "Median Å", "≤2 Å", "ρ", "P"
-    ]]
+    target_rows = [
+        ["Target", "Matched", "Identity", "RMSD Å", "Median Å", "≤2 Å", "ρ", "P"]
+    ]
     for row in targets:
-        target_rows.append([
-            row["target"],
-            row["matched_residues"],
-            f"{float(row['sequence_identity']):.3f}",
-            f"{float(row['ca_rmsd_angstrom']):.3f}",
-            f"{float(row['median_ca_error_angstrom']):.3f}",
-            f"{float(row['fraction_within_2a']):.3f}",
-            f"{float(row['spearman_plddt_vs_negative_error']):.3f}",
-            f"{float(row['spearman_pvalue']):.3g}",
-        ])
+        target_rows.append(
+            [
+                row["target"],
+                row["matched_residues"],
+                f"{float(row['sequence_identity']):.3f}",
+                f"{float(row['ca_rmsd_angstrom']):.3f}",
+                f"{float(row['median_ca_error_angstrom']):.3f}",
+                f"{float(row['fraction_within_2a']):.3f}",
+                f"{float(row['spearman_plddt_vs_negative_error']):.3f}",
+                f"{float(row['spearman_pvalue']):.3g}",
+            ]
+        )
     add_table(doc, target_rows)
     add_simple_paragraph(
         doc,
@@ -500,19 +549,93 @@ def build_supplement(output: Path) -> None:
         size=9.5,
     )
 
-    doc.add_heading("S4. Deterministic validation results", level=1)
-    validation_rows = [["Suite", "Tests", "Passed", "Skipped", "Failures", "Errors", "Wall s"]]
+    doc.add_heading("S4. Diverse structural-screen results", level=1)
+    diverse_rows = [
+        [
+            "Target",
+            "Method",
+            "Matched",
+            "Pred. cov.",
+            "Whole RMSD",
+            "Core n",
+            "Core RMSD",
+            "Core 95% interval",
+        ]
+    ]
+    for row in diverse_targets:
+        diverse_rows.append(
+            [
+                row["target"],
+                row["experimental_method"],
+                row["matched_residues"],
+                f"{float(row['predicted_sequence_coverage']):.3f}",
+                f"{float(row['ca_rmsd_angstrom']):.3f}",
+                row["high_confidence_residues"],
+                f"{float(row['high_confidence_ca_rmsd_angstrom']):.3f}",
+                f"{float(row['high_confidence_ca_rmsd_ci95_low']):.3f}–{float(row['high_confidence_ca_rmsd_ci95_high']):.3f}",
+            ]
+        )
+    add_table(doc, diverse_rows)
+    add_simple_paragraph(
+        doc,
+        f"The predeclared pLDDT≥90 and core-aligned Cα error≥2 Å rule emitted {len(diverse_candidates)} regions. Every row is labeled novelty_status=not_established and remains a hypothesis pending context review and independent validation.",
+        italic=True,
+        size=9.5,
+    )
+
+    doc.add_heading("S5. Temporal rediscovery results", level=1)
+    temporal_rows = [
+        [
+            "Fixture",
+            "Condition",
+            "Tasks",
+            "MRR",
+            "Recall@1",
+            "Recall@10",
+            "False novelty",
+        ]
+    ]
+    for fixture, rows in (
+        ("Synthetic smoke", smoke_summary),
+        ("Historical pilot", history_summary),
+    ):
+        for row in rows:
+            temporal_rows.append(
+                [
+                    fixture,
+                    row["condition"],
+                    row["task_count"],
+                    f"{float(row['mean_reciprocal_rank']):.3f}",
+                    f"{float(row['recall_at_1']):.3f}",
+                    f"{float(row['recall_at_10']):.3f}",
+                    f"{float(row['false_novelty_rate']):.3f}",
+                ]
+            )
+    add_table(doc, temporal_rows, font_size=7.7, vertical_margin_dxa=55)
+    add_simple_paragraph(
+        doc,
+        "Synthetic results validate engineering behavior only. The historical result is one manually curated retrospective case and cannot estimate generalization or prospective discovery performance.",
+        italic=True,
+        size=9.5,
+    )
+
+    doc.add_heading("S6. Deterministic validation results", level=1)
+    validation_rows = [
+        ["Suite", "Tests", "Passed", "Skipped", "Failures", "Errors", "Wall s"]
+    ]
     for name, suite in validation["suites"].items():
         passed = suite["tests"] - suite["skipped"] - suite["failures"] - suite["errors"]
-        validation_rows.append([
-            name,
-            str(suite["tests"]),
-            str(passed),
-            str(suite["skipped"]),
-            str(suite["failures"]),
-            str(suite["errors"]),
-            f"{suite['wall_seconds']:.2f}",
-        ])
+        validation_rows.append(
+            [
+                name,
+                str(suite["tests"]),
+                str(passed),
+                str(suite["skipped"]),
+                str(suite["failures"]),
+                str(suite["errors"]),
+                f"{suite['wall_seconds']:.2f}",
+            ]
+        )
     add_table(doc, validation_rows)
     add_simple_paragraph(
         doc,
@@ -521,13 +644,14 @@ def build_supplement(output: Path) -> None:
         size=9.5,
     )
 
-    doc.add_heading("S5. Measurement-repair acceptance criteria", level=1)
+    doc.add_heading("S7. Measurement-repair acceptance criteria", level=1)
     criteria = [
         "A GoldenTask with domain=biology constructs Plato with domain=biology.",
         "Method-signal recall is computed from methods.md and appears in summary metrics.",
         "Evidence JSONL persists every drafted Claim row before emitted EvidenceLink rows.",
         "A drafted claim with no supporting source remains in the denominator and yields unsupported_claim_rate=1.0.",
         "A synthetic rigid rotation and translation is recovered by the Kabsch implementation within numerical tolerance.",
+        "Temporal leakage, duplicate sources, prompt-injection quarantine, independent evidence bridges, and abstention are regression-tested.",
     ]
     for item in criteria:
         p = doc.add_paragraph(style="List Bullet")
@@ -535,13 +659,13 @@ def build_supplement(output: Path) -> None:
         set_font(spacer)
         add_inline_markdown(p, item)
 
-    doc.add_heading("S6. Interpretation and unavailable live lanes", level=1)
+    doc.add_heading("S8. Interpretation and unavailable live lanes", level=1)
     add_simple_paragraph(
         doc,
         "The default evaluation runner executes idea and method stages only. It does not execute results or paper generation in this release. Live LLM, E2B, Modal, hosted PostgreSQL, and authenticated Hugging Face evaluations require external credentials or services and were not inferred from deterministic tests. Same-model reviewer roles are self-critique, not peer review. The autonomous-loop adapters do not establish autonomous scientific improvement.",
     )
 
-    doc.add_heading("S7. bioRxiv packaging notes", level=1)
+    doc.add_heading("S9. bioRxiv packaging notes", level=1)
     notes = [
         "Main manuscript is supplied as one PDF with embedded figures and tables.",
         "Supplemental data are separate from the main manuscript.",

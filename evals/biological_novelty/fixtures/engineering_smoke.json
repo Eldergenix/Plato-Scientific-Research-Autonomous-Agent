@@ -1,0 +1,112 @@
+[
+  {
+    "id": "synthetic_lipid_resolution",
+    "biological_area": "inflammation and lipid metabolism",
+    "cutoff": "2010-01-01",
+    "anchor_concept": "omega_3_fatty_acids",
+    "target_concept": "neutrophil_resolution",
+    "target_relation": "may promote resolution of inflammation through",
+    "candidate_concepts": ["neutrophil_resolution", "triglycerides", "bone_mineral_density"],
+    "validation_id": "SYNTHETIC:lipid-resolution",
+    "validation_published_at": "2012-01-01",
+    "synthetic": true,
+    "records": [
+      {"record_id":"lipid-ab1","title":"Omega-3 fatty acids generate resolvin mediators","abstract":"Synthetic engineering evidence.","published_at":"2002-01-01","source_url":"https://example.invalid/lipid-ab1","concepts":["omega_3_fatty_acids","resolvin"]},
+      {"record_id":"lipid-ab2","title":"Omega-3 fatty acids alter lipid mediators","abstract":"Synthetic engineering evidence.","published_at":"2003-01-01","source_url":"https://example.invalid/lipid-ab2","concepts":["omega_3_fatty_acids","lipid_mediator"]},
+      {"record_id":"lipid-bc1","title":"Resolvin regulates neutrophil resolution","abstract":"Synthetic engineering evidence.","published_at":"2004-01-01","source_url":"https://example.invalid/lipid-bc1","concepts":["resolvin","neutrophil_resolution"]},
+      {"record_id":"lipid-bc2","title":"Lipid mediators coordinate neutrophil resolution","abstract":"Synthetic engineering evidence.","published_at":"2005-01-01","source_url":"https://example.invalid/lipid-bc2","concepts":["lipid_mediator","neutrophil_resolution"]},
+      {"record_id":"lipid-known","title":"Omega-3 fatty acids reduce triglycerides","abstract":"Synthetic already-known control.","published_at":"2001-01-01","source_url":"https://example.invalid/lipid-known","concepts":["omega_3_fatty_acids","triglycerides"]},
+      {"record_id":"lipid-known-2","title":"Triglyceride response to omega-3 fatty acids","abstract":"Synthetic already-known control.","published_at":"2004-06-01","source_url":"https://example.invalid/lipid-known-2","concepts":["omega_3_fatty_acids","triglycerides"]},
+      {"record_id":"lipid-known-3","title":"Omega-3 supplementation and triglycerides","abstract":"Synthetic already-known control.","published_at":"2007-01-01","source_url":"https://example.invalid/lipid-known-3","concepts":["omega_3_fatty_acids","triglycerides"]},
+      {"record_id":"lipid-unsupported","title":"Bone mineral density survey","abstract":"Synthetic unsupported control.","published_at":"2006-01-01","source_url":"https://example.invalid/lipid-unsupported","concepts":["bone_mineral_density"]}
+    ]
+  },
+  {
+    "id": "synthetic_brca_parp",
+    "biological_area": "cancer genetics",
+    "cutoff": "2010-01-01",
+    "anchor_concept": "BRCA1",
+    "target_concept": "PARP_inhibitor_sensitivity",
+    "target_relation": "may create selective sensitivity through",
+    "candidate_concepts": ["PARP_inhibitor_sensitivity", "breast_cancer", "insulin_secretion"],
+    "validation_id": "SYNTHETIC:brca-parp",
+    "validation_published_at": "2012-01-01",
+    "synthetic": true,
+    "records": [
+      {"record_id":"brca-ab1","title":"BRCA1 supports homologous recombination","abstract":"Synthetic engineering evidence.","published_at":"2002-01-01","source_url":"https://example.invalid/brca-ab1","concepts":["BRCA1","homologous_recombination"]},
+      {"record_id":"brca-ab2","title":"BRCA1 deficiency impairs DNA repair","abstract":"Synthetic engineering evidence.","published_at":"2003-01-01","source_url":"https://example.invalid/brca-ab2","concepts":["BRCA1","DNA_repair"]},
+      {"record_id":"brca-bc1","title":"Homologous recombination defects sensitize cells to PARP inhibition","abstract":"Synthetic engineering evidence.","published_at":"2005-01-01","source_url":"https://example.invalid/brca-bc1","concepts":["homologous_recombination","PARP_inhibitor_sensitivity"]},
+      {"record_id":"brca-bc2","title":"DNA repair failure predicts PARP inhibitor sensitivity","abstract":"Synthetic engineering evidence.","published_at":"2006-01-01","source_url":"https://example.invalid/brca-bc2","concepts":["DNA_repair","PARP_inhibitor_sensitivity"]},
+      {"record_id":"brca-known","title":"BRCA1 is associated with breast cancer","abstract":"Synthetic already-known control.","published_at":"2001-01-01","source_url":"https://example.invalid/brca-known","concepts":["BRCA1","breast_cancer"]},
+      {"record_id":"brca-known-2","title":"Inherited breast cancer and BRCA1","abstract":"Synthetic already-known control.","published_at":"2004-06-01","source_url":"https://example.invalid/brca-known-2","concepts":["BRCA1","breast_cancer"]},
+      {"record_id":"brca-known-3","title":"BRCA1 risk in breast cancer","abstract":"Synthetic already-known control.","published_at":"2007-01-01","source_url":"https://example.invalid/brca-known-3","concepts":["BRCA1","breast_cancer"]},
+      {"record_id":"brca-unsupported","title":"Insulin secretion physiology","abstract":"Synthetic unsupported control.","published_at":"2007-01-01","source_url":"https://example.invalid/brca-unsupported","concepts":["insulin_secretion"]}
+    ]
+  },
+  {
+    "id": "synthetic_lrrk2_lysosome",
+    "biological_area": "neurodegeneration",
+    "cutoff": "2010-01-01",
+    "anchor_concept": "LRRK2",
+    "target_concept": "lysosomal_trafficking",
+    "target_relation": "may regulate vesicle handling through",
+    "candidate_concepts": ["lysosomal_trafficking", "Parkinson_disease", "collagen_synthesis"],
+    "validation_id": "SYNTHETIC:lrrk2-lysosome",
+    "validation_published_at": "2013-01-01",
+    "synthetic": true,
+    "records": [
+      {"record_id":"lrrk-ab1","title":"LRRK2 phosphorylates Rab proteins","abstract":"Synthetic engineering evidence.","published_at":"2002-01-01","source_url":"https://example.invalid/lrrk-ab1","concepts":["LRRK2","Rab_phosphorylation"]},
+      {"record_id":"lrrk-ab2","title":"LRRK2 affects vesicle transport","abstract":"Synthetic engineering evidence.","published_at":"2004-01-01","source_url":"https://example.invalid/lrrk-ab2","concepts":["LRRK2","vesicle_transport"]},
+      {"record_id":"lrrk-bc1","title":"Rab phosphorylation changes lysosomal trafficking","abstract":"Synthetic engineering evidence.","published_at":"2005-01-01","source_url":"https://example.invalid/lrrk-bc1","concepts":["Rab_phosphorylation","lysosomal_trafficking"]},
+      {"record_id":"lrrk-bc2","title":"Vesicle transport controls lysosomal trafficking","abstract":"Synthetic engineering evidence.","published_at":"2006-01-01","source_url":"https://example.invalid/lrrk-bc2","concepts":["vesicle_transport","lysosomal_trafficking"]},
+      {"record_id":"lrrk-known","title":"LRRK2 variants contribute to Parkinson disease","abstract":"Synthetic already-known control.","published_at":"2001-01-01","source_url":"https://example.invalid/lrrk-known","concepts":["LRRK2","Parkinson_disease"]},
+      {"record_id":"lrrk-known-2","title":"Parkinson disease genetics include LRRK2","abstract":"Synthetic already-known control.","published_at":"2004-06-01","source_url":"https://example.invalid/lrrk-known-2","concepts":["LRRK2","Parkinson_disease"]},
+      {"record_id":"lrrk-known-3","title":"LRRK2-associated Parkinson disease","abstract":"Synthetic already-known control.","published_at":"2007-01-01","source_url":"https://example.invalid/lrrk-known-3","concepts":["LRRK2","Parkinson_disease"]},
+      {"record_id":"lrrk-unsupported","title":"Collagen synthesis pathways","abstract":"Synthetic unsupported control.","published_at":"2007-01-01","source_url":"https://example.invalid/lrrk-unsupported","concepts":["collagen_synthesis"]}
+    ]
+  },
+  {
+    "id": "synthetic_metformin_glucose",
+    "biological_area": "metabolism",
+    "cutoff": "2010-01-01",
+    "anchor_concept": "metformin",
+    "target_concept": "hepatic_gluconeogenesis",
+    "target_relation": "may suppress hepatic glucose production through",
+    "candidate_concepts": ["hepatic_gluconeogenesis", "type_2_diabetes", "phototransduction"],
+    "validation_id": "SYNTHETIC:metformin-glucose",
+    "validation_published_at": "2012-01-01",
+    "synthetic": true,
+    "records": [
+      {"record_id":"met-ab1","title":"Metformin activates AMPK","abstract":"Synthetic engineering evidence.","published_at":"2002-01-01","source_url":"https://example.invalid/met-ab1","concepts":["metformin","AMPK"]},
+      {"record_id":"met-ab2","title":"Metformin induces cellular energy stress","abstract":"Synthetic engineering evidence.","published_at":"2003-01-01","source_url":"https://example.invalid/met-ab2","concepts":["metformin","energy_stress"]},
+      {"record_id":"met-bc1","title":"AMPK suppresses hepatic gluconeogenesis","abstract":"Synthetic engineering evidence.","published_at":"2004-01-01","source_url":"https://example.invalid/met-bc1","concepts":["AMPK","hepatic_gluconeogenesis"]},
+      {"record_id":"met-bc2","title":"Energy stress reduces hepatic gluconeogenesis","abstract":"Synthetic engineering evidence.","published_at":"2005-01-01","source_url":"https://example.invalid/met-bc2","concepts":["energy_stress","hepatic_gluconeogenesis"]},
+      {"record_id":"met-known","title":"Metformin treats type 2 diabetes","abstract":"Synthetic already-known control.","published_at":"2001-01-01","source_url":"https://example.invalid/met-known","concepts":["metformin","type_2_diabetes"]},
+      {"record_id":"met-known-2","title":"Type 2 diabetes therapy with metformin","abstract":"Synthetic already-known control.","published_at":"2004-06-01","source_url":"https://example.invalid/met-known-2","concepts":["metformin","type_2_diabetes"]},
+      {"record_id":"met-known-3","title":"Metformin outcomes in type 2 diabetes","abstract":"Synthetic already-known control.","published_at":"2007-01-01","source_url":"https://example.invalid/met-known-3","concepts":["metformin","type_2_diabetes"]},
+      {"record_id":"met-unsupported","title":"Phototransduction cascade","abstract":"Synthetic unsupported control.","published_at":"2007-01-01","source_url":"https://example.invalid/met-unsupported","concepts":["phototransduction"]}
+    ]
+  },
+  {
+    "id": "synthetic_tox_chromatin",
+    "biological_area": "single-cell immunology",
+    "cutoff": "2010-01-01",
+    "anchor_concept": "T_cell_exhaustion",
+    "target_concept": "chromatin_accessibility",
+    "target_relation": "may be stabilized by epigenetic remodeling through",
+    "candidate_concepts": ["chromatin_accessibility", "chronic_infection", "bone_remodeling"],
+    "validation_id": "SYNTHETIC:tox-chromatin",
+    "validation_published_at": "2014-01-01",
+    "synthetic": true,
+    "records": [
+      {"record_id":"tox-ab1","title":"T cell exhaustion induces TOX","abstract":"Synthetic engineering evidence.","published_at":"2002-01-01","source_url":"https://example.invalid/tox-ab1","concepts":["T_cell_exhaustion","TOX"]},
+      {"record_id":"tox-ab2","title":"T cell exhaustion involves epigenetic remodeling","abstract":"Synthetic engineering evidence.","published_at":"2003-01-01","source_url":"https://example.invalid/tox-ab2","concepts":["T_cell_exhaustion","epigenetic_remodeling"]},
+      {"record_id":"tox-bc1","title":"TOX reshapes chromatin accessibility","abstract":"Synthetic engineering evidence.","published_at":"2005-01-01","source_url":"https://example.invalid/tox-bc1","concepts":["TOX","chromatin_accessibility"]},
+      {"record_id":"tox-bc2","title":"Epigenetic remodeling determines chromatin accessibility","abstract":"Synthetic engineering evidence.","published_at":"2006-01-01","source_url":"https://example.invalid/tox-bc2","concepts":["epigenetic_remodeling","chromatin_accessibility"]},
+      {"record_id":"tox-known","title":"T cell exhaustion follows chronic infection","abstract":"Synthetic already-known control.","published_at":"2001-01-01","source_url":"https://example.invalid/tox-known","concepts":["T_cell_exhaustion","chronic_infection"]},
+      {"record_id":"tox-known-2","title":"Chronic infection induces T cell exhaustion","abstract":"Synthetic already-known control.","published_at":"2004-06-01","source_url":"https://example.invalid/tox-known-2","concepts":["T_cell_exhaustion","chronic_infection"]},
+      {"record_id":"tox-known-3","title":"T cell exhaustion during chronic infection","abstract":"Synthetic already-known control.","published_at":"2007-01-01","source_url":"https://example.invalid/tox-known-3","concepts":["T_cell_exhaustion","chronic_infection"]},
+      {"record_id":"tox-unsupported","title":"Bone remodeling pathways","abstract":"Synthetic unsupported control.","published_at":"2007-01-01","source_url":"https://example.invalid/tox-unsupported","concepts":["bone_remodeling"]}
+    ]
+  }
+]

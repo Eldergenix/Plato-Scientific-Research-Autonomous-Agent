@@ -5,11 +5,13 @@ The score is ``1.0 - max_cosine_similarity(idea, corpus)``: an idea that
 matches an existing source closely scores low, an idea unlike anything in
 the corpus scores high.
 
-Two backends ship out of the box:
+Three backends ship out of the box:
 - ``OpenAIEmbeddingBackend`` calls OpenAI's embeddings API. The ``openai``
   package is imported lazily so the module remains importable without it.
+- ``TfidfEmbeddingBackend`` fits a deterministic, interpretable lexical
+  baseline on each idea/corpus batch and is the offline default.
 - ``StubEmbeddingBackend`` produces deterministic pseudo-vectors via
-  hashing. Used for tests and as the default when no API key is present.
+  hashing. It is retained only for explicit test use.
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
 from pydantic import BaseModel, Field
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 from plato.state.models import Source
 
@@ -75,8 +78,31 @@ class OpenAIEmbeddingBackend:
         return [d.embedding for d in resp.data]
 
 
+class TfidfEmbeddingBackend:
+    """Corpus-fitted word and phrase TF-IDF vectors for offline scoring."""
+
+    name = "tfidf:word-1-2"
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+        vectorizer = TfidfVectorizer(
+            lowercase=True,
+            ngram_range=(1, 2),
+            norm="l2",
+            sublinear_tf=True,
+        )
+        try:
+            matrix = vectorizer.fit_transform(texts)
+        except ValueError as exc:
+            if "empty vocabulary" not in str(exc).lower():
+                raise
+            return [[0.0] for _ in texts]
+        return matrix.toarray().tolist()
+
+
 class StubEmbeddingBackend:
-    """Deterministic hash-based pseudo-embeddings. For tests + no-key fallback."""
+    """Deterministic hash-based pseudo-embeddings for explicit test use only."""
 
     name = "stub"
 
@@ -137,7 +163,7 @@ def _cosine(a: np.ndarray, b: np.ndarray) -> float:
 def _autoselect_backend() -> EmbeddingBackend:
     if os.getenv("OPENAI_API_KEY"):
         return OpenAIEmbeddingBackend()
-    return StubEmbeddingBackend()
+    return TfidfEmbeddingBackend()
 
 
 class EmbeddingScorer:
@@ -186,6 +212,7 @@ class EmbeddingScorer:
 __all__ = [
     "EmbeddingBackend",
     "OpenAIEmbeddingBackend",
+    "TfidfEmbeddingBackend",
     "StubEmbeddingBackend",
     "NoveltyResult",
     "EmbeddingScorer",

@@ -1,0 +1,33 @@
+{
+  "domain_counts": {
+    "Epigenomics": 20,
+    "Genomics": 20,
+    "Machine Learning": 7,
+    "Population Genetics": 12,
+    "Single-cell": 21,
+    "Spatial": 2,
+    "Structure": 1,
+    "Transcriptomics": 17
+  },
+  "gpu_preferred_count": 4,
+  "internet_required_count": 78,
+  "question_style_counts": {
+    "Metadata Recovery": 27,
+    "Retrieval": 17,
+    "Routine Analysis": 22,
+    "Synthetic/Augmented Data": 26,
+    "Tooling": 8
+  },
+  "skill_counts": {
+    "API/Web Fetching": 42,
+    "Bioinformatics Tools": 43,
+    "Coding": 50,
+    "Data Wrangling": 35,
+    "ML Frameworks": 7,
+    "Reasoning": 65,
+    "Tooling": 8,
+    "Visual Reasoning": 4
+  },
+  "task_count": 100,
+  "tasks_with_files_count": 73
+}

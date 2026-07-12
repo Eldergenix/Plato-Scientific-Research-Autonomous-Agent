@@ -17,11 +17,15 @@ This directory contains a bioRxiv-oriented manuscript and the evidence used to p
 
 ```bash
 .venv/bin/python preprint/experiments/run_globin_structure_benchmark.py
+.venv/bin/python preprint/experiments/run_globin_structure_benchmark.py --panel-file preprint/experiments/diverse_structure_panel.json --output-dir preprint/results/diverse_structure_benchmark --figures-dir preprint/figures --benchmark-name diverse_structure_panel
+.venv/bin/python preprint/experiments/run_temporal_novelty_benchmark.py --fixtures evals/biological_novelty/fixtures/engineering_smoke.json --output-dir preprint/results/temporal_novelty_smoke
+.venv/bin/python preprint/experiments/run_temporal_novelty_benchmark.py --fixtures evals/biological_novelty/fixtures/historical_pilot.json --output-dir preprint/results/temporal_novelty_historical_pilot
+.venv/bin/python -m evals.biomedical_benchmarks
 .venv/bin/python preprint/experiments/run_software_validation.py
 .venv/bin/python preprint/experiments/build_summary_figures.py
 ```
 
-The structural benchmark downloads declared RCSB PDB and AlphaFold DB records only when the cached raw files are absent. The output manifest records upstream URLs, versions, and SHA-256 hashes. The software-validation script writes exact pytest/JUnit counts and environment metadata.
+The structural benchmarks download declared RCSB PDB and AlphaFold DB records only when cached raw files are absent. The manifests record upstream URLs, versions, methods, resolutions, and SHA-256 hashes. The temporal benchmark freezes publication cutoffs and evidence paths. The CompBioBench importer pins and verifies its task catalog but does not report agent performance. The software-validation script writes exact pytest/JUnit counts and environment metadata.
 
 ## Build and verify the manuscript
 
@@ -36,4 +40,4 @@ files. See `latex/README.md` for reproducible Tectonic compilation commands.
 
 ## Interpretation boundary
 
-This package validates software contracts and one deterministic public-data biological computation. It does not claim that the default evaluator runs results/paper stages, that self-critique is independent peer review, or that Plato autonomously improves scientific research.
+This package validates software contracts, one historical rediscovery pilot, a synthetic engineering smoke, and a 15-target public structural screen. The historical pilot is retrospective, and all structural discrepancy regions are unvalidated hypotheses. It does not claim that the default evaluator runs results/paper stages, that self-critique is independent peer review, or that Plato has autonomously discovered a biological fact.
