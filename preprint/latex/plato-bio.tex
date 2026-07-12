@@ -5,7 +5,6 @@
 \usepackage{array}
 \usepackage{xcolor}
 \usepackage{hyperref}
-\usepackage{lineno}
 \usepackage{microtype}
 \usepackage{caption}
 \usepackage{enumitem}
@@ -17,13 +16,12 @@
 \hypersetup{colorlinks=true,linkcolor=PlatoBlue,urlcolor=PlatoBlue,citecolor=PlatoBlue}
 \captionsetup{font=small,labelfont=bf}
 \renewcommand{\arraystretch}{1.18}
-\modulolinenumbers[5]
 \graphicspath{{../figures/}}
 
 
 \title{Plato-Bio: verification-first biological novelty screening with temporal rediscovery and structural benchmarks}
 
-\author{Stefan Creadore\\\small Eldergenix, United States}
+\author{Stefan G. Creadore\\\small Independent Researcher, Valrico, Florida, United States}
 
 \date{}
 
@@ -31,7 +29,7 @@
 
 \maketitle
 
-\begin{center}\small Correspondence: \url{https://github.com/Eldergenix/Plato-Scientific-Research-Autonomous-Agent}\\Article category: New Results \quad Subject area: Bioinformatics\end{center}
+\begin{center}\small Correspondence: \href{mailto:stefan@nex-t1.ai}{stefan@nex-t1.ai} \quad ORCID: \url{https://orcid.org/0000-0003-2268-053X}\\Article category: New Results \quad Subject area: Bioinformatics\end{center}
 
 \begin{abstract}
 
@@ -44,8 +42,6 @@ We also expanded the structural panel from three globins to 15 human proteins sp
 \end{abstract}
 
 \textbf{Keywords:} scientific agents; bioinformatics; biological novelty; literature-based discovery; temporal rediscovery; reproducibility; AlphaFold
-
-\linenumbers
 
 \section{Introduction}
 
@@ -61,7 +57,7 @@ We make five contributions. First, we describe a biology-routed workflow in whic
 
 \subsection{Study design and claim boundary}
 
-We conducted a source-level architecture audit, repaired measurement defects whose behavior contradicted documented contracts, ran deterministic validation suites, and executed two distinct evaluation lanes. The first is a frozen temporal rediscovery benchmark for literature-derived candidate ranking. The second is an AlphaFold-to-experiment structure screen. The original three-globin panel was retained, and a 15-target expansion was declared in \texttt{preprint/experiments/diverse\_structure\_panel.json} before that run. Neither benchmark used an LLM or selected successful outputs after observing results.
+We conducted a source-level architecture audit, repaired measurement defects whose behavior contradicted documented contracts, ran deterministic validation suites, and executed two distinct evaluation lanes. The first is a frozen temporal rediscovery benchmark for literature-derived candidate ranking. The second is an AlphaFold-to-experiment structure screen. The original three-globin panel was retained, and a 15-target expansion was declared in \nolinkurl{preprint/experiments/diverse_structure_panel.json} before that run. Neither benchmark used an LLM or selected successful outputs after observing results.
 
 Software tests were interpreted as contract verification only. A passing test indicates that an asserted behavior was observed in the test environment; it does not estimate biological accuracy, citation precision in open-ended use, or paper quality. Live provider tests requiring credentials or optional cloud services were reported as skipped rather than converted into successful or zero-valued scientific outcomes.
 
@@ -90,9 +86,9 @@ Three defects were treated as study-blocking because each could change an evalua
 
 \begin{enumerate}[leftmargin=*]
 
-\item The default evaluation factory constructed every task with Plato's default astronomy profile. We changed the factory to pass \texttt{task.domain}, so the shipped protein task uses the biology profile.
+\item The default evaluation factory constructed every task with Plato's default astronomy profile. We changed the factory to pass \nolinkurl{task.domain}, so the shipped protein task uses the biology profile.
 
-\item Golden tasks declared \texttt{expected\_method\_signals}, but the evaluator did not score them. We added \texttt{method\_signal\_recall}, calculated only from the method artifact, and included it in aggregate summaries.
+\item Golden tasks declared \nolinkurl{expected_method_signals}, but the evaluator did not score them. We added \nolinkurl{method_signal_recall}, calculated only from the method artifact, and included it in aggregate summaries.
 
 \item The evidence producer wrote only links while the evaluator and dashboard expected mixed claim/link rows. When no Claim rows were present, unsupported-claim rate defaulted to 0.0. We changed the producer to persist drafted claims before links, including when no source claims are available.
 
@@ -102,7 +98,7 @@ Each repair was covered by a failing regression test before the implementation c
 
 \subsection{Deterministic software validation}
 
-The repository-local script \texttt{preprint/experiments/run\_software\_validation.py} ran five suites with the checked-in Python environment: biology-domain behavior, genomics adapters, evidence/citation controls, adversarial safety, and the complete Python test tree. It invoked pytest with JUnit XML output, parsed tests/failures/errors/skips, and wrote a JSON report containing the command, commit, platform, Python version, and timing. The targeted suites overlap with the full suite; their counts are presented to show control-specific coverage and must not be summed.
+The repository-local script \nolinkurl{preprint/experiments/run_software_validation.py} ran five suites with the checked-in Python environment: biology-domain behavior, genomics adapters, evidence/citation controls, adversarial safety, and the complete Python test tree. It invoked pytest with JUnit XML output, parsed tests/failures/errors/skips, and wrote a JSON report containing the command, commit, platform, Python version, and timing. The targeted suites overlap with the full suite; their counts are presented to show control-specific coverage and must not be summed.
 
 The complete suite includes unit, trajectory, safety, and opt-in integration tests. Skips correspond to missing optional SDKs or credentials for E2B, Modal, PostgreSQL, Hugging Face, and one platform-specific path case. No skipped integration was reported as validated.
 
@@ -122,11 +118,11 @@ The engineering smoke contains five explicitly synthetic tasks and tests only me
 
 Experimental coordinates were downloaded from the RCSB Protein Data Bank ~\cite{ref6}. PDB 1A3N is a 1.8 \AA{} X-ray structure of deoxy human hemoglobin; chains A and B were used for the $\alpha$ and $\beta$ subunits. PDB 3RGK is a 1.65 \AA{} X-ray structure of the human myoglobin K45R variant; its single sequence mismatch relative to the UniProt target was excluded from coordinate matching. AlphaFold Database models were retrieved through the public prediction API for UniProt P69905, P68871, and P02144 ~\cite{ref7}. The retrieval manifest records model URLs, database version, model creation date, global confidence, and SHA-256 hashes for every downloaded file.
 
-PDB files were parsed from \texttt{ATOM} records. We retained the first blank/A alternate-location C$\alpha$ atom for each residue in the declared chain. Three-letter residue names were mapped to one-letter codes. Predicted and experimental sequences were globally aligned with Needleman--Wunsch dynamic programming (match 2, mismatch $-$1, gap $-$2); coordinate pairs were retained only when both aligned residues were present and identical.
+PDB files were parsed from \nolinkurl{ATOM} records. We retained the first blank/A alternate-location C$\alpha$ atom for each residue in the declared chain. Three-letter residue names were mapped to one-letter codes. Predicted and experimental sequences were globally aligned with Needleman--Wunsch dynamic programming (match 2, mismatch $-$1, gap $-$2); coordinate pairs were retained only when both aligned residues were present and identical.
 
-Predicted C$\alpha$ coordinates were superposed on experimental coordinates using the Kabsch least-squares rotation ~\cite{ref8}. We calculated whole-chain C$\alpha$ RMSD and a predeclared confidence-masked RMSD using matched AlphaFold residues with pLDDT≥70. The rigid transform fitted to that high-confidence core was then applied to all matched residues before residue-level discrepancy screening. Moving-block residue bootstrap intervals used 2,000 resamples, blocks of 10 contiguous residues, and a fixed seed; because residues are not independent biological replicates, these intervals are descriptive. We also calculated median residue error, fractions within 2 and 5 \AA{}, mean pLDDT, and Spearman rank correlation between pLDDT and negative core-aligned residue error.
+Predicted C$\alpha$ coordinates were superposed on experimental coordinates using the Kabsch least-squares rotation ~\cite{ref8}. We calculated whole-chain C$\alpha$ RMSD and a predeclared confidence-masked RMSD using matched AlphaFold residues with pLDDT$\geq$70. The rigid transform fitted to that high-confidence core was then applied to all matched residues before residue-level discrepancy screening. Moving-block residue bootstrap intervals used 2,000 resamples, blocks of 10 contiguous residues, and a fixed seed; because residues are not independent biological replicates, these intervals are descriptive. We also calculated median residue error, fractions within 2 and 5 \AA{}, mean pLDDT, and Spearman rank correlation between pLDDT and negative core-aligned residue error.
 
-The expanded panel contains 15 human proteins and 2,688 matched residues. Experimental-method and resolution fields were parsed from PDB headers. A discrepancy region required pLDDT≥90 and core-aligned C$\alpha$ error≥2 \AA{}; adjacent qualifying residues were grouped. Every output is labeled \texttt{novelty\_status=not\_established} and requires review of constructs, mutations, ligands, oligomeric state, alternative structures, and experimental conditions before independent validation. The Kabsch and core-transform implementations were regression-tested against synthetic rigid transformations. The analysis script, panel declaration, raw coordinate files, residue-level CSV, target summaries, source hashes, candidate table, and figures are included with this preprint.
+The expanded panel contains 15 human proteins and 2,688 matched residues. Experimental-method and resolution fields were parsed from PDB headers. A discrepancy region required pLDDT$\geq$90 and core-aligned C$\alpha$ error$\geq$2 \AA{}; adjacent qualifying residues were grouped. Every output is labeled \nolinkurl{novelty_status=not_established} and requires review of constructs, mutations, ligands, oligomeric state, alternative structures, and experimental conditions before independent validation. The Kabsch and core-transform implementations were regression-tested against synthetic rigid transformations. The analysis script, panel declaration, raw coordinate files, residue-level CSV, target summaries, source hashes, candidate table, and figures are included with this preprint.
 
 No correction for multiple comparisons was applied to the three correlation tests because the correlations are descriptive secondary endpoints in a small validation case study. Exact nominal P values are reported and no biological discovery claim is based on them. Local distance difference test (lDDT) is a widely used superposition-free structural score ~\cite{ref9}, but this compact study reports the simpler residue-level aligned C$\alpha$ error so every calculation remains inspectable in the supplied script.
 
@@ -243,7 +239,7 @@ Residue-level pLDDT was positively associated with lower aligned coordinate erro
 
 \subsection{Diverse structural screen and hypothesis triage}
 
-All 15 declared targets completed without retrieval or analysis failure. The panel contained 2,688 sequence-matched residues; median whole-chain RMSD was 0.520 \AA{} and 9 of 15 targets were below 1 \AA{}. After fitting only residues with pLDDT≥70, median core RMSD was 0.501 \AA{} and 11 of 15 targets were below 1 \AA{} (Figure 6). Compact proteins such as transthyretin, hemoglobin $\alpha$, cytochrome c, superoxide dismutase 1, cyclophilin A, carbonic anhydrase 2, and lysozyme ranged from 0.258 to 0.420 \AA{} in the high-confidence-core comparison. CDK2 and MAPK1 improved from whole-chain RMSDs of 1.873 and 1.705 \AA{} to core values of 0.786 and 0.740 \AA{}, respectively, indicating that lower-confidence regions dominated much of their global discrepancy.
+All 15 declared targets completed without retrieval or analysis failure. The panel contained 2,688 sequence-matched residues; median whole-chain RMSD was 0.520 \AA{} and 9 of 15 targets were below 1 \AA{}. After fitting only residues with pLDDT$\geq$70, median core RMSD was 0.501 \AA{} and 11 of 15 targets were below 1 \AA{} (Figure 6). Compact proteins such as transthyretin, hemoglobin $\alpha$, cytochrome c, superoxide dismutase 1, cyclophilin A, carbonic anhydrase 2, and lysozyme ranged from 0.258 to 0.420 \AA{} in the high-confidence-core comparison. CDK2 and MAPK1 improved from whole-chain RMSDs of 1.873 and 1.705 \AA{} to core values of 0.786 and 0.740 \AA{}, respectively, indicating that lower-confidence regions dominated much of their global discrepancy.
 
 Four targets retained high-confidence-core RMSD above 2 \AA{}: KRAS (2.085 \AA{}), SUMO1 (2.576 \AA{}), TP53 (3.889 \AA{}), and estrogen receptor $\alpha$ (4.961 \AA{}). These comparisons differ in construct coverage, domain state, ligands, and experimental modality. SUMO1 is a solution-NMR ensemble with a flexible N-terminus; fitting the 74 high-confidence residues reduced its RMSD from 16.610 \AA{} over the whole chain to 2.576 \AA{}. TP53 and estrogen receptor $\alpha$ experimental chains cover only 49.4\% and 40.0\% of their respective full AlphaFold sequences. These facts make the high values informative triage signals but inadequate evidence of a novel conformation.
 
@@ -286,11 +282,11 @@ Authorship and submission metadata remain human responsibilities. The correspond
 
 \section{Conclusion}
 
-Plato-Bio provides an inspectable foundation for supervised computational-biology workflows and a more defensible route from retrieved literature or predicted structures to candidate hypotheses. Independent A--B/B--C evidence bridges outperformed frequency and TF--IDF in one historical rediscovery pilot, while confidence-masked structural comparison separated compact sub-ångström agreement from context-sensitive discrepancies across 15 proteins. The system now emits traceable candidates, known controls, abstentions, and explicit \texttt{not\_established} novelty labels instead of treating difference as discovery. The evidence supports software-contract reproducibility, one retrospective literature case, and descriptive structural triage. Establishing general agent efficacy or biological novelty still requires a larger preregistered benchmark, independent expert assessment, prospective analysis, and experimental validation.
+Plato-Bio provides an inspectable foundation for supervised computational-biology workflows and a more defensible route from retrieved literature or predicted structures to candidate hypotheses. Independent A--B/B--C evidence bridges outperformed frequency and TF--IDF in one historical rediscovery pilot, while confidence-masked structural comparison separated compact sub-ångström agreement from context-sensitive discrepancies across 15 proteins. The system now emits traceable candidates, known controls, abstentions, and explicit \nolinkurl{not_established} novelty labels instead of treating difference as discovery. The evidence supports software-contract reproducibility, one retrospective literature case, and descriptive structural triage. Establishing general agent efficacy or biological novelty still requires a larger preregistered benchmark, independent expert assessment, prospective analysis, and experimental validation.
 
 \section{Data and code availability}
 
-Code, manuscript source, experiment scripts, exact input coordinate files, hashes, derived CSV/JSONL files, figures, and validation manifests are available in the companion repository: \url{https://github.com/Eldergenix/Plato-Scientific-Research-Autonomous-Agent}. The original globin bundle is under \texttt{preprint/results/globin\_benchmark/}; the expanded structural screen is under \texttt{preprint/results/diverse\_structure\_benchmark/}; and temporal fixtures and results are under \texttt{evals/biological\_novelty/fixtures/} and \texttt{preprint/results/temporal\_novelty\_*}. The pinned, hash-verified CompBioBench catalog is metadata only and is stored under \texttt{preprint/results/compbiobench\_catalog/}. The release commit identifier is recorded in validation manifests and should be replaced by a tagged release or archival DOI when available.
+Code, manuscript source, experiment scripts, exact input coordinate files, hashes, derived CSV/JSONL files, figures, and validation manifests are available in the companion repository: \url{https://github.com/Eldergenix/Plato-Scientific-Research-Autonomous-Agent}. The original globin bundle is under \nolinkurl{preprint/results/globin_benchmark/}; the expanded structural screen is under \nolinkurl{preprint/results/diverse_structure_benchmark/}; and temporal fixtures and results are under \nolinkurl{evals/biological_novelty/fixtures/} and \nolinkurl{preprint/results/temporal_novelty_*}. The pinned, hash-verified CompBioBench catalog is metadata only and is stored under \nolinkurl{preprint/results/compbiobench_catalog/}. The release commit identifier is recorded in validation manifests and should be replaced by a tagged release or archival DOI when available.
 
 \section{Ethics statement}
 
@@ -347,6 +343,6 @@ We thank the original Denario/Plato contributors for releasing the foundational 
 
 \textbf{Figure 5. Residue confidence versus aligned coordinate error.} Each point is one matched residue. pLDDT is read from the AlphaFold PDB B-factor field; error is the Euclidean C$\alpha$ distance after target-level superposition.
 
-\textbf{Figure 6. Diverse structural screen.} Bars show C$\alpha$ RMSD after Kabsch fitting on matched AlphaFold residues with pLDDT≥70. Error bars are descriptive 95\% moving-block residue-bootstrap intervals and are not population-level confidence intervals.
+\textbf{Figure 6. Diverse structural screen.} Bars show C$\alpha$ RMSD after Kabsch fitting on matched AlphaFold residues with pLDDT$\geq$70. Error bars are descriptive 95\% moving-block residue-bootstrap intervals and are not population-level confidence intervals.
 
 \end{document}

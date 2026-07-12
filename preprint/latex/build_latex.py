@@ -22,7 +22,6 @@ PREAMBLE = r"""\documentclass[11pt]{article}
 \usepackage{array}
 \usepackage{xcolor}
 \usepackage{hyperref}
-\usepackage{lineno}
 \usepackage{microtype}
 \usepackage{caption}
 \usepackage{enumitem}
@@ -34,7 +33,6 @@ PREAMBLE = r"""\documentclass[11pt]{article}
 \hypersetup{colorlinks=true,linkcolor=PlatoBlue,urlcolor=PlatoBlue,citecolor=PlatoBlue}
 \captionsetup{font=small,labelfont=bf}
 \renewcommand{\arraystretch}{1.18}
-\modulolinenumbers[5]
 \graphicspath{{../figures/}}
 """
 
@@ -61,6 +59,7 @@ def _escape_chars(text: str) -> str:
         "β": r"$\beta$",
         "ρ": r"$\rho$",
         "≤": r"$\leq$",
+        "≥": r"$\geq$",
         "Å": r"\AA{}",
         "×": r"$\times$",
         "−": r"$-$",
@@ -107,7 +106,7 @@ def inline(text: str) -> str:
         elif token.startswith("*"):
             parts.append(r"\emph{" + inline(token[1:-1]) + "}")
         elif token.startswith("`"):
-            parts.append(r"\texttt{" + escape_plain(token[1:-1]) + "}")
+            parts.append(r"\nolinkurl{" + token[1:-1] + "}")
         else:
             trailing = ""
             while token and token[-1] in ".,;":
@@ -265,16 +264,15 @@ def build_main() -> Path:
     document.extend(
         [
             r"\title{" + inline(title) + "}",
-            r"\author{Stefan Creadore\\\small Eldergenix, United States}",
+            r"\author{Stefan G. Creadore\\\small Independent Researcher, Valrico, Florida, United States}",
             r"\date{}",
             r"\begin{document}",
             r"\maketitle",
-            r"\begin{center}\small Correspondence: \url{https://github.com/Eldergenix/Plato-Scientific-Research-Autonomous-Agent}\\Article category: New Results \quad Subject area: Bioinformatics\end{center}",
+            r"\begin{center}\small Correspondence: \href{mailto:stefan@nex-t1.ai}{stefan@nex-t1.ai} \quad ORCID: \url{https://orcid.org/0000-0003-2268-053X}\\Article category: New Results \quad Subject area: Bioinformatics\end{center}",
             r"\begin{abstract}",
             "\n\n".join(inline(line) for line in abstract_lines),
             r"\end{abstract}",
             r"\textbf{Keywords:} scientific agents; bioinformatics; biological novelty; literature-based discovery; temporal rediscovery; reproducibility; AlphaFold",
-            r"\linenumbers",
             render_body(body_lines),
             "\n".join(references),
             render_body(legend_lines),
@@ -412,19 +410,27 @@ def build_supplement() -> Path:
             ]
         )
 
-    commands = "\n".join(
+    commands = "\n\n".join(
         [
             ".venv/bin/python preprint/experiments/run_globin_structure_benchmark.py",
-            ".venv/bin/python preprint/experiments/run_globin_structure_benchmark.py --panel-file preprint/experiments/diverse_structure_panel.json --output-dir preprint/results/diverse_structure_benchmark --figures-dir preprint/figures --benchmark-name diverse_structure_panel",
-            ".venv/bin/python preprint/experiments/run_temporal_novelty_benchmark.py --fixtures evals/biological_novelty/fixtures/engineering_smoke.json --output-dir preprint/results/temporal_novelty_smoke",
-            ".venv/bin/python preprint/experiments/run_temporal_novelty_benchmark.py --fixtures evals/biological_novelty/fixtures/historical_pilot.json --output-dir preprint/results/temporal_novelty_historical_pilot",
+            ".venv/bin/python preprint/experiments/run_globin_structure_benchmark.py \\\n"
+            "  --panel-file preprint/experiments/diverse_structure_panel.json \\\n"
+            "  --output-dir preprint/results/diverse_structure_benchmark \\\n"
+            "  --figures-dir preprint/figures \\\n"
+            "  --benchmark-name diverse_structure_panel",
+            ".venv/bin/python preprint/experiments/run_temporal_novelty_benchmark.py \\\n"
+            "  --fixtures evals/biological_novelty/fixtures/engineering_smoke.json \\\n"
+            "  --output-dir preprint/results/temporal_novelty_smoke",
+            ".venv/bin/python preprint/experiments/run_temporal_novelty_benchmark.py \\\n"
+            "  --fixtures evals/biological_novelty/fixtures/historical_pilot.json \\\n"
+            "  --output-dir preprint/results/temporal_novelty_historical_pilot",
             ".venv/bin/python preprint/experiments/run_software_validation.py",
         ]
     )
     content = [
         PREAMBLE,
         r"\title{Supplementary Material: Plato-Bio}",
-        r"\author{Stefan Creadore}",
+        r"\author{Stefan G. Creadore\\\small Independent Researcher, Valrico, Florida, United States}",
         r"\date{}",
         r"\begin{document}",
         r"\maketitle",

@@ -21,8 +21,16 @@ screen.
 - [Editable manuscript (DOCX)](preprint/Plato-Bio-bioRxiv-preprint.docx)
 - [LaTeX manuscript source](preprint/latex/plato-bio.tex)
 - [LaTeX-compiled preprint (PDF)](preprint/latex/Plato-Bio-LaTeX-preprint.pdf)
+- [LaTeX-compiled supplement (PDF)](preprint/latex/Plato-Bio-LaTeX-Supplement.pdf)
 - [Submission metadata and human confirmation gate](preprint/SUBMISSION_METADATA.md)
 - [Reproduction guide](preprint/README.md)
+
+The publication files identify Stefan G. Creadore as an Independent Researcher
+and include the connected ORCID. The current bioRxiv decision nevertheless
+requires a verifiable established research organization with oversight
+responsibility, so the rejected record must not be duplicated or resubmitted
+under an invented affiliation. The submission metadata records the current
+portal state and the valid path to a future bioRxiv deposit.
 
 The validation package records exact literature cutoffs, PMIDs, candidate
 rankings, abstentions, input URLs, versions, SHA-256 hashes, target- and

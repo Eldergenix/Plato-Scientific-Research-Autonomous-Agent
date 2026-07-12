@@ -2,6 +2,16 @@
 
 This directory contains a bioRxiv-oriented manuscript and the evidence used to produce it.
 
+The author metadata is standardized across the portal and publication files as
+**Stefan G. Creadore, Independent Researcher, Valrico, Florida, United States**
+(ORCID: `0000-0003-2268-053X`; correspondence: `stefan@nex-t1.ai`).
+
+The manuscript package is complete, but the current bioRxiv record was screened
+out because bioRxiv requires a verifiable established research organization
+with oversight responsibility. `Independent Researcher` is the accurate author
+status, but it does not satisfy that requirement by itself. See
+`SUBMISSION_METADATA.md` before attempting another deposit.
+
 ## Submission deliverables
 
 - `Plato-Bio-bioRxiv-preprint.pdf` — upload this as the single main manuscript.
@@ -9,6 +19,8 @@ This directory contains a bioRxiv-oriented manuscript and the evidence used to p
 - `Plato-Bio-bioRxiv-preprint.docx` — editable source for author revisions.
 - `latex/plato-bio.tex` — self-contained LaTeX main manuscript.
 - `latex/plato-bio-supplement.tex` — LaTeX supplementary material.
+- `latex/Plato-Bio-LaTeX-preprint.pdf` — compiled LaTeX main manuscript.
+- `latex/Plato-Bio-LaTeX-Supplement.pdf` — compiled LaTeX supplement.
 - `latex/references.bib` — reusable BibTeX reference library.
 - `manuscript.md` — canonical prose source.
 - `SUBMISSION_METADATA.md` — paste-ready portal metadata and the required human confirmation gate.
