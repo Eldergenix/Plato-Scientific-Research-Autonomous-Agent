@@ -136,20 +136,6 @@ def configure_styles(doc: Document) -> None:
     caption.paragraph_format.keep_with_next = False
 
 
-def add_page_field(paragraph) -> None:
-    paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    run = paragraph.add_run()
-    set_font(run, size=9, color=MUTED, name="Arial")
-    begin = OxmlElement("w:fldChar")
-    begin.set(qn("w:fldCharType"), "begin")
-    instruction = OxmlElement("w:instrText")
-    instruction.set(qn("xml:space"), "preserve")
-    instruction.text = " PAGE "
-    end = OxmlElement("w:fldChar")
-    end.set(qn("w:fldCharType"), "end")
-    run._r.extend([begin, instruction, end])
-
-
 def new_numbering_instance(doc: Document) -> int:
     """Create a fresh decimal numbering instance starting at one."""
     numbering = doc.part.numbering_part.element
@@ -212,7 +198,7 @@ def configure_sections(doc: Document, running_title: str) -> None:
 
         footer = section.footer
         footer_p = footer.paragraphs[0]
-        add_page_field(footer_p)
+        footer_p.text = ""
 
 
 def add_inline_markdown(paragraph, text: str) -> None:
@@ -431,12 +417,15 @@ def build_from_markdown(source: Path, output: Path) -> None:
             index += 1
         text = " ".join(paragraph_lines).replace("  ", " ")
         p = doc.add_paragraph()
-        if text.startswith("**Stefan Creadore"):
+        if text.startswith("**Stefan G. Creadore"):
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
             p.paragraph_format.space_after = Pt(3)
-        elif text.startswith("¹ Eldergenix"):
+        elif text.startswith("¹ Independent Researcher"):
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            p.paragraph_format.space_after = Pt(10)
+            p.paragraph_format.space_after = Pt(3)
+        elif text.startswith("**Correspondence") or text.startswith("**ORCID"):
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            p.paragraph_format.space_after = Pt(3)
         elif (
             text.startswith("**Article category")
             or text.startswith("**bioRxiv")
@@ -448,7 +437,7 @@ def build_from_markdown(source: Path, output: Path) -> None:
 
     core = doc.core_properties
     core.title = lines[0].removeprefix("# ")
-    core.author = "Stefan Creadore"
+    core.author = "Stefan G. Creadore"
     core.subject = "Verification-first computational biology research workflow"
     core.keywords = "bioinformatics, scientific agents, reproducibility, AlphaFold"
     doc.save(output)
@@ -682,7 +671,7 @@ def build_supplement(output: Path) -> None:
 
     core = doc.core_properties
     core.title = "Supplementary Material: Plato-Bio"
-    core.author = "Stefan Creadore"
+    core.author = "Stefan G. Creadore"
     core.subject = "Reproducibility inventory"
     doc.save(output)
 

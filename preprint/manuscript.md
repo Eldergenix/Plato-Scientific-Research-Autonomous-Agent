@@ -1,10 +1,12 @@
 # Plato-Bio: verification-first biological novelty screening with temporal rediscovery and structural benchmarks
 
-**Stefan Creadore¹**
+**Stefan G. Creadore¹**
 
-¹ Eldergenix, United States
+¹ Independent Researcher, Valrico, Florida, United States
 
-**Correspondence:** via the repository issue tracker at https://github.com/Eldergenix/Plato-Scientific-Research-Autonomous-Agent
+**Correspondence:** stefan@nex-t1.ai
+
+**ORCID:** https://orcid.org/0000-0003-2268-053X
 
 **Article category:** New Results
 
