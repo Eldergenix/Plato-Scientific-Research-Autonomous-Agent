@@ -215,6 +215,10 @@ input_files/*
 
 .venv/
 
+# Local document-rendering QA output. Submission PDFs are copied to preprint/.
+/preprint/qa-main/
+/preprint/qa-supplement/
+
 uv.lock
 
 # Anchored to repo root: only ignore root-level project*/projects directories.

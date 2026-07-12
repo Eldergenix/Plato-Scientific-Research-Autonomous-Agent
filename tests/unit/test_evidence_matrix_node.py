@@ -111,9 +111,11 @@ def test_jsonl_file_written_one_record_per_line(tmp_path):
     assert jsonl_path.exists()
 
     lines = jsonl_path.read_text().strip().splitlines()
-    assert len(lines) == 2
+    assert len(lines) == 3
     parsed = [json.loads(line) for line in lines]
-    supports = sorted(p["support"] for p in parsed)
+    assert parsed[0]["id"] == "d-000"
+    assert parsed[0]["text"] == "Claim A"
+    supports = sorted(p["support"] for p in parsed if "support" in p)
     assert supports == ["refutes", "supports"]
 
 
@@ -155,8 +157,9 @@ def test_no_source_claims_or_sources_marks_all_unsupported(tmp_path):
 
     mocked.assert_not_called()
     assert update["unsupported_claim_rate"] == 1.0
-    # An empty matrix file is still written for reproducibility.
-    assert (tmp_path / "runs" / "run-evi-001" / "evidence_matrix.jsonl").exists()
+    # The denominator claim is persisted even when no source can support it.
+    matrix_path = tmp_path / "runs" / "run-evi-001" / "evidence_matrix.jsonl"
+    assert json.loads(matrix_path.read_text()) == drafted[0].model_dump(mode="json")
 
 
 def test_unclear_classification_skips_link(tmp_path):

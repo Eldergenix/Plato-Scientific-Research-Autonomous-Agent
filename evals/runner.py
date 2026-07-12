@@ -226,7 +226,17 @@ class EvalRunner:
             )
             metrics.keyword_recall = hits / len(task.expected_idea_keywords)
 
-        # 3. Compute gold-source recall against task.gold_sources.
+        # 3. Compute method-signal recall against the method artifact only.
+        if task.expected_method_signals and method_text:
+            method_haystack = method_text.lower()
+            hits = sum(
+                1
+                for signal in task.expected_method_signals
+                if signal.lower() in method_haystack
+            )
+            metrics.method_signal_recall = hits / len(task.expected_method_signals)
+
+        # 4. Compute gold-source recall against task.gold_sources.
         # GoldSource.from_any normalises legacy bare strings into the
         # structured form so this loop sees one shape always.
         if task.gold_sources:
@@ -239,7 +249,7 @@ class EvalRunner:
                     hits += 1
             metrics.gold_source_recall = hits / len(task.gold_sources)
 
-        # 4. LLM judge panel — only run when we have some paper text.
+        # 5. LLM judge panel — only run when we have some paper text.
         if paper_text.strip() and self.drafting_model not in self.judge_models:
             try:
                 judge = LLMJudge(self.judge_models)
@@ -431,6 +441,7 @@ def _summarize(results: dict[str, Metrics]) -> dict[str, Any]:
         "latency_seconds",
         "tool_call_error_rate",
         "keyword_recall",
+        "method_signal_recall",
         "gold_source_recall",
     ]
     for field in fields:
@@ -472,7 +483,11 @@ def _default_plato_factory(task: GoldenTask, project_dir: Path) -> Any:
     """
     from plato.plato import Plato  # local import keeps eval imports light
 
-    return Plato(project_dir=str(project_dir), clear_project_dir=True)
+    return Plato(
+        project_dir=str(project_dir),
+        clear_project_dir=True,
+        domain=task.domain,
+    )
 
 
 def main() -> None:

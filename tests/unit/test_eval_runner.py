@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from evals import EvalRunner, GoldenTask, LLMJudge, Metrics
+from evals.runner import _default_plato_factory
 from evals.judge import JudgeResult
 from evals.metrics import citation_validation_rate, unsupported_claim_rate
 from evals.tasks import discover_tasks, load_task
@@ -296,6 +297,47 @@ def test_eval_runner_aggregates_tokens_from_mock_plato(tmp_path: Path):
     assert summary["task_count"] == 1
     assert summary["task_ids"] == ["osc"]
     assert summary["metrics"]["tokens_in"]["mean"] == pytest.approx(200)
+
+
+def test_eval_runner_scores_declared_method_signals(tmp_path: Path):
+    task = GoldenTask(
+        id="method-signals",
+        data_description="d",
+        expected_method_signals=["Kabsch alignment", "bootstrap confidence interval"],
+    )
+    project_dir = tmp_path / "project"
+    input_dir = project_dir / "input_files"
+    input_dir.mkdir(parents=True)
+    (input_dir / "methods.md").write_text(
+        "We use Kabsch alignment and report the median error.",
+        encoding="utf-8",
+    )
+    runner = EvalRunner(
+        [task],
+        output_dir=tmp_path / "results",
+        judge_models=["gpt-4.1"],
+        drafting_model="gpt-4.1",
+    )
+    metrics = runner._aggregate_metrics(project_dir)
+
+    asyncio.run(runner._score_against_task(metrics, task, project_dir))
+
+    assert metrics.method_signal_recall == pytest.approx(0.5)
+
+
+def test_default_plato_factory_preserves_task_domain(monkeypatch, tmp_path: Path):
+    captured: dict[str, object] = {}
+
+    class FakePlato:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr("plato.plato.Plato", FakePlato)
+    task = GoldenTask(id="protein", data_description="d", domain="biology")
+
+    _default_plato_factory(task, tmp_path)
+
+    assert captured["domain"] == "biology"
 
 
 def test_eval_runner_records_failure_when_plato_raises(tmp_path: Path):

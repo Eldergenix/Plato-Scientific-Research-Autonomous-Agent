@@ -1,0 +1,110 @@
+{
+  "coordinate_method": "matching C-alpha atoms after Needleman-Wunsch sequence alignment and Kabsch superposition",
+  "generated_at": "2026-07-12T01:38:26.682790+00:00",
+  "numpy": "2.4.6",
+  "output_sha256": {
+    "residue_metrics.csv": "e77df91e739b4d0b970abe9577ae8c1d92a8b59424d0b7de95594b68cc0ef6d8",
+    "target_summary.csv": "e0f14e78d4598330d20badd91d5bab128c6b30ae076f65a5822be0837ed6fd5b"
+  },
+  "panel_declared_in_source": [
+    {
+      "chain": "A",
+      "pdb_id": "1A3N",
+      "target": "hemoglobin_alpha",
+      "uniprot": "P69905"
+    },
+    {
+      "chain": "B",
+      "pdb_id": "1A3N",
+      "target": "hemoglobin_beta",
+      "uniprot": "P68871"
+    },
+    {
+      "chain": "A",
+      "pdb_id": "3RGK",
+      "target": "myoglobin",
+      "uniprot": "P02144"
+    }
+  ],
+  "python": "3.12.11",
+  "results": [
+    {
+      "ca_rmsd_angstrom": 0.2697832925375299,
+      "chain": "A",
+      "fraction_within_2a": 1.0,
+      "fraction_within_5a": 1.0,
+      "matched_residues": 141,
+      "mean_plddt": 98.2955319148936,
+      "median_ca_error_angstrom": 0.22045725644129768,
+      "pdb_id": "1A3N",
+      "sequence_identity": 1.0,
+      "spearman_plddt_vs_negative_error": 0.24175738508144903,
+      "spearman_pvalue": 0.0038754624523365897,
+      "target": "hemoglobin_alpha",
+      "uniprot": "P69905"
+    },
+    {
+      "ca_rmsd_angstrom": 0.5196952732909543,
+      "chain": "B",
+      "fraction_within_2a": 1.0,
+      "fraction_within_5a": 1.0,
+      "matched_residues": 145,
+      "mean_plddt": 97.54972413793102,
+      "median_ca_error_angstrom": 0.4533942495255303,
+      "pdb_id": "1A3N",
+      "sequence_identity": 1.0,
+      "spearman_plddt_vs_negative_error": 0.3528464907463435,
+      "spearman_pvalue": 1.3434576915169116e-05,
+      "target": "hemoglobin_beta",
+      "uniprot": "P68871"
+    },
+    {
+      "ca_rmsd_angstrom": 0.5014289015281062,
+      "chain": "A",
+      "fraction_within_2a": 0.9931972789115646,
+      "fraction_within_5a": 1.0,
+      "matched_residues": 147,
+      "mean_plddt": 97.71482993197279,
+      "median_ca_error_angstrom": 0.3099979869829569,
+      "pdb_id": "3RGK",
+      "sequence_identity": 0.9865771812080537,
+      "spearman_plddt_vs_negative_error": 0.28297298728261794,
+      "spearman_pvalue": 0.0005149918732551986,
+      "target": "myoglobin",
+      "uniprot": "P02144"
+    }
+  ],
+  "schema_version": 1,
+  "sources": [
+    {
+      "alphafold_global_metric": 98.06,
+      "alphafold_model_created_date": "2025-08-01T00:00:00Z",
+      "alphafold_model_url": "https://alphafold.ebi.ac.uk/files/AF-P69905-F1-model_v6.pdb",
+      "alphafold_sha256": "d9d7ad4607164de17b65767b467d366909d74f96df5176ee368a9a515aaa1911",
+      "alphafold_version": 6,
+      "experimental_pdb_sha256": "1ce17adb5a0a4f986e173aaffa3c3e9910f483f9e32361615a75abb325a1aa7f",
+      "experimental_pdb_url": "https://files.rcsb.org/download/1A3N.pdb",
+      "target": "hemoglobin_alpha"
+    },
+    {
+      "alphafold_global_metric": 97.19,
+      "alphafold_model_created_date": "2025-08-01T00:00:00Z",
+      "alphafold_model_url": "https://alphafold.ebi.ac.uk/files/AF-P68871-F1-model_v6.pdb",
+      "alphafold_sha256": "37b411f5eaa2ff2e6f51774da344f1bd7b54e78c98ce67d9ffb02d8a3dbdf32a",
+      "alphafold_version": 6,
+      "experimental_pdb_sha256": "1ce17adb5a0a4f986e173aaffa3c3e9910f483f9e32361615a75abb325a1aa7f",
+      "experimental_pdb_url": "https://files.rcsb.org/download/1A3N.pdb",
+      "target": "hemoglobin_beta"
+    },
+    {
+      "alphafold_global_metric": 97.19,
+      "alphafold_model_created_date": "2025-08-01T00:00:00Z",
+      "alphafold_model_url": "https://alphafold.ebi.ac.uk/files/AF-P02144-F1-model_v6.pdb",
+      "alphafold_sha256": "68dd0c9976dd37bc6787b5b398ddc3ac03b6abdb7cc7025298dd503d8bb3c882",
+      "alphafold_version": 6,
+      "experimental_pdb_sha256": "5fdba6be63ee6d857f3d31cf639452ade4db527c6b14289a13b6a3aa11660f2a",
+      "experimental_pdb_url": "https://files.rcsb.org/download/3RGK.pdb",
+      "target": "myoglobin"
+    }
+  ]
+}
