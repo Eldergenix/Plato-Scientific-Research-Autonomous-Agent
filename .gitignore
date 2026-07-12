@@ -218,6 +218,7 @@ input_files/*
 # Local document-rendering QA output. Submission PDFs are copied to preprint/.
 /preprint/qa-main/
 /preprint/qa-supplement/
+/preprint/latex/build/
 
 uv.lock
 

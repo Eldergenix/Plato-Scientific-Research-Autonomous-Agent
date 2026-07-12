@@ -18,6 +18,8 @@ of AlphaFold DB globin models with RCSB PDB structures.
 - [Main preprint (PDF)](preprint/Plato-Bio-bioRxiv-preprint.pdf)
 - [Supplementary material (PDF)](preprint/Plato-Bio-Supplement.pdf)
 - [Editable manuscript (DOCX)](preprint/Plato-Bio-bioRxiv-preprint.docx)
+- [LaTeX manuscript source](preprint/latex/plato-bio.tex)
+- [LaTeX-compiled preprint (PDF)](preprint/latex/Plato-Bio-LaTeX-preprint.pdf)
 - [Submission metadata and human confirmation gate](preprint/SUBMISSION_METADATA.md)
 - [Reproduction guide](preprint/README.md)
 

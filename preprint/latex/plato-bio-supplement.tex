@@ -1,0 +1,118 @@
+\documentclass[11pt]{article}
+\usepackage[letterpaper,margin=0.85in]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{lineno}
+\usepackage{microtype}
+\usepackage{caption}
+\usepackage{enumitem}
+\usepackage{float}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.65em}
+\setlength{\emergencystretch}{2em}
+\definecolor{PlatoBlue}{HTML}{1F4D78}
+\hypersetup{colorlinks=true,linkcolor=PlatoBlue,urlcolor=PlatoBlue,citecolor=PlatoBlue}
+\captionsetup{font=small,labelfont=bf}
+\renewcommand{\arraystretch}{1.18}
+\modulolinenumbers[5]
+\graphicspath{{../figures/}}
+
+
+\title{Supplementary Material: Plato-Bio}
+
+\author{Stefan Creadore}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\section*{S1. Reproduction commands}
+
+\begin{verbatim}
+
+.venv/bin/python preprint/experiments/run_globin_structure_benchmark.py
+.venv/bin/python preprint/experiments/run_software_validation.py
+.venv/bin/python preprint/experiments/build_summary_figures.py
+
+\end{verbatim}
+
+\section*{S2. Structural input inventory}
+
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrl}
+\toprule
+File & Bytes & SHA-256 \\
+\midrule
+1A3N.pdb & 461619 & 1ce17adb5a0a4f986e173aaffa3c3e9910f483f9e32361615a75abb325a1aa7f \\
+3RGK.pdb & 147015 & 5fdba6be63ee6d857f3d31cf639452ade4db527c6b14289a13b6a3aa11660f2a \\
+AF-P02144-F1.pdb & 102950 & 68dd0c9976dd37bc6787b5b398ddc3ac03b6abdb7cc7025298dd503d8bb3c882 \\
+AF-P68871-F1.pdb & 96551 & 37b411f5eaa2ff2e6f51774da344f1bd7b54e78c98ce67d9ffb02d8a3dbdf32a \\
+AF-P69905-F1.pdb & 92096 & d9d7ad4607164de17b65767b467d366909d74f96df5176ee368a9a515aaa1911 \\
+\bottomrule
+\end{tabular}%
+}
+
+\section*{S3. Target-level structural results}
+
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrrrrrrr}
+\toprule
+Target & Matched & Identity & RMSD (\AA{}) & Median (\AA{}) & Within 2 \AA{} & $\rho$ & P \\
+\midrule
+hemoglobin\_alpha & 141 & 1.000 & 0.270 & 0.220 & 1.000 & 0.242 & 0.00388 \\
+hemoglobin\_beta & 145 & 1.000 & 0.520 & 0.453 & 1.000 & 0.353 & 1.34e-05 \\
+myoglobin & 147 & 0.987 & 0.501 & 0.310 & 0.993 & 0.283 & 0.000515 \\
+\bottomrule
+\end{tabular}%
+}
+
+The residue-level CSV contains 433 matched positions.
+
+\section*{S4. Deterministic validation results}
+
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrrrrrr}
+\toprule
+Suite & Tests & Passed & Skipped & Failures & Errors & Wall s \\
+\midrule
+adversarial\_safety & 57 & 56 & 1 & 0 & 0 & 0.89 \\
+biology\_domain & 12 & 12 & 0 & 0 & 0 & 0.70 \\
+evidence\_and\_citations & 46 & 46 & 0 & 0 & 0 & 1.54 \\
+full\_python & 918 & 912 & 6 & 0 & 0 & 67.63 \\
+genomics\_adapters & 11 & 11 & 0 & 0 & 0 & 1.15 \\
+\bottomrule
+\end{tabular}%
+}
+
+Targeted suites overlap with the full Python suite. Counts are not additive. Skips remain unvalidated live or platform-specific paths.
+
+\section*{S5. Measurement-repair acceptance criteria}
+
+\begin{itemize}[leftmargin=*]
+
+\item A biology GoldenTask constructs Plato with the biology domain.
+
+\item Method-signal recall is computed from methods.md and included in summary metrics.
+
+\item Evidence JSONL persists drafted Claim rows before EvidenceLink rows.
+
+\item A claim with no supporting source remains in the denominator.
+
+\item A synthetic rigid transformation is recovered by the Kabsch implementation within numerical tolerance.
+
+\end{itemize}
+
+\section*{S6. Interpretation boundary}
+
+The default evaluator executes idea and method stages only. Live LLM, E2B, Modal, hosted PostgreSQL, and authenticated Hugging Face paths require external credentials or services. Same-model reviewer roles are self-critique, not peer review. The autonomous-loop adapters do not establish autonomous scientific improvement.
+
+\section*{S7. bioRxiv packaging notes}
+
+The main manuscript is supplied as one PDF with embedded figures and tables. Supplemental data are separate. No clinical, human-subject, animal, or identifiable-person data are included. Generative AI assistance is disclosed, and the human author remains accountable.
+
+\end{document}

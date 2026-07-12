@@ -28,6 +28,11 @@ Use the Abstract in `manuscript.md` verbatim in the portal.
 
 The editable `Plato-Bio-bioRxiv-preprint.docx` is supplied for revisions but is not required when the single PDF route is used.
 
+An equivalent LaTeX source package is available under `latex/`, including a
+self-contained main TeX file, supplemental TeX file, and reusable BibTeX
+library. The compiled LaTeX PDF is an alternate main-manuscript upload, not an
+additional file to upload alongside the Word-generated main PDF.
+
 ## Required human confirmation before deposit
 
 - Confirm the author’s legal publication name, affiliation, and corresponding-author email in the bioRxiv portal.
