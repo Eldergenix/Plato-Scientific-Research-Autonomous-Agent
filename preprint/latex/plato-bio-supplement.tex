@@ -36,12 +36,14 @@
 \begin{verbatim}
 
 .venv/bin/python preprint/experiments/run_globin_structure_benchmark.py
+.venv/bin/python preprint/experiments/run_globin_structure_benchmark.py --panel-file preprint/experiments/diverse_structure_panel.json --output-dir preprint/results/diverse_structure_benchmark --figures-dir preprint/figures --benchmark-name diverse_structure_panel
+.venv/bin/python preprint/experiments/run_temporal_novelty_benchmark.py --fixtures evals/biological_novelty/fixtures/engineering_smoke.json --output-dir preprint/results/temporal_novelty_smoke
+.venv/bin/python preprint/experiments/run_temporal_novelty_benchmark.py --fixtures evals/biological_novelty/fixtures/historical_pilot.json --output-dir preprint/results/temporal_novelty_historical_pilot
 .venv/bin/python preprint/experiments/run_software_validation.py
-.venv/bin/python preprint/experiments/build_summary_figures.py
 
 \end{verbatim}
 
-\section*{S2. Structural input inventory}
+\section*{S2. Original structural input inventory}
 
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lrl}
@@ -57,7 +59,9 @@ AF-P69905-F1.pdb & 92096 & d9d7ad4607164de17b65767b467d366909d74f96df5176ee368a9
 \end{tabular}%
 }
 
-\section*{S3. Target-level structural results}
+The diverse panel contains 30 cached coordinate files; individual hashes and source metadata are in its manifest.
+
+\section*{S3. Original globin results}
 
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lrrrrrrr}
@@ -71,27 +75,76 @@ myoglobin & 147 & 0.987 & 0.501 & 0.310 & 0.993 & 0.283 & 0.000515 \\
 \end{tabular}%
 }
 
-The residue-level CSV contains 433 matched positions.
+The original residue-level CSV contains 433 matched positions.
 
-\section*{S4. Deterministic validation results}
+\section*{S4. Diverse structural-screen results}
+
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llrrrrrr}
+\toprule
+Target & Method & Matched & Pred. cov. & Whole RMSD & Core n & Core RMSD & Core 95\% interval \\
+\midrule
+hemoglobin\_alpha & x-ray diffraction & 141 & 0.993 & 0.270 & 141 & 0.270 & 0.222--0.285 \\
+hemoglobin\_beta & x-ray diffraction & 145 & 0.986 & 0.520 & 145 & 0.520 & 0.446--0.597 \\
+myoglobin & x-ray diffraction & 147 & 0.955 & 0.501 & 147 & 0.501 & 0.360--0.633 \\
+lysozyme\_c & x-ray diffraction & 130 & 0.878 & 0.420 & 130 & 0.420 & 0.319--0.528 \\
+carbonic\_anhydrase\_2 & x-ray diffraction & 257 & 0.988 & 0.377 & 257 & 0.377 & 0.318--0.429 \\
+kras & x-ray diffraction & 166 & 0.878 & 3.386 & 165 & 2.085 & 0.868--2.493 \\
+cdk2 & x-ray diffraction & 294 & 0.987 & 1.873 & 263 & 0.786 & 0.610--0.878 \\
+tp53 & x-ray diffraction & 194 & 0.494 & 6.161 & 190 & 3.889 & 1.079--5.104 \\
+estrogen\_receptor\_alpha & x-ray diffraction & 238 & 0.400 & 5.326 & 221 & 4.961 & 1.111--6.359 \\
+mapk1 & x-ray diffraction & 337 & 0.936 & 1.705 & 317 & 0.740 & 0.488--0.989 \\
+superoxide\_dismutase\_1 & x-ray diffraction & 153 & 0.994 & 0.286 & 153 & 0.286 & 0.185--0.394 \\
+transthyretin & x-ray diffraction & 116 & 0.789 & 0.258 & 116 & 0.258 & 0.206--0.319 \\
+cytochrome\_c & x-ray diffraction & 104 & 0.990 & 0.281 & 104 & 0.281 & 0.225--0.305 \\
+sumo1 & solution nmr & 101 & 1.000 & 16.610 & 74 & 2.576 & 1.983--3.158 \\
+peptidyl\_prolyl\_isomerase\_a & x-ray diffraction & 165 & 1.000 & 0.531 & 164 & 0.331 & 0.232--0.384 \\
+\bottomrule
+\end{tabular}%
+}
+
+The predeclared rule emitted 27 regions; every row is labeled novelty status not established.
+
+\section*{S5. Temporal rediscovery results}
+
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llrrrrr}
+\toprule
+Fixture & Condition & Tasks & MRR & R@1 & R@10 & False novelty \\
+\midrule
+Synthetic & frequency & 5 & 0.500 & 0.000 & 1.000 & 0.000 \\
+Synthetic & tfidf & 5 & 1.000 & 1.000 & 1.000 & 0.000 \\
+Synthetic & abc\_bridge & 5 & 1.000 & 1.000 & 1.000 & 0.000 \\
+Synthetic & evidence\_aware & 5 & 1.000 & 1.000 & 1.000 & 0.000 \\
+Historical & frequency & 1 & 0.333 & 0.000 & 1.000 & 0.000 \\
+Historical & tfidf & 1 & 0.500 & 0.000 & 1.000 & 0.000 \\
+Historical & abc\_bridge & 1 & 1.000 & 1.000 & 1.000 & 0.000 \\
+Historical & evidence\_aware & 1 & 1.000 & 1.000 & 1.000 & 0.000 \\
+\bottomrule
+\end{tabular}%
+}
+
+Synthetic results validate engineering behavior only. The historical result is one manually curated retrospective case.
+
+\section*{S6. Deterministic validation results}
 
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lrrrrrr}
 \toprule
 Suite & Tests & Passed & Skipped & Failures & Errors & Wall s \\
 \midrule
-adversarial\_safety & 57 & 56 & 1 & 0 & 0 & 0.89 \\
-biology\_domain & 12 & 12 & 0 & 0 & 0 & 0.70 \\
-evidence\_and\_citations & 46 & 46 & 0 & 0 & 0 & 1.54 \\
-full\_python & 918 & 912 & 6 & 0 & 0 & 67.63 \\
-genomics\_adapters & 11 & 11 & 0 & 0 & 0 & 1.15 \\
+adversarial\_safety & 57 & 56 & 1 & 0 & 0 & 0.86 \\
+biology\_domain & 12 & 12 & 0 & 0 & 0 & 0.80 \\
+evidence\_and\_citations & 46 & 46 & 0 & 0 & 0 & 1.57 \\
+full\_python & 937 & 931 & 6 & 0 & 0 & 71.00 \\
+genomics\_adapters & 11 & 11 & 0 & 0 & 0 & 1.20 \\
 \bottomrule
 \end{tabular}%
 }
 
 Targeted suites overlap with the full Python suite. Counts are not additive. Skips remain unvalidated live or platform-specific paths.
 
-\section*{S5. Measurement-repair acceptance criteria}
+\section*{S7. Measurement-repair acceptance criteria}
 
 \begin{itemize}[leftmargin=*]
 
@@ -103,15 +156,17 @@ Targeted suites overlap with the full Python suite. Counts are not additive. Ski
 
 \item A claim with no supporting source remains in the denominator.
 
-\item A synthetic rigid transformation is recovered by the Kabsch implementation within numerical tolerance.
+\item Synthetic rigid transformations are recovered within numerical tolerance.
+
+\item Temporal leakage, duplicate sources, prompt-injection quarantine, and abstention are regression tested.
 
 \end{itemize}
 
-\section*{S6. Interpretation boundary}
+\section*{S8. Interpretation boundary}
 
-The default evaluator executes idea and method stages only. Live LLM, E2B, Modal, hosted PostgreSQL, and authenticated Hugging Face paths require external credentials or services. Same-model reviewer roles are self-critique, not peer review. The autonomous-loop adapters do not establish autonomous scientific improvement.
+The default evaluator executes idea and method stages only. Live LLM, E2B, Modal, hosted PostgreSQL, and authenticated Hugging Face paths require external credentials or services. Same-model reviewer roles are self-critique, not peer review. The temporal pilot is retrospective, and structural discrepancy candidates are not established novelties.
 
-\section*{S7. bioRxiv packaging notes}
+\section*{S9. bioRxiv packaging notes}
 
 The main manuscript is supplied as one PDF with embedded figures and tables. Supplemental data are separate. No clinical, human-subject, animal, or identifiable-person data are included. Generative AI assistance is disclosed, and the human author remains accountable.
 

@@ -1,0 +1,78 @@
+{
+  "benchmark": "Plato-Bio Historical Temporal Rediscovery Pilot",
+  "bootstrap_replicates": 10000,
+  "condition_summary": [
+    {
+      "condition": "frequency",
+      "false_novelty_rate": 0.0,
+      "mean_reciprocal_rank": 0.3333333333333333,
+      "recall_at_1": 0.0,
+      "recall_at_10": 1.0,
+      "task_count": 1
+    },
+    {
+      "condition": "tfidf",
+      "false_novelty_rate": 0.0,
+      "mean_reciprocal_rank": 0.5,
+      "recall_at_1": 0.0,
+      "recall_at_10": 1.0,
+      "task_count": 1
+    },
+    {
+      "condition": "abc_bridge",
+      "false_novelty_rate": 0.0,
+      "mean_reciprocal_rank": 1.0,
+      "recall_at_1": 1.0,
+      "recall_at_10": 1.0,
+      "task_count": 1
+    },
+    {
+      "condition": "evidence_aware",
+      "false_novelty_rate": 0.0,
+      "mean_reciprocal_rank": 1.0,
+      "recall_at_1": 1.0,
+      "recall_at_10": 1.0,
+      "task_count": 1
+    }
+  ],
+  "conditions": [
+    "frequency",
+    "tfidf",
+    "abc_bridge",
+    "evidence_aware"
+  ],
+  "elapsed_seconds": 1.0868942920005793,
+  "fixture": "evals/biological_novelty/fixtures/historical_pilot.json",
+  "fixture_sha256": "32f52e13f3a8ba82dd15910b375c0260d55844f13728f3d9b15e900bb85917c1",
+  "git": {
+    "commit": "8a73f198cd803acc00deeac43a7e28f537123022",
+    "dirty": true
+  },
+  "historical_task_count": 1,
+  "interpretation": "Frozen pre-cutoff records test retrospective ranking against later validation publications. The pilot is small and manually curated; it does not establish prospective discovery ability or biological truth.",
+  "output_sha256": {
+    "bootstrap.json": "4cc264a4ab41d0252fdbd1f3593c30bd0e4f4a8740a4adefc5b40d2a841f1cf5",
+    "candidates.jsonl": "f11a7b0527e05f9e39a97ba10862d1e3f7100ad8bbfbb21ee5a41ee8e920745a",
+    "condition_summary.csv": "c2ff4dd331c70f72625df92bc5526f543b660495c55cb627b3e79b0a9673c940",
+    "task_results.csv": "00cd47defa77eed97b947069881b212e63309b974d201c21e7ae249eed2689d8",
+    "temporal_rediscovery.png": "aebf197c20d42aff8cf567018952cda003f02dcb7b93b16ab1b8b573abf11530"
+  },
+  "primary_metrics": [
+    "mean reciprocal rank",
+    "Recall@1",
+    "Recall@10"
+  ],
+  "schema_version": 1,
+  "seed": 20260711,
+  "synthetic_task_count": 0,
+  "task_count": 1,
+  "validation_publications": [
+    "PMID:2536517"
+  ],
+  "versions": {
+    "numpy": "2.4.6",
+    "python": "3.12.11",
+    "scikit_learn": "1.8.0",
+    "scipy": "1.17.1"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "benchmark": {
+    "citation_url": "https://www.biorxiv.org/content/10.64898/2026.04.06.716850v2",
+    "license": "CC BY 4.0",
+    "name": "CompBioBench",
+    "revision": "c673f0855fce09d320f1677f168f7864eec52c1a",
+    "sha256": "ac8a5dcf813e9e89556701648140a84b2757fe449e35650168de54baed75ce1c",
+    "url": "https://huggingface.co/datasets/Genentech/compbiobench-data-v1/resolve/c673f0855fce09d320f1677f168f7864eec52c1a/compbiobench.v1.tsv",
+    "version": "v1"
+  },
+  "download_sha256": "ac8a5dcf813e9e89556701648140a84b2757fe449e35650168de54baed75ce1c",
+  "interpretation": "This artifact proves catalog ingestion and coverage only; it does not contain Plato agent performance results.",
+  "performance_results_included": false,
+  "schema_version": 1,
+  "task_count": 100
+}

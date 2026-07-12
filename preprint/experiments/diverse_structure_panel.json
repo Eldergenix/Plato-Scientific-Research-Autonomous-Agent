@@ -1,0 +1,17 @@
+[
+  {"target":"hemoglobin_alpha","uniprot":"P69905","pdb_id":"1A3N","chain":"A","panel_role":"oxygen-transport globin"},
+  {"target":"hemoglobin_beta","uniprot":"P68871","pdb_id":"1A3N","chain":"B","panel_role":"oxygen-transport globin"},
+  {"target":"myoglobin","uniprot":"P02144","pdb_id":"3RGK","chain":"A","panel_role":"monomeric globin with a known experimental point mutation"},
+  {"target":"lysozyme_c","uniprot":"P61626","pdb_id":"1REX","chain":"A","panel_role":"small disulfide-rich enzyme"},
+  {"target":"carbonic_anhydrase_2","uniprot":"P00918","pdb_id":"3KS3","chain":"A","panel_role":"zinc metalloenzyme"},
+  {"target":"kras","uniprot":"P01116","pdb_id":"4OBE","chain":"A","panel_role":"nucleotide-dependent signaling GTPase"},
+  {"target":"cdk2","uniprot":"P24941","pdb_id":"1HCK","chain":"A","panel_role":"protein kinase"},
+  {"target":"tp53","uniprot":"P04637","pdb_id":"2OCJ","chain":"A","panel_role":"structured tumor-suppressor domain within a disordered protein"},
+  {"target":"estrogen_receptor_alpha","uniprot":"P03372","pdb_id":"1A52","chain":"A","panel_role":"ligand-bound nuclear-receptor domain"},
+  {"target":"mapk1","uniprot":"P28482","pdb_id":"4ZZN","chain":"A","panel_role":"phosphorylation-regulated kinase"},
+  {"target":"superoxide_dismutase_1","uniprot":"P00441","pdb_id":"2C9V","chain":"A","panel_role":"metal-binding homodimeric enzyme"},
+  {"target":"transthyretin","uniprot":"P02766","pdb_id":"1F41","chain":"A","panel_role":"amyloid-associated tetramer subunit"},
+  {"target":"cytochrome_c","uniprot":"P99999","pdb_id":"3ZCF","chain":"A","panel_role":"heme-binding electron-transfer protein"},
+  {"target":"sumo1","uniprot":"P63165","pdb_id":"1A5R","chain":"A","panel_role":"ubiquitin-like modifier"},
+  {"target":"peptidyl_prolyl_isomerase_a","uniprot":"P62937","pdb_id":"1AK4","chain":"A","panel_role":"peptidyl-prolyl isomerase"}
+]

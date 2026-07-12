@@ -1,0 +1,5 @@
+task_id,condition,target_concept,target_rank,target_reciprocal_rank,target_in_top_1,target_in_top_10,quarantined_records,synthetic
+raynaud_fish_oil_1986,frequency,fish_oil,3,0.3333333333333333,False,True,0,False
+raynaud_fish_oil_1986,tfidf,fish_oil,2,0.5,False,True,0,False
+raynaud_fish_oil_1986,abc_bridge,fish_oil,1,1.0,True,True,0,False
+raynaud_fish_oil_1986,evidence_aware,fish_oil,1,1.0,True,True,0,False

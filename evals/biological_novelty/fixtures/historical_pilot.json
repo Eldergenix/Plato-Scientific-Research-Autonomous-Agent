@@ -1,0 +1,87 @@
+[
+  {
+    "id": "raynaud_fish_oil_1986",
+    "biological_area": "vascular rheology and nutritional intervention",
+    "cutoff": "1986-01-01",
+    "anchor_concept": "Raynaud_phenomenon",
+    "target_concept": "fish_oil",
+    "target_relation": "may improve cold tolerance through reduced",
+    "candidate_concepts": [
+      "fish_oil",
+      "nifedipine",
+      "prostaglandin_E1",
+      "bone_mineral_density"
+    ],
+    "validation_id": "PMID:2536517",
+    "validation_published_at": "1989-02-01",
+    "synthetic": false,
+    "records": [
+      {
+        "record_id": "PMID:58309",
+        "pmid": "58309",
+        "doi": "10.1016/S0140-6736(76)92651-9",
+        "title": "Abnormal blood viscosity in Raynaud's phenomenon",
+        "abstract": "A 1976 study reported higher low-temperature blood viscosity in participants with Raynaud's phenomenon than in controls.",
+        "published_at": "1976-06-19",
+        "source_url": "https://pubmed.ncbi.nlm.nih.gov/58309/",
+        "concepts": ["Raynaud_phenomenon", "blood_viscosity"]
+      },
+      {
+        "record_id": "PMID:4015748",
+        "pmid": "4015748",
+        "doi": "10.1016/0021-9150(85)90106-6",
+        "title": "The effects of dietary omega-3 polyunsaturated fatty acids on erythrocyte membrane phospholipids, erythrocyte deformability and blood viscosity in healthy volunteers",
+        "abstract": "A 1985 study reported that fish-oil omega-3 supplementation increased erythrocyte deformability and reduced whole-blood viscosity in healthy volunteers.",
+        "published_at": "1985-06-01",
+        "source_url": "https://pubmed.ncbi.nlm.nih.gov/4015748/",
+        "concepts": ["fish_oil", "blood_viscosity", "erythrocyte_deformability"]
+      },
+      {
+        "record_id": "PMID:6285445",
+        "pmid": "6285445",
+        "title": "Controlled study of nifedipine in the treatment of Raynaud's phenomenon",
+        "abstract": "A controlled 1982 study evaluated nifedipine as a treatment for Raynaud's phenomenon.",
+        "published_at": "1982-04-01",
+        "source_url": "https://pubmed.ncbi.nlm.nih.gov/6285445/",
+        "concepts": ["Raynaud_phenomenon", "nifedipine"]
+      },
+      {
+        "record_id": "PMID:6339921",
+        "pmid": "6339921",
+        "doi": "10.1056/NEJM198304143081507",
+        "title": "Controlled double-blind trial of nifedipine in the treatment of Raynaud's phenomenon",
+        "abstract": "A 1983 double-blind trial directly evaluated nifedipine for Raynaud's phenomenon.",
+        "published_at": "1983-04-14",
+        "source_url": "https://pubmed.ncbi.nlm.nih.gov/6339921/",
+        "concepts": ["Raynaud_phenomenon", "nifedipine"]
+      },
+      {
+        "record_id": "PMID:6352267",
+        "pmid": "6352267",
+        "doi": "10.1093/eurheartj/4.suppl_c.123",
+        "title": "Calcium entry blocking agents in digital vasospasm (Raynaud's phenomenon)",
+        "abstract": "A 1983 clinical study directly evaluated nifedipine in idiopathic and connective-tissue-associated Raynaud's phenomenon.",
+        "published_at": "1983-05-01",
+        "source_url": "https://pubmed.ncbi.nlm.nih.gov/6352267/",
+        "concepts": ["Raynaud_phenomenon", "nifedipine"]
+      },
+      {
+        "record_id": "PMID:6890719",
+        "pmid": "6890719",
+        "title": "Prostaglandin E1 in severe Raynaud's phenomenon",
+        "abstract": "A 1982 study directly evaluated prostaglandin E1 in severe Raynaud's phenomenon.",
+        "published_at": "1982-12-01",
+        "source_url": "https://pubmed.ncbi.nlm.nih.gov/6890719/",
+        "concepts": ["Raynaud_phenomenon", "prostaglandin_E1"]
+      },
+      {
+        "record_id": "CONTROL:bone-density",
+        "title": "Bone mineral density control record",
+        "abstract": "A negative-control concept with no relation to Raynaud's phenomenon in this frozen pilot corpus.",
+        "published_at": "1984-01-01",
+        "source_url": "https://example.invalid/negative-control",
+        "concepts": ["bone_mineral_density"]
+      }
+    ]
+  }
+]

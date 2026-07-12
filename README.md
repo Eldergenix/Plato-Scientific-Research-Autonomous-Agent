@@ -10,10 +10,11 @@ human authors remain responsible for scientific validity and publication.
 ## Research validation and bioRxiv preprint
 
 This repository now includes a submission-oriented computational biology study:
-**“Plato-Bio: a verification-first multi-agent research workflow with a
-reproducible structural-biology case study.”** The paper combines a source-code
-audit, deterministic software validation, and a declared public-data comparison
-of AlphaFold DB globin models with RCSB PDB structures.
+**“Plato-Bio: verification-first biological novelty screening with temporal
+rediscovery and structural benchmarks.”** The revised paper combines a
+source-code audit, deterministic software validation, a frozen historical
+literature-rediscovery pilot, and a declared 15-protein AlphaFold-to-experiment
+screen.
 
 - [Main preprint (PDF)](preprint/Plato-Bio-bioRxiv-preprint.pdf)
 - [Supplementary material (PDF)](preprint/Plato-Bio-Supplement.pdf)
@@ -23,20 +24,26 @@ of AlphaFold DB globin models with RCSB PDB structures.
 - [Submission metadata and human confirmation gate](preprint/SUBMISSION_METADATA.md)
 - [Reproduction guide](preprint/README.md)
 
-The validation package records input URLs, versions, SHA-256 hashes, target- and
+The validation package records exact literature cutoffs, PMIDs, candidate
+rankings, abstentions, input URLs, versions, SHA-256 hashes, target- and
 residue-level structural results, exact test counts, and figure-generation code.
 Reproduce it with:
 
 ```bash
 .venv/bin/python preprint/experiments/run_globin_structure_benchmark.py
+.venv/bin/python preprint/experiments/run_globin_structure_benchmark.py --panel-file preprint/experiments/diverse_structure_panel.json --output-dir preprint/results/diverse_structure_benchmark --figures-dir preprint/figures --benchmark-name diverse_structure_panel
+.venv/bin/python preprint/experiments/run_temporal_novelty_benchmark.py --fixtures evals/biological_novelty/fixtures/historical_pilot.json --output-dir preprint/results/temporal_novelty_historical_pilot
+.venv/bin/python -m evals.biomedical_benchmarks
 .venv/bin/python preprint/experiments/run_software_validation.py
 .venv/bin/python preprint/experiments/build_summary_figures.py
 ```
 
-The reported evidence does **not** establish autonomous scientific improvement,
-independent peer review, or live end-to-end LLM efficacy. The default evaluation
-runner exercises the idea and method stages; live provider, hosted database, and
-authenticated external-service paths remain separate validation lanes.
+The historical benchmark contains one manually curated retrospective task, and
+the 27 structural discrepancy regions are hypothesis candidates with novelty
+explicitly marked `not_established`. The evidence does **not** establish
+autonomous discovery, independent peer review, prospective biological novelty,
+or live end-to-end LLM efficacy. The imported 100-task CompBioBench catalog is
+coverage metadata, not a performance claim.
 
 ## What's new in 1.0.1
 

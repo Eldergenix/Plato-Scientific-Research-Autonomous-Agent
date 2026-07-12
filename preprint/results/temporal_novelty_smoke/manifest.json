@@ -1,0 +1,82 @@
+{
+  "benchmark": "Plato-Bio Temporal Rediscovery Engineering Smoke",
+  "bootstrap_replicates": 10000,
+  "condition_summary": [
+    {
+      "condition": "frequency",
+      "false_novelty_rate": 0.0,
+      "mean_reciprocal_rank": 0.5,
+      "recall_at_1": 0.0,
+      "recall_at_10": 1.0,
+      "task_count": 5
+    },
+    {
+      "condition": "tfidf",
+      "false_novelty_rate": 0.0,
+      "mean_reciprocal_rank": 1.0,
+      "recall_at_1": 1.0,
+      "recall_at_10": 1.0,
+      "task_count": 5
+    },
+    {
+      "condition": "abc_bridge",
+      "false_novelty_rate": 0.0,
+      "mean_reciprocal_rank": 1.0,
+      "recall_at_1": 1.0,
+      "recall_at_10": 1.0,
+      "task_count": 5
+    },
+    {
+      "condition": "evidence_aware",
+      "false_novelty_rate": 0.0,
+      "mean_reciprocal_rank": 1.0,
+      "recall_at_1": 1.0,
+      "recall_at_10": 1.0,
+      "task_count": 5
+    }
+  ],
+  "conditions": [
+    "frequency",
+    "tfidf",
+    "abc_bridge",
+    "evidence_aware"
+  ],
+  "elapsed_seconds": 1.1702574999999342,
+  "fixture": "evals/biological_novelty/fixtures/engineering_smoke.json",
+  "fixture_sha256": "246f4a500a7aa718840e7e29b7fc5897807f057e67922516abaab602c5476f95",
+  "git": {
+    "commit": "8a73f198cd803acc00deeac43a7e28f537123022",
+    "dirty": true
+  },
+  "historical_task_count": 0,
+  "interpretation": "Synthetic fixtures verify leakage controls, evidence bridges, ranking, abstention semantics, and task-level statistics. They are not evidence of biological discovery or real-world agent efficacy.",
+  "output_sha256": {
+    "bootstrap.json": "95a5f3f146f7151906a02c45d9186feb43cea3c2703ad4a4a92682f065baf811",
+    "candidates.jsonl": "a3fc5c4110046e2bb154136a431b1d6243c728de35cdeaecee8c204c723db8ab",
+    "condition_summary.csv": "f4ba5af4347f1ea68eb604a28d182ff7ae186d55966d57cf31837b22eee574bf",
+    "task_results.csv": "34c6b9d2a208d8033910dd36b31b3193a700737e08f4f98c8bc877e053ddad9e",
+    "temporal_rediscovery.png": "b73c6b99cbf8d24e1e2181344aa12a1453d5baa4048d544a189240df006f19ed"
+  },
+  "primary_metrics": [
+    "mean reciprocal rank",
+    "Recall@1",
+    "Recall@10"
+  ],
+  "schema_version": 1,
+  "seed": 20260711,
+  "synthetic_task_count": 5,
+  "task_count": 5,
+  "validation_publications": [
+    "SYNTHETIC:lipid-resolution",
+    "SYNTHETIC:brca-parp",
+    "SYNTHETIC:lrrk2-lysosome",
+    "SYNTHETIC:metformin-glucose",
+    "SYNTHETIC:tox-chromatin"
+  ],
+  "versions": {
+    "numpy": "2.4.6",
+    "python": "3.12.11",
+    "scikit_learn": "1.8.0",
+    "scipy": "1.17.1"
+  }
+}

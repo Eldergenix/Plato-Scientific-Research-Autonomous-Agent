@@ -1,12 +1,60 @@
 {
-  "coordinate_method": "matching C-alpha atoms after Needleman-Wunsch sequence alignment and Kabsch superposition",
-  "generated_at": "2026-07-12T01:48:14.343288+00:00",
+  "aggregate": {
+    "candidate_regions": 1,
+    "matched_residues": 433,
+    "median_target_high_confidence_rmsd_angstrom": 0.5014289015281062,
+    "median_target_rmsd_angstrom": 0.5014289015281062,
+    "regional_candidates": 0,
+    "targets_below_1a_high_confidence_rmsd": 3,
+    "targets_below_1a_rmsd": 3,
+    "targets_completed": 3,
+    "targets_declared": 3,
+    "targets_failed": 0
+  },
+  "benchmark_name": "globin",
+  "bootstrap": {
+    "block_size": 10,
+    "interpretation": "descriptive interval; residues are not independent biological replicates",
+    "method": "moving-block residue bootstrap",
+    "replicates": 2000,
+    "seed": 20260711
+  },
+  "candidate_alignment_basis": "one rigid transform fit on matched AlphaFold residues with pLDDT>=70, then applied to every matched residue",
+  "candidate_regions": [
+    {
+      "alphafold_residue_end": 48,
+      "alphafold_residue_start": 48,
+      "candidate_id": "myoglobin:48-48",
+      "candidate_score": 2.076732,
+      "candidate_status": "isolated_hypothesis_candidate",
+      "evidence_tier": "computational_structural_discrepancy",
+      "experimental_chain": "A",
+      "max_ca_error_angstrom": 2.170271,
+      "mean_plddt": 95.69,
+      "median_ca_error_angstrom": 2.170271,
+      "novelty_status": "not_established",
+      "pdb_id": "3RGK",
+      "required_follow_up": "Review construct mutations, ligands, oligomeric state, alternate PDB entries, and experimental conditions; then validate independently.",
+      "residue_count": 1,
+      "target": "myoglobin",
+      "uniprot": "P02144"
+    }
+  ],
+  "candidate_rule": {
+    "minimum_ca_error_angstrom": 2.0,
+    "minimum_plddt": 90.0,
+    "novelty_interpretation": "hypothesis-generating only; novelty is not established"
+  },
+  "coordinate_method": "matching C-alpha atoms after Needleman-Wunsch sequence alignment; whole-chain and pLDDT>=70 core Kabsch superpositions are reported",
+  "failures": [],
+  "generated_at": "2026-07-12T04:35:43.247003+00:00",
   "numpy": "2.4.6",
   "output_sha256": {
-    "residue_metrics.csv": "e77df91e739b4d0b970abe9577ae8c1d92a8b59424d0b7de95594b68cc0ef6d8",
-    "target_summary.csv": "e0f14e78d4598330d20badd91d5bab128c6b30ae076f65a5822be0837ed6fd5b"
+    "candidate_regions.csv": "c28b3efade1e7153f0d224b1083304a46f8d94f6be66dad7e22718d0ec414b3d",
+    "residue_metrics.csv": "e5d15edb732ceb36a900fa74088fad2ff26e49c2eed7cee418be9834581a7a05",
+    "target_summary.csv": "13a8a9b2c1d4d0c18bebe1164d0bf7d6e15644a060e95ec64d0c6ddc3fec7c8c"
   },
-  "panel_declared_in_source": [
+  "panel_declared_before_analysis": [
     {
       "chain": "A",
       "pdb_id": "1A3N",
@@ -26,17 +74,31 @@
       "uniprot": "P02144"
     }
   ],
+  "panel_file": null,
+  "panel_file_sha256": null,
   "python": "3.12.11",
   "results": [
     {
       "ca_rmsd_angstrom": 0.2697832925375299,
+      "ca_rmsd_ci95_high": 0.2836157310646068,
+      "ca_rmsd_ci95_low": 0.22327318124542062,
       "chain": "A",
+      "experimental_method": "x-ray diffraction",
+      "experimental_residues": 141,
+      "experimental_resolution_angstrom": 1.8,
+      "experimental_sequence_coverage": 1.0,
       "fraction_within_2a": 1.0,
       "fraction_within_5a": 1.0,
+      "high_confidence_ca_rmsd_angstrom": 0.2697832925375299,
+      "high_confidence_ca_rmsd_ci95_high": 0.2846626733686132,
+      "high_confidence_ca_rmsd_ci95_low": 0.22150538156312533,
+      "high_confidence_residues": 141,
       "matched_residues": 141,
       "mean_plddt": 98.2955319148936,
       "median_ca_error_angstrom": 0.22045725644129768,
       "pdb_id": "1A3N",
+      "predicted_residues": 142,
+      "predicted_sequence_coverage": 0.9929577464788732,
       "sequence_identity": 1.0,
       "spearman_plddt_vs_negative_error": 0.24175738508144903,
       "spearman_pvalue": 0.0038754624523365897,
@@ -45,13 +107,25 @@
     },
     {
       "ca_rmsd_angstrom": 0.5196952732909543,
+      "ca_rmsd_ci95_high": 0.6015156303209107,
+      "ca_rmsd_ci95_low": 0.4453813229197035,
       "chain": "B",
+      "experimental_method": "x-ray diffraction",
+      "experimental_residues": 145,
+      "experimental_resolution_angstrom": 1.8,
+      "experimental_sequence_coverage": 1.0,
       "fraction_within_2a": 1.0,
       "fraction_within_5a": 1.0,
+      "high_confidence_ca_rmsd_angstrom": 0.5196952732909543,
+      "high_confidence_ca_rmsd_ci95_high": 0.5965734205369299,
+      "high_confidence_ca_rmsd_ci95_low": 0.44622147987953104,
+      "high_confidence_residues": 145,
       "matched_residues": 145,
       "mean_plddt": 97.54972413793102,
       "median_ca_error_angstrom": 0.4533942495255303,
       "pdb_id": "1A3N",
+      "predicted_residues": 147,
+      "predicted_sequence_coverage": 0.9863945578231292,
       "sequence_identity": 1.0,
       "spearman_plddt_vs_negative_error": 0.3528464907463435,
       "spearman_pvalue": 1.3434576915169116e-05,
@@ -60,13 +134,25 @@
     },
     {
       "ca_rmsd_angstrom": 0.5014289015281062,
+      "ca_rmsd_ci95_high": 0.6284877929059369,
+      "ca_rmsd_ci95_low": 0.35649604947293373,
       "chain": "A",
+      "experimental_method": "x-ray diffraction",
+      "experimental_residues": 149,
+      "experimental_resolution_angstrom": 1.65,
+      "experimental_sequence_coverage": 0.9865771812080537,
       "fraction_within_2a": 0.9931972789115646,
       "fraction_within_5a": 1.0,
+      "high_confidence_ca_rmsd_angstrom": 0.5014289015281062,
+      "high_confidence_ca_rmsd_ci95_high": 0.6330891690457753,
+      "high_confidence_ca_rmsd_ci95_low": 0.3595538843447559,
+      "high_confidence_residues": 147,
       "matched_residues": 147,
       "mean_plddt": 97.71482993197279,
       "median_ca_error_angstrom": 0.3099979869829569,
       "pdb_id": "3RGK",
+      "predicted_residues": 154,
+      "predicted_sequence_coverage": 0.9545454545454546,
       "sequence_identity": 0.9865771812080537,
       "spearman_plddt_vs_negative_error": 0.28297298728261794,
       "spearman_pvalue": 0.0005149918732551986,
@@ -74,7 +160,7 @@
       "uniprot": "P02144"
     }
   ],
-  "schema_version": 1,
+  "schema_version": 2,
   "sources": [
     {
       "alphafold_global_metric": 98.06,
@@ -82,8 +168,10 @@
       "alphafold_model_url": "https://alphafold.ebi.ac.uk/files/AF-P69905-F1-model_v6.pdb",
       "alphafold_sha256": "d9d7ad4607164de17b65767b467d366909d74f96df5176ee368a9a515aaa1911",
       "alphafold_version": 6,
+      "experimental_method": "x-ray diffraction",
       "experimental_pdb_sha256": "1ce17adb5a0a4f986e173aaffa3c3e9910f483f9e32361615a75abb325a1aa7f",
       "experimental_pdb_url": "https://files.rcsb.org/download/1A3N.pdb",
+      "experimental_resolution_angstrom": 1.8,
       "target": "hemoglobin_alpha"
     },
     {
@@ -92,8 +180,10 @@
       "alphafold_model_url": "https://alphafold.ebi.ac.uk/files/AF-P68871-F1-model_v6.pdb",
       "alphafold_sha256": "37b411f5eaa2ff2e6f51774da344f1bd7b54e78c98ce67d9ffb02d8a3dbdf32a",
       "alphafold_version": 6,
+      "experimental_method": "x-ray diffraction",
       "experimental_pdb_sha256": "1ce17adb5a0a4f986e173aaffa3c3e9910f483f9e32361615a75abb325a1aa7f",
       "experimental_pdb_url": "https://files.rcsb.org/download/1A3N.pdb",
+      "experimental_resolution_angstrom": 1.8,
       "target": "hemoglobin_beta"
     },
     {
@@ -102,8 +192,10 @@
       "alphafold_model_url": "https://alphafold.ebi.ac.uk/files/AF-P02144-F1-model_v6.pdb",
       "alphafold_sha256": "68dd0c9976dd37bc6787b5b398ddc3ac03b6abdb7cc7025298dd503d8bb3c882",
       "alphafold_version": 6,
+      "experimental_method": "x-ray diffraction",
       "experimental_pdb_sha256": "5fdba6be63ee6d857f3d31cf639452ade4db527c6b14289a13b6a3aa11660f2a",
       "experimental_pdb_url": "https://files.rcsb.org/download/3RGK.pdb",
+      "experimental_resolution_angstrom": 1.65,
       "target": "myoglobin"
     }
   ]

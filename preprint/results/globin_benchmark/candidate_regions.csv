@@ -1,0 +1,2 @@
+candidate_id,target,uniprot,pdb_id,experimental_chain,alphafold_residue_start,alphafold_residue_end,residue_count,mean_plddt,median_ca_error_angstrom,max_ca_error_angstrom,candidate_score,candidate_status,novelty_status,evidence_tier,required_follow_up
+myoglobin:48-48,myoglobin,P02144,3RGK,A,48,48,1,95.69,2.170271,2.170271,2.076732,isolated_hypothesis_candidate,not_established,computational_structural_discrepancy,"Review construct mutations, ligands, oligomeric state, alternate PDB entries, and experimental conditions; then validate independently."

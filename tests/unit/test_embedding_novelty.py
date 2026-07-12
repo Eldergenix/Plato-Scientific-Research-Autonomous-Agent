@@ -13,6 +13,7 @@ from plato.novelty import (
     NoveltyResult,
     OpenAIEmbeddingBackend,
     StubEmbeddingBackend,
+    TfidfEmbeddingBackend,
 )
 from plato.state.models import Source
 
@@ -46,6 +47,23 @@ async def test_stub_vector_dimension():
     assert len(vec) == 384
     # Components are bounded to [0, 1) by construction.
     assert all(0.0 <= x < 1.0 for x in vec)
+
+
+@pytest.mark.asyncio
+async def test_tfidf_backend_identical_text_is_nearest_source():
+    scorer = EmbeddingScorer(backend=TfidfEmbeddingBackend())
+    idea = "single cell interferon response in macrophages"
+    corpus = [
+        _src(1, "lipid metabolism in hepatocytes"),
+        _src(2, idea),
+        _src(3, "protein folding in bacteria"),
+    ]
+
+    result = await scorer.score(idea, corpus)
+
+    assert result.nearest_source_id == "s2"
+    assert result.max_similarity == pytest.approx(1.0)
+    assert result.score == pytest.approx(0.0)
 
 
 @pytest.mark.asyncio
@@ -165,10 +183,10 @@ async def test_openai_backend_returns_empty_for_empty_input():
     assert await backend.embed([]) == []
 
 
-def test_default_backend_is_stub_without_api_key(monkeypatch):
+def test_default_backend_is_tfidf_without_api_key(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     scorer = EmbeddingScorer()
-    assert isinstance(scorer.backend, StubEmbeddingBackend)
+    assert isinstance(scorer.backend, TfidfEmbeddingBackend)
 
 
 def test_default_backend_is_openai_with_api_key(monkeypatch):

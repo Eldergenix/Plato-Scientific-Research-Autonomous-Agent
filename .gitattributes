@@ -1,0 +1,3 @@
+# Preserve fixed-width and pinned upstream scientific snapshots byte-for-byte.
+preprint/results/**/raw/*.pdb -whitespace
+preprint/results/compbiobench_catalog/source.tsv -whitespace
