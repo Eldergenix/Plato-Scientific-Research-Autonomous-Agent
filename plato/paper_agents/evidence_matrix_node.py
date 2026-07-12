@@ -126,6 +126,15 @@ def _coerce_label(value: Any, allowed: set[str], default: str) -> str:
     return default
 
 
+def _write_matrix(path: Path, claims: list[Claim], links: list[EvidenceLink]) -> None:
+    """Persist the documented mixed Claim/EvidenceLink JSONL contract."""
+    with path.open("w", encoding="utf-8") as handle:
+        for claim in claims:
+            handle.write(json.dumps(claim.model_dump(mode="json")) + "\n")
+        for link in links:
+            handle.write(json.dumps(link.model_dump(mode="json")) + "\n")
+
+
 def evidence_matrix_node(
     state: "GraphState",
     config: Optional[RunnableConfig] = None,
@@ -157,7 +166,7 @@ def evidence_matrix_node(
     # Nothing to link against — write an empty matrix and return cleanly.
     if not drafted or (not source_claims and not sources):
         if run_dir is not None:
-            (run_dir / "evidence_matrix.jsonl").write_text("")
+            _write_matrix(run_dir / "evidence_matrix.jsonl", drafted, [])
         unsupported = 1.0 if drafted else 0.0
         return {
             "evidence_links": existing_links,
@@ -216,10 +225,7 @@ def evidence_matrix_node(
                     pass
 
     if run_dir is not None:
-        path = run_dir / "evidence_matrix.jsonl"
-        with path.open("w") as f:
-            for link in new_links:
-                f.write(json.dumps(link.model_dump(mode="json")) + "\n")
+        _write_matrix(run_dir / "evidence_matrix.jsonl", drafted, new_links)
 
     total_drafted = len(drafted)
     unsupported_count = total_drafted - len(supported_claim_ids)

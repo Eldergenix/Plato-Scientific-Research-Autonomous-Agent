@@ -46,6 +46,13 @@ class Metrics(BaseModel):
             "any expected keywords."
         ),
     )
+    method_signal_recall: float | None = Field(
+        default=None,
+        description=(
+            "Fraction of GoldenTask.expected_method_signals that appear in "
+            "the drafted method text. None when the task has no method signals."
+        ),
+    )
     gold_source_recall: float | None = Field(
         default=None,
         description=(

@@ -2,14 +2,46 @@
 
 [![Python Version](https://img.shields.io/badge/python-%3E%3D3.12-blue.svg)](https://www.python.org/downloads/) [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-Plato is a multi-agent AI system that takes experimental data and produces peer-reviewable scientific papers end-to-end — generating the research idea, designing the methodology, running the analysis, and writing the LaTeX manuscript through a reviewer-panel revision loop.
+Plato is a multi-agent research workflow that turns a data specification into
+research ideas, methods, executable analyses, and manuscript drafts. Its
+verification gates are designed to make evidence and limitations inspectable;
+human authors remain responsible for scientific validity and publication.
 
-## What's new in 0.2
+## Research validation and bioRxiv preprint
+
+This repository now includes a submission-oriented computational biology study:
+**“Plato-Bio: a verification-first multi-agent research workflow with a
+reproducible structural-biology case study.”** The paper combines a source-code
+audit, deterministic software validation, and a declared public-data comparison
+of AlphaFold DB globin models with RCSB PDB structures.
+
+- [Main preprint (PDF)](preprint/Plato-Bio-bioRxiv-preprint.pdf)
+- [Supplementary material (PDF)](preprint/Plato-Bio-Supplement.pdf)
+- [Editable manuscript (DOCX)](preprint/Plato-Bio-bioRxiv-preprint.docx)
+- [Submission metadata and human confirmation gate](preprint/SUBMISSION_METADATA.md)
+- [Reproduction guide](preprint/README.md)
+
+The validation package records input URLs, versions, SHA-256 hashes, target- and
+residue-level structural results, exact test counts, and figure-generation code.
+Reproduce it with:
+
+```bash
+.venv/bin/python preprint/experiments/run_globin_structure_benchmark.py
+.venv/bin/python preprint/experiments/run_software_validation.py
+.venv/bin/python preprint/experiments/build_summary_figures.py
+```
+
+The reported evidence does **not** establish autonomous scientific improvement,
+independent peer review, or live end-to-end LLM efficacy. The default evaluation
+runner exercises the idea and method stages; live provider, hosted database, and
+authenticated external-service paths remain separate validation lanes.
+
+## What's new in 1.0.1
 
 Phase 5 hardening landed alongside the dashboard's 13-stream feature push:
 
-- **Multi-source retrieval** — six adapters (arXiv, OpenAlex, ADS, Crossref,
-  PubMed, Semantic Scholar) behind a domain-aware orchestrator with rate-limit
+- **Multi-source retrieval** — scholarly-source adapters behind a domain-aware
+  orchestrator with rate-limit
   backoff, ETag caching, and per-host circuit breakers.
 - **Citation validation** — every reference is resolved against Crossref +
   Retraction Watch + arXiv before the paper finalizes. The run dir gets a
@@ -43,7 +75,7 @@ See `docs/adr/` for the design decisions behind these changes and
 
 - [GitHub repository](https://github.com/Eldergenix/Plato-Scientific-Research-Autonomous-Agent)
 
-- [Paper](https://arxiv.org/abs/2510.26887)
+- [Prior Denario systems paper](https://arxiv.org/abs/2510.26887)
 
 
 ## Installation

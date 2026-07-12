@@ -148,16 +148,31 @@ def test_hosted_saas_preflight_passes_complete_values_without_echoing_secrets() 
     assert values["NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"] not in result.stdout
 
 
-def test_hosted_saas_preflight_fails_when_proxy_secret_missing() -> None:
+def test_hosted_saas_preflight_uses_clerk_key_when_proxy_secret_missing() -> None:
     values = complete_hosted_values()
     values.pop("PLATO_BACKEND_PROXY_SECRET")
 
     result = run_checker(values)
 
+    assert result.returncode == 0
+    assert "PLATO_BACKEND_PROXY_SECRET: missing" in result.stdout
+    assert "OK: hosted SaaS/Lab required variables are present." in result.stdout
+    assert "backend proxy secret can be derived" not in result.stdout
+
+
+def test_hosted_saas_preflight_fails_without_explicit_or_derived_proxy_secret() -> None:
+    values = complete_hosted_values()
+    values.pop("PLATO_BACKEND_PROXY_SECRET")
+    values.pop("CLERK_SECRET_KEY")
+
+    result = run_checker(values)
+
     assert result.returncode == 1
     assert "PLATO_BACKEND_PROXY_SECRET: missing" in result.stdout
+    assert "CLERK_SECRET_KEY: missing" in result.stdout
     assert (
-        "PLATO_BACKEND_PROXY_SECRET must be set to at least 32 characters"
+        "PLATO_BACKEND_PROXY_SECRET must be set to at least 32 characters, "
+        "or CLERK_SECRET_KEY must be present so the backend proxy secret can be derived"
         in result.stdout
     )
 
@@ -700,7 +715,7 @@ def test_production_readiness_fails_when_local_variables_snapshot_is_missing(
     assert "Restore Railway CLI variable access" in result.stdout
 
 
-def test_production_readiness_remediation_lists_each_missing_hosted_variable(
+def test_production_readiness_omits_proxy_remediation_when_clerk_can_derive_it(
     tmp_path: Path,
 ) -> None:
     values = complete_hosted_values()
@@ -715,8 +730,8 @@ def test_production_readiness_remediation_lists_each_missing_hosted_variable(
 
     assert result.returncode == 1
     assert "Next steps to clear production blockers" in result.stdout
-    assert 'PLATO_BACKEND_PROXY_SECRET="$(openssl rand -base64 32)"' in result.stdout
-    assert "PLATO_BACKEND_PROXY_SECRET=${PLATO_BACKEND_PROXY_SECRET}" in result.stdout
+    assert 'PLATO_BACKEND_PROXY_SECRET="$(openssl rand -base64 32)"' not in result.stdout
+    assert "PLATO_BACKEND_PROXY_SECRET=${PLATO_BACKEND_PROXY_SECRET}" not in result.stdout
     assert "PLATO_PUBLIC_ORIGIN=https://discovering.app" in result.stdout
     assert "NEXT_PUBLIC_PLATO_HOSTED_BILLING=enabled" in result.stdout
     assert (

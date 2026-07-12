@@ -1,0 +1,120 @@
+{
+  "generated_at": "2026-07-12T01:26:39.256813+00:00",
+  "git_commit": "41406a09401bd1849f28f052fdfa70febd551799",
+  "git_dirty_at_run": true,
+  "platform": "macOS-26.6-arm64-arm-64bit",
+  "python": "3.12.11",
+  "schema_version": 1,
+  "suites": {
+    "adversarial_safety": {
+      "command": [
+        "/Users/0xnexis/Downloads/plato-master/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/safety",
+        "--junitxml=/var/folders/mm/stg_fhdd3d363d03h_t0_9d80000gn/T/plato-preprint-validation-b6xt02x8/adversarial_safety.xml"
+      ],
+      "errors": 0,
+      "failures": 0,
+      "junit_time_seconds": 0.321,
+      "paths": [
+        "tests/safety"
+      ],
+      "returncode": 0,
+      "skipped": 1,
+      "tests": 57,
+      "wall_seconds": 0.804805
+    },
+    "biology_domain": {
+      "command": [
+        "/Users/0xnexis/Downloads/plato-master/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/unit/test_biology_domain.py",
+        "tests/unit/test_biology_end_to_end.py",
+        "--junitxml=/var/folders/mm/stg_fhdd3d363d03h_t0_9d80000gn/T/plato-preprint-validation-b6xt02x8/biology_domain.xml"
+      ],
+      "errors": 0,
+      "failures": 0,
+      "junit_time_seconds": 0.184,
+      "paths": [
+        "tests/unit/test_biology_domain.py",
+        "tests/unit/test_biology_end_to_end.py"
+      ],
+      "returncode": 0,
+      "skipped": 0,
+      "tests": 12,
+      "wall_seconds": 0.7578
+    },
+    "evidence_and_citations": {
+      "command": [
+        "/Users/0xnexis/Downloads/plato-master/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/unit/test_citation_validator.py",
+        "tests/unit/test_citation_validator_node.py",
+        "tests/unit/test_claim_extractor.py",
+        "tests/unit/test_evidence_matrix_node.py",
+        "tests/unit/test_scientific_verifier.py",
+        "--junitxml=/var/folders/mm/stg_fhdd3d363d03h_t0_9d80000gn/T/plato-preprint-validation-b6xt02x8/evidence_and_citations.xml"
+      ],
+      "errors": 0,
+      "failures": 0,
+      "junit_time_seconds": 0.953,
+      "paths": [
+        "tests/unit/test_citation_validator.py",
+        "tests/unit/test_citation_validator_node.py",
+        "tests/unit/test_claim_extractor.py",
+        "tests/unit/test_evidence_matrix_node.py",
+        "tests/unit/test_scientific_verifier.py"
+      ],
+      "returncode": 0,
+      "skipped": 0,
+      "tests": 46,
+      "wall_seconds": 1.615002
+    },
+    "full_python": {
+      "command": [
+        "/Users/0xnexis/Downloads/plato-master/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "tests",
+        "--junitxml=/var/folders/mm/stg_fhdd3d363d03h_t0_9d80000gn/T/plato-preprint-validation-b6xt02x8/full_python.xml"
+      ],
+      "errors": 0,
+      "failures": 0,
+      "junit_time_seconds": 69.041,
+      "paths": [
+        "tests"
+      ],
+      "returncode": 0,
+      "skipped": 6,
+      "tests": 916,
+      "wall_seconds": 70.526274
+    },
+    "genomics_adapters": {
+      "command": [
+        "/Users/0xnexis/Downloads/plato-master/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/unit/test_genomics_tools.py",
+        "--junitxml=/var/folders/mm/stg_fhdd3d363d03h_t0_9d80000gn/T/plato-preprint-validation-b6xt02x8/genomics_adapters.xml"
+      ],
+      "errors": 0,
+      "failures": 0,
+      "junit_time_seconds": 0.61,
+      "paths": [
+        "tests/unit/test_genomics_tools.py"
+      ],
+      "returncode": 0,
+      "skipped": 0,
+      "tests": 11,
+      "wall_seconds": 1.225508
+    }
+  }
+}
