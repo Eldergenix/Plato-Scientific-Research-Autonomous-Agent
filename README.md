@@ -49,14 +49,18 @@ Phase 5 hardening landed alongside the dashboard's 13-stream feature push:
 - **Claim → Evidence Matrix** — the literature pass extracts atomic claims
   with quote spans and links them to source records. Persisted as
   `evidence_matrix.jsonl` per run.
-- **Reviewer panel + revision loop** — methodology / statistics / novelty /
-  writing axes feed an aggregator that drives a redraft loop bounded by
-  `Plato.get_paper(max_revision_iters=...)`.
-- **Autonomous research loop** — `plato loop --hours 8 --max-cost-usd 50`
-  iterates under a wall-clock + cost budget, committing improvements and
-  reverting regressions.
-- **Reproducibility manifest** — every workflow emits `manifest.json` with
-  git sha, project sha-256, model versions, source ids, tokens, and cost.
+- **Reviewer-role revision loop** — methodology / statistics / novelty /
+  writing axes feed an aggregator that drives a bounded redraft loop. These
+  roles currently use the drafting client and are self-critique, not independent
+  peer review.
+- **Research-loop scaffold** — `plato loop --hours 8 --max-cost-usd 50`
+  provides wall-clock/cost budgeting and git keep/discard checkpoints. The
+  default adapters score existing artifacts; they do not yet execute a complete
+  research cycle.
+- **Reproducibility manifest primitives** — the manifest schema and recorder can
+  capture git/project hashes, models, prompts, seeds, sources, tokens, and cost
+  when supplied by the calling workflow; public-path coverage is not yet
+  complete.
 - **Observability** — opt in by setting `LANGFUSE_*` env vars; LangFuse
   callbacks are wired into every LangGraph invocation.
 - **Pluggable domains** — `DomainProfile` registry exposes retrieval,
