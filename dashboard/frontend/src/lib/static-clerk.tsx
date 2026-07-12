@@ -26,6 +26,15 @@ export function SignUpButton({ children }: ChildrenProps) {
   return <>{children}</>;
 }
 
+export function useAuth() {
+  return {
+    isLoaded: true,
+    isSignedIn: false,
+    userId: null,
+    orgId: null,
+  };
+}
+
 export function UserButton() {
   return null;
 }

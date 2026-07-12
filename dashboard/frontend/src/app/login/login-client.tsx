@@ -1,9 +1,17 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
-import { Show, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
+import {
+  Show,
+  SignInButton,
+  SignUpButton,
+  UserButton,
+  useAuth as useClerkAuth,
+} from "@clerk/nextjs";
 import { AlertTriangle } from "lucide-react";
-import { useAuth } from "@/components/auth/auth-context";
+import { useAuth as useTenantAuth } from "@/components/auth/auth-context";
 import { useAuthMode } from "@/components/auth/auth-mode-provider";
 import { LoginForm } from "@/components/auth/login-form";
 import { UserMenu } from "@/components/auth/user-menu";
@@ -56,7 +64,7 @@ function ClerkAuthConfigurationError({ detail }: { detail: string | null }) {
 }
 
 function TenantLoginPage({ redirectTo }: { redirectTo: string }) {
-  const { user_id } = useAuth();
+  const { user_id } = useTenantAuth();
   return (
     <main className="flex min-h-screen items-center justify-center bg-(--color-bg-page) p-6">
       <div
@@ -85,6 +93,16 @@ function TenantLoginPage({ redirectTo }: { redirectTo: string }) {
 }
 
 function ClerkLoginPage({ redirectTo }: { redirectTo: string }) {
+  const router = useRouter();
+  const { isLoaded, isSignedIn } = useClerkAuth();
+  const signedIn = isLoaded && isSignedIn;
+
+  React.useEffect(() => {
+    if (signedIn) {
+      router.replace(redirectTo);
+    }
+  }, [redirectTo, router, signedIn]);
+
   return (
     <main className="flex min-h-screen items-center justify-center bg-(--color-bg-page) p-6">
       <div
@@ -94,10 +112,12 @@ function ClerkLoginPage({ redirectTo }: { redirectTo: string }) {
         <header className="flex items-start justify-between gap-3 border-b border-[#1D1D1F] px-5 py-4">
           <div>
             <h1 className="text-[16px] font-medium tracking-[-0.01em] text-(--color-text-primary-strong)">
-              Sign in to Plato
+              {signedIn ? "Opening Plato" : "Sign in to Plato"}
             </h1>
             <p className="mt-1 text-[12px] leading-[1.5] text-(--color-text-tertiary-spec)">
-              Use your Clerk account, then choose a personal workspace or Lab.
+              {signedIn
+                ? "Your Clerk session is active. Redirecting to your workspace."
+                : "Use your Clerk account, then choose a personal workspace or Lab."}
             </p>
           </div>
           <Show when="signed-in">
@@ -120,7 +140,9 @@ function ClerkLoginPage({ redirectTo }: { redirectTo: string }) {
           </Show>
           <Show when="signed-in">
             <Button asChild variant="primary" size="md">
-              <Link href={redirectTo}>Continue to workspace</Link>
+              <Link href={redirectTo} prefetch={false}>
+                Continue to workspace
+              </Link>
             </Button>
           </Show>
         </div>
