@@ -96,7 +96,7 @@ The complete Python suite produced no failures or errors. The targeted biology-d
 | Genomics adapters | 11 | 11 | 0 | 0 |
 | Evidence and citations | 46 | 46 | 0 | 0 |
 | Adversarial safety | 57 | 56 | 1 | 0 |
-| Full Python suite | 916 | 910 | 6 | 0 |
+| Full Python suite | 918 | 912 | 6 | 0 |
 
 The targeted suites are subsets of the full suite. These results support the narrower statement that the asserted software behaviors passed in the recorded environment. They do not measure paper correctness, novelty, human usefulness, or the probability that an open-ended agent run will succeed.
 

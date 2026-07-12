@@ -1,6 +1,6 @@
 {
   "coordinate_method": "matching C-alpha atoms after Needleman-Wunsch sequence alignment and Kabsch superposition",
-  "generated_at": "2026-07-12T01:38:26.682790+00:00",
+  "generated_at": "2026-07-12T01:48:14.343288+00:00",
   "numpy": "2.4.6",
   "output_sha256": {
     "residue_metrics.csv": "e77df91e739b4d0b970abe9577ae8c1d92a8b59424d0b7de95594b68cc0ef6d8",
