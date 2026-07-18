@@ -92,7 +92,7 @@ def escape_plain(text: str) -> str:
     return "".join(output)
 
 
-TOKEN_RE = re.compile(r"(\*\*.+?\*\*|\*.+?\*|`.+?`|https?://[^\s)]+)")
+TOKEN_RE = re.compile(r"(\*\*.+?\*\*|\*.+?\*|`.+?`|https?://\S+)")
 
 
 def inline(text: str) -> str:
@@ -268,7 +268,7 @@ def build_main() -> Path:
             r"\date{}",
             r"\begin{document}",
             r"\maketitle",
-            r"\begin{center}\small Correspondence: \href{mailto:stefan@nex-t1.ai}{stefan@nex-t1.ai} \quad ORCID: \url{https://orcid.org/0000-0003-2268-053X}\\Article category: New Results \quad Subject area: Bioinformatics\end{center}",
+            r"\begin{center}\small Correspondence: \href{mailto:stefan@nex-t1.ai}{stefan@nex-t1.ai} \quad ORCID: \url{https://orcid.org/0000-0003-2268-053X}\\arXiv primary category: q-bio.QM (Quantitative Methods) \quad Cross-list: cs.AI (Artificial Intelligence)\end{center}",
             r"\begin{abstract}",
             "\n\n".join(inline(line) for line in abstract_lines),
             r"\end{abstract}",
@@ -299,6 +299,20 @@ def latex_table(rows: list[list[str]], alignment: str) -> str:
         if index == 0:
             body.append(r"\midrule")
     body.extend([r"\bottomrule", r"\end{tabular}%", r"}"])
+    return "\n".join(body)
+
+
+def latex_spread_table(rows: list[list[str]], alignment: str) -> str:
+    """Render readable full-width columns without scaling the text."""
+    body = [
+        rf"\begin{{tabular*}}{{\textwidth}}{{@{{\extracolsep{{\fill}}}}{alignment}}}",
+        r"\toprule",
+    ]
+    for index, row in enumerate(rows):
+        body.append(" & ".join(inline(value) for value in row) + r" \\")
+        if index == 0:
+            body.append(r"\midrule")
+    body.extend([r"\bottomrule", r"\end{tabular*}"])
     return "\n".join(body)
 
 
@@ -377,6 +391,12 @@ def build_supplement() -> Path:
     temporal_rows = [
         ["Fixture", "Condition", "Tasks", "MRR", "R@1", "R@10", "False novelty"]
     ]
+    condition_labels = {
+        "frequency": "Frequency",
+        "tfidf": "TF-IDF",
+        "abc_bridge": "A–B/B–C bridge",
+        "evidence_aware": "Evidence-aware",
+    }
     for fixture, rows in (
         ("Synthetic", smoke_summary),
         ("Historical", history_summary),
@@ -385,7 +405,7 @@ def build_supplement() -> Path:
             temporal_rows.append(
                 [
                     fixture,
-                    row["condition"],
+                    condition_labels.get(row["condition"], row["condition"]),
                     row["task_count"],
                     f"{float(row['mean_reciprocal_rank']):.3f}",
                     f"{float(row['recall_at_1']):.3f}",
@@ -440,7 +460,7 @@ def build_supplement() -> Path:
         r"\end{verbatim}",
         r"\section*{S2. Original structural input inventory}",
         latex_table(raw_rows, "lrl"),
-        r"The diverse panel contains 30 cached coordinate files; individual hashes and source metadata are in its manifest.",
+        rf"The diverse panel contains {len(list((diverse_dir / 'raw').glob('*.pdb')))} cached coordinate files; individual hashes and source metadata are in its manifest.",
         r"\section*{S3. Original globin results}",
         latex_table(target_rows, "lrrrrrrr"),
         r"The original residue-level CSV contains 433 matched positions.",
@@ -448,10 +468,10 @@ def build_supplement() -> Path:
         latex_table(diverse_rows, "llrrrrrr"),
         rf"The predeclared rule emitted {len(diverse_candidates)} regions; every row is labeled novelty status not established.",
         r"\section*{S5. Temporal rediscovery results}",
-        latex_table(temporal_rows, "llrrrrr"),
+        latex_spread_table(temporal_rows, "llrrrrr"),
         r"Synthetic results validate engineering behavior only. The historical result is one manually curated retrospective case.",
         r"\section*{S6. Deterministic validation results}",
-        latex_table(validation_rows, "lrrrrrr"),
+        latex_spread_table(validation_rows, "lrrrrrr"),
         r"Targeted suites overlap with the full Python suite. Counts are not additive. Skips remain unvalidated live or platform-specific paths.",
         r"\section*{S7. Measurement-repair acceptance criteria}",
         r"\begin{itemize}[leftmargin=*]",
@@ -464,8 +484,8 @@ def build_supplement() -> Path:
         r"\end{itemize}",
         r"\section*{S8. Interpretation boundary}",
         r"The default evaluator executes idea and method stages only. Live LLM, E2B, Modal, hosted PostgreSQL, and authenticated Hugging Face paths require external credentials or services. Same-model reviewer roles are self-critique, not peer review. The temporal pilot is retrospective, and structural discrepancy candidates are not established novelties.",
-        r"\section*{S9. bioRxiv packaging notes}",
-        r"The main manuscript is supplied as one PDF with embedded figures and tables. Supplemental data are separate. No clinical, human-subject, animal, or identifiable-person data are included. Generative AI assistance is disclosed, and the human author remains accountable.",
+        r"\section*{S9. arXiv packaging notes}",
+        r"The main manuscript is supplied as LaTeX source with embedded figures and tables. Supplemental data are separate. No clinical, human-subject, animal, or identifiable-person data are included. Generative AI assistance is disclosed, and the human author remains accountable. The related Denario arXiv preprint is cited as prior work and is not duplicated by this study.",
         r"\end{document}",
     ]
     output = LATEX / "plato-bio-supplement.tex"

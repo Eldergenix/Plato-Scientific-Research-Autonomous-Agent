@@ -69,7 +69,7 @@ AF-P69905-F1.pdb & 92096 & d9d7ad4607164de17b65767b467d366909d74f96df5176ee368a9
 \end{tabular}%
 }
 
-The diverse panel contains 30 cached coordinate files; individual hashes and source metadata are in its manifest.
+The diverse panel contains 29 cached coordinate files; individual hashes and source metadata are in its manifest.
 
 \section*{S3. Original globin results}
 
@@ -117,40 +117,36 @@ The predeclared rule emitted 27 regions; every row is labeled novelty status not
 
 \section*{S5. Temporal rediscovery results}
 
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{llrrrrr}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}llrrrrr}
 \toprule
 Fixture & Condition & Tasks & MRR & R@1 & R@10 & False novelty \\
 \midrule
-Synthetic & frequency & 5 & 0.500 & 0.000 & 1.000 & 0.000 \\
-Synthetic & tfidf & 5 & 1.000 & 1.000 & 1.000 & 0.000 \\
-Synthetic & abc\_bridge & 5 & 1.000 & 1.000 & 1.000 & 0.000 \\
-Synthetic & evidence\_aware & 5 & 1.000 & 1.000 & 1.000 & 0.000 \\
-Historical & frequency & 1 & 0.333 & 0.000 & 1.000 & 0.000 \\
-Historical & tfidf & 1 & 0.500 & 0.000 & 1.000 & 0.000 \\
-Historical & abc\_bridge & 1 & 1.000 & 1.000 & 1.000 & 0.000 \\
-Historical & evidence\_aware & 1 & 1.000 & 1.000 & 1.000 & 0.000 \\
+Synthetic & Frequency & 5 & 0.500 & 0.000 & 1.000 & 0.000 \\
+Synthetic & TF-IDF & 5 & 1.000 & 1.000 & 1.000 & 0.000 \\
+Synthetic & A--B/B--C bridge & 5 & 1.000 & 1.000 & 1.000 & 0.000 \\
+Synthetic & Evidence-aware & 5 & 1.000 & 1.000 & 1.000 & 0.000 \\
+Historical & Frequency & 1 & 0.333 & 0.000 & 1.000 & 0.000 \\
+Historical & TF-IDF & 1 & 0.500 & 0.000 & 1.000 & 0.000 \\
+Historical & A--B/B--C bridge & 1 & 1.000 & 1.000 & 1.000 & 0.000 \\
+Historical & Evidence-aware & 1 & 1.000 & 1.000 & 1.000 & 0.000 \\
 \bottomrule
-\end{tabular}%
-}
+\end{tabular*}
 
 Synthetic results validate engineering behavior only. The historical result is one manually curated retrospective case.
 
 \section*{S6. Deterministic validation results}
 
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{lrrrrrr}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lrrrrrr}
 \toprule
 Suite & Tests & Passed & Skipped & Failures & Errors & Wall s \\
 \midrule
 adversarial\_safety & 57 & 56 & 1 & 0 & 0 & 0.86 \\
-biology\_domain & 12 & 12 & 0 & 0 & 0 & 0.80 \\
-evidence\_and\_citations & 46 & 46 & 0 & 0 & 0 & 1.57 \\
-full\_python & 937 & 931 & 6 & 0 & 0 & 71.00 \\
-genomics\_adapters & 11 & 11 & 0 & 0 & 0 & 1.20 \\
+biology\_domain & 12 & 12 & 0 & 0 & 0 & 1.38 \\
+evidence\_and\_citations & 46 & 46 & 0 & 0 & 0 & 1.56 \\
+full\_python & 937 & 931 & 6 & 0 & 0 & 79.41 \\
+genomics\_adapters & 11 & 11 & 0 & 0 & 0 & 1.68 \\
 \bottomrule
-\end{tabular}%
-}
+\end{tabular*}
 
 Targeted suites overlap with the full Python suite. Counts are not additive. Skips remain unvalidated live or platform-specific paths.
 
@@ -176,8 +172,8 @@ Targeted suites overlap with the full Python suite. Counts are not additive. Ski
 
 The default evaluator executes idea and method stages only. Live LLM, E2B, Modal, hosted PostgreSQL, and authenticated Hugging Face paths require external credentials or services. Same-model reviewer roles are self-critique, not peer review. The temporal pilot is retrospective, and structural discrepancy candidates are not established novelties.
 
-\section*{S9. bioRxiv packaging notes}
+\section*{S9. arXiv packaging notes}
 
-The main manuscript is supplied as one PDF with embedded figures and tables. Supplemental data are separate. No clinical, human-subject, animal, or identifiable-person data are included. Generative AI assistance is disclosed, and the human author remains accountable.
+The main manuscript is supplied as LaTeX source with embedded figures and tables. Supplemental data are separate. No clinical, human-subject, animal, or identifiable-person data are included. Generative AI assistance is disclosed, and the human author remains accountable. The related Denario arXiv preprint is cited as prior work and is not duplicated by this study.
 
 \end{document}

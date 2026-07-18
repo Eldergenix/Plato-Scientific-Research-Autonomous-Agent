@@ -1,29 +1,31 @@
 # Plato-Bio preprint package
 
-This directory contains a bioRxiv-oriented manuscript and the evidence used to produce it.
+This directory contains the arXiv-oriented manuscript, submission source, and evidence used to produce it.
 
 The author metadata is standardized across the portal and publication files as
 **Stefan G. Creadore, Independent Researcher, Valrico, Florida, United States**
 (ORCID: `0000-0003-2268-053X`; correspondence: `stefan@nex-t1.ai`).
 
-The manuscript package is complete, but the current bioRxiv record was screened
-out because bioRxiv requires a verifiable established research organization
-with oversight responsibility. `Independent Researcher` is the accurate author
-status, but it does not satisfy that requirement by itself. See
-`SUBMISSION_METADATA.md` before attempting another deposit.
+The current release targets arXiv category `q-bio.QM`, with `cs.AI` as a
+cross-list. The earlier bioRxiv package and screening record are retained for
+provenance; they are not the files to use for a new arXiv submission.
 
-## Submission deliverables
+## Current arXiv deliverables
 
-- `Plato-Bio-bioRxiv-preprint.pdf` — upload this as the single main manuscript.
-- `Plato-Bio-Supplement.pdf` — upload this as Supplemental Material.
-- `Plato-Bio-bioRxiv-preprint.docx` — editable source for author revisions.
+- `arxiv/Plato-Bio-arXiv-source.zip` — upload this TeX source archive as the main submission.
+- `latex/Plato-Bio-LaTeX-preprint.pdf` — locally compiled reference PDF; do not upload it in place of TeX source.
+- `latex/Plato-Bio-LaTeX-Supplement.pdf` — optional supplementary reference PDF.
+- `Plato-Bio-arXiv-preprint.docx` — editable source for author revisions.
 - `latex/plato-bio.tex` — self-contained LaTeX main manuscript.
 - `latex/plato-bio-supplement.tex` — LaTeX supplementary material.
-- `latex/Plato-Bio-LaTeX-preprint.pdf` — compiled LaTeX main manuscript.
-- `latex/Plato-Bio-LaTeX-Supplement.pdf` — compiled LaTeX supplement.
 - `latex/references.bib` — reusable BibTeX reference library.
 - `manuscript.md` — canonical prose source.
-- `SUBMISSION_METADATA.md` — paste-ready portal metadata and the required human confirmation gate.
+- `ARXIV_SUBMISSION_METADATA.md` — ASCII-safe portal metadata and the required human confirmation gate.
+
+## Historical bioRxiv deliverables
+
+- `Plato-Bio-bioRxiv-preprint.pdf` and `Plato-Bio-bioRxiv-preprint.docx` are the July 2026 bioRxiv-oriented artifacts.
+- `SUBMISSION_METADATA.md` records the bioRxiv screening outcome and must not be used as arXiv portal metadata.
 
 ## Reproduce the evidence
 
@@ -49,6 +51,11 @@ The builder creates the DOCX and supplemental DOCX. The repository workflow then
 
 The LaTeX package is generated from the same canonical Markdown and result
 files. See `latex/README.md` for reproducible Tectonic compilation commands.
+Build the arXiv upload archive after regenerating LaTeX:
+
+```bash
+.venv/bin/python preprint/arxiv/build_package.py
+```
 
 ## Interpretation boundary
 

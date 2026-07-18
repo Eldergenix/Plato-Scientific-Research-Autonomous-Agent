@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-07-12T04:16:32.169288+00:00",
-  "git_commit": "8a73f198cd803acc00deeac43a7e28f537123022",
-  "git_dirty_at_run": true,
+  "generated_at": "2026-07-18T03:59:10.723763+00:00",
+  "git_commit": "906031cca1411d51940716e3ef23e47fcad415e3",
+  "git_dirty_at_run": false,
   "platform": "macOS-26.6-arm64-arm-64bit",
   "python": "3.12.11",
   "schema_version": 1,
@@ -13,18 +13,18 @@
         "pytest",
         "-q",
         "tests/safety",
-        "--junitxml=/var/folders/mm/stg_fhdd3d363d03h_t0_9d80000gn/T/plato-preprint-validation-66oz38i5/adversarial_safety.xml"
+        "--junitxml=/var/folders/mm/stg_fhdd3d363d03h_t0_9d80000gn/T/plato-preprint-validation-b5duax78/adversarial_safety.xml"
       ],
       "errors": 0,
       "failures": 0,
-      "junit_time_seconds": 0.327,
+      "junit_time_seconds": 0.33,
       "paths": [
         "tests/safety"
       ],
       "returncode": 0,
       "skipped": 1,
       "tests": 57,
-      "wall_seconds": 0.864343
+      "wall_seconds": 0.861383
     },
     "biology_domain": {
       "command": [
@@ -34,11 +34,11 @@
         "-q",
         "tests/unit/test_biology_domain.py",
         "tests/unit/test_biology_end_to_end.py",
-        "--junitxml=/var/folders/mm/stg_fhdd3d363d03h_t0_9d80000gn/T/plato-preprint-validation-66oz38i5/biology_domain.xml"
+        "--junitxml=/var/folders/mm/stg_fhdd3d363d03h_t0_9d80000gn/T/plato-preprint-validation-b5duax78/biology_domain.xml"
       ],
       "errors": 0,
       "failures": 0,
-      "junit_time_seconds": 0.202,
+      "junit_time_seconds": 0.413,
       "paths": [
         "tests/unit/test_biology_domain.py",
         "tests/unit/test_biology_end_to_end.py"
@@ -46,7 +46,7 @@
       "returncode": 0,
       "skipped": 0,
       "tests": 12,
-      "wall_seconds": 0.800261
+      "wall_seconds": 1.382667
     },
     "evidence_and_citations": {
       "command": [
@@ -59,11 +59,11 @@
         "tests/unit/test_claim_extractor.py",
         "tests/unit/test_evidence_matrix_node.py",
         "tests/unit/test_scientific_verifier.py",
-        "--junitxml=/var/folders/mm/stg_fhdd3d363d03h_t0_9d80000gn/T/plato-preprint-validation-66oz38i5/evidence_and_citations.xml"
+        "--junitxml=/var/folders/mm/stg_fhdd3d363d03h_t0_9d80000gn/T/plato-preprint-validation-b5duax78/evidence_and_citations.xml"
       ],
       "errors": 0,
       "failures": 0,
-      "junit_time_seconds": 1.007,
+      "junit_time_seconds": 1.064,
       "paths": [
         "tests/unit/test_citation_validator.py",
         "tests/unit/test_citation_validator_node.py",
@@ -74,7 +74,7 @@
       "returncode": 0,
       "skipped": 0,
       "tests": 46,
-      "wall_seconds": 1.565773
+      "wall_seconds": 1.562483
     },
     "full_python": {
       "command": [
@@ -83,18 +83,18 @@
         "pytest",
         "-q",
         "tests",
-        "--junitxml=/var/folders/mm/stg_fhdd3d363d03h_t0_9d80000gn/T/plato-preprint-validation-66oz38i5/full_python.xml"
+        "--junitxml=/var/folders/mm/stg_fhdd3d363d03h_t0_9d80000gn/T/plato-preprint-validation-b5duax78/full_python.xml"
       ],
       "errors": 0,
       "failures": 0,
-      "junit_time_seconds": 69.525,
+      "junit_time_seconds": 78.032,
       "paths": [
         "tests"
       ],
       "returncode": 0,
       "skipped": 6,
       "tests": 937,
-      "wall_seconds": 71.002626
+      "wall_seconds": 79.409027
     },
     "genomics_adapters": {
       "command": [
@@ -103,18 +103,18 @@
         "pytest",
         "-q",
         "tests/unit/test_genomics_tools.py",
-        "--junitxml=/var/folders/mm/stg_fhdd3d363d03h_t0_9d80000gn/T/plato-preprint-validation-66oz38i5/genomics_adapters.xml"
+        "--junitxml=/var/folders/mm/stg_fhdd3d363d03h_t0_9d80000gn/T/plato-preprint-validation-b5duax78/genomics_adapters.xml"
       ],
       "errors": 0,
       "failures": 0,
-      "junit_time_seconds": 0.658,
+      "junit_time_seconds": 1.093,
       "paths": [
         "tests/unit/test_genomics_tools.py"
       ],
       "returncode": 0,
       "skipped": 0,
       "tests": 11,
-      "wall_seconds": 1.19774
+      "wall_seconds": 1.682437
     }
   }
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the bioRxiv main manuscript and supplement as styled DOCX files.
+"""Build the arXiv main manuscript and supplement as styled DOCX files.
 
 Design system: ``narrative_proposal`` with a named ``academic_manuscript``
 override (Times New Roman, black hierarchy, compact title block) and the
@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PREPRINT = ROOT / "preprint"
 SKILL_SCRIPTS = Path(
     "/Users/0xnexis/.codex/plugins/cache/openai-primary-runtime/"
-    "documents/26.709.11516/skills/documents/scripts"
+    "documents/26.715.12143/skills/documents/scripts"
 )
 
 sys.path.insert(0, str(SKILL_SCRIPTS))
@@ -321,7 +321,7 @@ def build_from_markdown(source: Path, output: Path) -> None:
     lines = source.read_text(encoding="utf-8").splitlines()
     doc = Document()
     configure_styles(doc)
-    configure_sections(doc, "Plato-Bio | bioRxiv preprint")
+    configure_sections(doc, "Plato-Bio | arXiv preprint")
 
     index = 0
     first_heading = True
@@ -427,8 +427,8 @@ def build_from_markdown(source: Path, output: Path) -> None:
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
             p.paragraph_format.space_after = Pt(3)
         elif (
-            text.startswith("**Article category")
-            or text.startswith("**bioRxiv")
+            text.startswith("**arXiv")
+            or text.startswith("**Cross-list")
             or text.startswith("**Keywords")
         ):
             p.alignment = WD_ALIGN_PARAGRAPH.LEFT
@@ -584,15 +584,21 @@ def build_supplement(output: Path) -> None:
             "False novelty",
         ]
     ]
+    condition_labels = {
+        "frequency": "Frequency",
+        "tfidf": "TF-IDF",
+        "abc_bridge": "A–B/B–C bridge",
+        "evidence_aware": "Evidence-aware",
+    }
     for fixture, rows in (
-        ("Synthetic smoke", smoke_summary),
-        ("Historical pilot", history_summary),
+        ("Synthetic", smoke_summary),
+        ("Historical", history_summary),
     ):
         for row in rows:
             temporal_rows.append(
                 [
                     fixture,
-                    row["condition"],
+                    condition_labels.get(row["condition"], row["condition"]),
                     row["task_count"],
                     f"{float(row['mean_reciprocal_rank']):.3f}",
                     f"{float(row['recall_at_1']):.3f}",
@@ -654,20 +660,12 @@ def build_supplement(output: Path) -> None:
         "The default evaluation runner executes idea and method stages only. It does not execute results or paper generation in this release. Live LLM, E2B, Modal, hosted PostgreSQL, and authenticated Hugging Face evaluations require external credentials or services and were not inferred from deterministic tests. Same-model reviewer roles are self-critique, not peer review. The autonomous-loop adapters do not establish autonomous scientific improvement.",
     )
 
-    doc.add_heading("S9. bioRxiv packaging notes", level=1)
-    notes = [
-        "Main manuscript is supplied as one PDF with embedded figures and tables.",
-        "Supplemental data are separate from the main manuscript.",
-        "The work is an English-language computational methods/validation article with Results and Discussion.",
-        "No clinical, human-subject, animal, or identifiable-person data are included.",
-        "Generative AI assistance is disclosed; the human author remains accountable and the AI is not an author.",
-        "The related Denario arXiv preprint is cited as prior work and is not duplicated by this study.",
-    ]
-    for item in notes:
-        p = doc.add_paragraph(style="List Bullet")
-        spacer = p.add_run(" ")
-        set_font(spacer)
-        add_inline_markdown(p, item)
+    doc.add_heading("S9. arXiv packaging notes", level=1)
+    add_simple_paragraph(
+        doc,
+        "The main manuscript is supplied as LaTeX source with embedded figures and tables; supplemental data are separate. The work is an English-language computational methods and validation article with Results and Discussion. No clinical, human-subject, animal, or identifiable-person data are included. Generative AI assistance is disclosed, the human author remains accountable, and the AI is not an author. The related Denario arXiv preprint is cited as prior work and is not duplicated by this study.",
+        size=10.5,
+    )
 
     core = doc.core_properties
     core.title = "Supplementary Material: Plato-Bio"
@@ -677,7 +675,7 @@ def build_supplement(output: Path) -> None:
 
 
 def main() -> int:
-    main_docx = PREPRINT / "Plato-Bio-bioRxiv-preprint.docx"
+    main_docx = PREPRINT / "Plato-Bio-arXiv-preprint.docx"
     supplement_docx = PREPRINT / "Plato-Bio-Supplement.docx"
     build_from_markdown(PREPRINT / "manuscript.md", main_docx)
     build_supplement(supplement_docx)
