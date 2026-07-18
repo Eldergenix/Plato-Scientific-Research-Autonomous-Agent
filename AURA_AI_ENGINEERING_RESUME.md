@@ -115,7 +115,7 @@ Mobile AI engineer who built an AI-agent product from the model runtime through 
 
 ## Copy Block C: Aura Experience Bullet Bank
 
-For a one-page resume, select six to eight bullets. Put the bullets most similar to the job description first.
+For a strict one-page resume, select six bullets; for a two-page version, select up to eight. Put the bullets most similar to the job description first.
 
 ### 0-to-1 Product Ownership
 
