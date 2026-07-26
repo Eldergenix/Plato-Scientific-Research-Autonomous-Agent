@@ -6,7 +6,7 @@
 - **Primary category:** q-bio.QM (Quantitative Methods)
 - **Cross-list:** cs.AI (Artificial Intelligence)
 - **Title:** Plato-Bio: verification-first biological novelty screening with temporal rediscovery and structural benchmarks
-- **Authors:** Stefan G. Creadore (Independent Researcher, Valrico, Florida, United States)
+- **Authors:** Stefan G. Creadore (Praxa Labs, an independent open-source research initiative, United States)
 - **Submitter is an author:** Yes
 - **Comments:** 16 pages, 6 figures, 3 tables. Companion code and data: https://github.com/Eldergenix/Plato-Scientific-Research-Autonomous-Agent. This fork-specific validation study cites, but does not duplicate, arXiv:2510.26887.
 - **Report number:** Leave blank; no institutional report number has been assigned.
@@ -31,7 +31,7 @@ Before clicking **Submit Article**, the corresponding author must confirm that:
 
 - `Stefan G. Creadore` is the intended publication name and the sole author;
 - no other contributor meets authorship criteria and all necessary submission consent has been obtained;
-- `Independent Researcher, Valrico, Florida, United States` is accurate and not presented as an institutional affiliation;
+- `Praxa Labs, an independent open-source research initiative, United States` is accurate and does not imply that Praxa Labs is an incorporated entity or institutional affiliation;
 - the correspondence address `stefan@nex-t1.ai` and ORCID `0000-0003-2268-053X` are correct;
 - the funding, competing-interest, ethics, author-contribution, and generative-AI statements are accurate;
 - this manuscript is a new fork-specific study rather than a replacement for arXiv:2510.26887;

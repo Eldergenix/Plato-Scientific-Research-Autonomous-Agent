@@ -2,7 +2,7 @@
 
 **Stefan G. Creadore¹**
 
-¹ Independent Researcher, Valrico, Florida, United States
+¹ Praxa Labs, an independent open-source research initiative, United States
 
 **Correspondence:** stefan@nex-t1.ai
 

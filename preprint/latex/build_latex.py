@@ -264,7 +264,7 @@ def build_main() -> Path:
     document.extend(
         [
             r"\title{" + inline(title) + "}",
-            r"\author{Stefan G. Creadore\\\small Independent Researcher, Valrico, Florida, United States}",
+            r"\author{Stefan G. Creadore\\\small Praxa Labs, an independent open-source research initiative, United States}",
             r"\date{}",
             r"\begin{document}",
             r"\maketitle",
@@ -450,7 +450,7 @@ def build_supplement() -> Path:
     content = [
         PREAMBLE,
         r"\title{Supplementary Material: Plato-Bio}",
-        r"\author{Stefan G. Creadore\\\small Independent Researcher, Valrico, Florida, United States}",
+        r"\author{Stefan G. Creadore\\\small Praxa Labs, an independent open-source research initiative, United States}",
         r"\date{}",
         r"\begin{document}",
         r"\maketitle",

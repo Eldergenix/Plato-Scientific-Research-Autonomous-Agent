@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PREPRINT = ROOT / "preprint"
 SKILL_SCRIPTS = Path(
     "/Users/0xnexis/.codex/plugins/cache/openai-primary-runtime/"
-    "documents/26.715.12143/skills/documents/scripts"
+    "documents/26.723.12215/skills/documents/scripts"
 )
 
 sys.path.insert(0, str(SKILL_SCRIPTS))
@@ -420,7 +420,7 @@ def build_from_markdown(source: Path, output: Path) -> None:
         if text.startswith("**Stefan G. Creadore"):
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
             p.paragraph_format.space_after = Pt(3)
-        elif text.startswith("¹ Independent Researcher"):
+        elif text.startswith("¹ Praxa Labs"):
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
             p.paragraph_format.space_after = Pt(3)
         elif text.startswith("**Correspondence") or text.startswith("**ORCID"):

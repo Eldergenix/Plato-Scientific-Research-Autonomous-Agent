@@ -6,7 +6,7 @@
 - **Article category:** New Results
 - **Subject area:** Bioinformatics
 - **Author:** Stefan G. Creadore
-- **Affiliation:** Independent Researcher, Valrico, Florida, United States
+- **Affiliation:** Praxa Labs, an independent open-source research initiative, United States
 - **Corresponding author:** Stefan G. Creadore (stefan@nex-t1.ai)
 - **ORCID:** 0000-0003-2268-053X
 - **Keywords:** scientific agents; bioinformatics; biological novelty; literature-based discovery; temporal rediscovery; reproducibility; AlphaFold
@@ -22,10 +22,10 @@
 
 - On 12 July 2026, the bioRxiv author profile was standardized to **Independent Researcher** with `https://eldergenix.com` as the profile URL.
 - ORCID `0000-0003-2268-053X` was confirmed as connected to the author profile.
-- The canonical Markdown, Word, PDF, LaTeX, and supplemental deliverables use the same author name and independent-researcher affiliation.
+- The canonical Markdown, Word, PDF, LaTeX, and supplemental deliverables use the same author name and transparent Praxa Labs initiative affiliation.
 - The decision for `BIORXIV/2026/737995` states that bioRxiv requires a verifiable established research organization that provides oversight of the submitted research. An independent-researcher label alone therefore does **not** cure the screening rejection.
 - The Author Area currently shows the manuscript as screened, with no returned-paper or revision action available. Do not open a duplicate submission.
-- A future bioRxiv submission should name an organization only if that organization genuinely oversees this research and has agreed that its affiliation may be used. Otherwise, contact bioRxiv for guidance or deposit this independent work with a preprint service whose affiliation policy permits it.
+- Praxa Labs is presented as an independent open-source research initiative, not as an incorporated entity or institutional affiliation. Confirm that a preprint service permits this descriptive affiliation before deposit.
 
 ## Abstract
 

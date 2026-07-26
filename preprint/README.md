@@ -3,7 +3,7 @@
 This directory contains the arXiv-oriented manuscript, submission source, and evidence used to produce it.
 
 The author metadata is standardized across the portal and publication files as
-**Stefan G. Creadore, Independent Researcher, Valrico, Florida, United States**
+**Stefan G. Creadore, Praxa Labs, an independent open-source research initiative, United States**
 (ORCID: `0000-0003-2268-053X`; correspondence: `stefan@nex-t1.ai`).
 
 The current release targets arXiv category `q-bio.QM`, with `cs.AI` as a
