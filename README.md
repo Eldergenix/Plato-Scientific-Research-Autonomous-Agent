@@ -18,7 +18,7 @@ to verify?
 
 Stefan G. Creadore is the sole author, writing through **Praxa Labs, an
 independent open-source research initiative, United States**. The manuscript is
-prepared for arXiv with `q-bio.QM` as the primary category and `cs.AI` as a
+prepared for arXiv with `cs.AI` as the primary category and `q-bio.QM` as a
 cross-list. It has not been peer reviewed, and this repository does not claim
 that arXiv submission or moderation validates its conclusions.
 

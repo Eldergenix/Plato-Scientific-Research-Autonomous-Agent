@@ -8,9 +8,9 @@
 
 **ORCID:** https://orcid.org/0000-0003-2268-053X
 
-**arXiv primary category:** q-bio.QM (Quantitative Methods)
+**arXiv primary category:** cs.AI (Artificial Intelligence)
 
-**Cross-list:** cs.AI (Artificial Intelligence)
+**Cross-list:** q-bio.QM (Quantitative Methods)
 
 **Keywords:** scientific agents; bioinformatics; biological novelty; literature-based discovery; temporal rediscovery; reproducibility; AlphaFold
 

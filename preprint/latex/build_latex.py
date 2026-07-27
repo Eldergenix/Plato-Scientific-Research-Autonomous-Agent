@@ -268,7 +268,7 @@ def build_main() -> Path:
             r"\date{}",
             r"\begin{document}",
             r"\maketitle",
-            r"\begin{center}\small Correspondence: \href{mailto:stefan@nex-t1.ai}{stefan@nex-t1.ai} \quad ORCID: \url{https://orcid.org/0000-0003-2268-053X}\\arXiv primary category: q-bio.QM (Quantitative Methods) \quad Cross-list: cs.AI (Artificial Intelligence)\end{center}",
+            r"\begin{center}\small Correspondence: \href{mailto:stefan@nex-t1.ai}{stefan@nex-t1.ai} \quad ORCID: \url{https://orcid.org/0000-0003-2268-053X}\\arXiv primary category: cs.AI (Artificial Intelligence) \quad Cross-list: q-bio.QM (Quantitative Methods)\end{center}",
             r"\begin{abstract}",
             "\n\n".join(inline(line) for line in abstract_lines),
             r"\end{abstract}",

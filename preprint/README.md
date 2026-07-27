@@ -6,7 +6,7 @@ The author metadata is standardized across the portal and publication files as
 **Stefan G. Creadore, Praxa Labs, an independent open-source research initiative, United States**
 (ORCID: `0000-0003-2268-053X`; correspondence: `stefan@nex-t1.ai`).
 
-The current release targets arXiv category `q-bio.QM`, with `cs.AI` as a
+The current release targets arXiv category `cs.AI`, with `q-bio.QM` as a
 cross-list. The earlier bioRxiv package and screening record are retained for
 provenance; they are not the files to use for a new arXiv submission.
 

@@ -3,8 +3,8 @@
 ## Portal fields
 
 - **Submission type:** New submission
-- **Primary category:** q-bio.QM (Quantitative Methods)
-- **Cross-list:** cs.AI (Artificial Intelligence)
+- **Primary category:** cs.AI (Artificial Intelligence)
+- **Cross-list:** q-bio.QM (Quantitative Methods)
 - **Title:** Plato-Bio: verification-first biological novelty screening with temporal rediscovery and structural benchmarks
 - **Authors:** Stefan G. Creadore (Praxa Labs, an independent open-source research initiative, United States)
 - **Submitter is an author:** Yes
