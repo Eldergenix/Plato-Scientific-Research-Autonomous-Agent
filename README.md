@@ -7,35 +7,162 @@ research ideas, methods, executable analyses, and manuscript drafts. Its
 verification gates are designed to make evidence and limitations inspectable;
 human authors remain responsible for scientific validity and publication.
 
-## Research validation and bioRxiv preprint
+## Plato-Bio preprint
 
-This repository now includes a submission-oriented computational biology study:
-**“Plato-Bio: verification-first biological novelty screening with temporal
-rediscovery and structural benchmarks.”** The revised paper combines a
-source-code audit, deterministic software validation, a frozen historical
-literature-rediscovery pilot, and a declared 15-protein AlphaFold-to-experiment
-screen.
+**Plato-Bio: verification-first biological novelty screening with temporal
+rediscovery and structural benchmarks** is a fork-specific methods and
+validation study of Plato's computational-biology workflow. It asks a narrow
+question: can an AI-assisted research system make its evidence, intermediate
+claims, calculations, and limitations inspectable enough for a human scientist
+to verify?
 
-- [Main preprint (PDF)](preprint/Plato-Bio-bioRxiv-preprint.pdf)
-- [Supplementary material (PDF)](preprint/Plato-Bio-Supplement.pdf)
-- [Editable manuscript (DOCX)](preprint/Plato-Bio-bioRxiv-preprint.docx)
-- [LaTeX manuscript source](preprint/latex/plato-bio.tex)
-- [LaTeX-compiled preprint (PDF)](preprint/latex/Plato-Bio-LaTeX-preprint.pdf)
-- [LaTeX-compiled supplement (PDF)](preprint/latex/Plato-Bio-LaTeX-Supplement.pdf)
-- [Submission metadata and human confirmation gate](preprint/SUBMISSION_METADATA.md)
-- [Reproduction guide](preprint/README.md)
+Stefan G. Creadore is the sole author, writing through **Praxa Labs, an
+independent open-source research initiative, United States**. The manuscript is
+prepared for arXiv with `q-bio.QM` as the primary category and `cs.AI` as a
+cross-list. It has not been peer reviewed, and this repository does not claim
+that arXiv submission or moderation validates its conclusions.
 
-The publication files identify Stefan G. Creadore as an Independent Researcher
-and include the connected ORCID. The current bioRxiv decision nevertheless
-requires a verifiable established research organization with oversight
-responsibility, so the rejected record must not be duplicated or resubmitted
-under an invented affiliation. The submission metadata records the current
-portal state and the valid path to a future bioRxiv deposit.
+### Important links
+
+- [Current preprint PDF](preprint/latex/Plato-Bio-LaTeX-preprint.pdf)
+- [Supplementary PDF](preprint/latex/Plato-Bio-LaTeX-Supplement.pdf)
+- [Canonical manuscript](preprint/manuscript.md)
+- [LaTeX source](preprint/latex/plato-bio.tex) and
+  [BibTeX references](preprint/latex/references.bib)
+- [Reproduction and artifact guide](preprint/README.md)
+- [arXiv source package](preprint/arxiv/Plato-Bio-arXiv-source.zip) and
+  [submission metadata](preprint/ARXIV_SUBMISSION_METADATA.md)
+- [Experiment scripts](preprint/experiments),
+  [machine-readable results](preprint/results), and
+  [figures](preprint/figures)
+- [Author ORCID](https://orcid.org/0000-0003-2268-053X)
+- [GitHub repository](https://github.com/Eldergenix/Plato-Scientific-Research-Autonomous-Agent)
+
+### Abstract
+
+Large language model research agents can connect literature retrieval,
+analysis code, and manuscript preparation, but coherent output does not
+establish scientific validity. Plato-Bio extends the open Plato/Denario
+architecture with explicit workflow states, provenance records, citation
+checks, claim-to-evidence links, scoped file writes, and publication gates. A
+source audit found and repaired three measurement defects: loss of task domain
+in the default evaluation factory, omission of declared method signals from
+scoring, and evidence sidecars that lacked the drafted-claim denominator.
+
+The study then evaluated two deliberately limited use cases. In one frozen
+historical task, independent pre-1986 literature bridges ranked the
+later-studied fish-oil/Raynaud relation first. In a separate comparison of
+AlphaFold models with experimental structures for 15 human proteins, 11
+targets had high-confidence-core Cα RMSD below 1 Å (median 0.501 Å), while 27
+traceable discrepancy regions were retained as unvalidated hypotheses. These
+results support reproducible software contracts and auditable screening
+baselines—not autonomous discovery, general agent efficacy, or established
+biological novelty.
+
+### Overview
+
+Plato represents research as explicit state machines rather than one
+monolithic prompt. The biology profile routes retrieval and analysis toward
+biomedical sources and tools; downstream controls emit citation reports,
+claim/evidence matrices, consistency checks, run manifests, analysis outputs,
+and manuscript artifacts. Human authors remain responsible for source review,
+scientific interpretation, authorship, and publication.
+
+The study separates three evidence lanes:
+
+1. **Software-contract validation** tests whether implemented controls behave
+   as declared.
+2. **Temporal rediscovery** tests whether pre-cutoff literature can recover a
+   relation studied later.
+3. **Structural hypothesis triage** compares declared AlphaFold and
+   experimental structures while preserving confidence and experimental
+   context.
+
+The lanes are complementary but not interchangeable. Passing software tests
+does not measure biological accuracy, and a retrospective or descriptive
+benchmark does not establish prospective novelty.
+
+### Scientific study and experiments
+
+| Experiment | Design | Primary outputs |
+|---|---|---|
+| Source audit and measurement repair | Inspected the evaluation factory, method-signal scoring, and claim/evidence persistence; added regression coverage for each repair | Correct biology routing, `method_signal_recall`, and Claim plus EvidenceLink JSONL records |
+| Deterministic software validation | Ran biology, genomics-adapter, evidence/citation, adversarial-safety, and full Python suites on a clean recorded revision | 931 passes and 6 skips in the full suite; no failures or errors |
+| Temporal rediscovery pilot | Ranked candidates from a frozen set of pre-1986 PubMed records, with later validation held out | Frequency, TF–IDF, A–B/B–C bridge, and evidence-aware rankings with explicit controls and abstention |
+| Original globin comparison | Sequence-aware Cα alignment and Kabsch superposition for hemoglobin α, hemoglobin β, and myoglobin | Sub-ångström RMSD, residue-level error, pLDDT, source URLs, and hashes |
+| Declared 15-protein structural screen | Compared AlphaFold predictions with experimental PDB structures using whole-chain and pLDDT≥70 core fits | Target/residue CSVs, bootstrap summaries, 27 traceable discrepancy regions, and `not_established` novelty labels |
+| External benchmark alignment | Used ScienceAgentBench, BioDSA-1K, BixBench, and the pinned CompBioBench catalog as design constraints | Executable artifacts, baselines, provenance, abstention, and explicit failure boundaries; no claimed CompBioBench score |
+
+### Results
+
+- The complete recorded Python suite contained 937 tests: **931 passed, 6
+  skipped, 0 failed, and 0 errored**. Targeted suites overlap with the full
+  suite and therefore are not added to that total.
+- In the single historical rediscovery task, corpus frequency ranked the
+  held-out fish-oil/Raynaud relation third (MRR 0.333), TF–IDF ranked it second
+  (MRR 0.500), and both bridge-only and evidence-aware conditions ranked it
+  first (MRR and Recall@1 1.000). This is one retrospectively curated case, not
+  a population estimate.
+- The 15-target structure screen contained **2,688 matched residues**. Median
+  whole-chain RMSD was 0.520 Å; median high-confidence-core RMSD was 0.501 Å,
+  with 11 of 15 targets below 1 Å.
+- Four targets retained core RMSD above 2 Å: KRAS, SUMO1, TP53, and estrogen
+  receptor α. Confidence masking reduced SUMO1 from 16.610 Å over the whole
+  chain to 2.576 Å over 74 high-confidence residues.
+- The declared rule emitted **27 high-confidence discrepancy regions**, nine
+  spanning at least two adjacent residues. Every region remains an
+  unvalidated hypothesis requiring construct, ligand, oligomeric-state,
+  alternate-structure, and experimental review.
+
+### Conclusions
+
+Plato-Bio demonstrates an inspectable route from retrieved literature or
+predicted structures to candidate hypotheses. Its strongest contribution is
+methodological: the workflow preserves known controls, abstentions, provenance,
+and explicit `not_established` labels rather than treating difference or fluent
+prose as discovery. General efficacy claims require a larger preregistered
+benchmark, repeated agent runs, blinded expert adjudication, independent
+replication, prospective analysis, and experimental validation.
+
+### Selected scientific citations
+
+1. King RD, et al. “The automation of science.” *Science* (2009).
+   [doi:10.1126/science.1165620](https://doi.org/10.1126/science.1165620)
+2. Lu C, et al. “The AI Scientist: Towards Fully Automated Open-Ended
+   Scientific Discovery” (2024).
+   [arXiv:2408.06292](https://arxiv.org/abs/2408.06292)
+3. Schmidgall S, et al. “Agent Laboratory: Using LLM Agents as Research
+   Assistants” (2025).
+   [arXiv:2501.04227](https://arxiv.org/abs/2501.04227)
+4. Villaescusa-Navarro F, et al. “The Denario project: deep knowledge AI
+   agents for scientific discovery” (2025).
+   [arXiv:2510.26887](https://arxiv.org/abs/2510.26887)
+5. Varadi M, et al. “AlphaFold Protein Structure Database.” *Nucleic Acids
+   Research* (2022).
+   [doi:10.1093/nar/gkab1061](https://doi.org/10.1093/nar/gkab1061)
+6. Jumper J, et al. “Highly accurate protein structure prediction with
+   AlphaFold.” *Nature* (2021).
+   [doi:10.1038/s41586-021-03819-2](https://doi.org/10.1038/s41586-021-03819-2)
+7. Chen Z, et al. “ScienceAgentBench: Toward Rigorous Assessment of Language
+   Agents for Data-Driven Scientific Discovery.” *ICLR* (2025).
+   [Conference paper](https://proceedings.iclr.cc/paper_files/paper/2025/hash/f12b4df26344f3be803c06b555252efe-Abstract-Conference.html)
+8. Wang Z, et al. “BioDSA-1K: Benchmarking Data Science Agents for Biomedical
+   Research” (2025).
+   [arXiv:2505.16100](https://arxiv.org/abs/2505.16100)
+9. Mitchener L, et al. “BixBench: A Comprehensive Benchmark for LLM-Based
+   Agents in Computational Biology” (2025).
+   [arXiv:2503.00096](https://arxiv.org/abs/2503.00096)
+
+The [canonical manuscript](preprint/manuscript.md) contains the complete
+reference list, including the PDB, Kabsch, lDDT, FAIR, and historical Raynaud
+literature used by the experiments.
+
+### Reproduce the study
 
 The validation package records exact literature cutoffs, PMIDs, candidate
 rankings, abstentions, input URLs, versions, SHA-256 hashes, target- and
-residue-level structural results, exact test counts, and figure-generation code.
-Reproduce it with:
+residue-level structural results, exact test counts, and figure-generation
+code:
 
 ```bash
 .venv/bin/python preprint/experiments/run_globin_structure_benchmark.py
@@ -268,10 +395,6 @@ docker build -f docker/Dockerfile.dev -t plato_src .
 ## Contributing
 
 Pull requests are welcome! Feel free to open an issue for bugs, comments, questions and suggestions.
-
-<!-- ## Citation
-
-If you use this library please link this repository and cite [arXiv:2506.xxxxx](arXiv:x2506.xxxxx). -->
 
 ## Citation
 
