@@ -17,13 +17,14 @@ claims, calculations, and limitations inspectable enough for a human scientist
 to verify?
 
 Stefan G. Creadore is the sole author, writing through **Praxa Labs, an
-independent open-source research initiative, United States**. The manuscript is
-prepared for arXiv with `cs.AI` as the primary category and `q-bio.QM` as a
-cross-list. It has not been peer reviewed, and this repository does not claim
-that arXiv submission or moderation validates its conclusions.
+independent open-source research initiative, United States**. The preprint was
+submitted to arXiv on July 27, 2026, with `cs.AI` as the primary category and
+`q-bio.QM` as a cross-list. It has not been peer reviewed, and this repository
+does not claim that arXiv submission or moderation validates its conclusions.
 
 ### Important links
 
+- [Public arXiv record](https://arxiv.org/abs/2607.23975)
 - [Current preprint PDF](preprint/latex/Plato-Bio-LaTeX-preprint.pdf)
 - [Supplementary PDF](preprint/latex/Plato-Bio-LaTeX-Supplement.pdf)
 - [Canonical manuscript](preprint/manuscript.md)
@@ -37,6 +38,7 @@ that arXiv submission or moderation validates its conclusions.
   [figures](preprint/figures)
 - [Author ORCID](https://orcid.org/0000-0003-2268-053X)
 - [GitHub repository](https://github.com/Eldergenix/Plato-Scientific-Research-Autonomous-Agent)
+- [Media kit and verified plain-language summary](docs/plato-bio-media-kit.md)
 
 ### Abstract
 
