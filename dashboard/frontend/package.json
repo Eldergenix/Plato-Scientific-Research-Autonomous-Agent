@@ -35,7 +35,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
-    "@remotion/cli": "^4.0.465",
+    "@remotion/cli": "^4.0.488",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
