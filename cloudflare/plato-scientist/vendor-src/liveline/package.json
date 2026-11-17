@@ -1,0 +1,14 @@
+{
+  "name": "plato-liveline-bundle",
+  "private": true,
+  "description": "Builds public/vendor/liveline-<version>/liveline.js: Liveline plus React in one IIFE exposing window.LivelineKit, so the framework-free UI can mount Liveline charts without a build step.",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12",
+    "liveline": "0.0.7",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  }
+}

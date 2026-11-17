@@ -313,15 +313,26 @@ class DualGraphStore:
     ) -> None:
         """Replace a reservation with the actual usage. Overuse beyond the reservation is
         charged only up to the cap (the request already happened; the cap still holds)."""
+        # The ledger row rides in the same statement and records what was actually charged
+        # (the cap can clip an overrun), so once every reservation settles the ledger sums
+        # to the campaign totals exactly.
         await self._pool.execute(
             """
-            UPDATE plato.research_campaigns
-               SET tokens_used = LEAST(token_budget_max, GREATEST(0, tokens_used - $2 + $3))
-             WHERE id = $1
+            WITH cur AS (
+                SELECT id, tokens_used AS old,
+                       LEAST(token_budget_max, GREATEST(0, tokens_used - $2 + $3)) AS new
+                  FROM plato.research_campaigns WHERE id = $1 FOR UPDATE
+            ), settled AS (
+                UPDATE plato.research_campaigns c SET tokens_used = cur.new
+                  FROM cur WHERE c.id = cur.id
+                RETURNING cur.id, cur.new - cur.old + $2 AS charged
+            )
+            INSERT INTO plato.usage_events (campaign_id, tokens)
+            SELECT id, charged FROM settled WHERE charged > 0
             """,
             campaign_id,
             reserved,
-            actual,
+            max(0, actual),
         )
 
     async def reserve_gpu_seconds(self, campaign_id: uuid.UUID, seconds: int) -> None:
@@ -342,13 +353,21 @@ class DualGraphStore:
     ) -> None:
         await self._pool.execute(
             """
-            UPDATE plato.research_campaigns
-               SET gpu_seconds_used = LEAST(gpu_seconds_max, GREATEST(0, gpu_seconds_used - $2 + $3))
-             WHERE id = $1
+            WITH cur AS (
+                SELECT id, gpu_seconds_used AS old,
+                       LEAST(gpu_seconds_max, GREATEST(0, gpu_seconds_used - $2 + $3)) AS new
+                  FROM plato.research_campaigns WHERE id = $1 FOR UPDATE
+            ), settled AS (
+                UPDATE plato.research_campaigns c SET gpu_seconds_used = cur.new
+                  FROM cur WHERE c.id = cur.id
+                RETURNING cur.id, cur.new - cur.old + $2 AS charged
+            )
+            INSERT INTO plato.usage_events (campaign_id, gpu_seconds)
+            SELECT id, charged FROM settled WHERE charged > 0
             """,
             campaign_id,
             reserved,
-            actual,
+            max(0, actual),
         )
 
     # ------------------------------------------------------------------ knowledge assets

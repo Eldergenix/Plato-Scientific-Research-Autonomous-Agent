@@ -1,4 +1,4 @@
-/* Plato UI kit: smart skeletons, text morph, radial / gauge / slope charts and layout
+/* Plato UI kit: smart skeletons, text morph, live charts (Liveline) and layout
    transitions. Framework free and app agnostic. Every effect degrades to an instant
    update under prefers-reduced-motion, and nothing here throws into the console. */
 (() => {
@@ -6,7 +6,6 @@
 const RM = matchMedia("(prefers-reduced-motion: reduce)");
 const still = () => RM.matches;
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const quiet = p => { p?.catch?.(() => {}); return p; };
 
 /* ---------- spring easing ----------
@@ -221,8 +220,8 @@ function morph(el, text, opts = {}) {
 }
 
 /* ---------- continuity across re-renders ----------
-   Views re-render with innerHTML. Elements marked data-mk (text) or data-arc (chart arc)
-   remember their last value per key, so a re-render morphs from it instead of jumping. */
+   Views re-render with innerHTML. Elements marked data-mk remember their last text per
+   key, so a re-render morphs from it instead of jumping. */
 const MEM = new Map();
 function hydrate(root, scope = "") {
   root.querySelectorAll("[data-mk]").forEach(el => {
@@ -235,188 +234,38 @@ function hydrate(root, scope = "") {
       morph(el, next, {dir: Number.isFinite(v) && Number.isFinite(prev.v) ? (v < prev.v ? -1 : 1) : undefined});
     } else el.dataset.mt = next;
   });
-  root.querySelectorAll("[data-arc]").forEach((el, i) => {
-    if (el.closest(".sk-src")) return;
-    const k = scope + el.dataset.arc, da = el.getAttribute("stroke-dasharray"), off = el.getAttribute("stroke-dashoffset") || "0";
-    const prev = MEM.get(k);
-    MEM.set(k, {da, off});
-    if (still() || (prev && prev.da === da && prev.off === off)) return;
-    const from = prev || {da: "0 100", off: el.dataset.arc0 || off};
-    quiet(el.animate([{strokeDasharray: from.da, strokeDashoffset: from.off}, {strokeDasharray: da, strokeDashoffset: off}],
-      {duration: prev ? 700 : 1100, delay: prev ? 0 : 80 + (+el.dataset.i || i) * 90, easing: OUT, fill: "backwards"}).finished);
-  });
 }
 
-/* ---------- radial charts ---------- */
-const arcDash = (v, cap) => v >= 99.95 ? ["100 0", "0"] : v <= 2 * cap ? ["0.001 100", (-v / 2).toFixed(3)] : [`${(v - 2 * cap).toFixed(3)} 100`, (-cap).toFixed(3)];
-const pctText = v => Math.round(clamp(v, 0, 1) * 100) + "%";
-function legend(id, series) {
-  return `<div class="rl" role="list">${series.map(s => `<button type="button" class="rl-i" role="listitem" data-series="${esc(s.key)}" data-cv="${esc(s.cv ?? pctText(s.value))}" data-cl="${esc(s.cl ?? s.label)}">
-    <i style="background:${s.color}"></i><span class="trunc">${esc(s.label)}</span><b data-mk="${esc(id)}:l:${esc(s.key)}" data-num data-v="${s.value}">${esc(s.lv ?? pctText(s.value))}</b></button>`).join("")}</div>`;
+/* ---------- live charts ----------
+   Liveline draws every chart: React and liveline ship as one vendored IIFE that loads on
+   first use. Each chart keeps one element per key, so an innerHTML re-render re-attaches
+   the same canvas and React root and the line keeps moving from where it was. */
+const LL_SRC = "/vendor/liveline-0.0.7/liveline.js";
+let llReady = null;
+const loadLL = () => llReady ??= new Promise((ok, no) => {
+  if (window.LivelineKit) return ok(window.LivelineKit);
+  const s = document.createElement("script");
+  s.src = LL_SRC;
+  s.async = true;
+  s.onload = () => window.LivelineKit ? ok(window.LivelineKit) : no(new Error("The chart library did not start."));
+  s.onerror = () => { llReady = null; s.remove(); no(new Error("Could not load the chart library.")); };
+  document.head.append(s);
+});
+const CHARTS = new Map();
+/** Mount or update the Liveline chart `key` inside `slot` with Liveline props. */
+function chart(slot, key, props) {
+  if (!slot) return;
+  let c = CHARTS.get(key);
+  if (!c) { c = {el: document.createElement("div"), inst: null, props}; c.el.className = "ll-in"; CHARTS.set(key, c); }
+  c.props = props;
+  if (c.el.parentNode !== slot) slot.replaceChildren(c.el);
+  if (c.inst) { c.inst.update(props); return; }
+  quiet(loadLL().then(K => { if (!c.inst && CHARTS.get(key) === c) c.inst = K.mount(c.el, c.props); },
+    e => { if (c.el.isConnected) { c.el.className = "ll-in ll-err"; c.el.textContent = e.message; } }));
 }
-function centre(id, c, style = "") {
-  return `<div class="rc"${style ? ` style="${style}"` : ""} data-c0v="${esc(c.value)}" data-c0l="${esc(c.label)}"><b data-mk="${esc(id)}:cv" data-num>${esc(c.value)}</b><span data-mk="${esc(id)}:cl">${esc(c.label)}</span></div>`;
-}
-/** Concentric rings, one per series (value 0..1), with rounded caps and a centre readout.
-    The chart grows with the series count so the readout always gets a `hole`-wide centre. */
-function rings({id, series, sw = 8, gap = 3, hole = 88, size, center, label}) {
-  size ??= Math.max(140, hole + 2 * sw + 2 * (series.length - 1) * (sw + gap) + 2);
-  const c = size / 2, R = c - sw / 2 - 1, inner = R - (series.length - 1) * (sw + gap) - sw / 2;
-  const g = series.map((s, i) => {
-    const r = R - i * (sw + gap);
-    if (r <= sw) return "";
-    const v = clamp(s.value, 0, 1) * 100, cap = (sw / 2) / (2 * Math.PI * r) * 100, [da, off] = arcDash(v, cap);
-    return `<g data-series="${esc(s.key)}"><circle class="trk" cx="${c}" cy="${c}" r="${r}" stroke-width="${sw}"/>` +
-      (v > 0 ? `<circle class="arc" data-arc="${esc(id)}:${esc(s.key)}" data-i="${i}" data-arc0="${(-cap).toFixed(3)}" cx="${c}" cy="${c}" r="${r}" stroke="${s.color}" stroke-width="${sw}" pathLength="100" stroke-dasharray="${da}" stroke-dashoffset="${off}" transform="rotate(-90 ${c} ${c})"/>` : "") +
-      `<circle class="hit" cx="${c}" cy="${c}" r="${r}" stroke-width="${sw + gap}"/></g>`;
-  }).join("");
-  return `<div class="radial" data-radial="${esc(id)}"><div class="rf" style="width:${size}px;height:${size}px">
-    <svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" role="img" aria-label="${esc(label)}">${g}</svg>${centre(id, center, `padding:0 ${Math.max(0, c - inner + 4).toFixed(1)}px`)}</div>${legend(id, series)}</div>`;
-}
-/** Semicircle gauge: concentric half rings over the top, readout under the arc. */
-function gauge({id, series, w = 196, sw = 10, gap = 6, center, label}) {
-  const c = w / 2, R = c - sw / 2 - 1, h = Math.ceil(c + 4);
-  const g = series.map((s, i) => {
-    const r = R - i * (sw + gap);
-    if (r <= sw) return "";
-    const d = `M ${(c - r).toFixed(2)} ${c} A ${r} ${r} 0 0 1 ${(c + r).toFixed(2)} ${c}`;
-    const v = clamp(s.value, 0, 1) * 100, cap = (sw / 2) / (Math.PI * r) * 100;
-    const da = v <= 2 * cap ? "0.001 100" : `${(v - 2 * cap).toFixed(3)} 100`, off = v <= 2 * cap ? (-v / 2).toFixed(3) : (-cap).toFixed(3);
-    return `<g data-series="${esc(s.key)}"><path class="trk" d="${d}" stroke-width="${sw}"/>` +
-      (v > 0 ? `<path class="arc" data-arc="${esc(id)}:${esc(s.key)}" data-i="${i}" data-arc0="${(-cap).toFixed(3)}" d="${d}" stroke="${s.color}" stroke-width="${sw}" pathLength="100" stroke-dasharray="${da}" stroke-dashoffset="${off}"/>` : "") +
-      `<path class="hit" d="${d}" stroke-width="${sw + gap}"/></g>`;
-  }).join("");
-  return `<div class="radial gauge" data-radial="${esc(id)}"><div class="rf" style="width:${w}px;height:${h}px">
-    <svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img" aria-label="${esc(label)}">${g}</svg>${centre(id, center)}</div>${legend(id, series)}</div>`;
-}
-/** Hover or focus a ring or legend entry: isolate it and morph the centre readout. */
-function bindRadials(root) {
-  root.querySelectorAll("[data-radial]").forEach(ch => {
-    if (ch.dataset.bound) return;
-    ch.dataset.bound = "1";
-    const rc = ch.querySelector(".rc"), cv = rc.querySelector("b"), cl = rc.querySelector("span");
-    const set = key => {
-      if (ch.dataset.focus === (key || "")) return;
-      ch.dataset.focus = key || "";
-      ch.classList.toggle("iso", !!key);
-      ch.querySelectorAll("[data-series]").forEach(e => e.classList.toggle("on", e.dataset.series === key));
-      const li = key && ch.querySelector(`.rl-i[data-series="${CSS.escape(key)}"]`);
-      morph(cv, li ? li.dataset.cv : rc.dataset.c0v, {num: true});
-      morph(cl, li ? li.dataset.cl : rc.dataset.c0l);
-    };
-    ch.addEventListener("pointerover", e => { const s = e.target.closest("[data-series]"); if (s) set(s.dataset.series); });
-    ch.addEventListener("pointerleave", () => set(null));
-    ch.addEventListener("focusin", e => { const s = e.target.closest("[data-series]"); if (s) set(s.dataset.series); });
-    ch.addEventListener("focusout", e => { if (!ch.contains(e.relatedTarget)) set(null); });
-  });
-}
-
-/* ---------- slope chart ----------
-   One line per item from a left to a right value, an optional shaded band, labels at the
-   right end pushed apart so they never overlap. Hover traces the nearest line; click (or
-   Enter) pins it and dims the rest; arrow keys walk the lines; an inspector below says
-   what the highlighted line means. Re-measures on resize. */
-function slope(host, cfg) {
-  if (!host) return;
-  host._sl = cfg;
-  host.classList.add("sl");
-  if (!host._ro && typeof ResizeObserver === "function") {
-    host._ro = new ResizeObserver(() => requestAnimationFrame(() => {
-      if (!host.isConnected) { host._ro.disconnect(); return; }
-      if (host.clientWidth !== host._w) drawSlope(host, false);
-    }));
-    host._ro.observe(host);
-  }
-  const first = !MEM.has("slope:" + cfg.key);
-  MEM.set("slope:" + cfg.key, 1);
-  drawSlope(host, first && !still());
-  if (!host._bound) bindSlope(host);
-}
-function drawSlope(host, animate) {
-  const cfg = host._sl, items = cfg.items, W = host.clientWidth;
-  host._w = W;
-  if (!W) return;
-  const narrow = W < 560, H = cfg.height || 280;
-  const M = {t: 26, r: narrow ? 20 : Math.min(230, Math.round(W * 0.34)), b: 26, l: 46};
-  const xL = M.l + (narrow ? 10 : 28), xR = W - M.r, [lo, hi] = cfg.domain;
-  const y = v => M.t + (hi - clamp(v, lo, hi)) / (hi - lo) * (H - M.t - M.b);
-  host._geo = {xL, xR, y};
-  const ticks = cfg.ticks || [lo, 0, hi];
-  let s = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(cfg.label)}">`;
-  if (cfg.band) s += `<rect class="sl-band" x="${xL}" y="${y(cfg.band[1])}" width="${xR - xL}" height="${y(cfg.band[0]) - y(cfg.band[1])}"/><text class="sl-bl" x="${xR - 6}" y="${y(cfg.band[1]) + 13}" text-anchor="end">${esc(cfg.bandLabel || "")}</text>`;
-  for (const t of ticks) s += `<line class="sl-grid${t === 0 ? " z" : ""}" x1="${xL - 6}" x2="${xR}" y1="${y(t)}" y2="${y(t)}"/><text class="sl-tick" x="${xL - 12}" y="${y(t) + 4}" text-anchor="end">${esc(cfg.fmtTick ? cfg.fmtTick(t) : t)}</text>`;
-  s += `<line class="sl-axis" x1="${xL}" x2="${xL}" y1="${M.t - 8}" y2="${H - M.b + 4}"/><line class="sl-axis" x1="${xR}" x2="${xR}" y1="${M.t - 8}" y2="${H - M.b + 4}"/>`;
-  s += `<text class="sl-head" x="${xL}" y="${M.t - 12}" text-anchor="middle">${esc(cfg.leftLabel)}</text><text class="sl-head" x="${xR}" y="${M.t - 12}" text-anchor="middle">${esc(cfg.rightLabel)}</text>`;
-  // Right-end labels: sort by y and relax so neighbours sit at least 15px apart.
-  const lab = items.map(it => ({it, y: y(it.right)})).sort((a, b) => a.y - b.y);
-  const gapY = 15, top = M.t - 4, bot = H - M.b + 4;
-  for (let pass = 0; pass < 40; pass++) {
-    let moved = false;
-    for (let i = 1; i < lab.length; i++) if (lab[i].y - lab[i - 1].y < gapY) { const d = (gapY - (lab[i].y - lab[i - 1].y)) / 2; lab[i - 1].y -= d; lab[i].y += d; moved = true; }
-    if (lab.length) { if (lab[0].y < top) { lab[0].y = top; moved = true; } if (lab[lab.length - 1].y > bot) { lab[lab.length - 1].y = bot; moved = true; } }
-    if (!moved) break;
-  }
-  const maxCh = Math.max(4, Math.floor((M.r - 22) / 6.4));
-  items.forEach((it, i) => {
-    const y1 = y(it.left), y2 = y(it.right), clipped = it.right > hi || it.right < lo;
-    s += `<g class="sl-it" data-id="${esc(it.id)}" style="--c:${it.color}">
-      <path class="sl-ln" d="M${xL} ${y1.toFixed(1)}L${xR} ${y2.toFixed(1)}" pathLength="1"${animate ? ` style="--i:${i}" data-draw` : ""}/>
-      <circle class="sl-dot" cx="${xL}" cy="${y1.toFixed(1)}" r="3"/><circle class="sl-dot" cx="${xR}" cy="${y2.toFixed(1)}" r="${clipped ? 4 : 3.5}"${clipped ? ' data-clip' : ""}/>`;
-    if (!narrow) { const L = lab.find(l => l.it === it), t = it.label.length > maxCh ? it.label.slice(0, maxCh - 1) + "…" : it.label;
-      s += `<text class="sl-lab" x="${xR + 10}" y="${(L.y + 4).toFixed(1)}">${esc(t)}</text>`; }
-    s += `</g>`;
-  });
-  s += `</svg>`;
-  host.innerHTML = s + `<div class="sl-insp" aria-live="polite"></div>`;
-  host.querySelectorAll("[data-draw]").forEach(p => quiet(p.animate([{strokeDashoffset: 1}, {strokeDashoffset: 0}],
-    {duration: 900, delay: 60 + (+p.style.getPropertyValue("--i") || 0) * 45, easing: OUT, fill: "backwards"}).finished));
-  applySlope(host);
-}
-function applySlope(host) {
-  const cfg = host._sl, id = cfg.pinned || cfg.hover;
-  const svg = host.querySelector("svg");
-  if (!svg) return;
-  svg.classList.toggle("iso", !!id);
-  svg.querySelectorAll(".sl-it").forEach(g => { g.classList.toggle("on", g.dataset.id === id); g.classList.toggle("pin", g.dataset.id === cfg.pinned); });
-  const on = id && svg.querySelector(`.sl-it[data-id="${CSS.escape(id)}"]`);
-  if (on) on.parentNode.appendChild(on);  // draw the highlighted line on top
-  const insp = host.querySelector(".sl-insp"), it = cfg.items.find(x => x.id === id);
-  if (insp) insp.innerHTML = it ? cfg.inspect(it, it.id === cfg.pinned) : `<span class="t3">${esc(cfg.hint || "")}</span>`;
-}
-function bindSlope(host) {
-  host._bound = true;
-  host.tabIndex = 0;
-  host.setAttribute("role", "group");
-  const set = (k, v) => { const cfg = host._sl; if (cfg[k] === v) return; cfg[k] = v; if (k === "pinned") cfg.onPin?.(v); applySlope(host); };
-  const nearest = e => {
-    const g = host._geo, svg = host.querySelector("svg");
-    if (!g || !svg) return null;
-    const lab = e.target.closest?.(".sl-it");
-    if (lab && e.target.classList.contains("sl-lab")) return lab.dataset.id;
-    const r = svg.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
-    if (px < g.xL - 24 || px > g.xR + 24) return null;
-    const t = clamp((px - g.xL) / (g.xR - g.xL), 0, 1);
-    let best = null, bd = 14;
-    for (const it of host._sl.items) { const d = Math.abs(g.y(it.left) + (g.y(it.right) - g.y(it.left)) * t - py); if (d < bd) { bd = d; best = it.id; } }
-    return best;
-  };
-  host.addEventListener("pointermove", e => set("hover", nearest(e)));
-  host.addEventListener("pointerleave", () => set("hover", null));
-  host.addEventListener("click", e => {
-    if (e.target.closest(".sl-insp")) return;
-    const id = nearest(e);
-    set("pinned", id && id !== host._sl.pinned ? id : null);
-  });
-  host.addEventListener("keydown", e => {
-    const cfg = host._sl, order = [...cfg.items].sort((a, b) => b.right - a.right).map(x => x.id);
-    if (!order.length) return;
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-      e.preventDefault();
-      const i = order.indexOf(cfg.hover ?? cfg.pinned);
-      set("hover", order[clamp(i < 0 ? 0 : i + (e.key === "ArrowDown" ? 1 : -1), 0, order.length - 1)]);
-    } else if (e.key === "Enter" || e.key === " ") { if (e.target !== host) return; e.preventDefault(); set("pinned", cfg.hover && cfg.hover !== cfg.pinned ? cfg.hover : null); }
-    else if (e.key === "Escape" && cfg.pinned) { e.stopPropagation(); set("pinned", null); }
-  });
+/** Unmount charts no longer on the page (their animation loops would keep running). */
+function sweepCharts() {
+  for (const [k, c] of CHARTS) if (!c.el.isConnected) { c.inst?.unmount(); CHARTS.delete(k); }
 }
 
 /* ---------- layout transitions ----------
@@ -473,5 +322,5 @@ function download(name, text, type = "text/plain") {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-window.Kit = Object.freeze({still, SPRING, skel, paint, skeleton, reveal, swap, morph, hydrate, rings, gauge, bindRadials, slope, transition, copyText, flash, csv, download});
+window.Kit = Object.freeze({still, SPRING, skel, paint, skeleton, reveal, swap, morph, hydrate, chart, sweepCharts, transition, copyText, flash, csv, download});
 })();

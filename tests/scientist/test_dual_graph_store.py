@@ -247,6 +247,36 @@ async def test_concurrent_token_reservations_never_overshoot(store, campaign):
         )
 
 
+async def test_settled_usage_is_ledgered_with_the_totals(store, campaign):
+    """Each settle writes what it charged to plato.usage_events in the same statement, so
+    the burn chart sums to the campaign totals; refunds write nothing, and an overrun the
+    cap clips is ledgered at the clipped amount."""
+    program, _ = campaign
+    cid = await store.create_campaign(program, "ledgered", token_budget_max=1_000)
+    await store.reserve_tokens(cid, 700)
+    await store.settle_tokens(cid, 700, 250)
+    await store.reserve_tokens(cid, 700)
+    await store.settle_tokens(cid, 700, 0)  # failed call: refunded, nothing consumed
+    await store.reserve_tokens(cid, 700)
+    await store.settle_tokens(cid, 700, 900)  # overran: only 750 fits under the cap
+    await store.reserve_gpu_seconds(cid, 60)
+    await store.settle_gpu_seconds(cid, 60, 12)
+    rows = await store.pool.fetch(
+        "SELECT tokens, gpu_seconds FROM plato.usage_events WHERE campaign_id = $1 ORDER BY id",
+        cid,
+    )
+    assert [(r["tokens"], r["gpu_seconds"]) for r in rows] == [
+        (250, 0),
+        (750, 0),
+        (0, 12),
+    ]
+    c = await store.get_campaign(cid)
+    assert (c["tokens_used"], c["gpu_seconds_used"]) == (
+        sum(r["tokens"] for r in rows),
+        sum(r["gpu_seconds"] for r in rows),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Sealed-dataset isolation
 # ---------------------------------------------------------------------------

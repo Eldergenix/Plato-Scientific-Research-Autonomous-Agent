@@ -36,7 +36,7 @@ function nodeIcon(s){return {open:ring("var(--text-2)"),claimed:ring("var(--yell
 const TYPE={goal:{c:"var(--accent)",l:"Goal"},intent:{c:"var(--orange)",l:"Experiment"},fact:{c:"var(--blue)",l:"Claim"},finding:{c:"var(--purple)",l:"Finding"},hint:{c:"var(--gray)",l:"Lead"}};
 const typeChip=t=>`<span class="chip"><i style="background:${TYPE[t]?.c||"var(--gray)"}"></i>${esc(TYPE[t]?.l||t)}</span>`;
 const GATE_LABEL={replicated:"Replicated",stats_ok:"Statistics",figures_ok:"Figures",skeptic:"Skeptic review"};
-const GATE_COLOR={replicated:"var(--green)",stats_ok:"var(--blue)",figures_ok:"var(--purple)",skeptic:"var(--orange)"};
+const GATE_COLOR={replicated:"--green",stats_ok:"--blue",figures_ok:"--purple",skeptic:"--orange"};   // CSS tokens, resolved for the canvas charts
 // Claims keep gates under metrics.gates; findings carry them as top-level booleans.
 const gatesOf=n=>{const m=obj(n&&n.metrics);if(Object.keys(obj(m.gates)).length)return Object.entries(m.gates);
   return n&&n.node_type==="finding"?Object.keys(GATE_LABEL).filter(k=>typeof m[k]==="boolean").map(k=>[k,m[k]]):[]};
@@ -51,8 +51,8 @@ const jsonLS=(k,d)=>{try{const v=JSON.parse(ls.get(k,""));return Array.isArray(v
 const S={token:ls.get("plato_token"),campaigns:null,route:{},summary:null,graph:null,manuscript:undefined,selected:null,prov:{},timer:null,msView:"paper",lastView:"",
   panel:{mode:ls.get("plato_panel")==="split"?"split":"panel",view:"details",auto:new Set()},
   draft:undefined,firstDraft:null,draftTimer:null,draftBusy:false,paperEl:null,lp:null,lpRaf:0,follow:true,
-  res:{q:"",filter:"all",sort:null,page:0,size:[10,25,50].includes(+ls.get("plato_grid_size"))?+ls.get("plato_grid_size"):10,dense:ls.get("plato_grid_dense")==="1",hidden:new Set(jsonLS("plato_grid_hidden",[])),pinned:null},
-  rows:null,rowsFor:null};
+  res:{q:"",filter:"all",sort:null,page:0,size:[10,25,50].includes(+ls.get("plato_grid_size"))?+ls.get("plato_grid_size"):10,dense:ls.get("plato_grid_dense")==="1",hidden:new Set(jsonLS("plato_grid_hidden",[]))},
+  rows:null,rowsFor:null,usage:undefined,usageKey:null,t0:0};
 
 /* ---------- API ---------- */
 class ApiError extends Error{constructor(m,status){super(m);this.status=status}}
@@ -70,7 +70,7 @@ function toast(msg,bad){const el=document.createElement("div");el.className="toa
 /* ---------- theme ---------- */
 const themeText=()=>document.documentElement.dataset.theme==="dark"?"Light theme":"Dark theme";
 $("#themeBtn").onclick=()=>{const t=document.documentElement.dataset.theme==="dark"?"light":"dark";document.documentElement.dataset.theme=t;ls.set("plato_theme",t);Kit.morph($("#themeLbl"),themeText());
-  if(S.route.tab==="graph"&&S.summary)renderTab()};
+  if(S.route.tab==="graph"&&S.summary)renderTab();else if(S.summary)mountCharts()};
 $("#themeLbl").textContent=themeText();
 
 /* ---------- health ---------- */
@@ -104,11 +104,13 @@ const paperSample=()=>`<h1>Coverage of the ordinary least squares slope interval
 
 /* ---------- sidebar ---------- */
 const ACTIVE=c=>!["completed","halted"].includes(c.status);
+const NAV_CLOSED=new Set(jsonLS("plato_nav_closed",[]));   // collapsed sidebar sections, remembered
 function renderNav(){const cur=S.route.id,list=S.campaigns||[],act=list.filter(ACTIVE),done=list.filter(c=>!ACTIVE(c));
-  const item=c=>`<a class="item${c.id===cur?" on":""}" href="#/c/${eid(c.id)}/overview" title="${esc(c.research_question)}">${campaignIcon(c.status)}<span class="trunc">${esc(c.research_question)}</span></a>`;
-  $("#nav").innerHTML=`<a class="item${!cur?" on":""}" href="#/">${ico('<rect x="2.5" y="2.5" width="11" height="11" rx="2.5"/><path d="M5.5 6h5M5.5 8.5h5M5.5 11h3"/>')}All campaigns<span class="n">${list.length||""}</span></a>`+
-    (act.length?`<div class="nav-h">Running<span style="margin-left:auto">${act.length}</span></div>${act.map(item).join("")}`:"")+
-    (done.length?`<div class="nav-h">Finished<span style="margin-left:auto">${done.length}</span></div>${done.slice(0,30).map(item).join("")}`:"")}
+  const item=c=>`<a class="item${c.id===cur?" on":""}" href="#/c/${eid(c.id)}/overview" title="${esc(c.research_question)}"${c.id===cur?' aria-current="page"':""}>${campaignIcon(c.status)}<span class="trunc">${esc(c.research_question)}</span></a>`;
+  const sec=(k,label,l)=>{if(!l.length)return"";const open=!NAV_CLOSED.has(k);
+    return `<button class="nav-h" type="button" data-sec="${k}" aria-expanded="${open}">${label}${ico('<path d="m5 6.5 3 3 3-3"/>',12)}<span class="n">${l.length}</span></button>`+(open?l.slice(0,30).map(item).join(""):"")};
+  $("#nav").innerHTML=`<a class="item${!cur?" on":""}" href="#/"${!cur?' aria-current="page"':""}>${ico('<rect x="2.5" y="2.5" width="11" height="11" rx="2.5"/><path d="M5.5 6h5M5.5 8.5h5M5.5 11h3"/>')}All campaigns<span class="n">${list.length||""}</span></a>`+
+    sec("running","Running",act)+sec("finished","Finished",done)}
 async function loadList(){if(!S.token)return;try{S.campaigns=(await getJSON("campaigns")).campaigns;renderNav();if(!S.route.id)renderHome()}catch(e){if(S.campaigns===null){S.campaigns=[];if(!S.route.id)renderHome()}if(e.status!==401)toast(e.message,true)}}
 
 /* ---------- home (campaign list) ---------- */
@@ -138,8 +140,8 @@ async function setToken(t){S.token=t;ls.set("plato_token",t);S.campaigns=null;cl
 /* ---------- campaign view ---------- */
 const TABS=[["overview","Overview"],["results","Results"],["graph","Graph"],["findings","Findings"],["experiments","Experiments"],["manuscript","Manuscript"],["guardrails","Guardrails"]];
 function resetCampaignState(){clearTimeout(S.draftTimer);cancelAnimationFrame(S.lpRaf);
-  Object.assign(S,{summary:null,graph:null,manuscript:undefined,prov:{},draft:undefined,firstDraft:null,draftTimer:null,paperEl:null,lp:null,lpRaf:0,follow:true,rows:null,rowsFor:null,lastView:""});
-  S.res.pinned=null;S.res.page=0;S.panel.view="details";if(S.panel.mode==="focus")S.panel.mode="panel"}
+  Object.assign(S,{summary:null,graph:null,manuscript:undefined,prov:{},draft:undefined,firstDraft:null,draftTimer:null,paperEl:null,lp:null,lpRaf:0,follow:true,rows:null,rowsFor:null,lastView:"",usage:undefined,usageKey:null,t0:0});
+  S.res.page=0;S.panel.view="details";if(S.panel.mode==="focus")S.panel.mode="panel"}
 async function openCampaign(id){
   const fresh=S.summary?.campaign?.id!==id;
   if(fresh){resetCampaignState();
@@ -153,7 +155,7 @@ async function openCampaign(id){
   catch(e){if(S.route.id!==id)return;$("#crumb").innerHTML=`<b>Campaign</b>`;$("#body").className="body full";
     $("#body").innerHTML=`<div class="pane" id="pane"><div class="empty"><div>${cross("var(--red)")}<h3>${e.status===404?"Campaign not found":"Could not load campaign"}</h3><p>${esc(e.message)}</p></div></div></div>`;
     ["crumb","pane","props"].forEach(k=>Kit.reveal(document.getElementById(k),k));return}
-  renderCampaign();["crumb","pane","props"].forEach(k=>Kit.reveal($("#"+k),k));schedulePoll();
+  renderCampaign();["crumb","pane","props"].forEach(k=>Kit.reveal($("#"+k),k));schedulePoll();loadUsage();
   if(S.summary.campaign.status==="writing")pollDraft();
 }
 function counts(){const out={};(S.summary?.node_counts||[]).forEach(r=>{(out[r.node_type]??={})[r.status]=r.n});return out}
@@ -286,30 +288,22 @@ function overview(){
     <span class="t2">${claimsR} claim${claimsR===1?"":"s"} refuted, ${claimsV} supported across ${exps} experiment${exps===1?"":"s"}. ${verified?"":"Negative results are recorded in the graph and the manuscript."}</span></div></div>`;
   else call=`<div class="callout"><span class="live" style="margin:6px 2px 0"></span><div style="flex:1;min-width:0"><b data-mk="phase">${PHASE_LABEL[c.status]}</b><span class="t2"> · <span data-mk="phint">${esc(PHASE_HINT[c.status]||"The swarm is working.")}</span></span></div>${c.status==="writing"&&wide()?'<button class="btn" type="button" data-pv="paper">Watch the paper</button>':""}</div>`;
   const root=S.graph.nodes.find(x=>x.node_type==="goal"&&x.title==="Research question"),rm=obj(root&&root.metrics),rq=rm.refined_question;
-  // Verification: share of judged claims passing each gate.
-  const judged=S.graph.nodes.filter(n=>n.node_type==="fact"&&Object.keys(obj(obj(n.metrics).gates)).length);
-  const series=Object.keys(GATE_LABEL).map(k=>{const pass=judged.filter(f=>obj(f.metrics).gates[k]).length,v=judged.length?pass/judged.length:0;
-    return {key:k,label:GATE_LABEL[k],color:GATE_COLOR[k],value:v,cv:judged.length?pct(v):"–",cl:`${GATE_LABEL[k]} · ${pass} of ${judged.length}`}});
-  const allPass=judged.filter(f=>Object.values(obj(f.metrics).gates).every(Boolean)).length;
-  const rings=Kit.rings({id:"gates",series,center:{value:judged.length?`${allPass}/${judged.length}`:"0",label:judged.length?"passed every check":"no claims judged yet"},
-    label:judged.length?`Verification checks across ${judged.length} judged claims: `+series.map(s=>`${s.label} ${s.cv}`).join(", "):"No claims judged yet"});
-  const tok=c.tokens_used/Math.max(1,c.token_budget_max),gpu=c.gpu_seconds_used/Math.max(1,c.gpu_seconds_max);
-  const gauge=Kit.gauge({id:"budget",center:{value:pct(tok),label:"of the token budget"},label:`Tokens ${pct(tok)} used, sandbox compute ${pct(gpu)} used`,series:[
-    {key:"tok",label:"Tokens",color:"var(--accent)",value:tok,lv:`${short(c.tokens_used)} / ${short(c.token_budget_max)}`,cv:pct(tok),cl:`${fmt(c.tokens_used)} of ${fmt(c.token_budget_max)} tokens`},
-    {key:"gpu",label:"Sandbox",color:"var(--blue)",value:gpu,lv:`${short(c.gpu_seconds_used)}s / ${short(c.gpu_seconds_max)}s`,cv:pct(gpu),cl:`${fmt(c.gpu_seconds_used)} of ${fmt(c.gpu_seconds_max)} sandbox seconds`}]});
+  const judged=judgedFacts(),allPass=judged.filter(passedAll).length;
   const rounds=num(rm.rounds_completed)??0,maxR=num(obj(c.config).max_rounds)??0;
   const ev=S.summary.guard_events.slice(0,12);
   return `<div class="doc"><div data-seq><div><h1>${esc(c.research_question)}</h1>${rq&&rq!==c.research_question?`<p class="refined">${esc(rq)}</p>`:""}
   <div class="sub" style="margin-top:10px"><span class="mono t3">${cid(c.id)}</span>${typeChip("goal")}<span>${esc(c.program_domain||"general")}</span><span class="t3">·</span><span>Started ${ago(c.created_at)}</span></div></div>
   <div class="steps">${steps}</div>${call}
-  <div class="cards2"><section class="card"><div class="card-h"><b>Verification</b><span class="t3">Judged claims passing each check</span></div>${rings}</section>
-    <section class="card"><div class="card-h"><b>Budget</b><span class="t3">${ACTIVE(c)?"Live usage":"Final usage"}</span></div>${gauge}</section></div>
   <div class="stats">
     <div class="stat"><div class="k">Experiments</div><div class="v"><span data-mk="exd" data-num data-v="${expsDone}">${expsDone}</span> <small>/ <span data-mk="ext" data-num data-v="${exps}">${exps}</span> done</small></div><div class="t3" style="font-size:12px">${cnt.intent?.exhausted||0} out of attempts</div></div>
     <div class="stat"><div class="k">Claims</div><div class="v" data-mk="cla" data-num data-v="${claimsV+claimsR+claimsO}">${claimsV+claimsR+claimsO}</div><div style="display:flex;gap:8px;font-size:12px" class="t2"><span style="color:var(--green)">${claimsV} ✓</span><span style="color:var(--red)">${claimsR} ✕</span><span>${claimsO} open</span></div></div>
     <div class="stat"><div class="k">Verified findings</div><div class="v" data-mk="fnd" data-num data-v="${verified}">${verified}</div><div class="t3" style="font-size:12px">${judged.length?`${allPass} of ${judged.length} judged claims`:"None judged yet"}</div></div>
     <div class="stat"><div class="k">Rounds</div><div class="v"><span data-mk="rnd" data-num data-v="${rounds}">${rounds}</span> <small>/ ${maxR||"–"}</small></div><div class="bar wide"><span style="width:${maxR?Math.min(100,100*rounds/maxR):0}%"></span></div></div>
   </div>
+  <div class="charts"><section class="card"><div class="card-h"><b>Research progress</b><span class="t3">Experiments finished, claims supported or refuted, and findings verified, over the run</span></div>
+      ${chartSlot("progress",220,`Research progress: ${expsDone} of ${exps} experiments finished, ${claimsV} claims verified, ${claimsR} refuted, ${verified} findings verified`)}</section>
+    <section class="card"><div class="card-h"><b>Token burn</b><span class="t3"><span data-mk="tokv">${short(c.tokens_used)}</span> of ${short(c.token_budget_max)} tokens · sandbox <span data-mk="gpuv">${short(c.gpu_seconds_used)}s</span> of ${short(c.gpu_seconds_max)}s</span></div>
+      ${chartSlot("burn",220,`Token burn: ${fmt(c.tokens_used)} of ${fmt(c.token_budget_max)} tokens used, ${fmt(c.gpu_seconds_used)} of ${fmt(c.gpu_seconds_max)} sandbox seconds`)}</section></div>
   <div><div class="sec-h">Guardrail activity</div>
   ${ev.length?`<div class="feed">${ev.map(e=>`<div class="ev ${esc(e.decision)}"><b>${esc(e.kind)}</b> ${esc(e.decision)}${e.detail?.node?` in <span class="mono">${esc(e.detail.node)}</span>`:""}${e.detail?.error?` · <span class="t3">${esc(String(e.detail.error).slice(0,140))}</span>`:""}<span class="t3"> · ${ago(e.created_at)}</span></div>`).join("")}</div>`:`<p class="t3">No guardrail events. Every sandbox run, budget check and data-scope check passed.</p>`}</div>
   </div></div>`}
@@ -317,7 +311,7 @@ function lastPhase(){// phase a halted campaign stopped in: recorded by the stor
   const from=PHASES.indexOf(S.summary.campaign.halted_from);if(from>=0)return from;
   const cnt=counts();if(sum(cnt.intent)===0)return 0;if((cnt.finding&&sum(cnt.finding))||S.manuscript)return 4;return 1}
 
-/* ---------- results: replication slope chart + advanced data grid ---------- */
+/* ---------- results: verification over time + advanced data grid ---------- */
 const STATUS_RANK={verified:0,running:1,claimed:2,open:3,refuted:4,exhausted:5};
 function resultRows(){
   if(S.rowsFor===S.graph&&S.rows)return S.rows;
@@ -381,16 +375,14 @@ function gridHtml(all){
   <div class="gfoot"><span data-mk="grange">${n?`${from+1}–${Math.min(n,from+R.size)} of ${n}`:"No results"}</span>
     <label class="gsize">Rows <select id="gsize" aria-label="Rows per page">${[10,25,50].map(s=>`<option${s===R.size?" selected":""}>${s}</option>`).join("")}</select></label>
     <span class="pg"><button type="button" class="icon-btn" data-page="-1" aria-label="Previous page"${R.page<=0?" disabled":""}>${ico('<path d="M10 3 5 8l5 5"/>')}</button><span>Page ${R.page+1} of ${pages}</span><button type="button" class="icon-btn" data-page="1" aria-label="Next page"${R.page>=pages-1?" disabled":""}>${ico('<path d="m6 3 5 5-5 5"/>')}</button></span></div>`}
-function slopeItems(all){return all.filter(r=>r.type==="fact"&&r.drift!=null).map(r=>({id:r.id,label:r.title,left:0,right:r.drift,color:r.replicated===false?"var(--red)":"var(--green)",row:r}))}
 function resultsView(){
   const all=resultRows();
   if(!all.length)return emptyPane("No results yet","Claims and findings land here with their metrics, replication and checks as experiments finish.");
-  const R=S.res,items=slopeItems(all);
+  const R=S.res,judged=judgedFacts(),allPass=judged.filter(passedAll).length;
   return `<div class="res"><div data-seq>
   <div class="tiles" role="group" aria-label="Filter results">${tilesHtml(all)}</div>
-  <section class="card"><div class="card-h"><b>Replication drift</b><span class="t3">Seed 2 against seed 1 for each claim, in units of its replication tolerance. Inside the band means it replicated.</span>
-    ${items.length?`<button class="btn ghost sm act" type="button" data-csv="slope">${ico('<path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10"/>')}<span data-lbl>Export CSV</span></button>`:""}</div>
-    ${items.length?`<div id="slope" data-sk-box style="min-height:300px"></div>`:`<p class="t3" style="margin:0">No claim has a replication run yet. Seed-2 reruns happen when claims are judged.</p>`}</section>
+  <section class="card"><div class="card-h"><b>Verification</b><span class="t3">Share of judged claims passing each check, as claims were judged${judged.length?` · <span data-mk="allpass">${allPass} of ${judged.length}</span> passed all four`:""}</span></div>
+    ${judged.length?chartSlot("gates",240,`Verification: ${allPass} of ${judged.length} judged claims passed all four checks. `+Object.keys(GATE_LABEL).map(k=>`${GATE_LABEL[k]} ${pct(judged.filter(f=>obj(f.metrics).gates[k]).length/judged.length)}`).join(", ")):`<p class="t3" style="margin:0">No claim has been judged yet. Each claim gets replication, statistics, figure and skeptic checks when its experiment finishes.</p>`}</section>
   <section class="card"><div class="gbar">
     <label class="gsearch">${ico('<circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/>',13)}<input id="gq" type="search" placeholder="Filter by title, metric or status" value="${esc(R.q)}" aria-label="Filter results" autocomplete="off"><span class="kbd">/</span></label>
     <span class="menu-w"><button class="btn" type="button" id="colBtn" aria-haspopup="true" aria-expanded="false" aria-controls="colMenu">${ico('<rect x="2.5" y="3" width="11" height="10" rx="1.5"/><path d="M6.5 3v10M10 3v10"/>')}Columns</button>
@@ -401,22 +393,60 @@ function resultsView(){
   </div></div>`}
 function renderGrid(){const g=$("#grid");if(!g)return;const w=$("#gwrap"),sx=w?.scrollLeft||0;g.innerHTML=gridHtml(resultRows());$("#gwrap").scrollLeft=sx;Kit.hydrate(g,S.route.id+":");KB=-1;
   document.querySelectorAll("#pane .tile").forEach(t=>t.setAttribute("aria-pressed",String(t.dataset.filter===S.res.filter)))}
-function inspectRow(it,pinned){const r=it.row;
-  return `<div class="insp">${r.replicated===false?cross("var(--red)"):check("var(--green)")}<div style="min-width:0;flex:1"><b class="trunc" style="display:block">${esc(r.title)}</b>
-    <span class="t2"><span class="mono">${esc(r.pk)}</span> ${sig(r.v1)}${r.se1!=null?` ± ${sig(r.se1)}`:""} → ${sig(r.v2)}${r.se2!=null?` ± ${sig(r.se2)}`:""} · drift ${fmtDrift(r.drift)} of a ±${sig(r.tol)} tolerance (${esc(r.tolKind)}) · ${r.replicated===false?"did not replicate":"replicated"}</span></div>
-    ${pinned?'<span class="chip">Pinned · Esc</span>':""}<button class="btn ghost sm" type="button" data-node="${esc(r.id)}">Open</button></div>`}
-function mountCharts(){const pane=$("#pane");if(!pane)return;Kit.bindRadials(pane);
-  const h=$("#slope");if(!h)return;const items=slopeItems(resultRows());if(!items.length)return;
-  const dom=Math.min(3,Math.max(1.5,...items.map(i=>Math.abs(i.right)*1.15))),ticks=[];for(let t=-Math.floor(dom);t<=Math.floor(dom);t++)ticks.push(t);
-  Kit.slope(h,{key:S.route.id,items,domain:[-dom,dom],ticks,band:[-1,1],bandLabel:"within tolerance",fmtTick:t=>t===0?"0":(t>0?"+":"−")+Math.abs(t)+"×",leftLabel:"Seed 1",rightLabel:"Seed 2",
-    label:`Replication drift for ${items.length} claims`,height:260,hint:"Hover a line to inspect a claim, click to pin it. Arrow keys walk the lines when the chart has focus.",
-    pinned:items.some(i=>i.id===S.res.pinned)?S.res.pinned:null,onPin:id=>{S.res.pinned=id},inspect:inspectRow})}
-function exportCsv(kind,btn){const all=resultRows(),name=`${cid(S.route.id).toLowerCase()}-${kind==="slope"?"replication":"results"}.csv`;
-  let rows;
-  if(kind==="slope")rows=[["id","claim","metric","seed_1","seed_1_se","seed_2","seed_2_se","tolerance","tolerance_rule","drift_in_tolerance_units","replicated"],
-    ...slopeItems(all).map(({row:r})=>[r.id,r.title,r.pk,r.v1,r.se1,r.v2,r.se2,r.tol,r.tolKind,r.drift,r.replicated])];
-  else{const cols=RES_COLS.filter(c=>c.pin||!S.res.hidden.has(c.k));rows=[["id",...cols.map(c=>c.l)],...filteredRows(all).map(r=>[r.id,...cols.map(c=>c.csv(r))])]}
-  Kit.download(name,Kit.csv(rows),"text/csv");Kit.flash(btn,"Exported")}
+function exportCsv(btn){const all=resultRows(),cols=RES_COLS.filter(c=>c.pin||!S.res.hidden.has(c.k));
+  Kit.download(`${cid(S.route.id).toLowerCase()}-results.csv`,Kit.csv([["id",...cols.map(c=>c.l)],...filteredRows(all).map(r=>[r.id,...cols.map(c=>c.csv(r))])]),"text/csv");Kit.flash(btn,"Exported")}
+
+/* ---------- live charts (Liveline) ----------
+   Liveline's right edge is the wall clock. A running campaign plots at real time; a finished
+   one is shifted so its last event sits at the edge, and formatTime shifts the labels back. */
+const tsec=t=>new Date(t).getTime()/1000;
+const cssv=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const chartSlot=(key,h,label)=>`<div class="ll" data-ll="${key}" data-sk-box role="img" aria-label="${esc(label)}" style="height:${h}px"></div>`;
+const passedAll=f=>Object.values(obj(obj(f.metrics).gates)).every(Boolean);
+const judgedAt=n=>tsec(n.updated_at||n.created_at);
+const judgedFacts=()=>S.graph.nodes.filter(n=>n.node_type==="fact"&&Object.keys(obj(obj(n.metrics).gates)).length).sort((a,b)=>judgedAt(a)-judgedAt(b));
+function frame(c){const start=tsec(c.created_at);
+  if(ACTIVE(c)){const now=Date.now()/1000;return{start,end:now,shift:0,window:Math.max(120,(now-start)*1.04)}}
+  const ts=S.graph.nodes.map(n=>tsec(n.updated_at||n.created_at)).concat((S.usage||[]).map(p=>p.t)).filter(Number.isFinite);
+  const end=Math.max(start+60,...ts);S.t0||=Date.now()/1000;   // anchored once, so re-renders don't nudge the line
+  return{start,end,shift:S.t0-end,window:(end-start)*1.05}}
+const clockFmt=f=>t=>new Date((t-f.shift)*1000).toLocaleString([],f.end-f.start>86400?{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}:{hour:"2-digit",minute:"2-digit"});
+/* A step line through [time, value] events (sorted): flat until each event, then a short ramp. */
+function steps(ev,f,v0){const r=f.window/600,pts=v0==null?[]:[{time:f.start+f.shift,value:v0}];
+  for(const [t,v] of ev){const x=Math.min(f.end,Math.max(t,f.start))+f.shift,last=pts[pts.length-1];
+    if(last&&x<=last.time){last.value=v;continue}
+    if(last&&x-r>last.time)pts.push({time:x-r,value:last.value});
+    pts.push({time:x,value:v})}
+  const last=pts[pts.length-1],end=f.end+f.shift;if(last&&end>last.time)pts.push({time:end,value:last.value});
+  return{data:pts,value:last?last.value:v0??0}}
+const cumulative=ts=>ts.filter(Number.isFinite).sort((a,b)=>a-b).map((t,i)=>[t,i+1]);
+const theme=()=>document.documentElement.dataset.theme==="dark"?"dark":"light";
+function mountCharts(){const pane=$("#pane"),c=S.summary?.campaign;
+  if(pane&&c){const f=frame(c),live=ACTIVE(c),slot=k=>pane.querySelector(`[data-ll="${k}"]`);
+    const base={theme:theme(),window:f.window,grid:true,scrub:true,lineWidth:1.75,formatTime:clockFmt(f),pulse:live,windowStyle:"rounded",seriesToggleCompact:pane.clientWidth<480};
+    const series=(id,label,color,s)=>({id,label,color:cssv(color),...s});
+    if(slot("progress")){const nodes=S.graph.nodes,at=(type,st)=>nodes.filter(n=>n.node_type===type&&st.includes(n.status)).map(n=>tsec(n.updated_at||n.created_at));
+      Kit.chart(slot("progress"),"progress",{...base,data:[],value:0,formatValue:v=>String(Math.round(v)),series:[
+        series("exp","Experiments","--accent",steps(cumulative(at("intent",["verified","refuted","exhausted"])),f,0)),
+        series("ver","Supported","--green",steps(cumulative(at("fact",["verified"])),f,0)),
+        series("ref","Refuted","--red",steps(cumulative(at("fact",["refuted"])),f,0)),
+        series("fnd","Findings","--purple",steps(cumulative(at("finding",["verified"])),f,0))]})}
+    if(slot("burn")){const pts=(S.usage||[]).filter(p=>Number.isFinite(p.t)),budget=c.token_budget_max;
+      const data=pts.length?[{time:Math.min(f.start,pts[0].t)+f.shift,value:0},...pts.map(p=>({time:p.t+f.shift,value:p.tokens}))]:[];
+      const value=data.length?data[data.length-1].value:0;
+      Kit.chart(slot("burn"),"burn",{...base,data,value,color:cssv("--accent"),loading:S.usage===undefined,emptyText:"No call-by-call history for this campaign",
+        momentum:live,badgeVariant:"minimal",fill:true,formatValue:short,referenceLine:value>=0.35*budget?{value:budget,label:"Budget"}:undefined})}
+    if(slot("gates")){const judged=judgedFacts(),rate=test=>{let pass=0;return steps(judged.map((j,i)=>[judgedAt(j),100*(pass+=test(j)?1:0)/(i+1)]),f)};
+      Kit.chart(slot("gates"),"gates",{...base,data:[],value:0,formatValue:v=>Math.round(v)+"%",series:[
+        ...Object.keys(GATE_LABEL).map(k=>series(k,GATE_LABEL[k],GATE_COLOR[k],rate(j=>!!obj(j.metrics).gates[k]))),
+        series("all","All four","--text-2",rate(passedAll))]})}}
+  Kit.sweepCharts()}
+/* Token burn comes from the usage ledger; refetched only when the campaign's totals move. */
+async function loadUsage(){const c=S.summary?.campaign;if(!c)return;const id=c.id,key=`${id}:${c.tokens_used}:${c.gpu_seconds_used}`;
+  if(S.usageKey===key)return;S.usageKey=key;
+  try{const r=await getJSON(`campaigns/${id}/usage`);if(S.summary?.campaign?.id!==id||S.usageKey!==key)return;S.usage=Array.isArray(r.points)?r.points:[]}
+  catch(e){if(S.summary?.campaign?.id!==id||S.usageKey!==key)return;S.usage=[];S.usageKey=null}
+  mountCharts()}
 
 /* ---------- lists ---------- */
 function nodeRow(n,extra=""){return `<div class="row${S.selected===n.id?" on":""}" data-node="${esc(n.id)}">${nodeIcon(n.status)}<span class="title trunc">${esc(n.title)}</span><span class="meta">${extra}<span class="hide-sm">${ago(n.created_at)}</span></span></div>`}
@@ -730,7 +760,7 @@ function bindPane(){const pane=$("#pane");if(!pane)return;
     else if(d.sort){const s=R.sort,c=RES_COLS.find(c=>c.k===d.sort),first=c?.num||c?.desc?-1:1;R.sort=!s||s.k!==d.sort?{k:d.sort,dir:first}:s.dir===first?{k:d.sort,dir:-first}:null;renderGrid()}
     else if(d.page){R.page+=+d.page;renderGrid()}
     else if(d.dense){R.dense=d.dense==="1";ls.set("plato_grid_dense",R.dense?"1":"0");pane.querySelectorAll("[data-dense]").forEach(b=>{const on=b.dataset.dense===d.dense;b.classList.toggle("on",on);b.setAttribute("aria-pressed",String(on))});$(".dg")?.classList.toggle("dense",R.dense)}
-    else if(d.csv)exportCsv(d.csv,t);
+    else if(d.csv)exportCsv(t);
     else if(d.clear!=null){R.q="";R.filter="all";R.page=0;const q=$("#gq");if(q)q.value="";renderGrid()}
     else if(d.pv)setPanel(S.panel.mode==="panel"?"split":S.panel.mode,d.pv);
     else if(d.ms){S.msView=d.ms;renderTab()}
@@ -754,7 +784,7 @@ function schedulePoll(){clearTimeout(S.timer);const c=S.summary?.campaign;if(!c|
         const g=await getJSON(`campaigns/${c.id}/graph`);if(S.route.id!==c.id)return;
         const was=S.summary.campaign.status;S.summary=s;S.graph=g;
         if(!ACTIVE(s.campaign)){S.manuscript=undefined;loadList()}
-        (was!=="writing"&&s.campaign.status==="writing"&&wide()?Kit.transition:fn=>fn())(renderCampaign);
+        (was!=="writing"&&s.campaign.status==="writing"&&wide()?Kit.transition:fn=>fn())(renderCampaign);loadUsage();
         if(s.campaign.status==="writing"&&!S.draftTimer&&!S.draftBusy)pollDraft()}}catch{}
     schedulePoll()},5000)}
 document.addEventListener("visibilitychange",()=>{if(!document.hidden&&S.summary?.campaign?.status==="writing"&&!S.draftBusy)pollDraft()});
@@ -806,12 +836,14 @@ addEventListener("keydown",e=>{
     else if(e.key==="["||e.key==="]")stepPanel(e.key==="]"?1:-1);
     else if((e.key==="p"||e.key==="P")&&paperAvail()&&S.route.tab!=="manuscript"){if(S.panel.view==="paper")setPanel(S.panel.mode,"details");else setPanel(S.panel.mode==="panel"&&wide()?"split":S.panel.mode,"paper")}}});
 $("#menuBtn").onclick=()=>$("#side").classList.toggle("open");
-$("#nav").addEventListener("click",()=>$("#side").classList.remove("open"));
+$("#nav").addEventListener("click",e=>{const h=e.target.closest("[data-sec]");
+  if(!h){$("#side").classList.remove("open");return}
+  const k=h.dataset.sec;NAV_CLOSED.has(k)?NAV_CLOSED.delete(k):NAV_CLOSED.add(k);ls.set("plato_nav_closed",JSON.stringify([...NAV_CLOSED]));renderNav();$(`#nav [data-sec="${k}"]`)?.focus()});
 
 /* ---------- router ---------- */
 function route(){const prev=S.route;S.route=parseRoute();renderNav();
   if(prev.id!==S.route.id){S.selected=null}
-  if(!S.route.id||!S.token){clearTimeout(S.timer);clearTimeout(S.draftTimer);S.draftTimer=null;renderHome();return}
+  if(!S.route.id||!S.token){clearTimeout(S.timer);clearTimeout(S.draftTimer);S.draftTimer=null;renderHome();Kit.sweepCharts();return}
   if(prev.id===S.route.id&&S.summary?.campaign?.id===S.route.id){renderCampaign();return}
   openCampaign(S.route.id)}
 (async()=>{route();await health();if(S.token)await loadList();setInterval(()=>{if(!document.hidden)loadList()},20000)})();

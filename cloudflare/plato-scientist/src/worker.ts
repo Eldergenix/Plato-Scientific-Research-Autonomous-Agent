@@ -179,7 +179,7 @@ async function read(sql: ReturnType<typeof db>, env: Env, parts: string[], id: s
   if (parts[0] === "campaigns" && parts[2] === "graph" && parts.length === 3) {
     const [nodes, edges] = await Promise.all([
       sql`SELECT id, node_type::text AS node_type, status::text AS status, title, hypothesis_or_spec,
-                 metrics, priority, confidence_score, created_at
+                 metrics, priority, confidence_score, created_at, updated_at
             FROM plato.exploration_nodes WHERE campaign_id = ${id!} ORDER BY created_at LIMIT 2000`,
       sql`SELECT source_node_id, target_node_id, edge_type::text AS edge_type, rationale
             FROM plato.exploration_edges WHERE campaign_id = ${id!} LIMIT 5000`,
@@ -197,6 +197,25 @@ async function read(sql: ReturnType<typeof db>, env: Env, parts: string[], id: s
        ORDER BY e.artifact_type, e.created_at DESC`;
     if (rows.length === 0) return json({ error: "manuscript not written yet" }, 404);
     return json(Object.fromEntries(rows.map((r) => [r.artifact_type, r.text])));
+  }
+
+  if (parts[0] === "campaigns" && parts[2] === "usage" && parts.length === 3) {
+    // Cumulative token and sandbox burn from the usage ledger, at most ~240 points: the
+    // ledger is cut into equal-count buckets and each bucket's last running total is kept,
+    // so the series stays monotone and ends exactly on the ledger's total.
+    const points = await sql`
+      WITH run AS (
+        SELECT id, created_at,
+               sum(tokens)      OVER w AS tokens,
+               sum(gpu_seconds) OVER w AS gpu_seconds,
+               ntile(240)       OVER (ORDER BY created_at, id) AS bucket
+          FROM plato.usage_events WHERE campaign_id = ${id!}
+        WINDOW w AS (ORDER BY created_at, id ROWS UNBOUNDED PRECEDING)
+      )
+      SELECT DISTINCT ON (bucket) extract(epoch FROM created_at)::float8 AS t,
+             tokens::float8 AS tokens, gpu_seconds::float8 AS gpu_seconds
+        FROM run ORDER BY bucket, created_at DESC, id DESC`;
+    return json({ points });
   }
 
   if (parts[0] === "campaigns" && parts[2] === "draft" && parts.length === 3) {

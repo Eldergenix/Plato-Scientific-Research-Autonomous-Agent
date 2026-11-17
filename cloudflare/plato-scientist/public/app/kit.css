@@ -24,46 +24,13 @@
 .caret{display:inline-block;width:2px;height:1.05em;margin-left:2px;border-radius:1px;background:var(--accent);vertical-align:-.15em;animation:caret 1.05s steps(1) infinite}
 @keyframes caret{50%{opacity:0}}
 
-/* Radial charts */
-.radial{display:flex;align-items:center;gap:22px;min-width:0}
-.rf{position:relative;flex:none}
-.rf svg{display:block;overflow:visible}
-.radial .trk{fill:none;stroke:var(--active)}
-.radial .arc{fill:none;stroke-linecap:round;transition:opacity .2s}
-.radial .hit{fill:none;stroke:transparent;pointer-events:stroke;cursor:default}
-.radial.iso [data-series]:not(.on) .arc,.radial.iso .rl-i:not(.on){opacity:.28}
-.rc{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;pointer-events:none;padding:0 22px}
-.rc b{font-size:20px;font-weight:500;letter-spacing:-.01em;line-height:1.2}
-.rc>span{font-size:11.5px;color:var(--text-2);line-height:1.3;max-width:100%}
-.gauge{flex-direction:column;align-items:stretch;gap:12px}
-.gauge .rf{margin:0 auto}
-.gauge .rc{justify-content:flex-end;padding-bottom:0}
-.rl{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
-.gauge .rl{flex-direction:row;flex-wrap:wrap;justify-content:center;gap:2px 10px}
-.rl-i{display:flex;align-items:center;gap:8px;height:28px;padding:0 8px;border:0;border-radius:6px;background:none;color:var(--text-2);cursor:default;text-align:left;min-width:0;transition:opacity .2s,background .15s}
-.rl-i:hover,.rl-i.on{background:var(--hover);color:var(--text)}
-.rl-i i{width:8px;height:8px;border-radius:50%;flex:none}
-.rl-i b{margin-left:auto;font-weight:500;color:var(--text);padding-left:10px}
-.gauge .rl-i b{margin-left:6px;padding-left:0}
-
-/* Slope chart */
-.sl{position:relative;outline:0;border-radius:8px}
-.sl:focus-visible{box-shadow:0 0 0 2px var(--accent-soft),0 0 0 1px var(--accent)}
-.sl svg{display:block;overflow:visible;cursor:crosshair}
-.sl-band{fill:color-mix(in srgb,var(--green) 9%,transparent)}
-.sl-bl{font-size:11px;fill:color-mix(in srgb,var(--green) 70%,var(--text-2))}
-.sl-grid{stroke:var(--border);stroke-width:1}.sl-grid.z{stroke:var(--border-2);stroke-dasharray:3 3}
-.sl-axis{stroke:var(--border-2)}
-.sl-tick,.sl-lab{font-size:11px;fill:var(--text-2);font-variant-numeric:tabular-nums}
-.sl-head{font-size:11.5px;font-weight:500;fill:var(--text-2)}
-.sl-ln{fill:none;stroke:var(--c);stroke-width:1.6;stroke-dasharray:1;stroke-dashoffset:0;stroke-linecap:round;transition:stroke-width .15s,opacity .2s}
-.sl-dot{fill:var(--c);transition:opacity .2s}
-.sl-dot[data-clip]{fill:var(--bg);stroke:var(--c);stroke-width:1.5}
-.sl-lab{transition:opacity .2s}
-.sl svg.iso .sl-it:not(.on){opacity:.18}
-.sl .sl-it.on .sl-ln{stroke-width:2.6}
-.sl .sl-it.on .sl-lab{fill:var(--text);font-weight:500}
-.sl-insp{min-height:44px;padding:10px 2px 0;font-size:12.5px;color:var(--text-2);line-height:1.5}
+/* Live charts: Liveline fills .ll-in, which fills the sized .ll slot. */
+.ll{position:relative;min-width:0}
+.ll-in{position:absolute;inset:0;display:flex;flex-direction:column}
+/* Liveline renders [toolbar?, plot]; the plot takes what the toolbar leaves, so axis labels stay in the box. */
+.ll-in>div:last-child{flex:1 1 0;min-height:0;overflow:hidden}
+.ll-in>div:first-child:not(:last-child){flex:none;max-width:100%;overflow-x:auto;scrollbar-width:none}
+.ll-err{display:grid;place-items:center;font-size:12.5px;color:var(--text-3)}
 
 /* Layout morph: panes are captured only while a transition runs. */
 .vt #pane{view-transition-name:pane}
@@ -77,5 +44,4 @@
 @media (prefers-reduced-motion:reduce){
   .sk{animation:sk-show 0s 150ms forwards}
   .sk-layer i,.live::after,.caret{animation:none}
-  .radial .arc,.sl-ln,.sl-dot,.sl-lab,.rl-i{transition:none}
 }

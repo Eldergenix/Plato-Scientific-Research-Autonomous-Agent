@@ -15,18 +15,18 @@ try{const t=localStorage.getItem("plato_theme");if(t)document.documentElement.da
 </script>
 <style>
 :root,[data-theme="dark"]{
-  --bg:#08090a;--panel:#0f1011;--elev:#16171a;--elev-2:#1c1d21;--hover:rgba(255,255,255,.045);--active:rgba(255,255,255,.07);
-  --border:rgba(255,255,255,.075);--border-2:rgba(255,255,255,.13);
-  --text:#f7f8f8;--text-2:#8a8f98;--text-3:#5c6068;
+  --chrome:#09090a;--bg:#101011;--panel:#141415;--elev:#19191b;--elev-2:#1f1f22;--hover:rgba(255,255,255,.045);--active:rgba(255,255,255,.075);
+  --border:rgba(255,255,255,.07);--border-2:rgba(255,255,255,.12);
+  --text:#ededee;--text-2:#97979f;--text-3:#65656d;
   --accent:#5e6ad2;--accent-2:#7480e0;--accent-soft:rgba(94,106,210,.16);
   --green:#4cb782;--yellow:#f0bf00;--orange:#f2994a;--red:#eb5757;--blue:#4ea7fc;--purple:#a78bfa;--gray:#7b7f87;
   --shadow:0 0 0 1px var(--border-2),0 12px 40px rgba(0,0,0,.55);
   --sk-a:rgba(255,255,255,.055);--sk-b:rgba(255,255,255,.12);
 }
 [data-theme="light"]{
-  --bg:#ffffff;--panel:#f8f8f9;--elev:#ffffff;--elev-2:#f3f3f5;--hover:rgba(0,0,0,.04);--active:rgba(0,0,0,.065);
-  --border:#e9e9ec;--border-2:#dcdce0;
-  --text:#1b1c1f;--text-2:#6b6f76;--text-3:#9da0a6;
+  --chrome:#f3f3f4;--bg:#ffffff;--panel:#fafafa;--elev:#ffffff;--elev-2:#f3f3f4;--hover:rgba(0,0,0,.04);--active:rgba(0,0,0,.06);
+  --border:#ebebed;--border-2:#dfdfe2;
+  --text:#1c1c1e;--text-2:#6c6c74;--text-3:#9c9ca4;
   --accent:#5e6ad2;--accent-2:#4b56c0;--accent-soft:rgba(94,106,210,.11);
   --green:#2f9e6a;--yellow:#c99a00;--orange:#e07b1f;--red:#d64545;--blue:#2b8de0;--purple:#7c5ce0;--gray:#8b8f96;
   --shadow:0 0 0 1px var(--border-2),0 12px 40px rgba(20,20,30,.14);
@@ -34,7 +34,7 @@ try{const t=localStorage.getItem("plato_theme");if(t)document.documentElement.da
 }
 *{box-sizing:border-box}
 html,body{height:100%}
-body{margin:0;background:var(--bg);color:var(--text);font:13px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+body{margin:0;background:var(--chrome);color:var(--text);font:13px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
   -webkit-font-smoothing:antialiased;font-feature-settings:"cv11","ss01"}
 button,input,textarea,select{font:inherit;color:inherit}
 a{color:inherit}
@@ -43,44 +43,48 @@ a{color:inherit}
 .trunc{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 svg{flex:none}
 
-/* Shell */
-.app{display:grid;grid-template-columns:244px minmax(0,1fr);height:100%}
-.side{background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0}
-.main{display:flex;flex-direction:column;min-width:0;min-height:0}
-.ws{display:flex;align-items:center;gap:8px;padding:12px 12px 8px;font-weight:600}
-.logo{width:20px;height:20px;border-radius:5px;background:linear-gradient(135deg,var(--accent),var(--purple));display:grid;place-items:center;color:#fff;font-size:11px;font-weight:700}
-.side .new{margin:4px 10px 10px;display:flex;align-items:center;gap:8px;height:30px;padding:0 10px;border-radius:6px;border:1px solid var(--border-2);
-  background:var(--elev);cursor:pointer;color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.08)}
-.side .new:hover{background:var(--elev-2)}
+/* Shell: the sidebar sits on the dim app chrome; content lives in an inset panel */
+.app{display:grid;grid-template-columns:240px minmax(0,1fr);height:100%}
+.side{display:flex;flex-direction:column;min-height:0;background:var(--chrome)}
+.main{display:flex;flex-direction:column;min-width:0;min-height:0;margin:8px 8px 8px 0;background:var(--bg);border:1px solid var(--border);border-radius:12px;overflow:hidden;
+  box-shadow:0 1px 3px rgba(0,0,0,.05)}
+.ws{display:flex;align-items:center;gap:8px;height:48px;padding:0 8px 0 14px;flex:none}
+.ws-n{display:flex;align-items:center;gap:8px;min-width:0;font-weight:600}
+.ws-a{margin-left:auto;display:flex;gap:2px}
+.logo{width:20px;height:20px;border-radius:5px;background:linear-gradient(135deg,var(--accent),var(--purple));display:grid;place-items:center;color:#fff;font-size:11px;font-weight:700;flex:none}
 .kbd{margin-left:auto;font-size:11px;color:var(--text-3);border:1px solid var(--border-2);border-radius:4px;padding:0 5px;line-height:16px}
-.nav{padding:0 8px;overflow:auto;flex:1;min-height:0}
-.nav-h{display:flex;align-items:center;gap:6px;padding:14px 8px 4px;font-size:11.5px;font-weight:500;color:var(--text-3)}
-.item{display:flex;align-items:center;gap:8px;height:28px;padding:0 8px;border-radius:5px;color:var(--text-2);text-decoration:none;cursor:pointer;border:0;background:none;width:100%;text-align:left}
+.nav{padding:2px 8px 8px;overflow:auto;flex:1;min-height:0}
+.nav-h{display:flex;align-items:center;gap:4px;width:100%;height:26px;margin-top:14px;padding:0 8px;border:0;border-radius:5px;background:none;color:var(--text-3);font-size:12px;font-weight:500;cursor:pointer;text-align:left}
+.nav-h:hover{color:var(--text-2);background:var(--hover)}
+.nav-h svg{transition:transform .15s ease}
+.nav-h[aria-expanded="false"] svg{transform:rotate(-90deg)}
+.nav-h .n{margin-left:auto;font-weight:400}
+.item{display:flex;align-items:center;gap:8px;height:28px;padding:0 8px;border-radius:6px;color:var(--text-2);text-decoration:none;cursor:pointer;border:0;background:none;width:100%;text-align:left}
 .item:hover{background:var(--hover);color:var(--text)}
 .item.on{background:var(--active);color:var(--text)}
 .item .n{margin-left:auto;font-size:11.5px;color:var(--text-3)}
-.side-f{border-top:1px solid var(--border);padding:8px;display:flex;flex-direction:column;gap:2px}
+.side-f{padding:8px;display:flex;flex-direction:column;gap:2px}
 .health{display:flex;align-items:center;gap:8px;padding:4px 8px;color:var(--text-3);font-size:12px}
 .dot{width:7px;height:7px;border-radius:50%;background:var(--text-3)}
 .dot.ok{background:var(--green)}.dot.bad{background:var(--red)}
 
-/* Top bar */
-.top{height:44px;flex:none;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--border)}
+/* Location bar, then the view bar */
+.top{height:44px;flex:none;display:flex;align-items:center;gap:10px;padding:0 12px 0 16px;border-bottom:1px solid var(--border)}
 .crumb{display:flex;align-items:center;gap:6px;min-width:0;color:var(--text-2)}
 .crumb b{color:var(--text);font-weight:500}
 .icon-btn.menu-btn{display:none}
 .icon-btn{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:6px;border:0;background:none;color:var(--text-2);cursor:pointer}
 .icon-btn:hover{background:var(--hover);color:var(--text)}
-.tabs{display:flex;gap:2px;padding:0 16px;border-bottom:1px solid var(--border);overflow-x:auto;flex:none}
-.tab{border:0;background:none;color:var(--text-2);height:38px;padding:0 10px;cursor:pointer;position:relative;white-space:nowrap;display:flex;align-items:center;gap:6px}
-.tab:hover{color:var(--text)}
-.tab.on{color:var(--text)}
-.tab.on::after{content:"";position:absolute;left:8px;right:8px;bottom:-1px;height:2px;border-radius:2px;background:var(--accent)}
-.tab .c{font-size:11px;color:var(--text-3)}
+.tabs{display:flex;align-items:center;gap:4px;height:44px;padding:0 12px;border-bottom:1px solid var(--border);overflow-x:auto;flex:none;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{display:flex;align-items:center;gap:6px;flex:none;height:26px;padding:0 10px;border:1px solid transparent;border-radius:7px;background:none;color:var(--text-2);cursor:pointer;white-space:nowrap;font-size:12.5px;font-weight:500}
+.tab:hover{color:var(--text);background:var(--hover)}
+.tab.on{color:var(--text);background:var(--active);border-color:var(--border)}
+.tab .c{font-size:11px;color:var(--text-3);font-weight:400}
 .body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 300px}
 .body.full{grid-template-columns:minmax(0,1fr)}
 .pane{overflow:auto;min-width:0}
-.props{border-left:1px solid var(--border);overflow:auto;background:var(--panel)}
+.props{border-left:1px solid var(--border);overflow:auto}
 
 /* Buttons */
 .btn{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:6px;border:1px solid var(--border-2);background:var(--elev);color:var(--text);cursor:pointer;white-space:nowrap}
@@ -121,8 +125,6 @@ svg{flex:none}
 .cmd-i{display:flex;align-items:center;gap:10px;width:100%;height:34px;padding:0 10px;border:0;border-radius:6px;background:none;color:var(--text-2);text-align:left;cursor:pointer}
 .cmd-i.on{background:var(--active);color:var(--text)}
 .cmd-i .kbd{margin-left:auto}
-.search{margin:0 10px 6px;display:flex;align-items:center;gap:8px;height:28px;padding:0 10px;border-radius:6px;border:1px solid var(--border);background:none;color:var(--text-3);cursor:pointer;text-align:left}
-.search:hover{color:var(--text-2);border-color:var(--border-2)}
 .empty{display:grid;place-items:center;text-align:center;padding:72px 20px;color:var(--text-2)}
 .empty h3{color:var(--text);font-size:15px;font-weight:500;margin:12px 0 4px}
 
@@ -140,7 +142,7 @@ svg{flex:none}
 .callout.bad{border-color:color-mix(in srgb,var(--red) 35%,var(--border))}
 .callout.good{border-color:color-mix(in srgb,var(--green) 35%,var(--border))}
 .callout b{font-weight:500}
-.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:26px}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:10px}
 .stat{border:1px solid var(--border);border-radius:8px;padding:12px;background:var(--panel);min-width:0}
 .stat .k{color:var(--text-2);font-size:12px}
 .stat .v{font-size:20px;font-weight:500;margin:4px 0 6px;letter-spacing:-.01em}
@@ -246,21 +248,20 @@ pre.src{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.6 "JetBr
 .btn.done{background:var(--green)}
 .btn svg{flex:none}
 
-/* Overview charts */
+/* Overview cards and charts */
 .doc{container-type:inline-size}
-.cards2{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:10px;margin-bottom:10px}
+.charts{display:flex;flex-direction:column;gap:10px;margin-bottom:26px}
 .card{border:1px solid var(--border);border-radius:10px;background:var(--panel);padding:14px 16px;min-width:0}
 .card-h{display:flex;align-items:baseline;gap:4px 8px;flex-wrap:wrap;margin-bottom:12px}
 .card-h b{font-weight:500}
 .card-h .t3{font-size:12px}
 .card-h .act{margin-left:auto;align-self:center}
-@container (max-width:640px){.cards2{grid-template-columns:minmax(0,1fr)}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@container (max-width:640px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 /* Narrow: finished phases shrink to their check mark so the current phase stays in view. */
 @container (max-width:700px){.step.done:not(:last-child) .sl{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.link{width:18px;margin:0 6px}}
 .nw{white-space:nowrap}.nw .katex{white-space:normal}
 /* Following the writer keeps the caret clear of the sticky panel and paper headers. */
 .lp .caret{scroll-margin:104px 0 72px}
-@container (max-width:400px){.radial:not(.gauge){flex-direction:column;align-items:stretch}.radial:not(.gauge) .rf{margin:0 auto}}
 
 /* Results */
 .res{padding:20px 24px 48px;max-width:1320px;margin:0 auto;container-type:inline-size}
@@ -276,8 +277,6 @@ pre.src{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.6 "JetBr
 .tbar i{display:block;height:100%;border-radius:2px;background:var(--c);transition:width .5s var(--spring,ease)}
 @container (max-width:760px){.tiles{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @container (max-width:440px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.insp{display:flex;align-items:center;gap:10px;min-width:0}
-.insp .t2{font-size:12px}
 .gbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
 .gsearch{display:flex;align-items:center;gap:6px;height:28px;padding:0 6px 0 9px;border:1px solid var(--border-2);border-radius:6px;background:var(--bg);color:var(--text-3);flex:1 1 200px;max-width:340px;min-width:0}
 .gsearch:focus-within{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
@@ -361,7 +360,9 @@ pre.src{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.6 "JetBr
   .body.mode-focus>.pane{display:block}.zoom{display:none}.lp-head{top:40px}}
 @media (max-width:820px){
   .app{grid-template-columns:minmax(0,1fr)}
-  .side{position:fixed;inset:0 auto 0 0;width:min(280px,86vw);z-index:15;transform:translateX(-100%);transition:transform .18s ease}
+  body{background:var(--bg)}
+  .main{margin:0;border:0;border-radius:0;box-shadow:none}
+  .side{position:fixed;inset:0 auto 0 0;width:min(280px,86vw);z-index:15;transform:translateX(-100%);transition:transform .18s ease;border-right:1px solid var(--border)}
   .side.open{transform:none;box-shadow:var(--shadow)}
   .icon-btn.menu-btn{display:inline-grid}
   .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -370,17 +371,19 @@ pre.src{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.6 "JetBr
   .row .id,.row .meta .hide-sm{display:none}
   .res{padding:16px 12px 40px}
   .lp-steps{display:none}
-  .top,.tabs{padding-left:12px;padding-right:12px}
+  .top{padding:0 10px 0 6px}.tabs{padding:0 10px}
 }
 </style>
 </head>
 <body>
 <div class="app">
-  <aside class="side" id="side">
-    <div class="ws"><div class="logo">P</div><span>Plato</span><span class="t3" style="font-weight:400;margin-left:auto;font-size:12px">scientist</span></div>
-    <button class="new" id="newBtn" type="button"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg>New campaign<span class="kbd">C</span></button>
-    <button class="search" id="cmdBtn" type="button"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><span>Search</span><span class="kbd">⌘K</span></button>
-    <nav class="nav" id="nav"></nav>
+  <aside class="side" id="side" aria-label="Sidebar">
+    <div class="ws"><span class="ws-n"><span class="logo" aria-hidden="true">P</span><span>Plato</span><span class="t3" style="font-weight:400">scientist</span></span>
+      <span class="ws-a">
+        <button class="icon-btn" id="cmdBtn" type="button" aria-label="Search" title="Search (⌘K)"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg></button>
+        <button class="icon-btn" id="newBtn" type="button" aria-label="New campaign" title="New campaign (C)"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 9v3.5a1.5 1.5 0 0 1-1.5 1.5H3.5A1.5 1.5 0 0 1 2 12.5V4a1.5 1.5 0 0 1 1.5-1.5H7"/><path d="m11.3 1.9 2.8 2.8-5.6 5.6H5.7V7.5z"/></svg></button>
+      </span></div>
+    <nav class="nav" id="nav" aria-label="Campaigns"></nav>
     <div class="side-f">
       <div class="health" id="health"><span class="dot"></span><span>Not connected</span></div>
       <button class="item" id="settingsBtn" type="button"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M14.2 8h-1.6M3.4 8H1.8M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1M12.4 12.4l-1.1-1.1M4.7 4.7 3.6 3.6"/></svg>API token</button>
