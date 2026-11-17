@@ -62,6 +62,7 @@ class FakeModel:
         self.per_call = per_call_tokens
         self.writing_reserve = writing_reserve
         self.calls: list[str] = []
+        self.prompts: dict[str, str] = {}
         self.plan_rounds = 0
         self.code_calls = 0
         self.bib_keys: list[str] = []
@@ -81,6 +82,7 @@ class FakeModel:
         keep = 0 if purpose in WRITING_PURPOSES else self.writing_reserve
         await self.store.reserve_tokens(campaign_id, self.per_call, keep_free=keep)
         self.calls.append(purpose)
+        self.prompts[purpose] = prompt
         assert (
             "<untrusted-" in system or "untrusted" in system
         )  # framing contract present
@@ -295,6 +297,7 @@ async def test_campaign_runs_end_to_end_with_full_provenance(store):
     assert _bib_key(cited) in bib and _bib_key(uncited) not in bib
     assert f"\\cite{{{_bib_key(cited)}}}" in tex
     assert root["metrics"]["revised"] is True and "manuscript_revision" in model.calls
+    assert root["status"] == "verified"  # a finding passed verification
 
 
 async def test_finished_campaign_is_idempotent_on_rerun(store):
@@ -353,6 +356,22 @@ async def test_budget_exhaustion_still_produces_a_paper(store):
     assert "manuscript" in model.calls
     events = await store.guard_events(cid)
     assert any(e["kind"] == "budget" and e["decision"] == "deny" for e in events)
+
+    # No finding was verified: the question is not marked answered, and the writer still
+    # receives what was measured (as preliminary), not just counts.
+    findings = await store.nodes(cid, node_type="finding", status="verified")
+    root = next(
+        g
+        for g in await store.nodes(cid, node_type="goal")
+        if g["dedup_key"] == "root-goal"
+    )
+    assert not findings and root["status"] == "exhausted"
+    facts = await store.nodes(cid, node_type="fact")
+    prompt = model.prompts["manuscript"]
+    assert "Preliminary observations" in prompt and "Refuted hypotheses" in prompt
+    for f in facts:
+        if f["status"] != "verified":
+            assert f["title"] in prompt
 
 
 async def test_budget_exhausted_before_research_halts_and_stays_halted(store):

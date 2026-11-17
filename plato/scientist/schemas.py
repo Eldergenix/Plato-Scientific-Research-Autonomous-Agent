@@ -49,7 +49,11 @@ class IntentSpec(BaseModel):
         description="Name of the single metric that decides the outcome."
     )
     success_criterion: str = Field(
-        description="Threshold on the primary metric that supports the hypothesis."
+        description=(
+            "Threshold on the primary metric that supports the hypothesis. Express tolerances "
+            "relative to the estimate's standard error or Monte Carlo error (e.g. 'within 3 SE "
+            "of the analytical value'), never tighter than the sampling noise the protocol can resolve."
+        )
     )
     priority: float = Field(description="0 to 1: expected information gain.")
     goal_index: int = Field(description="Index of the goal this intent serves.")

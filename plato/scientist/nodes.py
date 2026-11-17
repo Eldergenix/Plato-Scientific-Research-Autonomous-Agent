@@ -387,7 +387,10 @@ async def experiment_planner(
         + f"\n\nPapers not yet used by any experiment: {len(uncovered)}\n\n"
         f"Propose up to {ctx.config.intents_per_round} new, independent computational experiments. "
         "Prefer experiments that resolve open hints or follow up surprising facts. Each must run "
-        "offline in under two minutes with numpy/scipy/pandas/scikit-learn/matplotlib."
+        "offline in under two minutes with numpy/scipy/pandas/scikit-learn/matplotlib. Derive any "
+        "predicted value analytically before stating it, and set each success criterion relative to "
+        "the standard error the protocol can resolve: a threshold below the sampling noise refutes "
+        "true hypotheses."
     )
     await _guarded(ctx, campaign_id, framed)
     batch = await ctx.model.structured(
@@ -988,6 +991,13 @@ async def write_manuscript(
     root_id = await _root_goal(ctx, campaign_id)
     findings = await store.nodes(campaign_id, node_type="finding", status="verified")
     refuted = await store.nodes(campaign_id, node_type="fact", status="refuted")
+    # Observations that ran but did not pass replication/skeptic review. The writer may report
+    # them only as preliminary, so a budget-limited campaign still documents what it measured.
+    preliminary = [
+        f
+        for f in await store.nodes(campaign_id, node_type="fact")
+        if f["status"] not in ("refuted", "verified")
+    ]
 
     # Ground the paper in provenance: only papers anchored somewhere in the graph are citable.
     papers = {
@@ -1020,11 +1030,27 @@ async def write_manuscript(
         ).text
         for k, p in keys.items()
     )
+
+    def _observations(nodes: list[dict[str, Any]]) -> str:
+        return (
+            "\n".join(
+                f"- {n['title']}: {n['hypothesis_or_spec']} (metrics {json.dumps(n['metrics'])[:400]})"
+                for n in nodes[:20]
+            )
+            or "(none)"
+        )
+
+    evidence_text = (
+        f"Verified findings (passed replication and skeptic review):\n{finding_text}\n\n"
+        f"Refuted hypotheses (the measurement contradicted the stated hypothesis):\n{_observations(refuted)}\n\n"
+        f"Preliminary observations (measured but not yet replicated or reviewed):\n{_observations(preliminary)}"
+    )
     base_prompt = (
-        f"Research question: {campaign['research_question']}\n\nVerified findings (the only results you may report):\n"
-        f"{finding_text}\n\nRefuted or non-replicating observations: {len(refuted)}\n\n"
+        f"Research question: {campaign['research_question']}\n\n{evidence_text}\n\n"
         f"Citable references (use \\cite{{key}} with these keys only):\n{refs}\n\n"
-        "Write each section as LaTeX body text (no preamble). Report numbers exactly as given; state "
+        "Write each section as LaTeX body text (no preamble). Report numbers exactly as given. Present "
+        "verified findings as results; present refuted hypotheses as negative results, with the measured "
+        "values; present preliminary observations only as preliminary, labelled unreplicated. State "
         "clearly that experiments are computational and automated, and what was not established."
     )
     ms = await ctx.model.structured(
@@ -1042,7 +1068,7 @@ async def write_manuscript(
         schema=PeerReview,
         effort="high",
         system=_system("peer reviewer for a top venue", nonce),
-        prompt=f"Review this manuscript against the evidence.\n\nEvidence:\n{finding_text}\n\nManuscript:\n{ms.model_dump_json()}",
+        prompt=f"Review this manuscript against the evidence.\n\nEvidence:\n{evidence_text}\n\nManuscript:\n{ms.model_dump_json()}",
     )
     revised = False
     if review.decision in ("major_revision", "reject") and review.required_changes:
@@ -1081,9 +1107,10 @@ async def write_manuscript(
     await store.add_evidence(
         root_id, "peer_review", review.model_dump_json(), approval_actor="model"
     )
+    # The question counts as answered only when a finding passed verification.
     await store.set_node_status(
         root_id,
-        "verified",
+        "verified" if findings else "exhausted",
         metrics={
             "findings": len(findings),
             "review_decision": review.decision,
