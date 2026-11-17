@@ -980,6 +980,11 @@ async def write_manuscript(
         from_statuses=["sealed_eval", "investigating", "ablating"],
     )
     campaign = await store.get_campaign(campaign_id)
+    if campaign["status"] != "writing":
+        # Never spend tokens on a paper whose completion transition cannot succeed.
+        raise RuntimeError(
+            f"cannot write manuscript for campaign {campaign_id} in status {campaign['status']!r}"
+        )
     root_id = await _root_goal(ctx, campaign_id)
     findings = await store.nodes(campaign_id, node_type="finding", status="verified")
     refuted = await store.nodes(campaign_id, node_type="fact", status="refuted")

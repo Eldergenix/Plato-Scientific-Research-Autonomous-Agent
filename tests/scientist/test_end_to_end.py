@@ -355,6 +355,28 @@ async def test_budget_exhaustion_still_produces_a_paper(store):
     assert any(e["kind"] == "budget" and e["decision"] == "deny" for e in events)
 
 
+async def test_budget_exhausted_before_research_halts_and_stays_halted(store):
+    # The writing reserve alone exceeds the budget, so the first scout call is denied.
+    _, cid, *_ = await _new_campaign(store, budget=5_000)
+    ctx = ScientistContext(
+        store=store,
+        model=FakeModel(store, writing_reserve=10_000),
+        retriever=fake_retriever,
+    )
+    summary = await run_campaign(ctx, cid)
+    campaign = summary["campaign"]
+    assert campaign["status"] == "halted"
+    assert "before research began" in campaign["halted_reason"]
+    assert "manuscript" not in ctx.model.calls
+
+    # A resume (the cron) is a no-op on a halted campaign.
+    again = FakeModel(store, writing_reserve=10_000)
+    await run_campaign(
+        ScientistContext(store=store, model=again, retriever=fake_retriever), cid
+    )
+    assert again.calls == []
+
+
 async def test_unknown_campaign_raises(store):
     import pytest
 

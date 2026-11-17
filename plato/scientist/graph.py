@@ -80,6 +80,17 @@ def build_scientist_graph(ctx: ScientistContext):
         await sealed_evaluation(ctx, cid(state))
 
     async def manuscript(state: ScientistState):
+        campaign = await ctx.store.get_campaign(cid(state))
+        if campaign["status"] == "ideation":
+            # Budget ran out before any research: there is nothing to write up. Halting
+            # (terminal) also stops the resume cron from re-running the campaign.
+            await ctx.store.transition_campaign(
+                cid(state),
+                "halted",
+                from_statuses=["ideation"],
+                reason="token budget exhausted before research began",
+            )
+            return
         try:
             await write_manuscript(ctx, cid(state))
         except BudgetExceeded as exc:

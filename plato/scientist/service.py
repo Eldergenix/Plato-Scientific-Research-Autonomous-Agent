@@ -50,7 +50,8 @@ class CampaignIn(BaseModel):
     question: str = Field(min_length=3, max_length=4000)
     program_slug: str = Field(default="default", pattern=r"^[a-z0-9][a-z0-9_-]{0,127}$")
     domain: str = Field(default="general", max_length=128)
-    token_budget: int = Field(default=2_000_000, ge=50_000, le=50_000_000)
+    # Floor: the 80k-token writing reserve plus enough for at least one research round.
+    token_budget: int = Field(default=2_000_000, ge=200_000, le=50_000_000)
     compute_seconds_budget: int = Field(default=7200, ge=60, le=864_000)
     workers: int = Field(default=4, ge=1, le=16)
     max_rounds: int = Field(default=2, ge=1, le=10)
