@@ -1,0 +1,35 @@
+# syntax=docker/dockerfile:1.7
+# Plato autonomous scientist: the long-running Python runtime behind jarvisos.xyz.
+# Runs inside a Cloudflare Container; build context is the repository root.
+FROM python:3.13-slim-bookworm
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    MPLBACKEND=Agg \
+    PORT=8080
+
+# `unshare` (network namespace for experiments) and `setpriv` (run experiments as an
+# unprivileged user) come from util-linux, which is part of the Debian base image; the
+# build fails fast below if either is missing. dumb-init (from PyPI) runs as PID 1 and
+# reaps orphaned sandbox processes, so no apt repositories are needed.
+RUN command -v unshare && command -v setpriv
+
+WORKDIR /app
+COPY docker/requirements-scientist.txt /app/requirements.txt
+RUN pip install -r /app/requirements.txt
+
+# Only the Python package is needed at runtime; it is imported from /app.
+COPY plato /app/plato
+ENV PYTHONPATH=/app
+
+# Pre-build the matplotlib font cache so the first experiment does not pay for it.
+RUN python -c "import matplotlib.pyplot" \
+ && python -c "import plato.scientist.service"
+
+EXPOSE 8080
+# Runs as root inside its own VM so the sandbox can create network namespaces and drop
+# experiments to `nobody`; the service itself never executes model-written code directly.
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["python", "-m", "plato.scientist.service"]

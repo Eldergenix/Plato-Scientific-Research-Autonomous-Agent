@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 import warnings
 
-from .llm import LLM, models
+from .llm import LLM, RETIRED_ALIASES, models
 
 _NO_DATASET_SENTINELS = ("no dataset has been uploaded yet",)
 
@@ -26,6 +26,11 @@ def llm_parser(llm: LLM | str) -> LLM:
     """Get the LLM instance from a string."""
 
     if isinstance(llm, str):
+        if llm in RETIRED_ALIASES:
+            warnings.warn(
+                f"LLM '{llm}' was retired by its provider; using '{RETIRED_ALIASES[llm]}' instead.",
+                DeprecationWarning, stacklevel=2,
+            )
         try:
             llm = models[llm]
         except KeyError:

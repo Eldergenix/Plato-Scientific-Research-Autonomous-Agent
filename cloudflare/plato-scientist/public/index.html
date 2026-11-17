@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plato Scientist</title>
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1b;--mut:#6b6a66;--line:#e3e1db;--card:#fff;--acc:#2f5d8a;
+--goal:#2f5d8a;--intent:#b07a1f;--fact:#4b7f52;--finding:#7a3e9d;--hint:#8a8a85;--bad:#b23b3b}
+@media (prefers-color-scheme:dark){:root{--bg:#161615;--fg:#ecebe6;--mut:#a3a29c;--line:#2e2d2a;--card:#1e1e1c;--acc:#7fb0e0}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+header{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--line)}
+h1{font-size:17px;margin:0}h2{font-size:15px;margin:0 0 8px}main{max-width:1100px;margin:0 auto;padding:16px;display:grid;gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}
+input,textarea,select,button{font:inherit;color:inherit}input,textarea{width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
+button{padding:7px 12px;border-radius:6px;border:1px solid var(--acc);background:var(--acc);color:#fff;cursor:pointer}
+button.ghost{background:transparent;color:var(--acc)}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:end}.row>label{flex:1;min-width:120px}
+label{font-size:13px;color:var(--mut);display:block}table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:6px 4px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+tr.sel{background:color-mix(in srgb,var(--acc) 10%,transparent)}tr[data-id]{cursor:pointer}.mut{color:var(--mut)}.pill{font-size:12px;padding:1px 7px;border-radius:9px;border:1px solid var(--line)}
+pre{white-space:pre-wrap;word-break:break-word;font-size:12.5px;max-height:420px;overflow:auto;background:var(--bg);padding:10px;border-radius:6px;margin:0}
+svg{width:100%;height:auto;display:block}.legend span{margin-right:12px;font-size:12px}.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px}
+.tabs{display:flex;gap:6px;margin:10px 0}.err{color:var(--bad)}.scroll{overflow-x:auto}
+</style>
+</head>
+<body>
+<header><h1>Plato Scientist</h1>
+<div class="row" style="flex:0 1 360px"><label style="flex:1">API token<input id="token" type="password" autocomplete="off"></label><button id="save" class="ghost">Save</button></div></header>
+<main>
+<section class="card"><h2>New research campaign</h2>
+<form id="create">
+<label>Research question or idea<textarea name="question" rows="3" required minlength="3" maxlength="4000"></textarea></label>
+<div class="row" style="margin-top:8px">
+<label>Domain<input name="domain" value="general"></label>
+<label>Token budget<input name="token_budget" type="number" value="2000000" min="50000" max="50000000"></label>
+<label>Parallel workers<input name="workers" type="number" value="4" min="1" max="16"></label>
+<label>Rounds<input name="max_rounds" type="number" value="2" min="1" max="10"></label></div>
+<div class="row" style="margin-top:8px"><label>Training data (CSV, optional)<input name="train" type="file" multiple></label>
+<label>Sealed held-out data (used only after experiments end)<input name="sealed" type="file" multiple></label></div>
+<div class="row" style="margin-top:10px"><button type="submit">Start campaign</button><span id="cmsg" class="mut"></span></div>
+</form></section>
+<section class="card"><div class="row" style="justify-content:space-between"><h2>Campaigns</h2><button id="refresh" class="ghost">Refresh</button></div>
+<div class="scroll"><table><thead><tr><th>Question</th><th>Status</th><th>Tokens</th><th>Created</th></tr></thead><tbody id="list"></tbody></table></div><p id="lmsg" class="mut"></p></section>
+<section class="card" id="detail" hidden></section>
+</main>
+<script>
+const $=s=>document.querySelector(s);let current=null,timer=null,blobUrl=null;
+const store={get(){try{return localStorage.getItem("plato_token")||""}catch{return""}},set(v){try{localStorage.setItem("plato_token",v)}catch{}}};
+$("#token").value=store.get();$("#save").onclick=()=>{store.set($("#token").value.trim());load()};
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+async function api(path,opt={}){const r=await fetch("/api/"+path,{...opt,headers:{...(opt.headers||{}),authorization:"Bearer "+($("#token").value.trim())}});
+if(!r.ok){let m=r.status+"";try{m=(await r.json()).error||m}catch{}throw new Error(m)}return r}
+const fmt=n=>Number(n||0).toLocaleString();const when=t=>t?new Date(t).toLocaleString():"";
+async function load(){try{const {campaigns}=await (await api("campaigns")).json();$("#lmsg").textContent=campaigns.length?"":"No campaigns yet.";
+$("#list").innerHTML=campaigns.map(c=>`<tr data-id="${c.id}" class="${c.id===current?"sel":""}"><td>${esc(c.research_question)}</td><td><span class="pill">${esc(c.status)}</span></td><td>${fmt(c.tokens_used)} / ${fmt(c.token_budget_max)}</td><td class="mut">${when(c.created_at)}</td></tr>`).join("");
+document.querySelectorAll("#list tr").forEach(tr=>tr.onclick=()=>show(tr.dataset.id))}catch(e){$("#lmsg").innerHTML=`<span class="err">${esc(e.message)}</span>`}}
+$("#refresh").onclick=load;
+const b64=f=>f.arrayBuffer().then(b=>{let s="";const u=new Uint8Array(b);for(let i=0;i<u.length;i+=0x8000)s+=String.fromCharCode(...u.subarray(i,i+0x8000));return btoa(s)});
+$("#create").onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);$("#cmsg").textContent="Starting…";
+try{const datasets=[];for(const [k,sealed] of [["train",false],["sealed",true]])for(const file of f.getAll(k))if(file.size)datasets.push({file_name:file.name.replace(/[^A-Za-z0-9._-]/g,"_").replace(/^[^A-Za-z0-9]+/,"d").slice(0,128),content_base64:await b64(file),sealed});
+const body={question:f.get("question"),domain:f.get("domain")||"general",token_budget:+f.get("token_budget"),workers:+f.get("workers"),max_rounds:+f.get("max_rounds"),datasets};
+const r=await (await api("campaigns",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)})).json();
+$("#cmsg").textContent="Started "+r.id;e.target.reset();await load();show(r.id)}catch(err){$("#cmsg").innerHTML=`<span class="err">${esc(err.message)}</span>`}};
+const COLORS={goal:"var(--goal)",intent:"var(--intent)",fact:"var(--fact)",finding:"var(--finding)",hint:"var(--hint)"};
+function graphSvg(nodes,edges){if(!nodes.length)return"<p class='mut'>No nodes yet.</p>";const depth={},inc={};edges.forEach(e=>(inc[e.target_node_id]=inc[e.target_node_id]||[]).push(e.source_node_id));
+const d=id=>{if(depth[id]!==undefined)return depth[id];depth[id]=0;const p=inc[id]||[];depth[id]=p.length?1+Math.max(...p.map(d)):0;return depth[id]};nodes.forEach(n=>d(n.id));
+const layers={};nodes.forEach(n=>(layers[depth[n.id]]=layers[depth[n.id]]||[]).push(n));const L=Object.keys(layers).map(Number).sort((a,b)=>a-b);
+const W=1000,rowH=90,pos={};L.forEach((l,i)=>layers[l].forEach((n,j)=>pos[n.id]=[(j+1)*W/(layers[l].length+1),40+i*rowH]));
+const H=60+L.length*rowH;let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Exploration graph">`;
+edges.forEach(e=>{const a=pos[e.source_node_id],b=pos[e.target_node_id];if(a&&b)s+=`<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="${e.edge_type==="refutes"?"var(--bad)":"var(--line)"}" stroke-width="1.5"/>`});
+nodes.forEach(n=>{const [x,y]=pos[n.id];s+=`<g data-node="${n.id}" style="cursor:pointer"><title>${esc(n.node_type+" · "+n.status+"\n"+n.title)}</title><circle cx="${x}" cy="${y}" r="${n.node_type==="finding"?11:8}" fill="${COLORS[n.node_type]}" opacity="${["refuted","exhausted"].includes(n.status)?.35:1}"/></g>`});
+return s+"</svg>"}
+async function show(id){current=id;load();clearTimeout(timer);const el=$("#detail");el.hidden=false;
+try{const [s,g]=await Promise.all([api("campaigns/"+id).then(r=>r.json()),api("campaigns/"+id+"/graph").then(r=>r.json())]);const c=s.campaign;
+const findings=g.nodes.filter(n=>n.node_type==="finding");
+el.innerHTML=`<div class="row" style="justify-content:space-between"><h2>${esc(c.research_question)}</h2><span><span class="pill">${esc(c.status)}</span> <button class="ghost" id="rerun">Resume</button></span></div>
+<p class="mut">Tokens ${fmt(c.tokens_used)} / ${fmt(c.token_budget_max)} · compute ${fmt(c.gpu_seconds_used)} / ${fmt(c.gpu_seconds_max)} s${c.halted_reason?` · <span class="err">${esc(c.halted_reason)}</span>`:""}</p>
+<div class="legend">${Object.entries(COLORS).map(([k,v])=>`<span><i style="background:${v}"></i>${k}</span>`).join("")}</div>${graphSvg(g.nodes,g.edges)}
+<div class="tabs"><button class="ghost" data-tab="findings">Findings (${findings.length})</button><button class="ghost" data-tab="paper">Manuscript</button><button class="ghost" data-tab="guard">Guardrail log (${s.guard_events.length})</button></div><div id="tab"></div><div id="prov"></div>`;
+const tabs={findings:()=>findings.length?`<table>${findings.map(n=>`<tr data-node="${n.id}"><td>${esc(n.title)}</td><td class="mut">${esc(n.hypothesis_or_spec)}</td></tr>`).join("")}</table>`:"<p class='mut'>No verified findings yet.</p>",
+guard:()=>`<table>${s.guard_events.map(e=>`<tr><td><span class="pill">${esc(e.kind)}</span> ${esc(e.decision)}</td><td><pre>${esc(JSON.stringify(e.detail))}</pre></td><td class="mut">${when(e.created_at)}</td></tr>`).join("")}</table>`,
+paper:async()=>{try{const m=await (await api("campaigns/"+id+"/manuscript")).json();return `<h2>LaTeX</h2><pre>${esc(m.latex_section)}</pre><h2 style="margin-top:10px">BibTeX</h2><pre>${esc(m.bibtex||"")}</pre>`}catch(e){return `<p class="mut">${esc(e.message)}</p>`}}};
+el.querySelectorAll("[data-tab]").forEach(b=>b.onclick=async()=>{$("#tab").innerHTML=await tabs[b.dataset.tab]();bindNodes()});
+$("#tab").innerHTML=tabs.findings();bindNodes();$("#rerun").onclick=async()=>{await api("campaigns/"+id+"/run",{method:"POST"});show(id)};
+const sig=c.updated_at+JSON.stringify(s.node_counts);if(!["completed","halted"].includes(c.status))timer=setTimeout(()=>poll(id,sig),15000)}catch(e){el.innerHTML=`<p class="err">${esc(e.message)}</p>`}}
+async function poll(id,sig){if(current!==id)return;try{const s=await (await api("campaigns/"+id)).json();
+if(s.campaign.updated_at+JSON.stringify(s.node_counts)!==sig)return show(id)}catch{}timer=setTimeout(()=>poll(id,sig),15000)}
+function bindNodes(){document.querySelectorAll("#detail [data-node]").forEach(n=>n.onclick=()=>prov(n.dataset.node))}
+async function prov(nid){const p=await (await api("nodes/"+nid+"/provenance")).json();const byNode={};p.evidence.forEach(e=>(byNode[e.node_id]=byNode[e.node_id]||[]).push(e));
+$("#prov").innerHTML=`<h2 style="margin-top:14px">Provenance</h2><table>${p.nodes.map(n=>`<tr><td><span class="pill">${esc(n.node_type)}</span> ${esc(n.title)}<div class="mut">${p.anchors.filter(a=>a.node_id===n.id).map(a=>esc(a.anchor_role+": "+a.canonical_name)).join(" · ")}</div></td>
+<td>${(byNode[n.id]||[]).map(e=>`<button class="ghost" data-ev="${e.id}" data-type="${esc(e.artifact_type)}">${esc(e.artifact_type)}</button>`).join(" ")}</td></tr>`).join("")}</table><div id="ev"></div>`;
+document.querySelectorAll("[data-ev]").forEach(b=>b.onclick=async()=>{const r=await api("evidence/"+b.dataset.ev);
+if(b.dataset.type==="plot_png"){if(blobUrl)URL.revokeObjectURL(blobUrl);blobUrl=URL.createObjectURL(await r.blob());$("#ev").innerHTML=`<img alt="experiment plot" style="max-width:100%" src="${blobUrl}">`}else $("#ev").innerHTML=`<pre>${esc(await r.text())}</pre>`})}
+load();
+</script>
+</body>
+</html>

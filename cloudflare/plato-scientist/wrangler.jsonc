@@ -1,0 +1,51 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Edge for the Plato autonomous scientist at https://jarvisos.xyz
+  //   Worker      : auth, static UI, read API (via Hyperdrive), cron resume
+  //   Container   : Python LangGraph swarm + sandboxed experiments, one instance per campaign
+  //   Hyperdrive  : pooled, cached connection from the Worker to Supabase Postgres
+  "name": "plato-scientist",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-10-30",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "routes": [{ "pattern": "jarvisos.xyz", "custom_domain": true }],
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      // Replaced by scripts/deploy.sh with the id of the `plato-supabase` Hyperdrive config.
+      "id": "00000000000000000000000000000000",
+      "localConnectionString": "postgresql://postgres:postgres@127.0.0.1:5432/postgres"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "PLATO_SCIENTIST", "class_name": "ScientistContainer" }]
+  },
+  "containers": [
+    {
+      "class_name": "ScientistContainer",
+      "image": "../../docker/Dockerfile.scientist",
+      "image_build_context": "../..",
+      // 2 vCPU / 8 GiB / 16 GB disk: room for 3 concurrent sandboxed experiments.
+      "instance_type": "standard-3",
+      "max_instances": 10,
+      "rollout_active_grace_period": 600
+    }
+  ],
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ScientistContainer"] }],
+  // Every 5 minutes: wake the container of any unfinished campaign so crashed or evicted
+  // runs resume from Postgres.
+  "triggers": { "crons": ["*/5 * * * *"] },
+  "vars": {
+    "PLATO_SCIENTIST_MODEL": "claude-haiku-5-5"
+  },
+  // Secrets (wrangler secret put): PLATO_API_TOKEN, PLATO_INTERNAL_TOKEN,
+  // ANTHROPIC_API_KEY, PLATO_DATABASE_URL
+  "observability": { "enabled": true }
+}

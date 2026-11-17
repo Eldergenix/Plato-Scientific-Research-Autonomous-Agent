@@ -30,7 +30,7 @@ dependencies = [
   "cmbagent>=0.0.1post63",
   "cmbagent-autogen>=0.0.91.post11,<0.0.92",
   "mistralai>=1.12.4,<1.13",
-  "pymupdf",
+  "pymupdf>=1.24,<2",  # 2.x pulls onnxruntime + pymupdf4llm/pymupdf_layout (no license metadata)
   "pillow",
   "jsonschema",
   "jupyter-client>=8.6",

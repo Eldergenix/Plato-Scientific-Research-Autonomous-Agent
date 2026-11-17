@@ -280,3 +280,7 @@ evals/results/
 /runs/
 plato/runs/
 examples/**/runs/
+
+# Cloudflare edge (local state, secrets)
+cloudflare/plato-scientist/.wrangler/
+cloudflare/plato-scientist/.dev.vars
