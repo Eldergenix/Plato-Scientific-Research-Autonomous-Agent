@@ -271,7 +271,9 @@ class DualGraphStore:
         row = await self._pool.fetchrow(
             """
             UPDATE plato.research_campaigns
-               SET status = $2, halted_reason = COALESCE($4, halted_reason)
+               SET status = $2, halted_reason = COALESCE($4, halted_reason),
+                   -- On the right-hand side "status" is the pre-update value.
+                   halted_from = CASE WHEN $2 = 'halted' THEN status ELSE halted_from END
              WHERE id = $1
                AND NOT status = ANY($5::text[])
                AND ($3::text[] IS NULL OR status = ANY($3::text[]))

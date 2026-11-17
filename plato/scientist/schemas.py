@@ -46,13 +46,26 @@ class IntentSpec(BaseModel):
         description="Concrete computational protocol: data, procedure, controls, metric."
     )
     primary_metric: str = Field(
-        description="Name of the single metric that decides the outcome."
+        description=(
+            "snake_case key (e.g. 'ci_coverage') of the single numeric metric that decides the "
+            "outcome; the experiment prints its value under exactly this key."
+        )
+    )
+    test_kind: Literal["difference", "equivalence"] = Field(
+        default="difference",
+        description=(
+            "'difference' when the hypothesis claims an effect or a difference (p_value tests the "
+            "null of no effect); 'equivalence' when it claims agreement with a reference value "
+            "within a tolerance, e.g. 'coverage is 0.95' or 'RMSE matches theory' (p_value comes "
+            "from a TOST equivalence test against that tolerance)."
+        ),
     )
     success_criterion: str = Field(
         description=(
             "Threshold on the primary metric that supports the hypothesis. Express tolerances "
             "relative to the estimate's standard error or Monte Carlo error (e.g. 'within 3 SE "
-            "of the analytical value'), never tighter than the sampling noise the protocol can resolve."
+            "of the analytical value'), never tighter than the sampling noise the protocol can resolve. "
+            "For equivalence claims, state the tolerance as a number."
         )
     )
     priority: float = Field(description="0 to 1: expected information gain.")

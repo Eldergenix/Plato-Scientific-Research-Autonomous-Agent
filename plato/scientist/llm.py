@@ -17,11 +17,13 @@ The :class:`ScientistModel` protocol lets tests inject a deterministic model.
 from __future__ import annotations
 
 import base64
+import functools
 import logging
 import os
 import uuid
 from typing import Literal, Protocol, TypeVar
 
+import pydantic
 from pydantic import BaseModel
 
 from plato.llm import claude55haiku
@@ -64,6 +66,13 @@ class ScientistModel(Protocol):
         effort: Effort = "medium",
         images: list[bytes] | None = None,
     ) -> T: ...
+
+
+@functools.cache
+def _json_schema(schema: type[pydantic.BaseModel]) -> dict:
+    import anthropic
+
+    return anthropic.transform_schema(schema.model_json_schema())
 
 
 def _estimate_input_tokens(*texts: str, images: int = 0) -> int:
@@ -135,8 +144,11 @@ class AnthropicScientistModel:
         # error, 4xx) is not billed for output, so it is settled to zero.
         actual = 0
         try:
-            async with self._sem:
-                response = await self._client.messages.parse(
+            # Streaming: a long manuscript (tens of thousands of thinking + output
+            # tokens) would exceed a non-streaming request timeout.
+            async with (
+                self._sem,
+                self._client.messages.stream(
                     model=self._model,
                     max_tokens=max_tokens,
                     system=[
@@ -147,10 +159,20 @@ class AnthropicScientistModel:
                         }
                     ],
                     messages=[{"role": "user", "content": content}],
-                    output_config={"effort": effort},
-                    output_format=schema,
+                    # The schema goes in as a plain JSON-schema dict so the SDK does not
+                    # parse mid-stream: a truncated body must surface as a stop_reason after
+                    # usage is known, not as a validation error that loses the token count.
+                    output_config={
+                        "effort": effort,
+                        "format": {
+                            "type": "json_schema",
+                            "schema": _json_schema(schema),
+                        },
+                    },
                     metadata={"user_id": f"campaign-{campaign_id}"},
-                )
+                ) as stream,
+            ):
+                response = await stream.get_final_message()
             usage = response.usage
             actual = (
                 usage.input_tokens
@@ -176,9 +198,16 @@ class AnthropicScientistModel:
                 raise ModelOutputError(
                     f"{purpose}: output truncated at max_tokens={max_tokens}"
                 )
-            parsed = response.parsed_output
-            if parsed is None:
+            text = "".join(
+                b.text for b in response.content if getattr(b, "type", None) == "text"
+            )
+            if not text:
                 raise ModelOutputError(f"{purpose}: no structured output returned")
-            return parsed
+            try:
+                return schema.model_validate_json(text)
+            except pydantic.ValidationError as exc:
+                raise ModelOutputError(
+                    f"{purpose}: output failed schema validation: {exc.errors()[:3]}"
+                ) from exc
         finally:
             await self._store.settle_tokens(campaign_id, reserved, actual)

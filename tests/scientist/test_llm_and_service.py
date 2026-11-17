@@ -18,8 +18,22 @@ class _FakeMessages:
         self.response = response
         self.kwargs = None
 
-    async def parse(self, **kwargs):
+    def stream(self, **kwargs):
         self.kwargs = kwargs
+        return _FakeStream(self.response)
+
+
+class _FakeStream:
+    def __init__(self, response):
+        self.response = response
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def get_final_message(self):
         return self.response
 
 
@@ -30,8 +44,11 @@ def _response(stop_reason="end_turn", parsed=None, in_tok=100, out_tok=50):
         cache_creation_input_tokens=0,
         cache_read_input_tokens=10,
     )
+    content = (
+        [SimpleNamespace(type="text", text=parsed.model_dump_json())] if parsed else []
+    )
     return SimpleNamespace(
-        stop_reason=stop_reason, parsed_output=parsed, usage=usage, stop_details=None
+        stop_reason=stop_reason, content=content, usage=usage, stop_details=None
     )
 
 
@@ -54,8 +71,11 @@ async def test_model_request_shape_and_budget_settlement(store, campaign):
     assert out == parsed
     kw = messages.kwargs
     assert kw["model"] == "claude-haiku-5-5"
-    assert kw["output_config"] == {"effort": "low"}
-    assert kw["output_format"] is FigureCritique
+    assert kw["output_config"]["effort"] == "low"
+    fmt = kw["output_config"]["format"]
+    assert fmt["type"] == "json_schema"
+    assert set(fmt["schema"]["properties"]) == {"quality_score", "issues"}
+    assert "output_format" not in kw  # parsed by us after the stop_reason check
     assert (
         "temperature" not in kw and "thinking" not in kw
     )  # Haiku 5.5 rejects non-default sampling
@@ -176,3 +196,26 @@ async def test_service_requires_internal_token_and_creates_campaigns(pg_dsn):
                 headers={"X-Plato-Internal-Token": "secret-token"},
             )
             assert r.status_code == 422
+
+
+async def test_truncated_or_invalid_output_is_output_error_and_settles_usage(
+    store, campaign
+):
+    _, cid = campaign
+    before = (await store.get_campaign(cid))["tokens_used"]
+    bad = _response()
+    bad.content = [SimpleNamespace(type="text", text='{"quality_score": 0.5, "iss')]
+    for resp in (_response("max_tokens"), bad):
+        model = AnthropicScientistModel(
+            store, client=SimpleNamespace(messages=_FakeMessages(resp))
+        )
+        with pytest.raises(ModelOutputError):
+            await model.structured(
+                campaign_id=cid,
+                purpose="x",
+                system="s",
+                prompt="p",
+                schema=FigureCritique,
+            )
+    # Both calls were billed (100 + 50 + 10 each) even though they failed.
+    assert (await store.get_campaign(cid))["tokens_used"] == before + 320

@@ -53,6 +53,8 @@ from .schemas import (
 logger = logging.getLogger(__name__)
 
 METRICS_MARKER = "PLATO_METRICS"
+# Thinking plus the LaTeX body of one manuscript call (Haiku 5.5 allows 128k output).
+MANUSCRIPT_MAX_TOKENS = 48_000
 SEED_FILE = "plato_seed.txt"
 SEALED_MANIFEST = "plato_sealed.json"
 ROOT_GOAL_KEY = "root-goal"
@@ -128,6 +130,27 @@ def parse_metrics(stdout: str) -> dict[str, Any] | None:
                 return value
             return None
     return None
+
+
+def metric_key(name: str) -> str:
+    """Normalise a planner's metric name to the snake_case key the script must print.
+
+    Planners sometimes describe the metric ("Empirical 95% CI coverage") instead of naming
+    it; the key is what replication and the paper look up, so it must be deterministic."""
+    key = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")[:48].strip("_")
+    return (
+        key if key and not key[0].isdigit() else f"m_{key}" if key else "primary_value"
+    )
+
+
+def missing_required_metrics(
+    metrics: dict[str, Any], spec: dict[str, Any]
+) -> list[str]:
+    """Keys the verifier needs but the run did not print."""
+    required = [spec["primary_metric"]]
+    if spec.get("test_kind") == "equivalence":
+        required.append("p_value")
+    return [k for k in required if k not in metrics]
 
 
 def code_as_patch(code: str) -> str:
@@ -390,7 +413,8 @@ async def experiment_planner(
         "offline in under two minutes with numpy/scipy/pandas/scikit-learn/matplotlib. Derive any "
         "predicted value analytically before stating it, and set each success criterion relative to "
         "the standard error the protocol can resolve: a threshold below the sampling noise refutes "
-        "true hypotheses."
+        "true hypotheses. Mark claims of agreement with a reference value as 'equivalence' tests "
+        "with a tolerance of at least 3 Monte Carlo standard errors."
     )
     await _guarded(ctx, campaign_id, framed)
     batch = await ctx.model.structured(
@@ -414,7 +438,8 @@ async def experiment_planner(
                 {
                     "hypothesis": spec.hypothesis,
                     "protocol": spec.protocol,
-                    "primary_metric": spec.primary_metric,
+                    "primary_metric": metric_key(spec.primary_metric),
+                    "test_kind": spec.test_kind,
                     "success_criterion": spec.success_criterion,
                 }
             ),
@@ -450,7 +475,10 @@ _CODE_RULES = (
     "with it; it may read the provided dataset files from the working directory; it may save "
     "figures as PNG in the working directory; it must finish in under two minutes; its last "
     f"line of output must be '{METRICS_MARKER} ' followed by a JSON object of numeric metrics "
-    "that includes the primary metric (and p_value when a statistical test is performed). "
+    "that includes the primary metric under exactly its given key. For a 'difference' test, "
+    "report p_value from a test of the null of no effect when one is performed. For an "
+    "'equivalence' test, p_value is required and must come from a TOST equivalence test "
+    "(H0: |estimate - reference| >= tolerance), so a small p_value means agreement is shown. "
     f"If a file named '{SEALED_MANIFEST}' exists, it lists held-out evaluation files: evaluate "
     "the final method on them and report those metrics with the prefix 'sealed_'."
 )
@@ -508,7 +536,8 @@ async def execute_intent(
             system=_system("research engineer", nonce),
             prompt=(
                 f"Hypothesis: {spec['hypothesis']}\nProtocol: {spec['protocol']}\n"
-                f"Primary metric: {spec['primary_metric']}\nSuccess criterion: {spec['success_criterion']}\n"
+                f"Primary metric key: {spec['primary_metric']}\nTest kind: {spec.get('test_kind', 'difference')}\n"
+                f"Success criterion: {spec['success_criterion']}\n"
                 f"Dataset files: {sorted(datasets) or 'none'}\n\n{_CODE_RULES}\n\n{feedback}"
                 "Write the complete script."
             ),
@@ -537,8 +566,16 @@ async def execute_intent(
                 node_id=intent["id"],
             )
         metrics = parse_metrics(result.stdout) if result.ok else None
-        if metrics is not None:
+        missing = missing_required_metrics(metrics, spec) if metrics is not None else []
+        if metrics is not None and not missing:
             break
+        if missing:
+            metrics = None
+            feedback = (
+                f"The previous script ran but its {METRICS_MARKER} line lacks the required "
+                f"keys {missing}. Print them under exactly those names.\n\n"
+            )
+            continue
         err = frame_untrusted(
             (result.stderr or result.stdout)[-6000:],
             source="sandbox_output",
@@ -595,6 +632,7 @@ async def execute_intent(
         **metrics,
         "seed": 1,
         "primary_metric": spec["primary_metric"],
+        "test_kind": spec.get("test_kind", "difference"),
         "supports_hypothesis": obs.supports_hypothesis,
         "runtime_seconds": round(result.duration_seconds, 3),
         "network_isolated": result.network_isolated,
@@ -756,8 +794,16 @@ async def verifier(ctx: ScientistContext, campaign_id: uuid.UUID) -> dict[str, i
                 vlm_quality_score=round(score, 2),
             )
 
+        # Both kinds gate on p < 0.05: for 'difference' it rejects "no effect", for
+        # 'equivalence' (TOST) it rejects "outside the tolerance". A large p never supports
+        # an agreement claim, and equivalence claims must report one.
+        test_kind = fact["metrics"].get("test_kind", "difference")
         p_value = fact["metrics"].get("p_value")
-        stats_ok = p_value is None or float(p_value) < 0.05
+        stats_ok = (
+            float(p_value) < 0.05
+            if isinstance(p_value, (int, float))
+            else test_kind != "equivalence"
+        )
         nonce = new_nonce()
         log = await store.evidence_contents(fact["id"], "stdout_log")
         framed_log = frame_untrusted(
@@ -775,7 +821,9 @@ async def verifier(ctx: ScientistContext, campaign_id: uuid.UUID) -> dict[str, i
                 f"Candidate fact: {fact['title']}\n{fact['hypothesis_or_spec']}\n"
                 f"Metrics (seed 1): {json.dumps(fact['metrics'])}\n"
                 f"Replication (seed 2): {json.dumps(rep_metrics)} -> replicated={replicated}\n"
-                f"Statistical gate (p < 0.05 when reported): {stats_ok}\n"
+                f"Test kind: {test_kind} (p_value is "
+                f"{'a TOST equivalence p' if test_kind == 'equivalence' else 'a no-effect test p'}); "
+                f"statistical gate p < 0.05: {stats_ok}\n"
                 f"Figure scores: {figure_scores}\nRun log:\n{framed_log.text}\n\n"
                 "Decide whether this is a reliable finding worth reporting. Reject anything "
                 "that does not replicate, overstates the numbers, or could be an artefact."
@@ -1053,37 +1101,54 @@ async def write_manuscript(
         "values; present preliminary observations only as preliminary, labelled unreplicated. State "
         "clearly that experiments are computational and automated, and what was not established."
     )
+    # The cap covers adaptive thinking plus the full LaTeX body; at 16k the writer
+    # truncated once it was given every measured result.
     ms = await ctx.model.structured(
         campaign_id=campaign_id,
         purpose="manuscript",
         schema=Manuscript,
         effort="high",
-        max_tokens=16000,
+        max_tokens=MANUSCRIPT_MAX_TOKENS,
         system=_system("scientific writer", nonce),
         prompt=base_prompt,
     )
-    review = await ctx.model.structured(
-        campaign_id=campaign_id,
-        purpose="peer_review",
-        schema=PeerReview,
-        effort="high",
-        system=_system("peer reviewer for a top venue", nonce),
-        prompt=f"Review this manuscript against the evidence.\n\nEvidence:\n{evidence_text}\n\nManuscript:\n{ms.model_dump_json()}",
-    )
+    # Review and revision improve the draft but must never cost the campaign its paper:
+    # if either fails (truncation, refusal, budget) the draft is kept and the failure logged.
+    review: PeerReview | None = None
     revised = False
-    if review.decision in ("major_revision", "reject") and review.required_changes:
-        ms = await ctx.model.structured(
+    try:
+        review = await ctx.model.structured(
             campaign_id=campaign_id,
-            purpose="manuscript_revision",
-            schema=Manuscript,
+            purpose="peer_review",
+            schema=PeerReview,
             effort="high",
-            max_tokens=16000,
-            system=_system("scientific writer", nonce),
-            prompt=base_prompt
-            + "\n\nRevise the manuscript to address:\n"
-            + "\n".join(f"- {c}" for c in review.required_changes),
+            system=_system("peer reviewer for a top venue", nonce),
+            prompt=f"Review this manuscript against the evidence.\n\nEvidence:\n{evidence_text}\n\nManuscript:\n{ms.model_dump_json()}",
         )
-        revised = True
+        if review.decision in ("major_revision", "reject") and review.required_changes:
+            ms = await ctx.model.structured(
+                campaign_id=campaign_id,
+                purpose="manuscript_revision",
+                schema=Manuscript,
+                effort="high",
+                max_tokens=MANUSCRIPT_MAX_TOKENS,
+                system=_system("scientific writer", nonce),
+                prompt=base_prompt
+                + "\n\nRevise the manuscript to address:\n"
+                + "\n".join(f"- {c}" for c in review.required_changes),
+            )
+            revised = True
+    except (ModelOutputError, ModelRefusal, BudgetExceeded) as exc:
+        await store.record_guard_event(
+            campaign_id,
+            "scope",
+            "deny",
+            {
+                "note": "kept the first draft; review or revision failed",
+                "stage": "manuscript_revision" if review else "peer_review",
+                "error": str(exc)[:500],
+            },
+        )
 
     dropped: list[str] = []
     cleaned = {}
@@ -1104,18 +1169,23 @@ async def write_manuscript(
     tex = assemble_latex(ms, findings)
     await store.add_evidence(root_id, "latex_section", tex, approval_actor="model")
     await store.add_evidence(root_id, "bibtex", bib, approval_actor="system")
-    await store.add_evidence(
-        root_id, "peer_review", review.model_dump_json(), approval_actor="model"
-    )
+    if review is not None:
+        await store.add_evidence(
+            root_id, "peer_review", review.model_dump_json(), approval_actor="model"
+        )
     # The question counts as answered only when a finding passed verification.
     await store.set_node_status(
         root_id,
         "verified" if findings else "exhausted",
         metrics={
             "findings": len(findings),
-            "review_decision": review.decision,
+            "review_decision": review.decision if review else "not_reviewed",
             "revised": revised,
         },
     )
     await store.transition_campaign(campaign_id, "completed", from_statuses=["writing"])
-    return {"findings": len(findings), "review": review.decision, "revised": revised}
+    return {
+        "findings": len(findings),
+        "review": review.decision if review else "not_reviewed",
+        "revised": revised,
+    }

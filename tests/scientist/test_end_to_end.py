@@ -386,6 +386,7 @@ async def test_budget_exhausted_before_research_halts_and_stays_halted(store):
     campaign = summary["campaign"]
     assert campaign["status"] == "halted"
     assert "before research began" in campaign["halted_reason"]
+    assert campaign["halted_from"] == "ideation"  # the phase it stopped in, for the UI
     assert "manuscript" not in ctx.model.calls
 
     # A resume (the cron) is a no-op on a halted campaign.
@@ -403,3 +404,135 @@ async def test_unknown_campaign_raises(store):
         await run_campaign(
             ScientistContext(store=store, model=FakeModel(store)), uuid.uuid4()
         )
+
+
+# ---------------------------------------------------------------------------
+# Verification gates and writer resilience (regressions from a live campaign)
+# ---------------------------------------------------------------------------
+
+
+def _code_printing(key: str, p_value: float) -> str:
+    # Deterministic across seeds so replication agrees.
+    return (
+        "import json\n"
+        "seed = int(open('plato_seed.txt').read())\n"
+        f"print('PLATO_METRICS', json.dumps({{{key!r}: 0.95, 'p_value': {p_value}}}))\n"
+    )
+
+
+class GateModel(FakeModel):
+    """One intent whose metric name is a description, as live planners write it."""
+
+    def __init__(self, store, *, test_kind, p_value, fail_revision=False, **kw):
+        super().__init__(store, **kw)
+        self.test_kind = test_kind
+        self.p_value = p_value
+        self.fail_revision = fail_revision
+        self.code_prompts: list[str] = []
+
+    async def structured(self, *, purpose, schema, prompt, **kw):
+        if schema is IntentBatch:
+            await self.store.reserve_tokens(kw["campaign_id"], self.per_call)
+            self.calls.append(purpose)
+            self.plan_rounds += 1
+            if self.plan_rounds > 1:
+                return IntentBatch(intents=[])
+            return IntentBatch(
+                intents=[
+                    IntentSpec(
+                        title="Coverage is nominal",
+                        hypothesis="95% CI coverage equals 0.95",
+                        protocol="simulate",
+                        primary_metric="Empirical 95% CI coverage of the t-interval",
+                        test_kind=self.test_kind,
+                        success_criterion="|coverage - 0.95| < 0.01",
+                        priority=0.9,
+                        goal_index=0,
+                    )
+                ]
+            )
+        if schema is ExperimentCode:
+            await self.store.reserve_tokens(kw["campaign_id"], self.per_call)
+            self.calls.append(purpose)
+            self.code_prompts.append(prompt)
+            key = prompt.split("Primary metric key: ")[1].split("\n")[0]
+            # First draft prints the wrong key; the worker must be told and retry.
+            printed = "coverage" if len(self.code_prompts) == 1 else key
+            return ExperimentCode(code=_code_printing(printed, self.p_value), notes="n")
+        if purpose == "manuscript_revision" and self.fail_revision:
+            from plato.scientist.llm import ModelOutputError
+
+            self.calls.append(purpose)
+            raise ModelOutputError("manuscript_revision: output truncated")
+        return await super().structured(
+            purpose=purpose, schema=schema, prompt=prompt, **kw
+        )
+
+
+async def _run_gate(store, **kw):
+    _, cid, *_ = await _new_campaign(store)
+    model = GateModel(store, **kw)
+    summary = await run_campaign(
+        ScientistContext(store=store, model=model, retriever=fake_retriever), cid
+    )
+    facts = await store.nodes(cid, node_type="fact")
+    root = next(
+        g
+        for g in await store.nodes(cid, node_type="goal")
+        if g["dedup_key"] == "root-goal"
+    )
+    return cid, model, summary["campaign"], facts, root
+
+
+async def test_equivalence_claim_with_tost_p_is_verified_and_replicates(store):
+    from plato.scientist.nodes import metric_key
+
+    cid, model, campaign, facts, root = await _run_gate(
+        store, test_kind="equivalence", p_value=0.001
+    )
+    key = metric_key("Empirical 95% CI coverage of the t-interval")
+    assert key == "empirical_95_ci_coverage_of_the_t_interval"
+    # The missing key was fed back and the retry printed it.
+    assert f"lacks the required keys ['{key}']" in model.code_prompts[1]
+    gates = facts[0]["metrics"]["gates"]
+    assert gates["replicated"] and gates["stats_ok"], gates
+    findings = await store.nodes(cid, node_type="finding", status="verified")
+    assert findings and findings[0]["metrics"][key] == 0.95
+    assert campaign["status"] == "completed" and root["status"] == "verified"
+
+
+async def test_equivalence_claim_with_large_p_is_not_verified(store):
+    # A large p from a no-difference test is absence of evidence, not agreement.
+    cid, _, _, facts, root = await _run_gate(
+        store, test_kind="equivalence", p_value=0.9
+    )
+    gates = facts[0]["metrics"]["gates"]
+    assert gates["replicated"] and not gates["stats_ok"]
+    assert not await store.nodes(cid, node_type="finding", status="verified")
+    assert root["status"] == "exhausted"
+
+
+async def test_failed_revision_keeps_the_first_draft(store):
+    cid, model, campaign, _, root = await _run_gate(
+        store, test_kind="difference", p_value=0.01, fail_revision=True
+    )
+    assert "manuscript_revision" in model.calls
+    assert campaign["status"] == "completed", campaign
+    receipts = {e["artifact_type"] for e in await store.evidence_for([root["id"]])}
+    assert {"latex_section", "bibtex", "peer_review"} <= receipts
+    assert root["metrics"]["revised"] is False
+    events = await store.guard_events(cid)
+    assert any("kept the first draft" in json.dumps(e["detail"]) for e in events)
+
+
+def test_metric_key_and_required_metrics():
+    from plato.scientist.nodes import metric_key, missing_required_metrics
+
+    assert metric_key("mean_y") == "mean_y"
+    assert metric_key("RMSE / theory ratio") == "rmse_theory_ratio"
+    assert metric_key("95% coverage") == "m_95_coverage"
+    assert metric_key("%%%") == "primary_value"
+    spec = {"primary_metric": "cov", "test_kind": "equivalence"}
+    assert missing_required_metrics({"cov": 0.9}, spec) == ["p_value"]
+    assert missing_required_metrics({"cov": 0.9, "p_value": 0.01}, spec) == []
+    assert missing_required_metrics({"x": 1}, {"primary_metric": "cov"}) == ["cov"]

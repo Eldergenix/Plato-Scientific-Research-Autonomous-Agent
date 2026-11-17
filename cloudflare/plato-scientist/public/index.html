@@ -420,7 +420,8 @@ function overview(){
   <div class="sec-h">Guardrail activity</div>
   ${ev.length?`<div class="feed">${ev.map(e=>`<div class="ev ${esc(e.decision)}"><b>${esc(e.kind)}</b> ${esc(e.decision)}${e.detail?.node?` in <span class="mono">${esc(e.detail.node)}</span>`:""}${e.detail?.error?` · <span class="t3">${esc(String(e.detail.error).slice(0,140))}</span>`:""}<span class="t3"> · ${ago(e.created_at)}</span></div>`).join("")}</div>`:`<p class="t3">No guardrail events. Every sandbox run, budget check and data-scope check passed.</p>`}
   </div>`}
-function lastPhase(){// best guess of the phase a halted campaign stopped in, from what the graph contains
+function lastPhase(){// phase a halted campaign stopped in: recorded by the store; inferred for older campaigns
+  const from=PHASES.indexOf(S.summary.campaign.halted_from);if(from>=0)return from;
   const cnt=counts();if(sum(cnt.intent)===0)return 0;if((cnt.finding&&sum(cnt.finding))||S.manuscript)return 4;return 1}
 
 /* properties panel */
