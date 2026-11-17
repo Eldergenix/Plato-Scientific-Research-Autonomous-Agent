@@ -19,7 +19,7 @@ import os
 import re
 import uuid
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -67,25 +67,40 @@ class Runner:
         task = self.tasks.get(campaign_id)
         if task and not task.done():
             return False
-        self.tasks[campaign_id] = asyncio.create_task(self._run(campaign_id), name=f"campaign-{campaign_id}")
+        self.tasks[campaign_id] = asyncio.create_task(
+            self._run(campaign_id), name=f"campaign-{campaign_id}"
+        )
         return True
 
     async def _run(self, campaign_id: uuid.UUID) -> None:
         # Hold a dedicated connection for the session-level advisory lock: it is released
         # automatically if this container dies, so another instance can take over.
         async with self.store.pool.acquire() as lock_conn:
-            got = await lock_conn.fetchval("SELECT pg_try_advisory_lock($1)", _lock_key(campaign_id))
+            got = await lock_conn.fetchval(
+                "SELECT pg_try_advisory_lock($1)", _lock_key(campaign_id)
+            )
             if not got:
                 logger.info("campaign %s is running elsewhere", campaign_id)
                 return
             try:
-                ctx = ScientistContext(store=self.store, model=AnthropicScientistModel(self.store))
+                ctx = ScientistContext(
+                    store=self.store, model=AnthropicScientistModel(self.store)
+                )
                 summary = await run_campaign(ctx, campaign_id)
-                logger.info("campaign %s finished: %s", campaign_id, summary["campaign"]["status"])
+                logger.info(
+                    "campaign %s finished: %s",
+                    campaign_id,
+                    summary["campaign"]["status"],
+                )
             except Exception:
-                logger.exception("campaign %s crashed; it will be resumed by the next cron tick", campaign_id)
+                logger.exception(
+                    "campaign %s crashed; it will be resumed by the next cron tick",
+                    campaign_id,
+                )
             finally:
-                await lock_conn.execute("SELECT pg_advisory_unlock($1)", _lock_key(campaign_id))
+                await lock_conn.execute(
+                    "SELECT pg_advisory_unlock($1)", _lock_key(campaign_id)
+                )
 
     async def shutdown(self) -> None:
         for task in self.tasks.values():
@@ -95,13 +110,19 @@ class Runner:
 
 def create_app(dsn: str | None = None, internal_token: str | None = None) -> FastAPI:
     dsn = dsn or os.environ["PLATO_DATABASE_URL"]
-    token = internal_token if internal_token is not None else os.environ.get("PLATO_INTERNAL_TOKEN", "")
+    token = (
+        internal_token
+        if internal_token is not None
+        else os.environ.get("PLATO_INTERNAL_TOKEN", "")
+    )
     if not token:
         raise RuntimeError("PLATO_INTERNAL_TOKEN must be set")
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        store = await DualGraphStore.connect(dsn, max_size=int(os.environ.get("PLATO_DB_POOL_SIZE", "10")))
+        store = await DualGraphStore.connect(
+            dsn, max_size=int(os.environ.get("PLATO_DB_POOL_SIZE", "10"))
+        )
         app.state.store = store
         # Probe once off the event loop (it shells out to unshare) before /healthz needs it.
         await asyncio.to_thread(network_isolation_prefix)
@@ -112,7 +133,9 @@ def create_app(dsn: str | None = None, internal_token: str | None = None) -> Fas
             await app.state.runner.shutdown()
             await store.close()
 
-    app = FastAPI(title="Plato scientist", lifespan=lifespan, docs_url=None, redoc_url=None)
+    app = FastAPI(
+        title="Plato scientist", lifespan=lifespan, docs_url=None, redoc_url=None
+    )
 
     def require_token(x_plato_internal_token: str = Header(default="")) -> None:
         if not hmac.compare_digest(x_plato_internal_token.encode(), token.encode()):
@@ -130,13 +153,15 @@ def create_app(dsn: str | None = None, internal_token: str | None = None) -> Fas
             "active_runs": sum(1 for t in runner.tasks.values() if not t.done()),
         }
 
-    @app.post("/internal/campaigns", status_code=202, dependencies=[Depends(require_token)])
+    @app.post(
+        "/internal/campaigns", status_code=202, dependencies=[Depends(require_token)]
+    )
     async def create_campaign(
         body: CampaignIn,
         # Chosen by the Worker so it can route the campaign to its container before it
         # exists (passed as a query parameter so the large body streams through untouched);
         # also makes a retried create idempotent.
-        campaign_id: uuid.UUID | None = Query(default=None, alias="id"),
+        campaign_id: Annotated[uuid.UUID | None, Query(alias="id")] = None,
     ) -> dict[str, Any]:
         store: DualGraphStore = app.state.store
         decoded = []
@@ -144,28 +169,50 @@ def create_app(dsn: str | None = None, internal_token: str | None = None) -> Fas
             try:
                 decoded.append((ds, base64.b64decode(ds.content_base64, validate=True)))
             except (binascii.Error, ValueError):
-                raise HTTPException(status_code=422, detail=f"dataset {ds.file_name} is not valid base64")
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"dataset {ds.file_name} is not valid base64",
+                )
         title = re.sub(r"\s+", " ", body.program_slug.replace("-", " ")).title()
         program_id = await store.ensure_program(body.program_slug, title, body.domain)
         config = {"workers": body.workers, "max_rounds": body.max_rounds}
         campaign_id = await store.create_campaign(
-            program_id, body.question, token_budget_max=body.token_budget,
-            gpu_seconds_max=body.compute_seconds_budget, config=config, campaign_id=campaign_id,
+            program_id,
+            body.question,
+            token_budget_max=body.token_budget,
+            gpu_seconds_max=body.compute_seconds_budget,
+            config=config,
+            campaign_id=campaign_id,
         )
         for ds, content in decoded:
-            asset = await store.put_dataset(program_id, ds.file_name, content, description=ds.description,
-                                            is_sealed_eval=ds.sealed)
-            await store.set_scope(campaign_id, asset.id, "sealed_eval_only" if ds.sealed else "train_val")
+            asset = await store.put_dataset(
+                program_id,
+                ds.file_name,
+                content,
+                description=ds.description,
+                is_sealed_eval=ds.sealed,
+            )
+            await store.set_scope(
+                campaign_id, asset.id, "sealed_eval_only" if ds.sealed else "train_val"
+            )
         started = app.state.runner.start(campaign_id) if body.start else False
         return {"id": str(campaign_id), "started": started}
 
-    @app.post("/internal/campaigns/{campaign_id}/run", status_code=202, dependencies=[Depends(require_token)])
+    @app.post(
+        "/internal/campaigns/{campaign_id}/run",
+        status_code=202,
+        dependencies=[Depends(require_token)],
+    )
     async def run(campaign_id: uuid.UUID) -> dict[str, Any]:
         campaign = await app.state.store.get_campaign(campaign_id)
         if campaign is None:
             raise HTTPException(status_code=404, detail="campaign not found")
         if campaign["status"] in TERMINAL_STATUSES:
-            return {"id": str(campaign_id), "started": False, "status": campaign["status"]}
+            return {
+                "id": str(campaign_id),
+                "started": False,
+                "status": campaign["status"],
+            }
         return {"id": str(campaign_id), "started": app.state.runner.start(campaign_id)}
 
     @app.get("/internal/campaigns/{campaign_id}", dependencies=[Depends(require_token)])
@@ -182,8 +229,13 @@ def main() -> None:  # pragma: no cover - process entry point
     import uvicorn
 
     logging.basicConfig(level=os.environ.get("PLATO_LOG_LEVEL", "INFO"))
-    uvicorn.run(create_app(), host="0.0.0.0", port=int(os.environ.get("PORT", "8080")),
-                proxy_headers=False, access_log=True)
+    uvicorn.run(
+        create_app(),
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", "8080")),
+        proxy_headers=False,
+        access_log=True,
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover

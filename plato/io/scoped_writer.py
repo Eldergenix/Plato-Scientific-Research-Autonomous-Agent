@@ -19,9 +19,9 @@ from typing import Union
 
 from pydantic import BaseModel, Field
 
-
 _MAX_RELPATH_DEPTH = 64
 _MAX_RELPATH_CHARS = 1024
+
 
 class ScopeError(Exception):
     """Raised when a path is rejected by a :class:`ScopedWriter`."""
@@ -158,7 +158,10 @@ class ScopedWriter:
         # Bound depth and length before touching the filesystem: a pathological chain
         # makes ``Path.mkdir(parents=True)`` recurse once per level and raise
         # RecursionError (not OSError) on Python 3.13, and exceeds PATH_MAX anyway.
-        if len(rel_str) > _MAX_RELPATH_CHARS or len(candidate.parts) > _MAX_RELPATH_DEPTH:
+        if (
+            len(rel_str) > _MAX_RELPATH_CHARS
+            or len(candidate.parts) > _MAX_RELPATH_DEPTH
+        ):
             raise ScopeError(
                 f"{op}: path too deep or too long (max {_MAX_RELPATH_DEPTH} segments, "
                 f"{_MAX_RELPATH_CHARS} chars)"

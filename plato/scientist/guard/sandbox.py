@@ -35,11 +35,26 @@ from pathlib import Path
 # Modules whose import is refused by the static pre-check. This is a cheap first filter that
 # catches the common case and produces a useful error for the model; the namespace, env and
 # rlimit layers are what actually contain hostile code.
-_BLOCKED_IMPORTS = frozenset({
-    "socket", "subprocess", "ctypes", "multiprocessing", "requests", "httpx", "urllib",
-    "http", "ftplib", "smtplib", "telnetlib", "pty", "asyncio.subprocess",
-})
-_BLOCKED_CALLS = frozenset({"system", "popen", "execv", "execve", "execvp", "fork", "spawnv", "__import__"})
+_BLOCKED_IMPORTS = frozenset(
+    {
+        "socket",
+        "subprocess",
+        "ctypes",
+        "multiprocessing",
+        "requests",
+        "httpx",
+        "urllib",
+        "http",
+        "ftplib",
+        "smtplib",
+        "telnetlib",
+        "pty",
+        "asyncio.subprocess",
+    }
+)
+_BLOCKED_CALLS = frozenset(
+    {"system", "popen", "execv", "execve", "execvp", "fork", "spawnv", "__import__"}
+)
 
 
 @dataclass(frozen=True)
@@ -66,7 +81,7 @@ class SandboxResult:
     rejected: str | None = None
 
     @classmethod
-    def reject(cls, reason: str) -> "SandboxResult":
+    def reject(cls, reason: str) -> SandboxResult:
         return cls(None, "", "", 0.0, False, False, rejected=reason)
 
     @property
@@ -83,7 +98,10 @@ def static_check(code: str) -> str | None:
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
-                if alias.name.split(".")[0] in _BLOCKED_IMPORTS or alias.name in _BLOCKED_IMPORTS:
+                if (
+                    alias.name.split(".")[0] in _BLOCKED_IMPORTS
+                    or alias.name in _BLOCKED_IMPORTS
+                ):
                     return f"import of {alias.name!r} is not allowed in experiments"
         elif isinstance(node, ast.ImportFrom):
             mod = node.module or ""
@@ -91,7 +109,13 @@ def static_check(code: str) -> str | None:
                 return f"import from {mod!r} is not allowed in experiments"
         elif isinstance(node, ast.Call):
             fn = node.func
-            name = fn.attr if isinstance(fn, ast.Attribute) else fn.id if isinstance(fn, ast.Name) else None
+            name = (
+                fn.attr
+                if isinstance(fn, ast.Attribute)
+                else fn.id
+                if isinstance(fn, ast.Name)
+                else None
+            )
             if name in _BLOCKED_CALLS:
                 return f"call to {name}() is not allowed in experiments"
     return None
@@ -106,7 +130,9 @@ def network_isolation_prefix() -> tuple[str, ...]:
         return ()
     for prefix in ((exe, "-n"), (exe, "-r", "-n")):
         try:
-            done = subprocess.run([*prefix, "true"], capture_output=True, timeout=5)
+            done = subprocess.run(
+                [*prefix, "true"], capture_output=True, timeout=5, check=False
+            )
         except (OSError, subprocess.TimeoutExpired):
             continue
         if done.returncode == 0:
@@ -125,16 +151,30 @@ def privilege_drop_prefix() -> tuple[str, ...]:
     exe = shutil.which("setpriv")
     if os.geteuid() != 0 or not exe:
         return ()
-    return (exe, f"--reuid={_UNPRIVILEGED_UID}", f"--regid={_UNPRIVILEGED_UID}", "--clear-groups", "--")
+    return (
+        exe,
+        f"--reuid={_UNPRIVILEGED_UID}",
+        f"--regid={_UNPRIVILEGED_UID}",
+        "--clear-groups",
+        "--",
+    )
 
 
 def _apply_limits(limits: SandboxLimits) -> None:  # runs in the child before exec
     os.setsid()
-    resource.setrlimit(resource.RLIMIT_CPU, (limits.cpu_seconds, limits.cpu_seconds + 5))
+    resource.setrlimit(
+        resource.RLIMIT_CPU, (limits.cpu_seconds, limits.cpu_seconds + 5)
+    )
     resource.setrlimit(resource.RLIMIT_AS, (limits.memory_bytes, limits.memory_bytes))
-    resource.setrlimit(resource.RLIMIT_FSIZE, (limits.max_file_bytes, limits.max_file_bytes))
-    resource.setrlimit(resource.RLIMIT_NOFILE, (limits.max_open_files, limits.max_open_files))
-    resource.setrlimit(resource.RLIMIT_NPROC, (limits.max_processes, limits.max_processes))
+    resource.setrlimit(
+        resource.RLIMIT_FSIZE, (limits.max_file_bytes, limits.max_file_bytes)
+    )
+    resource.setrlimit(
+        resource.RLIMIT_NOFILE, (limits.max_open_files, limits.max_open_files)
+    )
+    resource.setrlimit(
+        resource.RLIMIT_NPROC, (limits.max_processes, limits.max_processes)
+    )
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 
 
@@ -174,17 +214,26 @@ def _stage(code: str, inputs: dict[str, bytes], chown: bool) -> Path:
 def _collect(workdir: Path, input_names: set[str]) -> dict[str, bytes]:
     files: dict[str, bytes] = {}
     for path in sorted(workdir.iterdir()):
-        if path.is_file() and not path.is_symlink() and path.name != _SCRIPT \
-                and path.suffix in _COLLECT_SUFFIXES and path.name not in input_names \
-                and path.stat().st_size <= _COLLECT_MAX_BYTES:
+        if (
+            path.is_file()
+            and not path.is_symlink()
+            and path.name != _SCRIPT
+            and path.suffix in _COLLECT_SUFFIXES
+            and path.name not in input_names
+            and path.stat().st_size <= _COLLECT_MAX_BYTES
+        ):
             files[path.name] = path.read_bytes()
     return files
 
 
-async def run_python(code: str, *, inputs: dict[str, bytes] | None = None,
-                     limits: SandboxLimits = SandboxLimits(),
-                     python_executable: str | None = None,
-                     require_network_isolation: bool = False) -> SandboxResult:
+async def run_python(
+    code: str,
+    *,
+    inputs: dict[str, bytes] | None = None,
+    limits: SandboxLimits = SandboxLimits(),
+    python_executable: str | None = None,
+    require_network_isolation: bool = False,
+) -> SandboxResult:
     """Run ``code`` as a script in a fresh temporary directory and collect its outputs."""
     rejection = static_check(code)
     if rejection:
@@ -193,7 +242,9 @@ async def run_python(code: str, *, inputs: dict[str, bytes] | None = None,
     python = python_executable or sys.executable
     iso = network_isolation_prefix()
     if require_network_isolation and not iso:
-        return SandboxResult.reject("network isolation required but unavailable on this host")
+        return SandboxResult.reject(
+            "network isolation required but unavailable on this host"
+        )
 
     drop = privilege_drop_prefix()
     # Filesystem work runs off the event loop so concurrent workers keep heartbeating.
@@ -215,16 +266,22 @@ async def run_python(code: str, *, inputs: dict[str, bytes] | None = None,
         }
         started = time.monotonic()
         proc = await asyncio.create_subprocess_exec(
-            *iso, *drop, *argv,
-            cwd=workdir, env=env,
+            *iso,
+            *drop,
+            *argv,
+            cwd=workdir,
+            env=env,
             stdin=asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
             preexec_fn=functools.partial(_apply_limits, limits),
         )
         timed_out = False
         try:
-            out, err = await asyncio.wait_for(proc.communicate(), timeout=limits.wall_seconds)
-        except asyncio.TimeoutError:
+            out, err = await asyncio.wait_for(
+                proc.communicate(), timeout=limits.wall_seconds
+            )
+        except TimeoutError:
             timed_out = True
             try:
                 os.killpg(proc.pid, signal.SIGKILL)

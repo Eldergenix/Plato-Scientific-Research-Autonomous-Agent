@@ -51,8 +51,14 @@ def build_scientist_graph(ctx: ScientistContext):
                 return await fn(state) or {}
             except BudgetExceeded as exc:
                 logger.warning("budget exhausted in %s: %s", fn.__name__, exc)
-                await ctx.store.record_guard_event(cid(state), "budget", "deny", {"node": fn.__name__, "error": str(exc)})
+                await ctx.store.record_guard_event(
+                    cid(state),
+                    "budget",
+                    "deny",
+                    {"node": fn.__name__, "error": str(exc)},
+                )
                 return {"budget_exhausted": True}
+
         node.__name__ = fn.__name__
         return node
 
@@ -77,7 +83,9 @@ def build_scientist_graph(ctx: ScientistContext):
         try:
             await write_manuscript(ctx, cid(state))
         except BudgetExceeded as exc:
-            await ctx.store.transition_campaign(cid(state), "halted", reason=f"budget exhausted while writing: {exc}")
+            await ctx.store.transition_campaign(
+                cid(state), "halted", reason=f"budget exhausted while writing: {exc}"
+            )
             raise
 
     async def resume_route(state: ScientistState) -> str:
@@ -96,8 +104,10 @@ def build_scientist_graph(ctx: ScientistContext):
 
     def budget_first(route):
         """An exhausted budget always goes straight to writing the paper."""
+
         def checked(state: ScientistState) -> str:
             return "write_manuscript" if state.get("budget_exhausted") else route(state)
+
         return checked
 
     def after_budget_check(next_node: str):
@@ -105,12 +115,20 @@ def build_scientist_graph(ctx: ScientistContext):
 
     @budget_first
     def round_route(state: ScientistState) -> str:
-        return "sealed_evaluation" if state.get("round", 0) >= ctx.config.max_rounds else "experiment_planner"
+        return (
+            "sealed_evaluation"
+            if state.get("round", 0) >= ctx.config.max_rounds
+            else "experiment_planner"
+        )
 
     @budget_first
     def planner_route(state: ScientistState) -> str:
         # No new experiments proposed: the search frontier is exhausted.
-        return "experiment_swarm" if state.get("new_intents", 0) > 0 else "sealed_evaluation"
+        return (
+            "experiment_swarm"
+            if state.get("new_intents", 0) > 0
+            else "sealed_evaluation"
+        )
 
     g = StateGraph(ScientistState)
     g.add_node("literature_scout", guarded(scout))
@@ -120,15 +138,43 @@ def build_scientist_graph(ctx: ScientistContext):
     g.add_node("sealed_evaluation", guarded(sealed))
     g.add_node("write_manuscript", manuscript)
 
-    g.add_conditional_edges(START, resume_route, ["literature_scout", "experiment_planner", "experiment_swarm",
-                                                  "sealed_evaluation", "write_manuscript", END])
-    g.add_conditional_edges("literature_scout", after_budget_check("experiment_planner"),
-                            ["experiment_planner", "write_manuscript"])
-    g.add_conditional_edges("experiment_planner", planner_route,
-                            ["experiment_swarm", "sealed_evaluation", "write_manuscript"])
-    g.add_conditional_edges("experiment_swarm", after_budget_check("verifier"), ["verifier", "write_manuscript"])
-    g.add_conditional_edges("verifier", round_route, ["experiment_planner", "sealed_evaluation", "write_manuscript"])
-    g.add_conditional_edges("sealed_evaluation", after_budget_check("write_manuscript"), ["write_manuscript"])
+    g.add_conditional_edges(
+        START,
+        resume_route,
+        [
+            "literature_scout",
+            "experiment_planner",
+            "experiment_swarm",
+            "sealed_evaluation",
+            "write_manuscript",
+            END,
+        ],
+    )
+    g.add_conditional_edges(
+        "literature_scout",
+        after_budget_check("experiment_planner"),
+        ["experiment_planner", "write_manuscript"],
+    )
+    g.add_conditional_edges(
+        "experiment_planner",
+        planner_route,
+        ["experiment_swarm", "sealed_evaluation", "write_manuscript"],
+    )
+    g.add_conditional_edges(
+        "experiment_swarm",
+        after_budget_check("verifier"),
+        ["verifier", "write_manuscript"],
+    )
+    g.add_conditional_edges(
+        "verifier",
+        round_route,
+        ["experiment_planner", "sealed_evaluation", "write_manuscript"],
+    )
+    g.add_conditional_edges(
+        "sealed_evaluation",
+        after_budget_check("write_manuscript"),
+        ["write_manuscript"],
+    )
     g.add_edge("write_manuscript", END)
     return g.compile()
 
@@ -144,8 +190,12 @@ async def run_campaign(ctx: ScientistContext, campaign_id: uuid.UUID) -> dict[st
     try:
         # Rounds are persisted on the root goal, so a resumed run keeps counting.
         start_round = await rounds_completed(ctx, campaign_id)
-        await graph.ainvoke({"campaign_id": str(campaign_id), "round": start_round},
-                            config={"recursion_limit": 8 * (ctx.config.max_rounds + 2)})
+        await graph.ainvoke(
+            {"campaign_id": str(campaign_id), "round": start_round},
+            config={"recursion_limit": 8 * (ctx.config.max_rounds + 2)},
+        )
     except (ModelRefusal, ModelOutputError) as exc:
-        await ctx.store.transition_campaign(campaign_id, "halted", reason=str(exc)[:1000])
+        await ctx.store.transition_campaign(
+            campaign_id, "halted", reason=str(exc)[:1000]
+        )
     return await ctx.store.campaign_summary(campaign_id)

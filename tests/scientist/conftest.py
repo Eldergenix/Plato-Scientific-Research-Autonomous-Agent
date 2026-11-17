@@ -20,12 +20,16 @@ import pytest
 asyncpg = pytest.importorskip("asyncpg")
 
 # PLATO_POSTGRES_DSN is the variable the other Postgres suites already use.
-ADMIN_DSN = os.environ.get("PLATO_TEST_POSTGRES_DSN") or os.environ.get("PLATO_POSTGRES_DSN", "")
+ADMIN_DSN = os.environ.get("PLATO_TEST_POSTGRES_DSN") or os.environ.get(
+    "PLATO_POSTGRES_DSN", ""
+)
 
 
 def _with_db(dsn: str, dbname: str) -> str:
     parts = urlsplit(dsn)
-    return urlunsplit((parts.scheme, parts.netloc, f"/{dbname}", parts.query, parts.fragment))
+    return urlunsplit(
+        (parts.scheme, parts.netloc, f"/{dbname}", parts.query, parts.fragment)
+    )
 
 
 @pytest.fixture
@@ -62,6 +66,9 @@ async def store(pg_dsn):
 @pytest.fixture
 async def campaign(store):
     program = await store.ensure_program("test-program", "Test", "ml_systems")
-    cid = await store.create_campaign(program, "Does feature scaling change k-NN accuracy?",
-                                      token_budget_max=1_000_000)
+    cid = await store.create_campaign(
+        program,
+        "Does feature scaling change k-NN accuracy?",
+        token_budget_max=1_000_000,
+    )
     return program, cid

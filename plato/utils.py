@@ -29,7 +29,8 @@ def llm_parser(llm: LLM | str) -> LLM:
         if llm in RETIRED_ALIASES:
             warnings.warn(
                 f"LLM '{llm}' was retired by its provider; using '{RETIRED_ALIASES[llm]}' instead.",
-                DeprecationWarning, stacklevel=2,
+                DeprecationWarning,
+                stacklevel=2,
             )
         try:
             llm = models[llm]

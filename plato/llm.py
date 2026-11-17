@@ -61,7 +61,9 @@ claude47opus = LLM(name="claude-opus-4-7", max_output_tokens=32000, temperature=
 claude55opus = LLM(name="claude-opus-5-5", max_output_tokens=32000, temperature=None)
 """`claude-opus-5-5` model."""
 
-claude55sonnet = LLM(name="claude-sonnet-5-5", max_output_tokens=32000, temperature=None)
+claude55sonnet = LLM(
+    name="claude-sonnet-5-5", max_output_tokens=32000, temperature=None
+)
 """`claude-sonnet-5-5` model."""
 
 claude55haiku = LLM(name="claude-haiku-5-5", max_output_tokens=32000, temperature=None)
@@ -71,7 +73,7 @@ claude55haiku = LLM(name="claude-haiku-5-5", max_output_tokens=32000, temperatur
 # claude-3-7-sonnet-20250219 (2026-02-19), claude-opus-4-20250514 (2026-06-15) and
 # claude-opus-4-1-20250805 (2026-08-05). They resolve to the documented successor so
 # existing configs keep running; ``plato.utils.llm_parser`` warns when one is used.
-RETIRED_ALIASES: Dict[str, str] = {
+RETIRED_ALIASES: dict[str, str] = {
     "claude-3.7-sonnet": "claude-sonnet-5.5",
     "claude-4-opus": "claude-opus-5.5",
     "claude-4.1-opus": "claude-opus-5.5",

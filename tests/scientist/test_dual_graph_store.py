@@ -58,42 +58,70 @@ async def test_migration_drift_is_detected(pg_dsn):
 
 def test_paper_dedup_keys_are_canonical():
     assert paper_dedup_key(arxiv_id="arXiv:2504.08066v3") == "arxiv:2504.08066"
-    assert paper_dedup_key(arxiv_id="https://arxiv.org/abs/2504.08066") == "arxiv:2504.08066"
+    assert (
+        paper_dedup_key(arxiv_id="https://arxiv.org/abs/2504.08066")
+        == "arxiv:2504.08066"
+    )
     assert paper_dedup_key(doi="https://doi.org/10.1000/ABC.1") == "doi:10.1000/abc.1"
-    assert paper_dedup_key(doi="10.1000/abc.1", arxiv_id="2504.08066") == "doi:10.1000/abc.1"
-    assert paper_dedup_key(doi="10.1000/abc.1.") == "doi:10.1000/abc.1"  # trailing punctuation
-    assert paper_dedup_key(arxiv_id="cond-mat/0211143v2") == "arxiv:cond-mat/0211143"  # pre-2007 id
-    assert paper_dedup_key(title="Attention Is All You Need!", year=2017) == \
-        paper_dedup_key(title="  attention is all  you need ", year=2017)
-    assert spec_dedup_key("Scale features.", "kNN") == spec_dedup_key("scale   features", "KNN")
+    assert (
+        paper_dedup_key(doi="10.1000/abc.1", arxiv_id="2504.08066")
+        == "doi:10.1000/abc.1"
+    )
+    assert (
+        paper_dedup_key(doi="10.1000/abc.1.") == "doi:10.1000/abc.1"
+    )  # trailing punctuation
+    assert (
+        paper_dedup_key(arxiv_id="cond-mat/0211143v2") == "arxiv:cond-mat/0211143"
+    )  # pre-2007 id
+    assert paper_dedup_key(
+        title="Attention Is All You Need!", year=2017
+    ) == paper_dedup_key(title="  attention is all  you need ", year=2017)
+    assert spec_dedup_key("Scale features.", "kNN") == spec_dedup_key(
+        "scale   features", "KNN"
+    )
 
 
 async def test_parallel_asset_ingestion_creates_one_row(store, campaign):
     program, _ = campaign
-    results = await asyncio.gather(*(
-        store.upsert_asset(program, "paper", "arxiv:2504.08066", "Paper", metadata={f"w{i}": i})
-        for i in range(25)
-    ))
+    results = await asyncio.gather(
+        *(
+            store.upsert_asset(
+                program, "paper", "arxiv:2504.08066", "Paper", metadata={f"w{i}": i}
+            )
+            for i in range(25)
+        )
+    )
     assert len({r.id for r in results}) == 1
     assert sum(r.created for r in results) == 1
-    meta = await store.pool.fetchval("SELECT metadata FROM plato.knowledge_assets WHERE id = $1", results[0].id)
+    meta = await store.pool.fetchval(
+        "SELECT metadata FROM plato.knowledge_assets WHERE id = $1", results[0].id
+    )
     assert len(meta) == 25  # every worker's metadata merged, none lost
 
 
 async def test_sealed_flag_is_sticky(store, campaign):
     program, _ = campaign
-    a = await store.upsert_asset(program, "dataset", "sha256:" + "a" * 64, "holdout", is_sealed_eval=True)
-    b = await store.upsert_asset(program, "dataset", "sha256:" + "a" * 64, "holdout", is_sealed_eval=False)
+    a = await store.upsert_asset(
+        program, "dataset", "sha256:" + "a" * 64, "holdout", is_sealed_eval=True
+    )
+    b = await store.upsert_asset(
+        program, "dataset", "sha256:" + "a" * 64, "holdout", is_sealed_eval=False
+    )
     assert a.id == b.id
-    assert await store.pool.fetchval("SELECT is_sealed_eval FROM plato.knowledge_assets WHERE id=$1", a.id)
+    assert await store.pool.fetchval(
+        "SELECT is_sealed_eval FROM plato.knowledge_assets WHERE id=$1", a.id
+    )
 
 
 async def test_parallel_planners_never_duplicate_intents(store, campaign):
     _, cid = campaign
     key = spec_dedup_key("hypothesis", "protocol")
-    results = await asyncio.gather(*(
-        store.create_node(cid, "intent", f"title {i}", "spec", dedup_key=key) for i in range(20)
-    ))
+    results = await asyncio.gather(
+        *(
+            store.create_node(cid, "intent", f"title {i}", "spec", dedup_key=key)
+            for i in range(20)
+        )
+    )
     assert len({r.id for r in results}) == 1
     assert sum(r.created for r in results) == 1
 
@@ -147,13 +175,17 @@ async def test_expired_lease_is_reclaimed_and_old_worker_is_fenced(store, campai
     assert first["id"] == node.id
     assert await store.claim_next_intent(cid, "other") is None  # lease still valid
     await store.pool.execute(
-        "UPDATE plato.exploration_nodes SET lease_expires_at = now() - interval '1 second' WHERE id = $1", node.id)
+        "UPDATE plato.exploration_nodes SET lease_expires_at = now() - interval '1 second' WHERE id = $1",
+        node.id,
+    )
     second = await store.claim_next_intent(cid, "new-worker")
     assert second["id"] == node.id and second["attempt_count"] == 2
     with pytest.raises(LeaseLost):
         await store.complete_intent(node.id, "crashed-worker", "verified")
     with pytest.raises(LeaseLost):
-        await store.record_fact(cid, node.id, "crashed-worker", title="t", observation="o")
+        await store.record_fact(
+            cid, node.id, "crashed-worker", title="t", observation="o"
+        )
     await store.complete_intent(node.id, "new-worker", "verified")
 
 
@@ -161,9 +193,14 @@ async def test_intents_exhaust_after_max_attempts(store, campaign):
     _, cid = campaign
     node = await store.create_node(cid, "intent", "flaky", "s")
     for attempt in range(3):
-        assert await store.claim_next_intent(cid, f"w{attempt}", max_attempts=3) is not None
+        assert (
+            await store.claim_next_intent(cid, f"w{attempt}", max_attempts=3)
+            is not None
+        )
         await store.pool.execute(
-            "UPDATE plato.exploration_nodes SET lease_expires_at = now() - interval '1 second' WHERE id=$1", node.id)
+            "UPDATE plato.exploration_nodes SET lease_expires_at = now() - interval '1 second' WHERE id=$1",
+            node.id,
+        )
     assert await store.claim_next_intent(cid, "w4", max_attempts=3) is None
     assert await store.exhaust_dead_intents(cid, max_attempts=3) == 1
     assert (await store.get_node(node.id))["status"] == "exhausted"
@@ -202,8 +239,12 @@ async def test_concurrent_token_reservations_never_overshoot(store, campaign):
     assert (await store.get_campaign(cid))["tokens_used"] == 9_200
     with pytest.raises(BudgetExceeded):
         await store.reserve_tokens(cid, 500, keep_free=400)  # would leave only 300 free
-    with pytest.raises(asyncpg.CheckViolationError):  # the cap holds even outside the store
-        await store.pool.execute("UPDATE plato.research_campaigns SET tokens_used = 20000 WHERE id = $1", cid)
+    with pytest.raises(
+        asyncpg.CheckViolationError
+    ):  # the cap holds even outside the store
+        await store.pool.execute(
+            "UPDATE plato.research_campaigns SET tokens_used = 20000 WHERE id = $1", cid
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -214,7 +255,9 @@ async def test_concurrent_token_reservations_never_overshoot(store, campaign):
 async def test_sealed_datasets_are_invisible_until_sealed_phase(store, campaign):
     program, cid = campaign
     train = await store.put_dataset(program, "train.csv", b"x,y\n1,2\n")
-    holdout = await store.put_dataset(program, "holdout.csv", b"x,y\n3,4\n", is_sealed_eval=True)
+    holdout = await store.put_dataset(
+        program, "holdout.csv", b"x,y\n3,4\n", is_sealed_eval=True
+    )
     await store.set_scope(cid, train.id, "train_val")
     await store.set_scope(cid, holdout.id, "sealed_eval_only")
     node = await store.create_node(cid, "intent", "i", "s")
@@ -241,7 +284,9 @@ async def test_scope_only_sealing_also_hides_asset(store, campaign):
 async def test_anchors_cannot_cross_programs(store, campaign):
     _, cid = campaign
     other_program = await store.ensure_program("other", "Other", "bio")
-    foreign = await store.upsert_asset(other_program, "paper", "arxiv:1234.56789", "foreign")
+    foreign = await store.upsert_asset(
+        other_program, "paper", "arxiv:1234.56789", "foreign"
+    )
     node = await store.create_node(cid, "fact", "f", "o")
     with pytest.raises(asyncpg.CheckViolationError):
         await store.link_anchor(node.id, foreign.id, "cited_prior_work")
@@ -249,10 +294,16 @@ async def test_anchors_cannot_cross_programs(store, campaign):
 
 async def test_campaign_transitions_are_compare_and_set(store, campaign):
     _, cid = campaign
-    assert await store.transition_campaign(cid, "investigating", from_statuses=["ideation"])
-    assert not await store.transition_campaign(cid, "investigating", from_statuses=["ideation"])
+    assert await store.transition_campaign(
+        cid, "investigating", from_statuses=["ideation"]
+    )
+    assert not await store.transition_campaign(
+        cid, "investigating", from_statuses=["ideation"]
+    )
     assert await store.transition_campaign(cid, "completed")
-    assert not await store.transition_campaign(cid, "investigating")  # terminal stays terminal
+    assert not await store.transition_campaign(
+        cid, "investigating"
+    )  # terminal stays terminal
 
 
 # ---------------------------------------------------------------------------
@@ -268,12 +319,19 @@ async def test_evidence_is_checksummed_idempotent_and_immutable(store, campaign)
     assert a == b
     assert await store.evidence_content(a) == b"same bytes"
     with pytest.raises(asyncpg.InsufficientPrivilegeError):
-        await store.pool.execute("UPDATE plato.evidence_artifacts SET approval_actor = 'human' WHERE id = $1", a)
-    with pytest.raises(asyncpg.CheckViolationError):  # checksum must match inline content
+        await store.pool.execute(
+            "UPDATE plato.evidence_artifacts SET approval_actor = 'human' WHERE id = $1",
+            a,
+        )
+    with pytest.raises(
+        asyncpg.CheckViolationError
+    ):  # checksum must match inline content
         await store.pool.execute(
             """INSERT INTO plato.evidence_artifacts(node_id, artifact_type, storage_uri, sha256_checksum,
                    content, approval_actor) VALUES ($1, 'stdout_log', 'x', $2, 'other', 'system')""",
-            node.id, "0" * 64)
+            node.id,
+            "0" * 64,
+        )
 
 
 async def test_provenance_traces_finding_back_to_receipts(store, campaign):
@@ -288,9 +346,16 @@ async def test_provenance_traces_finding_back_to_receipts(store, campaign):
     await store.add_edge(cid, goal.id, intent.id, "spawns")
     await store.add_edge(cid, hint.id, intent.id, "derived_from")
     await store.claim_next_intent(cid, "w")
-    fact = await store.record_fact(cid, intent.id, "w", title="f", observation="o",
-                                   metrics={"acc": 0.9}, anchors=[(data.id, "dataset_input")])
-    log_id = await store.add_evidence(fact, "stdout_log", "PLATO_METRICS {\"acc\": 0.9}")
+    fact = await store.record_fact(
+        cid,
+        intent.id,
+        "w",
+        title="f",
+        observation="o",
+        metrics={"acc": 0.9},
+        anchors=[(data.id, "dataset_input")],
+    )
+    log_id = await store.add_evidence(fact, "stdout_log", 'PLATO_METRICS {"acc": 0.9}')
     finding = await store.create_node(cid, "finding", "F", "claim", status="verified")
     await store.add_edge(cid, fact, finding.id, "proves")
 
@@ -299,7 +364,12 @@ async def test_provenance_traces_finding_back_to_receipts(store, campaign):
     assert types == {"finding", "fact", "intent", "goal", "hint"}
     assert {a["asset_id"] for a in trace["anchors"]} == {paper.id, data.id}
     assert log_id in {e["id"] for e in trace["evidence"]}
-    assert {(e["edge_type"]) for e in trace["edges"]} == {"proves", "yields", "spawns", "derived_from"}
+    assert {(e["edge_type"]) for e in trace["edges"]} == {
+        "proves",
+        "yields",
+        "spawns",
+        "derived_from",
+    }
 
 
 async def test_store_is_compatible_with_statement_cache_disabled(pg_dsn):

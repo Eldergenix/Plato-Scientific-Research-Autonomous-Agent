@@ -25,6 +25,7 @@ import asyncpg
 
 logger = logging.getLogger(__name__)
 
+
 def advisory_key(label: bytes) -> int:
     """Stable signed 64-bit Postgres advisory-lock key derived from ``label``."""
     return int.from_bytes(hashlib.sha256(label).digest()[:8], "big", signed=True)
@@ -104,11 +105,15 @@ async def _main() -> None:  # pragma: no cover - operator entry point
 
     dsn = os.environ.get("PLATO_DATABASE_URL")
     if not dsn:
-        raise SystemExit("set PLATO_DATABASE_URL (Supabase session pooler, port 5432, sslmode=require)")
+        raise SystemExit(
+            "set PLATO_DATABASE_URL (Supabase session pooler, port 5432, sslmode=require)"
+        )
     conn = await asyncpg.connect(dsn, statement_cache_size=0)
     try:
         applied = await migrate(conn)
-        print("applied:", ", ".join(applied) if applied else "nothing (schema up to date)")
+        print(
+            "applied:", ", ".join(applied) if applied else "nothing (schema up to date)"
+        )
     finally:
         await conn.close()
 

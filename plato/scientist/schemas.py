@@ -14,30 +14,48 @@ class GoalSpec(BaseModel):
 
 class ResearchPlan(BaseModel):
     refined_question: str = Field(description="A precise, testable research question.")
-    domain: str = Field(description="Snake_case field, e.g. ml_systems, computational_biology.")
+    domain: str = Field(
+        description="Snake_case field, e.g. ml_systems, computational_biology."
+    )
     search_queries: list[str] = Field(description="1 to 4 literature search queries.")
-    goals: list[GoalSpec] = Field(description="2 to 4 sub-problems that together answer the question.")
+    goals: list[GoalSpec] = Field(
+        description="2 to 4 sub-problems that together answer the question."
+    )
 
 
 class HintSpec(BaseModel):
     title: str
-    rationale: str = Field(description="Why this gap or anomaly is worth testing, citing paper numbers like [3].")
-    cited_papers: list[int] = Field(description="Indices of the papers in the provided list that support the hint.")
+    rationale: str = Field(
+        description="Why this gap or anomaly is worth testing, citing paper numbers like [3]."
+    )
+    cited_papers: list[int] = Field(
+        description="Indices of the papers in the provided list that support the hint."
+    )
 
 
 class LiteratureHints(BaseModel):
-    hints: list[HintSpec] = Field(description="Up to 5 unexplored directions grounded in the literature.")
+    hints: list[HintSpec] = Field(
+        description="Up to 5 unexplored directions grounded in the literature."
+    )
 
 
 class IntentSpec(BaseModel):
     title: str
     hypothesis: str = Field(description="Falsifiable claim the experiment tests.")
-    protocol: str = Field(description="Concrete computational protocol: data, procedure, controls, metric.")
-    primary_metric: str = Field(description="Name of the single metric that decides the outcome.")
-    success_criterion: str = Field(description="Threshold on the primary metric that supports the hypothesis.")
+    protocol: str = Field(
+        description="Concrete computational protocol: data, procedure, controls, metric."
+    )
+    primary_metric: str = Field(
+        description="Name of the single metric that decides the outcome."
+    )
+    success_criterion: str = Field(
+        description="Threshold on the primary metric that supports the hypothesis."
+    )
     priority: float = Field(description="0 to 1: expected information gain.")
     goal_index: int = Field(description="Index of the goal this intent serves.")
-    source_hint_index: int | None = Field(default=None, description="Index of the hint it derives from, if any.")
+    source_hint_index: int | None = Field(
+        default=None, description="Index of the hint it derives from, if any."
+    )
 
 
 class IntentBatch(BaseModel):
@@ -51,21 +69,31 @@ class ExperimentCode(BaseModel):
 
 class Observation(BaseModel):
     title: str = Field(description="Short statement of what was observed.")
-    observation: str = Field(description="Factual description of the result with numbers.")
+    observation: str = Field(
+        description="Factual description of the result with numbers."
+    )
     supports_hypothesis: Literal["yes", "no", "inconclusive"]
-    follow_up_hints: list[str] = Field(description="0 to 2 anomalies or unexplored parameter ranges worth a new experiment.")
+    follow_up_hints: list[str] = Field(
+        description="0 to 2 anomalies or unexplored parameter ranges worth a new experiment."
+    )
 
 
 class SkepticVerdict(BaseModel):
     decision: Literal["promote", "reject"]
-    confidence: float = Field(description="0 to 1 confidence that the finding is real and correctly stated.")
+    confidence: float = Field(
+        description="0 to 1 confidence that the finding is real and correctly stated."
+    )
     rationale: str
     finding_title: str
-    finding_statement: str = Field(description="The claim as it may appear in a paper, with its numbers and caveats.")
+    finding_statement: str = Field(
+        description="The claim as it may appear in a paper, with its numbers and caveats."
+    )
 
 
 class FigureCritique(BaseModel):
-    quality_score: float = Field(description="0 to 1: is the figure readable, labelled, and faithful to the data?")
+    quality_score: float = Field(
+        description="0 to 1: is the figure readable, labelled, and faithful to the data?"
+    )
     issues: list[str]
 
 

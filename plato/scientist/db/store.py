@@ -26,8 +26,9 @@ import json
 import re
 import unicodedata
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Iterable, Literal
+from typing import Any, Literal
 
 import asyncpg
 
@@ -36,19 +37,38 @@ from plato.retrieval.doi import parse_arxiv_id, parse_doi
 from .migrate import migrate
 
 AssetType = Literal[
-    "corpus_domain", "paper", "dataset", "baseline_repo",
-    "model_checkpoint", "benchmark_metric", "verified_axiom",
+    "corpus_domain",
+    "paper",
+    "dataset",
+    "baseline_repo",
+    "model_checkpoint",
+    "benchmark_metric",
+    "verified_axiom",
 ]
 NodeType = Literal["goal", "intent", "fact", "finding", "hint"]
 NodeStatus = Literal["open", "claimed", "running", "verified", "refuted", "exhausted"]
 EdgeType = Literal["spawns", "derived_from", "yields", "proves", "refutes"]
-AnchorRole = Literal["baseline", "dataset_input", "code_diff", "cited_prior_work", "target_benchmark"]
+AnchorRole = Literal[
+    "baseline", "dataset_input", "code_diff", "cited_prior_work", "target_benchmark"
+]
 ArtifactType = Literal[
-    "stdout_log", "git_patch", "plot_png", "vlm_critique", "sealed_eval_json", "latex_section",
-    "bibtex", "peer_review",
+    "stdout_log",
+    "git_patch",
+    "plot_png",
+    "vlm_critique",
+    "sealed_eval_json",
+    "latex_section",
+    "bibtex",
+    "peer_review",
 ]
 CampaignStatus = Literal[
-    "ideation", "investigating", "ablating", "sealed_eval", "writing", "completed", "halted",
+    "ideation",
+    "investigating",
+    "ablating",
+    "sealed_eval",
+    "writing",
+    "completed",
+    "halted",
 ]
 
 TERMINAL_STATUSES: frozenset[str] = frozenset({"completed", "halted"})
@@ -59,7 +79,7 @@ _INLINE_LIMIT = 1_048_576
 _HELD = "id = $1 AND claimed_by_worker = $2 AND status IN ('claimed', 'running')"
 
 
-def _lease_lost(worker_id: str, node_id: uuid.UUID) -> "LeaseLost":
+def _lease_lost(worker_id: str, node_id: uuid.UUID) -> LeaseLost:
     return LeaseLost(f"worker {worker_id} no longer holds intent {node_id}")
 
 
@@ -81,20 +101,28 @@ class Upserted:
 # Deterministic dedup keys (computed by the backend, never by the model).
 # ---------------------------------------------------------------------------
 
+
 def _normalise_text(value: str) -> str:
     text = unicodedata.normalize("NFKC", value).casefold()
     return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", " ", text)).strip()
 
 
-def paper_dedup_key(*, doi: str | None = None, arxiv_id: str | None = None,
-                    title: str | None = None, year: int | None = None) -> str:
+def paper_dedup_key(
+    *,
+    doi: str | None = None,
+    arxiv_id: str | None = None,
+    title: str | None = None,
+    year: int | None = None,
+) -> str:
     """Stable key for a paper: DOI, else arXiv id (version stripped), else title hash."""
     if parsed := parse_doi(doi):
         return f"doi:{parsed}"
     if parsed := parse_arxiv_id(arxiv_id):
         return f"arxiv:{parsed}"
     if title:
-        digest = hashlib.sha256(f"{_normalise_text(title)}|{year or ''}".encode()).hexdigest()
+        digest = hashlib.sha256(
+            f"{_normalise_text(title)}|{year or ''}".encode()
+        ).hexdigest()
         return f"title:{digest[:32]}"
     raise ValueError("paper_dedup_key needs a doi, arxiv_id, or title")
 
@@ -127,7 +155,9 @@ def _encode_json(value: Any) -> str:
 async def _init_connection(conn: asyncpg.Connection) -> None:
     # JSON(B) parameters are passed as Python objects and encoded once, here.
     for typ in ("json", "jsonb"):
-        await conn.set_type_codec(typ, encoder=_encode_json, decoder=json.loads, schema="pg_catalog")
+        await conn.set_type_codec(
+            typ, encoder=_encode_json, decoder=json.loads, schema="pg_catalog"
+        )
 
 
 class DualGraphStore:
@@ -138,8 +168,15 @@ class DualGraphStore:
 
     # ------------------------------------------------------------------ lifecycle
     @classmethod
-    async def connect(cls, dsn: str, *, min_size: int = 1, max_size: int = 10,
-                      run_migrations: bool = True, statement_cache_size: int = 0) -> "DualGraphStore":
+    async def connect(
+        cls,
+        dsn: str,
+        *,
+        min_size: int = 1,
+        max_size: int = 10,
+        run_migrations: bool = True,
+        statement_cache_size: int = 0,
+    ) -> DualGraphStore:
         """Open a pool and (by default) migrate.
 
         ``statement_cache_size=0`` keeps the store compatible with Supabase's
@@ -147,8 +184,12 @@ class DualGraphStore:
         statements across transactions. Raise it for direct connections.
         """
         pool = await asyncpg.create_pool(
-            dsn, min_size=min_size, max_size=max_size, init=_init_connection,
-            statement_cache_size=statement_cache_size, command_timeout=60,
+            dsn,
+            min_size=min_size,
+            max_size=max_size,
+            init=_init_connection,
+            statement_cache_size=statement_cache_size,
+            command_timeout=60,
         )
         if run_migrations:
             async with pool.acquire() as conn:
@@ -170,14 +211,22 @@ class DualGraphStore:
             ON CONFLICT (slug) DO UPDATE SET slug = EXCLUDED.slug
             RETURNING id
             """,
-            slug, title, domain,
+            slug,
+            title,
+            domain,
         )
         return row["id"]
 
-    async def create_campaign(self, program_id: uuid.UUID, research_question: str, *,
-                              token_budget_max: int = 5_000_000, gpu_seconds_max: int = 86_400,
-                              config: dict[str, Any] | None = None,
-                              campaign_id: uuid.UUID | None = None) -> uuid.UUID:
+    async def create_campaign(
+        self,
+        program_id: uuid.UUID,
+        research_question: str,
+        *,
+        token_budget_max: int = 5_000_000,
+        gpu_seconds_max: int = 86_400,
+        config: dict[str, Any] | None = None,
+        campaign_id: uuid.UUID | None = None,
+    ) -> uuid.UUID:
         """Create a campaign. A caller-chosen ``campaign_id`` makes the call idempotent:
         a retry with the same id returns it without creating a duplicate."""
         campaign_id = campaign_id or uuid.uuid4()
@@ -188,7 +237,12 @@ class DualGraphStore:
             VALUES ($1, $2, $3, 'ideation', $4, $5, $6::jsonb)
             ON CONFLICT (id) DO NOTHING
             """,
-            campaign_id, program_id, research_question, token_budget_max, gpu_seconds_max, _jsonb(config),
+            campaign_id,
+            program_id,
+            research_question,
+            token_budget_max,
+            gpu_seconds_max,
+            _jsonb(config),
         )
         return campaign_id
 
@@ -203,9 +257,14 @@ class DualGraphStore:
         )
         return dict(row) if row else None
 
-    async def transition_campaign(self, campaign_id: uuid.UUID, to_status: CampaignStatus, *,
-                                  from_statuses: Iterable[str] | None = None,
-                                  reason: str | None = None) -> bool:
+    async def transition_campaign(
+        self,
+        campaign_id: uuid.UUID,
+        to_status: CampaignStatus,
+        *,
+        from_statuses: Iterable[str] | None = None,
+        reason: str | None = None,
+    ) -> bool:
         """Compare-and-set status change. Returns False if the campaign was not in an
         allowed source status (another worker already moved it, or it is terminal)."""
         allowed = list(from_statuses) if from_statuses is not None else None
@@ -218,12 +277,18 @@ class DualGraphStore:
                AND ($3::text[] IS NULL OR status = ANY($3::text[]))
             RETURNING id
             """,
-            campaign_id, to_status, allowed, reason, sorted(TERMINAL_STATUSES),
+            campaign_id,
+            to_status,
+            allowed,
+            reason,
+            sorted(TERMINAL_STATUSES),
         )
         return row is not None
 
     # ------------------------------------------------------------------ budgets
-    async def reserve_tokens(self, campaign_id: uuid.UUID, tokens: int, *, keep_free: int = 0) -> None:
+    async def reserve_tokens(
+        self, campaign_id: uuid.UUID, tokens: int, *, keep_free: int = 0
+    ) -> None:
         """Reserve ``tokens`` only if at least ``keep_free`` tokens remain afterwards (used
         to hold back budget for the manuscript phase)."""
         if tokens < 0 or keep_free < 0:
@@ -234,12 +299,16 @@ class DualGraphStore:
              WHERE id = $1 AND tokens_used + $2 + $3 <= token_budget_max
             RETURNING tokens_used
             """,
-            campaign_id, tokens, keep_free,
+            campaign_id,
+            tokens,
+            keep_free,
         )
         if row is None:
             raise BudgetExceeded(f"token budget exhausted for campaign {campaign_id}")
 
-    async def settle_tokens(self, campaign_id: uuid.UUID, reserved: int, actual: int) -> None:
+    async def settle_tokens(
+        self, campaign_id: uuid.UUID, reserved: int, actual: int
+    ) -> None:
         """Replace a reservation with the actual usage. Overuse beyond the reservation is
         charged only up to the cap (the request already happened; the cap still holds)."""
         await self._pool.execute(
@@ -248,7 +317,9 @@ class DualGraphStore:
                SET tokens_used = LEAST(token_budget_max, GREATEST(0, tokens_used - $2 + $3))
              WHERE id = $1
             """,
-            campaign_id, reserved, actual,
+            campaign_id,
+            reserved,
+            actual,
         )
 
     async def reserve_gpu_seconds(self, campaign_id: uuid.UUID, seconds: int) -> None:
@@ -258,27 +329,40 @@ class DualGraphStore:
              WHERE id = $1 AND gpu_seconds_used + $2 <= gpu_seconds_max
             RETURNING gpu_seconds_used
             """,
-            campaign_id, seconds,
+            campaign_id,
+            seconds,
         )
         if row is None:
             raise BudgetExceeded(f"compute budget exhausted for campaign {campaign_id}")
 
-    async def settle_gpu_seconds(self, campaign_id: uuid.UUID, reserved: int, actual: int) -> None:
+    async def settle_gpu_seconds(
+        self, campaign_id: uuid.UUID, reserved: int, actual: int
+    ) -> None:
         await self._pool.execute(
             """
             UPDATE plato.research_campaigns
                SET gpu_seconds_used = LEAST(gpu_seconds_max, GREATEST(0, gpu_seconds_used - $2 + $3))
              WHERE id = $1
             """,
-            campaign_id, reserved, actual,
+            campaign_id,
+            reserved,
+            actual,
         )
 
     # ------------------------------------------------------------------ knowledge assets
-    async def upsert_asset(self, program_id: uuid.UUID, asset_type: AssetType, dedup_key: str,
-                           canonical_name: str, *, uri_or_commit: str | None = None,
-                           metadata: dict[str, Any] | None = None, parent_id: uuid.UUID | None = None,
-                           is_sealed_eval: bool = False,
-                           conn: asyncpg.Connection | None = None) -> Upserted:
+    async def upsert_asset(
+        self,
+        program_id: uuid.UUID,
+        asset_type: AssetType,
+        dedup_key: str,
+        canonical_name: str,
+        *,
+        uri_or_commit: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        parent_id: uuid.UUID | None = None,
+        is_sealed_eval: bool = False,
+        conn: asyncpg.Connection | None = None,
+    ) -> Upserted:
         """Insert or merge an asset by its dedup key. Metadata is merged (existing keys win
         is *not* assumed: new keys are added, existing keys are overwritten). The sealed flag
         is sticky: once an asset is sealed, an upsert can never unseal it."""
@@ -294,32 +378,61 @@ class DualGraphStore:
                 is_sealed_eval = plato.knowledge_assets.is_sealed_eval OR EXCLUDED.is_sealed_eval
             RETURNING id, (xmax = 0) AS inserted
             """,
-            program_id, asset_type, dedup_key, canonical_name, uri_or_commit, _jsonb(metadata),
-            parent_id, is_sealed_eval,
+            program_id,
+            asset_type,
+            dedup_key,
+            canonical_name,
+            uri_or_commit,
+            _jsonb(metadata),
+            parent_id,
+            is_sealed_eval,
         )
         return Upserted(row["id"], row["inserted"])
 
-    async def put_dataset(self, program_id: uuid.UUID, file_name: str, content: bytes, *,
-                          description: str = "", is_sealed_eval: bool = False,
-                          metadata: dict[str, Any] | None = None) -> Upserted:
+    async def put_dataset(
+        self,
+        program_id: uuid.UUID,
+        file_name: str,
+        content: bytes,
+        *,
+        description: str = "",
+        is_sealed_eval: bool = False,
+        metadata: dict[str, Any] | None = None,
+    ) -> Upserted:
         """Register a dataset by content hash and store its bytes. Identical bytes uploaded
         twice (by any campaign of the program) map to one asset."""
         checksum = sha256_hex(content)
-        meta = {"file_name": file_name, "size_bytes": len(content), "description": description,
-                **(metadata or {})}
+        meta = {
+            "file_name": file_name,
+            "size_bytes": len(content),
+            "description": description,
+            **(metadata or {}),
+        }
         async with self._pool.acquire() as conn, conn.transaction():
-            asset = await self.upsert_asset(program_id, "dataset", f"sha256:{checksum}", file_name,
-                                            metadata=meta, is_sealed_eval=is_sealed_eval, conn=conn)
+            asset = await self.upsert_asset(
+                program_id,
+                "dataset",
+                f"sha256:{checksum}",
+                file_name,
+                metadata=meta,
+                is_sealed_eval=is_sealed_eval,
+                conn=conn,
+            )
             await conn.execute(
                 """
                 INSERT INTO plato.asset_blobs(asset_id, file_name, sha256_checksum, content)
                 VALUES ($1, $2, $3, $4) ON CONFLICT (asset_id) DO NOTHING
                 """,
-                asset.id, file_name, checksum, content,
+                asset.id,
+                file_name,
+                checksum,
+                content,
             )
         return asset
 
-    async def dataset_inputs(self, campaign_id: uuid.UUID) -> tuple[list[dict[str, Any]], dict[str, bytes]]:
+    async def dataset_inputs(
+        self, campaign_id: uuid.UUID
+    ) -> tuple[list[dict[str, Any]], dict[str, bytes]]:
         """Visible dataset assets and their bytes, for the campaign's *current* phase. This is
         the only path by which data reaches the sandbox, so sealed data stays out until the
         sealed phase by construction."""
@@ -335,18 +448,25 @@ class DualGraphStore:
     async def dataset_files(self, campaign_id: uuid.UUID) -> dict[str, bytes]:
         return (await self.dataset_inputs(campaign_id))[1]
 
-    async def set_scope(self, campaign_id: uuid.UUID, asset_id: uuid.UUID,
-                        access_mode: Literal["read_only", "train_val", "sealed_eval_only", "excluded"]) -> None:
+    async def set_scope(
+        self,
+        campaign_id: uuid.UUID,
+        asset_id: uuid.UUID,
+        access_mode: Literal["read_only", "train_val", "sealed_eval_only", "excluded"],
+    ) -> None:
         await self._pool.execute(
             """
             INSERT INTO plato.campaign_scope(campaign_id, asset_id, access_mode) VALUES ($1, $2, $3)
             ON CONFLICT (campaign_id, asset_id) DO UPDATE SET access_mode = EXCLUDED.access_mode
             """,
-            campaign_id, asset_id, access_mode,
+            campaign_id,
+            asset_id,
+            access_mode,
         )
 
-    async def visible_assets(self, campaign_id: uuid.UUID, *,
-                             asset_types: Iterable[str] | None = None) -> list[dict[str, Any]]:
+    async def visible_assets(
+        self, campaign_id: uuid.UUID, *, asset_types: Iterable[str] | None = None
+    ) -> list[dict[str, Any]]:
         """Assets a worker may read in the campaign's *current* phase. Sealed assets and
         scope rows marked ``sealed_eval_only`` are hidden until the sealed phase;
         ``excluded`` assets are never visible."""
@@ -367,11 +487,14 @@ class DualGraphStore:
                )
              ORDER BY a.created_at
             """,
-            campaign_id, types,
+            campaign_id,
+            types,
         )
         return [dict(r) for r in rows]
 
-    async def query_uncovered_scope(self, campaign_id: uuid.UUID) -> list[dict[str, Any]]:
+    async def query_uncovered_scope(
+        self, campaign_id: uuid.UUID
+    ) -> list[dict[str, Any]]:
         """Visible in-scope assets that no node of this campaign is anchored to yet.
         This is the coverage frontier the planner expands."""
         rows = await self._pool.fetch(
@@ -393,12 +516,21 @@ class DualGraphStore:
         return [dict(r) for r in rows]
 
     # ------------------------------------------------------------------ exploration graph
-    async def create_node(self, campaign_id: uuid.UUID, node_type: NodeType, title: str,
-                          hypothesis_or_spec: str, *, dedup_key: str | None = None,
-                          priority: float = 0.0, metrics: dict[str, Any] | None = None,
-                          confidence_score: float | None = None, status: NodeStatus = "open",
-                          turn_budget_max: int = 30,
-                          conn: asyncpg.Connection | None = None) -> Upserted:
+    async def create_node(
+        self,
+        campaign_id: uuid.UUID,
+        node_type: NodeType,
+        title: str,
+        hypothesis_or_spec: str,
+        *,
+        dedup_key: str | None = None,
+        priority: float = 0.0,
+        metrics: dict[str, Any] | None = None,
+        confidence_score: float | None = None,
+        status: NodeStatus = "open",
+        turn_budget_max: int = 30,
+        conn: asyncpg.Connection | None = None,
+    ) -> Upserted:
         """Create a node; with a ``dedup_key`` the call is idempotent across workers."""
         executor = conn or self._pool
         row = await executor.fetchrow(
@@ -411,8 +543,16 @@ class DualGraphStore:
             ON CONFLICT (campaign_id, node_type, dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING
             RETURNING id
             """,
-            campaign_id, node_type, title, hypothesis_or_spec, dedup_key, priority,
-            _jsonb(metrics), confidence_score, status, turn_budget_max,
+            campaign_id,
+            node_type,
+            title,
+            hypothesis_or_spec,
+            dedup_key,
+            priority,
+            _jsonb(metrics),
+            confidence_score,
+            status,
+            turn_budget_max,
         )
         if row is not None:
             return Upserted(row["id"], True)
@@ -421,13 +561,22 @@ class DualGraphStore:
             SELECT id FROM plato.exploration_nodes
              WHERE campaign_id = $1 AND node_type = $2::plato.exploration_node_type AND dedup_key = $3
             """,
-            campaign_id, node_type, dedup_key,
+            campaign_id,
+            node_type,
+            dedup_key,
         )
         return Upserted(existing["id"], False)
 
-    async def add_edge(self, campaign_id: uuid.UUID, source: uuid.UUID, target: uuid.UUID,
-                       edge_type: EdgeType, rationale: str | None = None, *,
-                       conn: asyncpg.Connection | None = None) -> None:
+    async def add_edge(
+        self,
+        campaign_id: uuid.UUID,
+        source: uuid.UUID,
+        target: uuid.UUID,
+        edge_type: EdgeType,
+        rationale: str | None = None,
+        *,
+        conn: asyncpg.Connection | None = None,
+    ) -> None:
         executor = conn or self._pool
         await executor.execute(
             """
@@ -435,11 +584,21 @@ class DualGraphStore:
             VALUES ($1, $2, $3, $4::plato.exploration_edge_type, $5)
             ON CONFLICT (source_node_id, target_node_id, edge_type) DO NOTHING
             """,
-            campaign_id, source, target, edge_type, rationale,
+            campaign_id,
+            source,
+            target,
+            edge_type,
+            rationale,
         )
 
-    async def link_anchor(self, node_id: uuid.UUID, asset_id: uuid.UUID, role: AnchorRole, *,
-                          conn: asyncpg.Connection | None = None) -> None:
+    async def link_anchor(
+        self,
+        node_id: uuid.UUID,
+        asset_id: uuid.UUID,
+        role: AnchorRole,
+        *,
+        conn: asyncpg.Connection | None = None,
+    ) -> None:
         """Bind a node to an asset. The database rejects sealed assets before the sealed
         phase (``asyncpg.InsufficientPrivilegeError``) and cross-program anchors."""
         executor = conn or self._pool
@@ -448,7 +607,9 @@ class DualGraphStore:
             INSERT INTO plato.exploration_anchors(node_id, asset_id, anchor_role) VALUES ($1, $2, $3)
             ON CONFLICT DO NOTHING
             """,
-            node_id, asset_id, role,
+            node_id,
+            asset_id,
+            role,
         )
 
     async def get_node(self, node_id: uuid.UUID) -> dict[str, Any] | None:
@@ -458,8 +619,13 @@ class DualGraphStore:
         )
         return dict(row) if row else None
 
-    async def nodes(self, campaign_id: uuid.UUID, *, node_type: NodeType | None = None,
-                    status: NodeStatus | None = None) -> list[dict[str, Any]]:
+    async def nodes(
+        self,
+        campaign_id: uuid.UUID,
+        *,
+        node_type: NodeType | None = None,
+        status: NodeStatus | None = None,
+    ) -> list[dict[str, Any]]:
         rows = await self._pool.fetch(
             """
             SELECT id, node_type::text AS node_type, status::text AS status, title, hypothesis_or_spec,
@@ -471,7 +637,9 @@ class DualGraphStore:
                AND ($3::text IS NULL OR status::text = $3)
              ORDER BY created_at
             """,
-            campaign_id, node_type, status,
+            campaign_id,
+            node_type,
+            status,
         )
         return [dict(r) for r in rows]
 
@@ -486,8 +654,14 @@ class DualGraphStore:
         )
 
     # ------------------------------------------------------------------ claiming (the swarm queue)
-    async def claim_next_intent(self, campaign_id: uuid.UUID, worker_id: str, *,
-                                lease_seconds: int = 300, max_attempts: int = 3) -> dict[str, Any] | None:
+    async def claim_next_intent(
+        self,
+        campaign_id: uuid.UUID,
+        worker_id: str,
+        *,
+        lease_seconds: int = 300,
+        max_attempts: int = 3,
+    ) -> dict[str, Any] | None:
         """Atomically claim the highest-priority open intent (or one whose lease expired).
 
         Exactly one worker wins each row: the inner ``FOR UPDATE SKIP LOCKED`` makes
@@ -513,12 +687,21 @@ class DualGraphStore:
             RETURNING n.id, n.title, n.hypothesis_or_spec, n.metrics, n.attempt_count,
                       n.turn_budget_max, n.priority, n.lease_expires_at
             """,
-            campaign_id, worker_id, lease_seconds, max_attempts,
+            campaign_id,
+            worker_id,
+            lease_seconds,
+            max_attempts,
         )
         return dict(row) if row else None
 
-    async def heartbeat(self, node_id: uuid.UUID, worker_id: str, *, lease_seconds: int = 300,
-                        status: Literal["claimed", "running"] = "running") -> None:
+    async def heartbeat(
+        self,
+        node_id: uuid.UUID,
+        worker_id: str,
+        *,
+        lease_seconds: int = 300,
+        status: Literal["claimed", "running"] = "running",
+    ) -> None:
         row = await self._pool.fetchrow(
             f"""
             UPDATE plato.exploration_nodes
@@ -526,7 +709,10 @@ class DualGraphStore:
              WHERE {_HELD}
             RETURNING id
             """,
-            node_id, worker_id, lease_seconds, status,
+            node_id,
+            worker_id,
+            lease_seconds,
+            status,
         )
         if row is None:
             raise _lease_lost(worker_id, node_id)
@@ -539,18 +725,28 @@ class DualGraphStore:
              WHERE {_HELD} AND turns_used < turn_budget_max
             RETURNING turns_used
             """,
-            node_id, worker_id,
+            node_id,
+            worker_id,
         )
         if row is None:
-            if await self._pool.fetchval(f"SELECT 1 FROM plato.exploration_nodes WHERE {_HELD}", node_id, worker_id):
+            if await self._pool.fetchval(
+                f"SELECT 1 FROM plato.exploration_nodes WHERE {_HELD}",
+                node_id,
+                worker_id,
+            ):
                 raise BudgetExceeded(f"turn budget exhausted for intent {node_id}")
             raise _lease_lost(worker_id, node_id)
         return row["turns_used"]
 
-    async def complete_intent(self, node_id: uuid.UUID, worker_id: str,
-                              status: Literal["verified", "refuted", "exhausted", "open"], *,
-                              metrics: dict[str, Any] | None = None,
-                              confidence_score: float | None = None) -> None:
+    async def complete_intent(
+        self,
+        node_id: uuid.UUID,
+        worker_id: str,
+        status: Literal["verified", "refuted", "exhausted", "open"],
+        *,
+        metrics: dict[str, Any] | None = None,
+        confidence_score: float | None = None,
+    ) -> None:
         """Release an intent with a terminal status (or ``open`` to hand it back).
         Fenced on the worker id: a worker whose lease was reclaimed gets ``LeaseLost``."""
         row = await self._pool.fetchrow(
@@ -563,12 +759,18 @@ class DualGraphStore:
              WHERE {_HELD}
             RETURNING id
             """,
-            node_id, worker_id, status, _jsonb(metrics), confidence_score,
+            node_id,
+            worker_id,
+            status,
+            _jsonb(metrics),
+            confidence_score,
         )
         if row is None:
             raise _lease_lost(worker_id, node_id)
 
-    async def exhaust_dead_intents(self, campaign_id: uuid.UUID, *, max_attempts: int = 3) -> int:
+    async def exhaust_dead_intents(
+        self, campaign_id: uuid.UUID, *, max_attempts: int = 3
+    ) -> int:
         """Mark intents that used every attempt and whose last lease expired as exhausted."""
         result = await self._pool.execute(
             """
@@ -576,33 +778,55 @@ class DualGraphStore:
              WHERE campaign_id = $1 AND node_type = 'intent' AND attempt_count >= $2
                AND (status = 'open' OR (status IN ('claimed', 'running') AND lease_expires_at < now()))
             """,
-            campaign_id, max_attempts,
+            campaign_id,
+            max_attempts,
         )
         return int(result.split()[-1])
 
-    async def record_fact(self, campaign_id: uuid.UUID, intent_id: uuid.UUID, worker_id: str, *,
-                          title: str, observation: str, metrics: dict[str, Any] | None = None,
-                          confidence_score: float | None = None,
-                          anchors: Iterable[tuple[uuid.UUID, AnchorRole]] = ()) -> uuid.UUID:
+    async def record_fact(
+        self,
+        campaign_id: uuid.UUID,
+        intent_id: uuid.UUID,
+        worker_id: str,
+        *,
+        title: str,
+        observation: str,
+        metrics: dict[str, Any] | None = None,
+        confidence_score: float | None = None,
+        anchors: Iterable[tuple[uuid.UUID, AnchorRole]] = (),
+    ) -> uuid.UUID:
         """Write a fact + ``yields`` edge + anchors in one transaction, fenced on the lease."""
         async with self._pool.acquire() as conn, conn.transaction():
             held = await conn.fetchval(
-                f"SELECT 1 FROM plato.exploration_nodes WHERE {_HELD} FOR UPDATE", intent_id, worker_id,
+                f"SELECT 1 FROM plato.exploration_nodes WHERE {_HELD} FOR UPDATE",
+                intent_id,
+                worker_id,
             )
             if not held:
                 raise _lease_lost(worker_id, intent_id)
             fact = await self.create_node(
-                campaign_id, "fact", title, observation, metrics=metrics,
-                confidence_score=confidence_score, status="open", conn=conn,
+                campaign_id,
+                "fact",
+                title,
+                observation,
+                metrics=metrics,
+                confidence_score=confidence_score,
+                status="open",
+                conn=conn,
             )
             await self.add_edge(campaign_id, intent_id, fact.id, "yields", conn=conn)
             for asset_id, role in anchors:
                 await self.link_anchor(fact.id, asset_id, role, conn=conn)
         return fact.id
 
-    async def set_node_status(self, node_id: uuid.UUID, status: NodeStatus, *,
-                              confidence_score: float | None = None,
-                              metrics: dict[str, Any] | None = None) -> None:
+    async def set_node_status(
+        self,
+        node_id: uuid.UUID,
+        status: NodeStatus,
+        *,
+        confidence_score: float | None = None,
+        metrics: dict[str, Any] | None = None,
+    ) -> None:
         """Status change for non-claimable nodes (facts, findings, hints, goals)."""
         await self._pool.execute(
             """
@@ -611,14 +835,23 @@ class DualGraphStore:
                    metrics = metrics || $4::jsonb
              WHERE id = $1 AND node_type <> 'intent'
             """,
-            node_id, status, confidence_score, _jsonb(metrics),
+            node_id,
+            status,
+            confidence_score,
+            _jsonb(metrics),
         )
 
     # ------------------------------------------------------------------ evidence
-    async def add_evidence(self, node_id: uuid.UUID, artifact_type: ArtifactType, content: bytes | str, *,
-                           approval_actor: Literal["human", "rule", "model", "system"] = "system",
-                           storage_uri: str | None = None,
-                           vlm_quality_score: float | None = None) -> uuid.UUID:
+    async def add_evidence(
+        self,
+        node_id: uuid.UUID,
+        artifact_type: ArtifactType,
+        content: bytes | str,
+        *,
+        approval_actor: Literal["human", "rule", "model", "system"] = "system",
+        storage_uri: str | None = None,
+        vlm_quality_score: float | None = None,
+    ) -> uuid.UUID:
         """Store an immutable receipt. Content up to 1 MiB is kept inline; larger content
         must already live at ``storage_uri`` and only its checksum is recorded."""
         data = content.encode("utf-8") if isinstance(content, str) else content
@@ -635,7 +868,13 @@ class DualGraphStore:
             ON CONFLICT (node_id, artifact_type, sha256_checksum) DO NOTHING
             RETURNING id
             """,
-            node_id, artifact_type, uri, checksum, inline, vlm_quality_score, approval_actor,
+            node_id,
+            artifact_type,
+            uri,
+            checksum,
+            inline,
+            vlm_quality_score,
+            approval_actor,
         )
         if row is not None:
             return row["id"]
@@ -644,7 +883,9 @@ class DualGraphStore:
             SELECT id FROM plato.evidence_artifacts
              WHERE node_id = $1 AND artifact_type = $2 AND sha256_checksum = $3
             """,
-            node_id, artifact_type, checksum,
+            node_id,
+            artifact_type,
+            checksum,
         )
 
     async def evidence_for(self, node_ids: Iterable[uuid.UUID]) -> list[dict[str, Any]]:
@@ -663,41 +904,58 @@ class DualGraphStore:
             "SELECT content FROM plato.evidence_artifacts WHERE id = $1", artifact_id
         )
 
-    async def evidence_contents(self, node_id: uuid.UUID, artifact_type: ArtifactType) -> list[bytes]:
+    async def evidence_contents(
+        self, node_id: uuid.UUID, artifact_type: ArtifactType
+    ) -> list[bytes]:
         """Inline contents of one artifact type for a node, oldest first, in one round trip."""
         rows = await self._pool.fetch(
             """
             SELECT content FROM plato.evidence_artifacts
              WHERE node_id = $1 AND artifact_type = $2 AND content IS NOT NULL ORDER BY created_at
             """,
-            node_id, artifact_type,
+            node_id,
+            artifact_type,
         )
         return [bytes(r["content"]) for r in rows]
 
     # ------------------------------------------------------------------ guard audit
-    async def record_guard_event(self, campaign_id: uuid.UUID, kind: str, decision: str,
-                                 detail: dict[str, Any] | None = None,
-                                 node_id: uuid.UUID | None = None) -> None:
+    async def record_guard_event(
+        self,
+        campaign_id: uuid.UUID,
+        kind: str,
+        decision: str,
+        detail: dict[str, Any] | None = None,
+        node_id: uuid.UUID | None = None,
+    ) -> None:
         await self._pool.execute(
             """
             INSERT INTO plato.guard_events(campaign_id, node_id, kind, decision, detail)
             VALUES ($1, $2, $3, $4, $5::jsonb)
             """,
-            campaign_id, node_id, kind, decision, _jsonb(detail),
+            campaign_id,
+            node_id,
+            kind,
+            decision,
+            _jsonb(detail),
         )
 
-    async def guard_events(self, campaign_id: uuid.UUID, limit: int = 200) -> list[dict[str, Any]]:
+    async def guard_events(
+        self, campaign_id: uuid.UUID, limit: int = 200
+    ) -> list[dict[str, Any]]:
         rows = await self._pool.fetch(
             """
             SELECT node_id, kind, decision, detail, created_at FROM plato.guard_events
              WHERE campaign_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2
             """,
-            campaign_id, limit,
+            campaign_id,
+            limit,
         )
         return [dict(r) for r in rows]
 
     # ------------------------------------------------------------------ provenance
-    async def trace_provenance(self, node_id: uuid.UUID, *, max_depth: int = 32) -> dict[str, Any]:
+    async def trace_provenance(
+        self, node_id: uuid.UUID, *, max_depth: int = 32
+    ) -> dict[str, Any]:
         """Walk lineage edges backwards from ``node_id`` (finding <- proves <- fact <- yields
         <- intent <- derived_from/spawns <- ...) and return every ancestor with its anchors
         and evidence receipts. Cycle-safe and depth-bounded."""
@@ -708,7 +966,8 @@ class DualGraphStore:
               FROM plato.lineage($1, $2) l JOIN plato.exploration_nodes n ON n.id = l.node_id
              ORDER BY l.depth, n.created_at
             """,
-            node_id, max_depth,
+            node_id,
+            max_depth,
         )
         nodes = [dict(r) for r in rows]
         ids = [n["id"] for n in nodes]
@@ -737,7 +996,9 @@ class DualGraphStore:
             "evidence": await self.evidence_for(ids),
         }
 
-    async def anchored_asset_ids(self, node_ids: Iterable[uuid.UUID], *, max_depth: int = 32) -> set[uuid.UUID]:
+    async def anchored_asset_ids(
+        self, node_ids: Iterable[uuid.UUID], *, max_depth: int = 32
+    ) -> set[uuid.UUID]:
         """Assets anchored anywhere in the lineage of any of ``node_ids``, in one query."""
         rows = await self._pool.fetch(
             """
@@ -746,7 +1007,8 @@ class DualGraphStore:
              CROSS JOIN LATERAL plato.lineage(r.id, $2) l
               JOIN plato.exploration_anchors x ON x.node_id = l.node_id
             """,
-            list(node_ids), max_depth,
+            list(node_ids),
+            max_depth,
         )
         return {r["asset_id"] for r in rows}
 

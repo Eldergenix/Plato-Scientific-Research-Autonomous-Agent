@@ -29,8 +29,13 @@ def new_nonce() -> str:
     return secrets.token_hex(8)
 
 
-def frame_untrusted(content: str, *, source: str, nonce: str | None = None,
-                    max_chars: int = _MAX_FRAMED_CHARS) -> Framed:
+def frame_untrusted(
+    content: str,
+    *,
+    source: str,
+    nonce: str | None = None,
+    max_chars: int = _MAX_FRAMED_CHARS,
+) -> Framed:
     nonce = nonce or new_nonce()
     source_label = re.sub(r"[^a-zA-Z0-9_.:-]", "_", source)[:64]
     truncated = len(content) > max_chars
@@ -39,7 +44,7 @@ def frame_untrusted(content: str, *, source: str, nonce: str | None = None,
     body = body.replace(nonce, "[nonce-redacted]")
     signals = tuple(detect_injection_signals(body))
     text = (
-        f"<untrusted-{nonce} source=\"{source_label}\"{' truncated=\"true\"' if truncated else ''}>\n"
+        f'<untrusted-{nonce} source="{source_label}"{' truncated="true"' if truncated else ""}>\n'
         f"{body}\n"
         f"</untrusted-{nonce}>"
     )
