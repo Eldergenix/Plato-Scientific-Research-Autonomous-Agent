@@ -40,10 +40,12 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          # Same pins as the container image (docker/requirements-scientist.txt).
-          pip install -e ".[test]" -r docker/requirements-scientist.txt
+          # Exactly the container image's dependency set (docker/requirements-scientist.txt),
+          # not the package's own deps, which pin an older langgraph.
+          pip install -r docker/requirements-scientist.txt pytest==9.2.0 pytest-asyncio==1.5.0
       - name: Dual-graph store, guardrails, end-to-end campaign
-        run: pytest tests/scientist -q --tb=short
+        # The repo-wide tests/conftest.py imports modules the container does not ship.
+        run: PYTHONPATH=. pytest tests/scientist -q --tb=short --confcutdir=tests/scientist
 
   worker:
     runs-on: ubuntu-latest
