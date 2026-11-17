@@ -554,3 +554,26 @@ def test_replication_uses_standard_errors_for_near_zero_metrics():
     assert replicates("cov", {"cov": 0.95}, {"cov": 0.948}, 0.1)
     assert not replicates("cov", {"cov": 0.95}, None, 0.1)
     assert not replicates("cov", {"cov": 0.95}, {"other": 1}, 0.1)
+
+
+def test_latex_table_lists_primary_metric_and_is_omitted_without_findings():
+    from plato.scientist.nodes import assemble_latex
+
+    ms = Manuscript(
+        title="T",
+        abstract="a",
+        introduction="i",
+        methods="m",
+        results="r",
+        discussion="d",
+        limitations="l",
+    )
+    finding = {
+        "title": "Coverage is nominal",
+        "confidence_score": 0.7,
+        "metrics": {"primary_metric": "ci_coverage", "ci_coverage": 0.95295},
+    }
+    tex = assemble_latex(ms, [finding])
+    assert "\\texttt{ci\\_coverage} & 0.95295 & 0.70 \\\\" in tex
+    assert "\\usepackage{amsmath,amssymb}" in tex
+    assert "tabular" not in assemble_latex(ms, [])

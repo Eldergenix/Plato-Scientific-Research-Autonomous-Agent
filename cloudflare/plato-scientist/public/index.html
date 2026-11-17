@@ -158,7 +158,10 @@ svg{flex:none}
 .sep{height:1px;background:var(--border);margin:12px 0}
 .node-t{font-size:15px;font-weight:500;margin:8px 0 6px;line-height:1.35}
 .para{color:var(--text-2);white-space:pre-wrap;word-break:break-word;font-size:12.5px}
-.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12px}
+.kv{display:grid;grid-template-columns:minmax(0,max-content) minmax(64px,1fr);gap:3px 12px;font-size:12px}
+.prim{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;font-size:12px}.prim .mono{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.prim .pv{font-size:16px;font-weight:500;font-variant-numeric:tabular-nums;color:var(--text)}
+.kv span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kv span:nth-child(odd){max-width:180px}
 .kv span:nth-child(odd){color:var(--text-2)}
 .lin{display:flex;align-items:center;gap:7px;padding:4px 6px;border-radius:5px;cursor:pointer;font-size:12.5px}
 .lin:hover{background:var(--hover)}
@@ -443,8 +446,15 @@ function propsView(){
   <p class="t3" style="font-size:12px;margin-top:12px">Select any node to see its evidence and lineage.</p></div>`}
 function nodeProps(n){
   const p=S.prov[n.id];
-  const metrics=n.metrics&&typeof n.metrics==="object"?Object.entries(n.metrics).filter(([k])=>k!=="gates"):[];
-  const ev=p?p.evidence.filter(e=>e.node_id===n.id):[];
+  const m=n.metrics&&typeof n.metrics==="object"?n.metrics:{},pk=typeof m.primary_metric==="string"?m.primary_metric:null;
+  // Gate booleans render as chips; the primary metric gets its own row; the rest is a table.
+  const metrics=Object.entries(m).filter(([k])=>!["gates","primary_metric","replication","test_kind",pk,pk&&pk+"_se",...Object.keys(GATE_LABEL)].includes(k));
+  const fmt=v=>typeof v==="number"?String(+v.toPrecision(5)):JSON.stringify(v);
+  const rep=pk&&m.replication&&typeof m.replication==="object"?m.replication[pk]:undefined;
+  // A finding's code, logs and plots live on the claim that proves it.
+  const provers=p?p.edges.filter(e=>e.edge_type==="proves"&&e.target_node_id===n.id).map(e=>p.nodes.find(x=>x.id===e.source_node_id)).filter(Boolean):[];
+  const evGroups=p?[[null,p.evidence.filter(e=>e.node_id===n.id)],...provers.map(f=>[f,p.evidence.filter(e=>e.node_id===f.id)])].filter(([,l])=>l.length):[];
+  const evRow=e=>`<div class="lin" data-ev="${esc(e.id)}" data-type="${esc(e.artifact_type)}">${evIcon(e.artifact_type)}<span class="trunc">${esc(EV_LABEL[e.artifact_type]||e.artifact_type)}</span><span class="t3 mono" style="margin-left:auto;font-size:11px">${esc(e.sha256_checksum.slice(0,8))}</span></div>`;
   const lineage=p?p.nodes.filter(x=>x.id!==n.id):[];
   const anchors=p?p.anchors:[];
   return `<div class="pp"><div style="display:flex;align-items:center;gap:8px"><button class="icon-btn" data-close aria-label="Back to properties"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M10 3 5 8l5 5"/></svg></button>${typeChip(n.node_type)}<span class="chip">${nodeIcon(n.status)}${STATUS_LABEL[n.status]||esc(n.status)}</span></div>
@@ -452,9 +462,10 @@ function nodeProps(n){
   ${n.hypothesis_or_spec?`<div class="para">${esc(n.hypothesis_or_spec)}</div>`:""}
   ${n.confidence_score!=null?`<div class="sep"></div><div class="prop"><span>Confidence</span><span><span class="bar" style="width:90px"><span style="width:${Math.round(100*n.confidence_score)}%"></span></span>${Number(n.confidence_score).toFixed(2)}</span></div>`:""}
   ${gateChips(n)}
-  ${metrics.length?`<div class="sep"></div><h4>Metrics</h4><div class="kv mono">${metrics.slice(0,16).map(([k,v])=>`<span>${esc(k)}</span><span class="trunc" title="${esc(JSON.stringify(v))}">${esc(typeof v==="number"?+v.toPrecision(5):JSON.stringify(v))}</span>`).join("")}</div>`:""}
+  ${pk&&pk in m?`<div class="sep"></div><h4>Primary metric</h4><div class="prim"><span class="mono t2" title="${esc(pk)}">${esc(pk)}</span><span class="pv">${esc(fmt(m[pk]))}</span>${m[pk+"_se"]!=null?`<span class="t3">± ${esc(fmt(m[pk+"_se"]))} SE</span>`:""}${rep!==undefined?`<span class="t3">seed 2: ${esc(fmt(rep))}</span>`:""}${m.test_kind?`<span class="chip">${esc(m.test_kind)} test</span>`:""}</div>`:""}
+  ${metrics.length?`<div class="sep"></div><h4>Metrics</h4><div class="kv mono">${metrics.slice(0,24).map(([k,v])=>`<span title="${esc(k)}">${esc(k)}</span><span title="${esc(JSON.stringify(v))}">${esc(fmt(v))}</span>`).join("")}</div>`:""}
   <div class="sep"></div><h4>Evidence</h4>
-  ${!p?'<div class="spin"></div>':ev.length?ev.map(e=>`<div class="lin" data-ev="${esc(e.id)}" data-type="${esc(e.artifact_type)}">${evIcon(e.artifact_type)}<span class="trunc">${esc(EV_LABEL[e.artifact_type]||e.artifact_type)}</span><span class="t3 mono" style="margin-left:auto;font-size:11px">${esc(e.sha256_checksum.slice(0,8))}</span></div>`).join(""):'<p class="t3">No artifacts on this node.</p>'}
+  ${!p?'<div class="spin"></div>':evGroups.length?evGroups.map(([f,l])=>(f?`<div class="t3" style="font-size:11px;margin:6px 0 2px">From claim · ${esc(f.title)}</div>`:"")+l.map(evRow).join("")).join(""):'<p class="t3">No artifacts on this node.</p>'}
   ${anchors.length?`<div class="sep"></div><h4>Sources</h4>${anchors.slice(0,12).map(a=>`<div class="lin" style="cursor:default"><span class="chip">${esc(a.anchor_role)}</span><span class="trunc" title="${esc(a.canonical_name)}">${esc(a.canonical_name)}</span></div>`).join("")}`:""}
   ${lineage.length?`<div class="sep"></div><h4>Lineage</h4>${lineage.slice(0,20).map(x=>`<div class="lin" data-node="${esc(x.id)}">${nodeIcon(x.status)}<span class="trunc">${esc(x.title)}</span></div>`).join("")}`:""}
   </div>`}
@@ -524,13 +535,30 @@ function graphView(){
 async function loadManuscript(){const id=S.route.id;S.manuscript=null;
   try{const m=await getJSON(`campaigns/${id}/manuscript`);if(S.route.id===id){S.manuscript=m;if(S.route.tab==="manuscript")renderTab()}}
   catch(e){if(S.route.id===id){S.manuscript=e.status===404?false:e.message;if(S.route.tab==="manuscript")renderTab()}}}
+/* Math: KaTeX is vendored (same origin, no CDN) and loaded only when a paper is shown. */
+const KATEX="/vendor/katex-0.16.11/";let katexP=null;
+function loadKatex(){if(window.katex)return Promise.resolve();if(katexP)return katexP;
+  katexP=new Promise((res,rej)=>{const l=document.createElement("link");l.rel="stylesheet";l.href=KATEX+"katex.min.css";document.head.appendChild(l);
+    const sc=document.createElement("script");sc.src=KATEX+"katex.min.js";sc.onload=res;sc.onerror=()=>{katexP=null;rej(new Error("KaTeX failed to load"))};document.head.appendChild(sc)});
+  return katexP}
+function renderMath(tex,display){
+  // trust:false + strict:"ignore": KaTeX escapes all text and never emits links, styles or HTML from the source.
+  if(window.katex){try{return katex.renderToString(tex,{displayMode:display,throwOnError:false,trust:false,strict:"ignore",output:"htmlAndMathml"})}catch{}}
+  return display?`<pre class="mono">${esc(tex)}</pre>`:`<code>${esc(tex)}</code>`}
 function latexToHtml(src){
-  // Escape first, then rewrite a safe subset of LaTeX into HTML (all text stays escaped).
-  let s=esc(src).replace(/\r/g,"");
+  // Math is lifted out of the raw source first (KaTeX renders it safely), then the rest is
+  // escaped and a safe subset of LaTeX is rewritten into HTML (all text stays escaped).
+  const math=[];const keep=(tex,display)=>{math.push(renderMath(tex.replace(/\\(label|nonumber|notag)(\{[^}]*\})?/g,"").trim(),display));return `\u0000M${math.length-1}\u0000`};
+  const ENV={equation:null,align:"aligned",gather:"gathered",multline:"gathered"};
+  let raw=String(src).replace(/[\r\u0000]/g,"").replace(/(^|[^\\])%.*$/gm,"$1")
+    .replace(/\\begin\{(equation|align|gather|multline)(\*?)\}([\s\S]*?)\\end\{\1\2\}/g,(_,env,star,b)=>keep(ENV[env]?`\\begin{${ENV[env]}}${b}\\end{${ENV[env]}}`:b,true))
+    .replace(/\$\$([\s\S]+?)\$\$/g,(_,b)=>keep(b,true)).replace(/\\\[([\s\S]+?)\\\]/g,(_,b)=>keep(b,true))
+    .replace(/\\\(([\s\S]+?)\\\)/g,(_,b)=>keep(b,false)).replace(/(^|[^\\])\$((?:\\\$|[^$\n])+?)\$/g,(_,pre,b)=>pre+keep(b,false));
+  let s=esc(raw);
   const doc=s.match(/\\begin\{document\}([\s\S]*?)(\\end\{document\}|$)/);
   const pre=doc?s.slice(0,doc.index):"";if(doc)s=doc[1];
   const title=(pre.match(/\\title\{([^}]*)\}/)||s.match(/\\title\{([^}]*)\}/)||[])[1],author=(pre.match(/\\author\{([^}]*)\}/)||s.match(/\\author\{([^}]*)\}/)||[])[1];
-  s=s.replace(/(^|[^\\])%.*$/gm,"$1")
+  s=s
    .replace(/\\(documentclass|usepackage)(\[[^\]]*\])?\{[^}]*\}/g,"").replace(/\\(title|author|date)\{[^}]*\}/g,"")
    .replace(/\\(label|vspace|hspace|bibliographystyle|bibliography)\*?\{[^}]*\}/g,"").replace(/\\(noindent|centering|maketitle|toprule|midrule|bottomrule|hline|small|footnotesize|newpage|clearpage)\b/g,"")
    .replace(/\\begin\{abstract\}([\s\S]*?)\\end\{abstract\}/g,(_,a)=>`\n\n<div class="abs"><b>Abstract.</b> ${a.trim()}</div>\n\n`)
@@ -542,14 +570,16 @@ function latexToHtml(src){
    .replace(/\\textbf\{([^}]*)\}/g,"<strong>$1</strong>").replace(/\\(emph|textit)\{([^}]*)\}/g,"<em>$2</em>").replace(/\\texttt\{([^}]*)\}/g,"<code>$1</code>")
    .replace(/\\cite[pt]?\{([^}]*)\}/g,(_,k)=>`<cite>[${k.split(",").map(x=>x.trim()).join(", ")}]</cite>`).replace(/\\(eq)?ref\{([^}]*)\}/g,"<code>$2</code>")
    .replace(/\\begin\{(itemize|enumerate)\}/g,"\n\n<ul>").replace(/\\end\{(itemize|enumerate)\}/g,"</ul>\n\n").replace(/\\item\s*/g,"<li>")
-   .replace(/\\begin\{[^}]*\}(\{[^}]*\})?|\\end\{[^}]*\}/g,"").replace(/\$([^$\n]+)\$/g,"<code>$1</code>").replace(/~/g,"&nbsp;").replace(/\\\\/g,"<br>")
+   .replace(/\\begin\{[^}]*\}(\{[^}]*\})?|\\end\{[^}]*\}/g,"").replace(/~/g,"&nbsp;").replace(/\\\\/g,"<br>")
    .replace(/\\&amp;/g,"&amp;").replace(/\\([%_#$])/g,"$1");
   const head=(title?`<h1>${title}</h1>`:"")+(author?`<p class="by">${author}</p>`:"");
-  return head+s.split(/\n\s*\n/).map(b=>b.trim()).filter(Boolean).map(b=>/^<(h2|h3|ul|table|div|figcaption)/.test(b)?b:`<p>${b}</p>`).join("\n")}
+  const html=head+s.split(/\n\s*\n/).map(b=>b.trim()).filter(Boolean).map(b=>/^<(h2|h3|ul|table|div|figcaption)/.test(b)||/^\u0000M\d+\u0000$/.test(b)?b:`<p>${b}</p>`).join("\n");
+  return html.replace(/\u0000M(\d+)\u0000/g,(_,i)=>math[+i]??"")}
 function manuscriptView(){
   // undefined: not requested yet, null: loading, false: none yet, string: load error, object: loaded
   if(S.manuscript==null)return `<div class="empty"><div class="spin"></div></div>`;
   if(typeof S.manuscript==="string")return emptyPane("Could not load the manuscript",S.manuscript);
+  if(S.manuscript&&typeof S.manuscript==="object"&&!window.katex)loadKatex().then(()=>{if(S.route.tab==="manuscript")renderTab()}).catch(()=>{});
   if(S.manuscript===false)return emptyPane("No manuscript yet",S.summary.campaign.status==="halted"?"This campaign halted before writing.":"The paper is written after the experiments and the sealed evaluation finish.");
   const m=S.manuscript;let rv="";
   try{const r=m.peer_review?JSON.parse(m.peer_review):null;if(r){const pips=v=>{v=Number(v);v=Number.isFinite(v)?v:0;return `<span class="pips" title="${v} of 4">${[1,2,3,4].map(i=>`<i class="${i<=v?"on":""}"></i>`).join("")}</span>`};

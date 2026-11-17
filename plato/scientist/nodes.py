@@ -1016,21 +1016,40 @@ def _filter_citations(text: str, allowed: set[str]) -> tuple[str, list[str]]:
     return _CITE_RE.sub(repl, text), dropped
 
 
+def _finding_row(f: dict[str, Any]) -> str:
+    m = f.get("metrics") or {}
+    key = m.get("primary_metric")
+    value = m.get(key) if isinstance(key, str) else None
+    shown = f"{value:.6g}" if isinstance(value, (int, float)) else "--"
+    conf = f["confidence_score"]
+    conf_shown = f"{float(conf):.2f}" if conf is not None else "--"
+    return (
+        f"{latex_escape(f['title'])} & \\texttt{{{latex_escape(key or '--')}}} & "
+        f"{shown} & {conf_shown} \\\\"
+    )
+
+
 def assemble_latex(ms: Manuscript, findings: list[dict[str, Any]]) -> str:
-    rows = "\n".join(
-        f"{latex_escape(f['title'])} & {f['confidence_score'] if f['confidence_score'] is not None else '--'} \\\\"
-        for f in findings
+    # The summary table lists verified findings only; with none, it is omitted rather
+    # than printed empty (the text then reports negative and preliminary results).
+    table = (
+        "\\begin{table}[h]\\centering\n\\begin{tabular}{p{0.5\\linewidth}llr}\n"
+        "Finding & Primary metric & Value & Confidence \\\\\n\\hline\n"
+        + "\n".join(_finding_row(f) for f in findings)
+        + "\n\\end{tabular}\n\\caption{Verified findings: primary metric and skeptic confidence.}\n\\end{table}\n"
+        if findings
+        else ""
     )
     return (
-        "\\documentclass{article}\n\\usepackage[utf8]{inputenc}\n\\usepackage{hyperref}\n"
+        "\\documentclass{article}\n\\usepackage[utf8]{inputenc}\n\\usepackage{amsmath,amssymb}\n"
+        "\\usepackage{hyperref}\n"
         f"\\title{{{latex_escape(ms.title)}}}\n\\author{{Plato autonomous research swarm}}\n"
         "\\begin{document}\n\\maketitle\n"
         f"\\begin{{abstract}}\n{ms.abstract}\n\\end{{abstract}}\n"
         f"\\section{{Introduction}}\n{ms.introduction}\n"
         f"\\section{{Methods}}\n{ms.methods}\n"
         f"\\section{{Results}}\n{ms.results}\n"
-        "\\begin{table}[h]\\centering\n\\begin{tabular}{lr}\nFinding & Confidence \\\\\n\\hline\n"
-        f"{rows}\n\\end{{tabular}}\n\\caption{{Verified findings with skeptic confidence.}}\n\\end{{table}}\n"
+        f"{table}"
         f"\\section{{Discussion}}\n{ms.discussion}\n"
         f"\\section{{Limitations}}\n{ms.limitations}\n"
         "\\bibliographystyle{plain}\n\\bibliography{references}\n\\end{document}\n"
