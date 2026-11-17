@@ -879,7 +879,7 @@ async def verifier(ctx: ScientistContext, campaign_id: uuid.UUID) -> dict[str, i
                 fact["id"],
                 "verified",
                 confidence_score=round(confidence, 3),
-                metrics={"gates": gates},
+                metrics={"gates": gates, "replication": rep_metrics},
             )
             stats["promoted"] += 1
         else:
@@ -887,7 +887,11 @@ async def verifier(ctx: ScientistContext, campaign_id: uuid.UUID) -> dict[str, i
                 fact["id"],
                 "refuted",
                 confidence_score=round(confidence, 3),
-                metrics={"gates": gates, "skeptic_rationale": verdict.rationale[:1000]},
+                metrics={
+                    "gates": gates,
+                    "replication": rep_metrics,
+                    "skeptic_rationale": verdict.rationale[:1000],
+                },
             )
             stats["refuted"] += 1
     rounds = await rounds_completed(ctx, campaign_id) + 1
@@ -1056,6 +1060,39 @@ def assemble_latex(ms: Manuscript, findings: list[dict[str, Any]]) -> str:
     )
 
 
+class DraftSink:
+    """Throttled writer of the streaming manuscript to ``plato.manuscript_drafts``.
+
+    The model emits the paper token by token; persisting every delta would be thousands
+    of writes, so the sink saves at most once per ``interval`` seconds and ``flush`` saves
+    the last text. Failures are logged, never raised: the live view is best effort."""
+
+    def __init__(
+        self, store: DualGraphStore, campaign_id: uuid.UUID, interval: float = 1.5
+    ):
+        self._store, self._cid, self._interval = store, campaign_id, interval
+        self.stage, self._last, self._text = "drafting", 0.0, ""
+
+    async def stage_to(self, stage: str, body: str | None = None) -> None:
+        self.stage = stage
+        if body is not None:
+            self._text = body
+        await self.flush()
+
+    async def __call__(self, text: str) -> None:
+        self._text = text
+        now = asyncio.get_running_loop().time()
+        if now - self._last >= self._interval:
+            await self.flush()
+
+    async def flush(self) -> None:
+        self._last = asyncio.get_running_loop().time()
+        try:
+            await self._store.save_draft(self._cid, self.stage, self._text)
+        except Exception:
+            logger.warning("could not save manuscript draft", exc_info=True)
+
+
 async def write_manuscript(
     ctx: ScientistContext, campaign_id: uuid.UUID
 ) -> dict[str, Any]:
@@ -1138,6 +1175,8 @@ async def write_manuscript(
     )
     # The cap covers adaptive thinking plus the full LaTeX body; at 16k the writer
     # truncated once it was given every measured result.
+    draft = DraftSink(store, campaign_id)
+    await draft.stage_to("drafting", "")
     ms = await ctx.model.structured(
         campaign_id=campaign_id,
         purpose="manuscript",
@@ -1146,7 +1185,9 @@ async def write_manuscript(
         max_tokens=MANUSCRIPT_MAX_TOKENS,
         system=_system("scientific writer", nonce),
         prompt=base_prompt,
+        on_text=draft,
     )
+    await draft.stage_to("reviewing", ms.model_dump_json())
     # Review and revision improve the draft but must never cost the campaign its paper:
     # if either fails (truncation, refusal, budget) the draft is kept and the failure logged.
     review: PeerReview | None = None
@@ -1161,6 +1202,7 @@ async def write_manuscript(
             prompt=f"Review this manuscript against the evidence.\n\nEvidence:\n{evidence_text}\n\nManuscript:\n{ms.model_dump_json()}",
         )
         if review.decision in ("major_revision", "reject") and review.required_changes:
+            await draft.stage_to("revising")
             ms = await ctx.model.structured(
                 campaign_id=campaign_id,
                 purpose="manuscript_revision",
@@ -1171,6 +1213,7 @@ async def write_manuscript(
                 prompt=base_prompt
                 + "\n\nRevise the manuscript to address:\n"
                 + "\n".join(f"- {c}" for c in review.required_changes),
+                on_text=draft,
             )
             revised = True
     except (ModelOutputError, ModelRefusal, BudgetExceeded) as exc:
@@ -1201,6 +1244,7 @@ async def write_manuscript(
                 "keys": sorted(set(dropped)),
             },
         )
+    await draft.stage_to("final", ms.model_dump_json())
     tex = assemble_latex(ms, findings)
     await store.add_evidence(root_id, "latex_section", tex, approval_actor="model")
     await store.add_evidence(root_id, "bibtex", bib, approval_actor="system")

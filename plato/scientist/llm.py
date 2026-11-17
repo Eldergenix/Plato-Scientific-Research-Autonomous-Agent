@@ -21,6 +21,7 @@ import functools
 import logging
 import os
 import uuid
+from collections.abc import Awaitable, Callable
 from typing import Literal, Protocol, TypeVar
 
 import pydantic
@@ -43,6 +44,8 @@ def resolve_model(model: str | None = None) -> str:
 WRITING_PURPOSES = frozenset({"manuscript", "peer_review", "manuscript_revision"})
 Effort = Literal["low", "medium", "high", "xhigh", "max"]
 T = TypeVar("T", bound=BaseModel)
+# Receives the accumulated output text while a call streams (used to show the paper live).
+TextSink = Callable[[str], Awaitable[None]]
 
 
 class ModelRefusal(RuntimeError):
@@ -65,6 +68,7 @@ class ScientistModel(Protocol):
         max_tokens: int = 8000,
         effort: Effort = "medium",
         images: list[bytes] | None = None,
+        on_text: TextSink | None = None,
     ) -> T: ...
 
 
@@ -119,6 +123,7 @@ class AnthropicScientistModel:
         max_tokens: int = 8000,
         effort: Effort = "medium",
         images: list[bytes] | None = None,
+        on_text: TextSink | None = None,
     ) -> T:
         content: list[dict] = []
         for png in images or []:
@@ -172,6 +177,16 @@ class AnthropicScientistModel:
                     metadata={"user_id": f"campaign-{campaign_id}"},
                 ) as stream,
             ):
+                if on_text is not None:
+                    text_so_far = ""
+                    async for delta in stream.text_stream:
+                        text_so_far += delta
+                        try:
+                            await on_text(text_so_far)
+                        except Exception:  # a display sink must never fail the call
+                            logger.warning(
+                                "on_text sink failed for %s", purpose, exc_info=True
+                            )
                 response = await stream.get_final_message()
             usage = response.usage
             actual = (

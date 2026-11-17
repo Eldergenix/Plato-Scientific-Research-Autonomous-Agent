@@ -843,6 +843,28 @@ class DualGraphStore:
             _jsonb(metrics),
         )
 
+    # ------------------------------------------------------------------ drafts
+    async def save_draft(self, campaign_id: uuid.UUID, stage: str, body: str) -> None:
+        """Upsert the in-progress manuscript shown live in the UI (last write wins)."""
+        await self._pool.execute(
+            """
+            INSERT INTO plato.manuscript_drafts (campaign_id, stage, body, updated_at)
+            VALUES ($1, $2, $3, now())
+            ON CONFLICT (campaign_id) DO UPDATE
+               SET stage = EXCLUDED.stage, body = EXCLUDED.body, updated_at = now()
+            """,
+            campaign_id,
+            stage,
+            body[:400_000],
+        )
+
+    async def get_draft(self, campaign_id: uuid.UUID) -> dict[str, Any] | None:
+        row = await self._pool.fetchrow(
+            "SELECT stage, body, updated_at FROM plato.manuscript_drafts WHERE campaign_id = $1",
+            campaign_id,
+        )
+        return dict(row) if row else None
+
     # ------------------------------------------------------------------ evidence
     async def add_evidence(
         self,

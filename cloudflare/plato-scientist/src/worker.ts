@@ -199,6 +199,14 @@ async function read(sql: ReturnType<typeof db>, env: Env, parts: string[], id: s
     return json(Object.fromEntries(rows.map((r) => [r.artifact_type, r.text])));
   }
 
+  if (parts[0] === "campaigns" && parts[2] === "draft" && parts.length === 3) {
+    // The paper while it is being written (streamed by the writer, throttled to ~1.5s).
+    const [row] = await sql`
+      SELECT stage, body, updated_at FROM plato.manuscript_drafts WHERE campaign_id = ${id!}`;
+    if (!row) return json({ error: "no draft yet" }, 404);
+    return json(row);
+  }
+
   if (parts[0] === "nodes" && parts[2] === "provenance" && parts.length === 3) {
     // plato.lineage() is the same SQL function the Python store uses.
     const nodes = await sql`

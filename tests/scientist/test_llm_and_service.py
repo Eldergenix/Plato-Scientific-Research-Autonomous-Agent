@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import itertools
 from types import SimpleNamespace
 
 import httpx
@@ -26,6 +27,13 @@ class _FakeMessages:
 class _FakeStream:
     def __init__(self, response):
         self.response = response
+        self.text_stream = self._text()
+
+    async def _text(self):
+        for block in getattr(self.response, "content", []):
+            text = getattr(block, "text", "")
+            for i in range(0, len(text), 7):
+                yield text[i : i + 7]
 
     async def __aenter__(self):
         return self
@@ -219,3 +227,30 @@ async def test_truncated_or_invalid_output_is_output_error_and_settles_usage(
             )
     # Both calls were billed (100 + 50 + 10 each) even though they failed.
     assert (await store.get_campaign(cid))["tokens_used"] == before + 320
+
+
+async def test_on_text_receives_the_growing_output(store, campaign):
+    _, cid = campaign
+    parsed = FigureCritique(quality_score=0.7, issues=["a", "b"])
+    seen: list[str] = []
+
+    async def sink(text: str) -> None:
+        seen.append(text)
+        raise RuntimeError("display sink failures must not fail the call")
+
+    model = AnthropicScientistModel(
+        store,
+        client=SimpleNamespace(messages=_FakeMessages(_response(parsed=parsed))),
+        writing_reserve_tokens=0,
+    )
+    out = await model.structured(
+        campaign_id=cid,
+        purpose="manuscript",
+        system="s",
+        prompt="p",
+        schema=FigureCritique,
+        on_text=sink,
+    )
+    assert out == parsed
+    assert len(seen) > 2 and seen[-1] == parsed.model_dump_json()
+    assert all(b.startswith(a) for a, b in itertools.pairwise(seen))

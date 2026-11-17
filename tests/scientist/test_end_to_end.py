@@ -66,6 +66,7 @@ class FakeModel:
         self.plan_rounds = 0
         self.code_calls = 0
         self.bib_keys: list[str] = []
+        self.streamed: list[str] = []
 
     async def structured(
         self,
@@ -78,6 +79,7 @@ class FakeModel:
         max_tokens=8000,
         effort="medium",
         images=None,
+        on_text=None,
     ):
         keep = 0 if purpose in WRITING_PURPOSES else self.writing_reserve
         await self.store.reserve_tokens(campaign_id, self.per_call, keep_free=keep)
@@ -167,6 +169,9 @@ class FakeModel:
             )
             self.bib_keys.append(key)
             body = f"We build on prior work \\cite{{{key},ref_fabricated}}."
+            if on_text is not None:  # stream a partial body, as the real model does
+                self.streamed.append(purpose)
+                await on_text('{"title": "Mean of y", "abstract": "We mea')
             return Manuscript(
                 title="Mean of y",
                 abstract="We measure y.",
@@ -298,6 +303,18 @@ async def test_campaign_runs_end_to_end_with_full_provenance(store):
     assert f"\\cite{{{_bib_key(cited)}}}" in tex
     assert root["metrics"]["revised"] is True and "manuscript_revision" in model.calls
     assert root["status"] == "verified"  # a finding passed verification
+    # The paper streamed into the live draft and ended as the final manuscript.
+    assert {"manuscript", "manuscript_revision"} <= set(model.streamed)
+    draft = await store.get_draft(cid)
+    assert draft["stage"] == "final"
+    assert json.loads(draft["body"])["title"] == "Mean of y"
+    # Every judged claim keeps its seed-2 replication values (for the replication chart).
+    judged = [
+        f
+        for f in await store.nodes(cid, node_type="fact")
+        if f["status"] in ("verified", "refuted")
+    ]
+    assert judged and all(f["metrics"]["replication"]["mean_y"] == 3.0 for f in judged)
 
 
 async def test_finished_campaign_is_idempotent_on_rerun(store):
@@ -577,3 +594,19 @@ def test_latex_table_lists_primary_metric_and_is_omitted_without_findings():
     assert "\\texttt{ci\\_coverage} & 0.95295 & 0.70 \\\\" in tex
     assert "\\usepackage{amsmath,amssymb}" in tex
     assert "tabular" not in assemble_latex(ms, [])
+
+
+async def test_draft_sink_throttles_and_flushes(store, campaign):
+    from plato.scientist.nodes import DraftSink
+
+    _, cid = campaign
+    sink = DraftSink(store, cid, interval=3600)
+    await sink.stage_to("drafting", "")
+    for i in range(50):  # within the interval: no writes beyond the first
+        await sink('{"title": "' + "x" * i)
+    assert (await store.get_draft(cid))["body"] == ""
+    await sink.flush()
+    assert (await store.get_draft(cid))["body"].endswith("x" * 49)
+    await sink.stage_to("final", '{"title": "T"}')
+    d = await store.get_draft(cid)
+    assert d["stage"] == "final" and d["body"] == '{"title": "T"}'
