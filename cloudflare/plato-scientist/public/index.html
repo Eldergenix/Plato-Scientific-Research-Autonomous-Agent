@@ -571,8 +571,17 @@ function latexToHtml(src){
    .replace(/\\cite[pt]?\{([^}]*)\}/g,(_,k)=>`<cite>[${k.split(",").map(x=>x.trim()).join(", ")}]</cite>`).replace(/\\(eq)?ref\{([^}]*)\}/g,"<code>$2</code>")
    .replace(/\\begin\{(itemize|enumerate)\}/g,"\n\n<ul>").replace(/\\end\{(itemize|enumerate)\}/g,"</ul>\n\n").replace(/\\item\s*/g,"<li>")
    .replace(/\\begin\{[^}]*\}(\{[^}]*\})?|\\end\{[^}]*\}/g,"").replace(/~/g,"&nbsp;").replace(/\\\\/g,"<br>")
-   .replace(/\\&amp;/g,"&amp;").replace(/\\([%_#$])/g,"$1");
-  const head=(title?`<h1>${title}</h1>`:"")+(author?`<p class="by">${author}</p>`:"");
+   .replace(/\\&amp;/g,"&amp;").replace(/\\([%_#$])/g,"$1")
+   // Text-mode leftovers the writer commonly emits.
+   .replace(/\\par\b\s*/g,"\n\n").replace(/\\(med|big|small)skip\b\s*/g,"\n\n")
+   .replace(/\\paragraph\*?\{([^}]*)\}\s*/g,"\n\n<strong>$1</strong> ")
+   .replace(/\\href\{[^}]*\}\{([^}]*)\}/g,"$1").replace(/\\footnote\{([^}]*)\}/g," ($1)").replace(/\\url\{([^}]*)\}/g,"<code>$1</code>")
+   .replace(/\\(ldots|dots)\b/g,"…").replace(/---/g,"—").replace(/--/g,"–").replace(/``/g,"“").replace(/&#39;&#39;/g,"”")
+   .replace(/\\(textsc|underline|textrm|textsf|mbox|text)\{([^}]*)\}/g,"$2").replace(/\\[,;:! ]/g," ")
+   // Anything still unrecognised: keep its braced argument, drop the command word.
+   .replace(/\\[a-zA-Z]+\*?(\[[^\]]*\])?\{([^}]*)\}/g,"$2").replace(/\\[a-zA-Z]+\*?/g,"");
+  const plain=t=>t.replace(/\\([&%_#$])/g,"$1").replace(/\\&amp;/g,"&amp;").replace(/\\[a-zA-Z]+\*?\{([^}]*)\}/g,"$1").replace(/\\[a-zA-Z]+\*?/g,"");
+  const head=(title?`<h1>${plain(title)}</h1>`:"")+(author?`<p class="by">${plain(author)}</p>`:"");
   const html=head+s.split(/\n\s*\n/).map(b=>b.trim()).filter(Boolean).map(b=>/^<(h2|h3|ul|table|div|figcaption)/.test(b)||/^\u0000M\d+\u0000$/.test(b)?b:`<p>${b}</p>`).join("\n");
   return html.replace(/\u0000M(\d+)\u0000/g,(_,i)=>math[+i]??"")}
 function manuscriptView(){
