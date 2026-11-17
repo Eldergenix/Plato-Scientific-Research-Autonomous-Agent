@@ -1,9 +1,10 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   // Edge for the Plato autonomous scientist at https://jarvisos.xyz
-  //   Worker      : auth, static UI, read API (via Hyperdrive), cron resume
+  //   Worker      : accounts, static UI, read API (via Hyperdrive), cron resume
   //   Container   : Python LangGraph swarm + sandboxed experiments, one instance per campaign
-  //   Hyperdrive  : pooled, cached connection from the Worker to Supabase Postgres
+  //   ProjectAgent: Durable Object per project running the orchestrator agent's turns
+  //   Hyperdrive  : pooled connection from the Worker to Supabase Postgres
   "name": "plato-scientist",
   "main": "src/worker.ts",
   "compatibility_date": "2026-10-30",
@@ -25,7 +26,10 @@
     }
   ],
   "durable_objects": {
-    "bindings": [{ "name": "PLATO_SCIENTIST", "class_name": "ScientistContainer" }]
+    "bindings": [
+      { "name": "PLATO_SCIENTIST", "class_name": "ScientistContainer" },
+      { "name": "PROJECT_AGENT", "class_name": "ProjectAgent" }
+    ]
   },
   "containers": [
     {
@@ -38,14 +42,21 @@
       "rollout_active_grace_period": 600
     }
   ],
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ScientistContainer"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["ScientistContainer"] },
+    { "tag": "v2", "new_sqlite_classes": ["ProjectAgent"] }
+  ],
   // Every 5 minutes: wake the container of any unfinished campaign so crashed or evicted
   // runs resume from Postgres.
   "triggers": { "crons": ["*/5 * * * *"] },
   "vars": {
-    "PLATO_SCIENTIST_MODEL": "claude-haiku-5-5"
+    "PLATO_SCIENTIST_MODEL": "claude-haiku-5-5",
+    // Tokens each account may spend per calendar month on the default Anthropic key
+    // (admins and accounts with their own key are not capped; admins can set per-account caps).
+    "PLATO_DEFAULT_MONTHLY_TOKENS": "5000000"
   },
-  // Secrets (wrangler secret put): PLATO_API_TOKEN, PLATO_INTERNAL_TOKEN,
+  // Secrets (wrangler secret put): PLATO_API_TOKEN, PLATO_INTERNAL_TOKEN, PLATO_SECRETS_KEY
+  // (32 random bytes, base64: password pepper and API-key encryption; never rotate it casually),
   // ANTHROPIC_API_KEY, PLATO_DATABASE_URL
   "observability": { "enabled": true }
 }

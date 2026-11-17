@@ -93,6 +93,7 @@ class AnthropicScientistModel:
         *,
         model: str | None = None,
         client: object | None = None,
+        api_key: str | None = None,
         max_concurrency: int = 8,
         writing_reserve_tokens: int = 80_000,
     ) -> None:
@@ -102,8 +103,11 @@ class AnthropicScientistModel:
 
         self._store = store
         self._model = resolve_model(model)
-        # The SDK resolves credentials itself (ANTHROPIC_API_KEY, ...); retries 429/5xx.
-        self._client = client or anthropic.AsyncAnthropic(max_retries=4, timeout=300.0)
+        # A campaign paid for with its owner's key gets that key; otherwise the SDK resolves
+        # credentials itself (ANTHROPIC_API_KEY, ...). Retries 429/5xx.
+        self._client = client or anthropic.AsyncAnthropic(
+            api_key=api_key, max_retries=4, timeout=300.0
+        )
         self._sem = asyncio.Semaphore(max_concurrency)
         # Research calls must leave this much budget so the paper can always be written.
         self._writing_reserve = writing_reserve_tokens

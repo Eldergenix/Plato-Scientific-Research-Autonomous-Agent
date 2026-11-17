@@ -25,7 +25,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from .db.migrate import advisory_key
-from .db.store import TERMINAL_STATUSES, DualGraphStore
+from .db.store import TERMINAL_STATUSES, AllowanceExceeded, DualGraphStore
 from .graph import run_campaign
 from .guard import network_isolation_prefix
 from .llm import AnthropicScientistModel, resolve_model
@@ -64,16 +64,18 @@ class Runner:
         self.store = store
         self.tasks: dict[uuid.UUID, asyncio.Task] = {}
 
-    def start(self, campaign_id: uuid.UUID) -> bool:
+    def start(self, campaign_id: uuid.UUID, api_key: str | None = None) -> bool:
+        """Start the campaign unless it is already running here. ``api_key`` (the owner's
+        own key, sent by the Worker per request) lives only in this task's model client."""
         task = self.tasks.get(campaign_id)
         if task and not task.done():
             return False
         self.tasks[campaign_id] = asyncio.create_task(
-            self._run(campaign_id), name=f"campaign-{campaign_id}"
+            self._run(campaign_id, api_key), name=f"campaign-{campaign_id}"
         )
         return True
 
-    async def _run(self, campaign_id: uuid.UUID) -> None:
+    async def _run(self, campaign_id: uuid.UUID, api_key: str | None = None) -> None:
         # Hold a dedicated connection for the session-level advisory lock: it is released
         # automatically if this container dies, so another instance can take over.
         async with self.store.pool.acquire() as lock_conn:
@@ -85,7 +87,8 @@ class Runner:
                 return
             try:
                 ctx = ScientistContext(
-                    store=self.store, model=AnthropicScientistModel(self.store)
+                    store=self.store,
+                    model=AnthropicScientistModel(self.store, api_key=api_key),
                 )
                 summary = await run_campaign(ctx, campaign_id)
                 logger.info(
@@ -163,7 +166,22 @@ def create_app(dsn: str | None = None, internal_token: str | None = None) -> Fas
         # exists (passed as a query parameter so the large body streams through untouched);
         # also makes a retried create idempotent.
         campaign_id: Annotated[uuid.UUID | None, Query(alias="id")] = None,
+        account_id: Annotated[uuid.UUID | None, Query(alias="account")] = None,
+        project_id: Annotated[uuid.UUID | None, Query(alias="project")] = None,
+        own_key: Annotated[bool, Query()] = False,
+        # The owner's monthly default-key allowance, in tokens (absent: uncapped).
+        cap: Annotated[int | None, Query(ge=0)] = None,
+        x_plato_anthropic_key: Annotated[str | None, Header()] = None,
     ) -> dict[str, Any]:
+        if own_key and not x_plato_anthropic_key:
+            raise HTTPException(
+                status_code=422, detail="own_key campaigns need the owner's key"
+            )
+        if cap is not None and (own_key or account_id is None):
+            raise HTTPException(
+                status_code=422,
+                detail="cap applies to an account's default-key campaigns",
+            )
         store: DualGraphStore = app.state.store
         decoded = []
         for ds in body.datasets:
@@ -177,14 +195,21 @@ def create_app(dsn: str | None = None, internal_token: str | None = None) -> Fas
         title = re.sub(r"\s+", " ", body.program_slug.replace("-", " ")).title()
         program_id = await store.ensure_program(body.program_slug, title, body.domain)
         config = {"workers": body.workers, "max_rounds": body.max_rounds}
-        campaign_id = await store.create_campaign(
-            program_id,
-            body.question,
-            token_budget_max=body.token_budget,
-            gpu_seconds_max=body.compute_seconds_budget,
-            config=config,
-            campaign_id=campaign_id,
-        )
+        try:
+            campaign_id = await store.create_campaign(
+                program_id,
+                body.question,
+                token_budget_max=body.token_budget,
+                gpu_seconds_max=body.compute_seconds_budget,
+                config=config,
+                campaign_id=campaign_id,
+                account_id=account_id,
+                project_id=project_id,
+                own_key=own_key,
+                monthly_cap=cap,
+            )
+        except AllowanceExceeded as exc:
+            raise HTTPException(status_code=402, detail=str(exc)) from None
         for ds, content in decoded:
             asset = await store.put_dataset(
                 program_id,
@@ -196,7 +221,11 @@ def create_app(dsn: str | None = None, internal_token: str | None = None) -> Fas
             await store.set_scope(
                 campaign_id, asset.id, "sealed_eval_only" if ds.sealed else "train_val"
             )
-        started = app.state.runner.start(campaign_id) if body.start else False
+        started = (
+            app.state.runner.start(campaign_id, x_plato_anthropic_key)
+            if body.start
+            else False
+        )
         return {"id": str(campaign_id), "started": started}
 
     @app.post(
@@ -204,7 +233,10 @@ def create_app(dsn: str | None = None, internal_token: str | None = None) -> Fas
         status_code=202,
         dependencies=[Depends(require_token)],
     )
-    async def run(campaign_id: uuid.UUID) -> dict[str, Any]:
+    async def run(
+        campaign_id: uuid.UUID,
+        x_plato_anthropic_key: Annotated[str | None, Header()] = None,
+    ) -> dict[str, Any]:
         campaign = await app.state.store.get_campaign(campaign_id)
         if campaign is None:
             raise HTTPException(status_code=404, detail="campaign not found")
@@ -214,7 +246,17 @@ def create_app(dsn: str | None = None, internal_token: str | None = None) -> Fas
                 "started": False,
                 "status": campaign["status"],
             }
-        return {"id": str(campaign_id), "started": app.state.runner.start(campaign_id)}
+        # A campaign paid for with its owner's key never falls back to the default key.
+        if campaign.get("own_key") and not x_plato_anthropic_key:
+            return {
+                "id": str(campaign_id),
+                "started": False,
+                "reason": "owner key missing",
+            }
+        return {
+            "id": str(campaign_id),
+            "started": app.state.runner.start(campaign_id, x_plato_anthropic_key),
+        }
 
     @app.get("/internal/campaigns/{campaign_id}", dependencies=[Depends(require_token)])
     async def summary(campaign_id: uuid.UUID) -> dict[str, Any]:

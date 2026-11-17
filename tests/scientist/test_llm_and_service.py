@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import itertools
+import uuid
 from types import SimpleNamespace
 
 import httpx
@@ -206,6 +207,58 @@ async def test_service_requires_internal_token_and_creates_campaigns(pg_dsn):
             assert r.status_code == 422
 
 
+async def test_service_records_owner_and_never_runs_own_key_campaigns_without_it(
+    pg_dsn,
+):
+    """The Worker passes the owner, project and (for own-key campaigns) the owner's key;
+    an own-key campaign is never created or resumed on the default key."""
+    from plato.scientist.service import create_app
+
+    app = create_app(dsn=pg_dsn, internal_token="t")
+    hdr = {"X-Plato-Internal-Token": "t"}
+    async with app.router.lifespan_context(app):
+        store = app.state.store
+        account = await store.pool.fetchval(
+            "INSERT INTO plato.accounts (email, password_hash) VALUES ($1, $2) RETURNING id",
+            f"{uuid.uuid4().hex}@example.org",
+            "x" * 64,
+        )
+        project = await store.pool.fetchval(
+            "INSERT INTO plato.projects (account_id, title) VALUES ($1, 'p') RETURNING id",
+            account,
+        )
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://test"
+        ) as client:
+            body = {"question": "Does y exceed 2?", "start": False}
+            q = f"account={account}&project={project}"
+            refused = await client.post(
+                f"/internal/campaigns?{q}&own_key=true", json=body, headers=hdr
+            )
+            assert refused.status_code == 422
+            made = await client.post(
+                f"/internal/campaigns?{q}&own_key=true",
+                json=body,
+                headers={**hdr, "X-Plato-Anthropic-Key": "sk-ant-test"},
+            )
+            assert made.status_code == 202, made.text
+            cid = uuid.UUID(made.json()["id"])
+            row = await store.get_campaign(cid)
+            assert (row["account_id"], row["project_id"], row["own_key"]) == (
+                account,
+                project,
+                True,
+            )
+            run = await client.post(f"/internal/campaigns/{cid}/run", headers=hdr)
+            assert run.json() == {
+                "id": str(cid),
+                "started": False,
+                "reason": "owner key missing",
+            }
+            assert not app.state.runner.tasks
+
+
 async def test_truncated_or_invalid_output_is_output_error_and_settles_usage(
     store, campaign
 ):
@@ -254,3 +307,78 @@ async def test_on_text_receives_the_growing_output(store, campaign):
     assert out == parsed
     assert len(seen) > 2 and seen[-1] == parsed.model_dump_json()
     assert all(b.startswith(a) for a, b in itertools.pairwise(seen))
+
+
+async def test_monthly_cap_is_checked_atomically_on_create(pg_dsn):
+    """A default-key campaign is admitted only if its whole budget fits in the account's
+    remaining monthly allowance (unfinished campaigns hold their unspent budget, agent
+    usage counts, own-key spend does not), and a retried create is never refused."""
+    from plato.scientist.service import create_app
+
+    app = create_app(dsn=pg_dsn, internal_token="t")
+    hdr = {"X-Plato-Internal-Token": "t"}
+    async with app.router.lifespan_context(app):
+        store = app.state.store
+        account = await store.pool.fetchval(
+            "INSERT INTO plato.accounts (email, password_hash) VALUES ($1, $2) RETURNING id",
+            f"{uuid.uuid4().hex}@example.org",
+            "x" * 64,
+        )
+        await store.pool.execute(
+            "INSERT INTO plato.agent_usage (account_id, tokens, own_key) VALUES ($1, 50000, false),"
+            " ($1, 999999, true)",
+            account,
+        )
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://test"
+        ) as client:
+            body = {
+                "question": "Does y exceed 2?",
+                "start": False,
+                "token_budget": 200_000,
+            }
+            first = uuid.uuid4()
+            q = f"account={account}&cap=500000"
+            ok = await client.post(
+                f"/internal/campaigns?id={first}&{q}", json=body, headers=hdr
+            )
+            assert ok.status_code == 202, ok.text
+            assert (
+                await store.pool.fetchval(
+                    "SELECT plato.account_committed_tokens($1)", account
+                )
+                == 250_000
+            )
+            # 250k committed + 200k fits in 500k; a third 200k does not.
+            assert (
+                await client.post(f"/internal/campaigns?{q}", json=body, headers=hdr)
+            ).status_code == 202
+            over = await client.post(f"/internal/campaigns?{q}", json=body, headers=hdr)
+            assert over.status_code == 402 and "left this month" in over.text
+            # Retrying the first create (same id) is idempotent, not a new spend.
+            again = await client.post(
+                f"/internal/campaigns?id={first}&{q}", json=body, headers=hdr
+            )
+            assert again.status_code == 202
+            # Own-key campaigns are not capped and a cap needs an account.
+            own = await client.post(
+                f"/internal/campaigns?account={account}&own_key=true",
+                json=body,
+                headers={**hdr, "X-Plato-Anthropic-Key": "sk-ant-test"},
+            )
+            assert own.status_code == 202
+            assert (
+                await client.post("/internal/campaigns?cap=1", json=body, headers=hdr)
+            ).status_code == 422
+            # A finished campaign only counts what it was charged this month.
+            await store.pool.execute(
+                "UPDATE plato.research_campaigns SET status = 'completed' WHERE id = $1",
+                first,
+            )
+            assert (
+                await store.pool.fetchval(
+                    "SELECT plato.account_committed_tokens($1)", account
+                )
+                == 250_000
+            )

@@ -34,7 +34,7 @@ import asyncpg
 
 from plato.retrieval.doi import parse_arxiv_id, parse_doi
 
-from .migrate import migrate
+from .migrate import advisory_key, migrate
 
 AssetType = Literal[
     "corpus_domain",
@@ -85,6 +85,10 @@ def _lease_lost(worker_id: str, node_id: uuid.UUID) -> LeaseLost:
 
 class BudgetExceeded(RuntimeError):
     """A reservation would push a campaign past its token or GPU budget."""
+
+
+class AllowanceExceeded(RuntimeError):
+    """Creating the campaign would take its owner past the monthly default-key allowance."""
 
 
 class LeaseLost(RuntimeError):
@@ -226,24 +230,58 @@ class DualGraphStore:
         gpu_seconds_max: int = 86_400,
         config: dict[str, Any] | None = None,
         campaign_id: uuid.UUID | None = None,
+        account_id: uuid.UUID | None = None,
+        project_id: uuid.UUID | None = None,
+        own_key: bool = False,
+        monthly_cap: int | None = None,
     ) -> uuid.UUID:
         """Create a campaign. A caller-chosen ``campaign_id`` makes the call idempotent:
-        a retry with the same id returns it without creating a duplicate."""
+        a retry with the same id returns it without creating a duplicate. ``account_id``
+        and ``project_id`` record its owner and project thread; ``own_key`` marks a
+        campaign paid for with the owner's own API key.
+
+        ``monthly_cap`` (default-key campaigns of an account) admits the campaign only if
+        its whole token budget fits in what the account has left this month. The check and
+        the insert run under a per-account transaction lock, so concurrent creates cannot
+        both spend the same allowance."""
         campaign_id = campaign_id or uuid.uuid4()
-        await self._pool.execute(
-            """
-            INSERT INTO plato.research_campaigns
-                (id, program_id, research_question, status, token_budget_max, gpu_seconds_max, config)
-            VALUES ($1, $2, $3, 'ideation', $4, $5, $6::jsonb)
-            ON CONFLICT (id) DO NOTHING
-            """,
-            campaign_id,
-            program_id,
-            research_question,
-            token_budget_max,
-            gpu_seconds_max,
-            _jsonb(config),
-        )
+        if monthly_cap is not None and account_id is None:
+            raise ValueError("monthly_cap needs an account_id")
+        async with self._pool.acquire() as conn, conn.transaction():
+            if monthly_cap is not None:
+                await conn.execute(
+                    "SELECT pg_advisory_xact_lock($1)",
+                    advisory_key(b"plato.account:" + account_id.bytes),
+                )
+                exists = await conn.fetchval(
+                    "SELECT 1 FROM plato.research_campaigns WHERE id = $1", campaign_id
+                )
+                committed = await conn.fetchval(
+                    "SELECT plato.account_committed_tokens($1)", account_id
+                )
+                if not exists and committed + token_budget_max > monthly_cap:
+                    raise AllowanceExceeded(
+                        f"this campaign's budget of {token_budget_max:,} tokens exceeds the "
+                        f"{max(monthly_cap - committed, 0):,} tokens left this month"
+                    )
+            await conn.execute(
+                """
+                INSERT INTO plato.research_campaigns
+                    (id, program_id, research_question, status, token_budget_max,
+                     gpu_seconds_max, config, account_id, project_id, own_key)
+                VALUES ($1, $2, $3, 'ideation', $4, $5, $6::jsonb, $7, $8, $9)
+                ON CONFLICT (id) DO NOTHING
+                """,
+                campaign_id,
+                program_id,
+                research_question,
+                token_budget_max,
+                gpu_seconds_max,
+                _jsonb(config),
+                account_id,
+                project_id,
+                own_key,
+            )
         return campaign_id
 
     async def get_campaign(self, campaign_id: uuid.UUID) -> dict[str, Any] | None:

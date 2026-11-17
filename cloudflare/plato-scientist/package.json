@@ -9,6 +9,7 @@
     "deploy": "wrangler deploy --containers-rollout=immediate"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "1.4.0",
     "@cloudflare/containers": "0.3.7",
     "postgres": "3.4.9"
   },

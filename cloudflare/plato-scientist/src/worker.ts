@@ -2,30 +2,22 @@
  * Plato autonomous scientist: Cloudflare edge for https://jarvisos.xyz
  *
  *   /            static UI (Workers Static Assets)
- *   /api/*       bearer-authenticated JSON API
- *                  reads  -> Supabase Postgres through Hyperdrive (pooled, low latency)
- *                  writes -> the campaign's own Container (Python LangGraph swarm)
- *   cron (5 min) wakes the container of every unfinished campaign so a crashed or
- *                evicted run resumes from the state persisted in Postgres
+ *   /api/*       JSON API, signed in with a session cookie (or the deploy's bearer token)
+ *                  reads    -> Supabase Postgres through Hyperdrive
+ *                  research -> the campaign's own Container (Python LangGraph swarm)
+ *                  projects -> the project's agent (a Durable Object running Claude)
+ *   cron (5 min) wakes the container of every unfinished campaign so a crashed or evicted
+ *                run resumes from Postgres, and clears expired sessions and stuck agent turns
  */
-import { Container, getContainer } from "@cloudflare/containers";
-import postgres from "postgres";
+import { Container } from "@cloudflare/containers";
+import * as auth from "./auth";
+import type { Ctx } from "./auth";
+import * as campaigns from "./campaigns";
+import { db, type Env, HttpError, json, TERMINAL_STATUSES, UUID_RE } from "./lib";
+import * as projects from "./projects";
 
-export interface Env {
-  ASSETS: Fetcher;
-  HYPERDRIVE: Hyperdrive;
-  PLATO_SCIENTIST: DurableObjectNamespace<ScientistContainer>;
-  PLATO_SCIENTIST_MODEL: string;
-  PLATO_API_TOKEN: string;
-  PLATO_INTERNAL_TOKEN: string;
-  ANTHROPIC_API_KEY: string;
-  PLATO_DATABASE_URL: string;
-}
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const MAX_CREATE_BYTES = 12 * 1024 * 1024; // 8 datasets of ~1 MiB, base64-encoded, plus slack
-// Postgres array literal: postgres.js cannot infer array parameter types with fetch_types off.
-const TERMINAL_STATUSES = "{completed,halted}";
+export { ProjectAgent } from "./agent";
+export type { Env } from "./lib";
 
 /** One container instance per campaign; it stays up while a campaign is running. */
 export class ScientistContainer extends Container<Env> {
@@ -62,209 +54,77 @@ export class ScientistContainer extends Container<Env> {
   }
 }
 
-function json(data: unknown, status = 200): Response {
-  return new Response(JSON.stringify(data, (_k, v) => (typeof v === "bigint" ? Number(v) : v)), {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
-  });
+/** public: anyone; user: any signed-in caller; account: a person's account; admin: admins. */
+type Access = "public" | "user" | "account" | "admin";
+type Handler = (c: Ctx, id: string) => Promise<Response>;
+
+const ROUTES: [string, string, Access, Handler][] = [
+  ["POST", "auth/signup", "public", auth.signup],
+  ["POST", "auth/login", "public", auth.login],
+  ["POST", "auth/logout", "public", auth.logout],
+  ["GET", "me", "user", auth.me],
+  ["PATCH", "me", "account", auth.updateMe],
+  ["DELETE", "me", "account", auth.deleteMe],
+  ["POST", "me/password", "account", auth.changePassword],
+  ["GET", "me/sessions", "account", auth.listSessions],
+  ["DELETE", "me/sessions", "account", auth.revokeOtherSessions],
+  ["PUT", "me/key", "account", auth.putKey],
+  ["DELETE", "me/key", "account", auth.deleteKey],
+  ["POST", "me/admin", "account", auth.claimAdmin],
+  ["GET", "admin/accounts", "admin", auth.listAccounts],
+  ["PATCH", "admin/accounts/:id", "admin", auth.updateAccount],
+  ["GET", "health", "user", campaigns.health],
+  ["GET", "campaigns", "user", campaigns.listCampaigns],
+  ["POST", "campaigns", "user", campaigns.createCampaign],
+  ["GET", "campaigns/:id", "user", campaigns.getCampaign],
+  ["POST", "campaigns/:id/run", "user", campaigns.runCampaign],
+  ["GET", "campaigns/:id/graph", "user", campaigns.campaignGraph],
+  ["GET", "campaigns/:id/manuscript", "user", campaigns.campaignManuscript],
+  ["GET", "campaigns/:id/usage", "user", campaigns.campaignUsage],
+  ["GET", "campaigns/:id/draft", "user", campaigns.campaignDraft],
+  ["GET", "nodes/:id/provenance", "user", campaigns.nodeProvenance],
+  ["GET", "evidence/:id", "user", campaigns.evidence],
+  ["GET", "projects", "account", projects.listProjects],
+  ["POST", "projects", "account", projects.createProject],
+  ["GET", "projects/:id", "account", projects.getProject],
+  ["PATCH", "projects/:id", "account", projects.renameProject],
+  ["DELETE", "projects/:id", "account", projects.deleteProject],
+  ["POST", "projects/:id/messages", "account", projects.postMessage],
+  ["POST", "projects/:id/retry", "account", projects.retryProject],
+];
+
+function match(path: string[], pattern: string): string | null | false {
+  const pat = pattern.split("/");
+  if (pat.length !== path.length) return false;
+  let id: string | null = null;
+  for (let i = 0; i < pat.length; i++) {
+    if (pat[i] === ":id") {
+      if (!UUID_RE.test(path[i])) return false;
+      id = path[i];
+    } else if (pat[i] !== path[i]) return false;
+  }
+  return id;
 }
 
-async function sha256(text: string): Promise<ArrayBuffer> {
-  return crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-}
-
-/** Constant-time bearer check (digests first, so length is not leaked either). */
-async function authorized(req: Request, env: Env): Promise<boolean> {
-  if (!env.PLATO_API_TOKEN) return false;
-  const header = req.headers.get("authorization") ?? "";
-  const presented = header.startsWith("Bearer ") ? header.slice(7) : "";
-  const [a, b] = await Promise.all([sha256(presented), sha256(env.PLATO_API_TOKEN)]);
-  return crypto.subtle.timingSafeEqual(a, b);
-}
-
-function db(env: Env) {
-  return postgres(env.HYPERDRIVE.connectionString, {
-    max: 5,
-    fetch_types: false, // no extra round trip for type metadata
-    prepare: true, // Hyperdrive supports prepared statements and caches them
-    idle_timeout: 5,
-    types: { bigint: postgres.BigInt }, // int8 -> BigInt -> JSON number (not a string)
-  });
-}
-
-function campaignStub(env: Env, campaignId: string) {
-  return getContainer(env.PLATO_SCIENTIST, `campaign-${campaignId}`);
-}
-
-async function toContainer(env: Env, campaignId: string, path: string, init: RequestInit = {}): Promise<Response> {
-  const headers = new Headers(init.headers);
-  headers.set("x-plato-internal-token", env.PLATO_INTERNAL_TOKEN);
-  const res = await campaignStub(env, campaignId).fetch(new Request(`http://container${path}`, { ...init, headers }));
-  return new Response(res.body, {
-    status: res.status,
-    headers: { "content-type": res.headers.get("content-type") ?? "application/json" },
-  });
-}
-
-const EVIDENCE_TYPES: Record<string, string> = {
-  plot_png: "image/png",
-  sealed_eval_json: "application/json",
-  vlm_critique: "text/plain; charset=utf-8",
-  peer_review: "text/plain; charset=utf-8",
-};
-
-async function api(req: Request, env: Env, ctx: ExecutionContext, url: URL): Promise<Response> {
-  const parts = url.pathname.replace(/\/+$/, "").split("/").slice(2); // drop "", "api"
-  const method = req.method;
-  const id = parts[1];
-  if (id !== undefined && !UUID_RE.test(id)) return json({ error: "invalid id" }, 400);
-
-  // Writes go to the campaign's container.
-  if (method === "POST" && parts[0] === "campaigns" && parts.length === 1) {
-    const length = Number(req.headers.get("content-length") ?? NaN);
-    if (!Number.isFinite(length)) return json({ error: "content-length required" }, 411);
-    if (length > MAX_CREATE_BYTES) return json({ error: "request too large" }, 413);
-    // The Worker picks the id so it can address the container before the campaign exists.
-    // The body streams through unparsed; the container validates it (FastAPI/Pydantic).
-    const campaignId = crypto.randomUUID();
-    return toContainer(env, campaignId, `/internal/campaigns?id=${campaignId}`, {
-      method: "POST",
-      headers: { "content-type": "application/json", "content-length": String(length) },
-      body: req.body,
-    });
+async function dispatch(c: Ctx): Promise<Response> {
+  const path = c.url.pathname.replace(/\/+$/, "").split("/").slice(2); // drop "", "api"
+  const allowed: string[] = [];
+  for (const [method, pattern, access, handler] of ROUTES) {
+    const id = match(path, pattern);
+    if (id === false) continue;
+    if (method !== c.req.method) {
+      allowed.push(method);
+      continue;
+    }
+    if (access !== "public") {
+      c.who = await auth.authenticate(c);
+      if (!c.who) throw new HttpError(401, "Sign in to continue.");
+      if (access === "account" && !c.who.accountId) throw new HttpError(403, "This needs an account. Sign in with email.");
+      if (access === "admin" && !c.who.isAdmin) throw new HttpError(403, "Only workspace admins can do this.");
+    }
+    return handler(c, id ?? "");
   }
-  if (method === "POST" && parts[0] === "campaigns" && parts[2] === "run" && parts.length === 3) {
-    return toContainer(env, id!, `/internal/campaigns/${id}/run`, { method: "POST" });
-  }
-  if (method !== "GET") return json({ error: "method not allowed" }, 405);
-
-  const sql = db(env);
-  try {
-    return await read(sql, env, parts, id);
-  } finally {
-    // Close only after the queries ran; Hyperdrive keeps the pooled origin connection warm.
-    ctx.waitUntil(sql.end({ timeout: 5 }).catch(() => undefined));
-  }
-}
-
-async function read(sql: ReturnType<typeof db>, env: Env, parts: string[], id: string | undefined): Promise<Response> {
-  if (parts[0] === "health" && parts.length === 1) {
-    const [row] = await sql`SELECT count(*)::int AS campaigns FROM plato.research_campaigns`;
-    return json({ ok: true, model: env.PLATO_SCIENTIST_MODEL, campaigns: row.campaigns });
-  }
-
-  if (parts[0] === "campaigns" && parts.length === 1) {
-    const rows = await sql`
-      SELECT c.id, c.research_question, c.status, c.halted_reason, c.tokens_used, c.token_budget_max,
-             c.gpu_seconds_used, c.gpu_seconds_max, c.created_at, c.updated_at, p.slug AS program_slug
-        FROM plato.research_campaigns c JOIN plato.research_programs p ON p.id = c.program_id
-       ORDER BY c.created_at DESC LIMIT 100`;
-    return json({ campaigns: rows });
-  }
-
-  if (parts[0] === "campaigns" && parts.length === 2) {
-    const [[campaign], counts, guard] = await Promise.all([
-      sql`SELECT c.*, p.slug AS program_slug, p.domain AS program_domain
-            FROM plato.research_campaigns c JOIN plato.research_programs p ON p.id = c.program_id
-           WHERE c.id = ${id!}`,
-      sql`SELECT node_type::text AS node_type, status::text AS status, count(*)::int AS n
-            FROM plato.exploration_nodes WHERE campaign_id = ${id!} GROUP BY 1, 2 ORDER BY 1, 2`,
-      sql`SELECT kind, decision, detail, created_at FROM plato.guard_events
-           WHERE campaign_id = ${id!} ORDER BY created_at DESC LIMIT 50`,
-    ]);
-    if (!campaign) return json({ error: "campaign not found" }, 404);
-    return json({ campaign, node_counts: counts, guard_events: guard });
-  }
-
-  if (parts[0] === "campaigns" && parts[2] === "graph" && parts.length === 3) {
-    const [nodes, edges] = await Promise.all([
-      sql`SELECT id, node_type::text AS node_type, status::text AS status, title, hypothesis_or_spec,
-                 metrics, priority, confidence_score, created_at, updated_at
-            FROM plato.exploration_nodes WHERE campaign_id = ${id!} ORDER BY created_at LIMIT 2000`,
-      sql`SELECT source_node_id, target_node_id, edge_type::text AS edge_type, rationale
-            FROM plato.exploration_edges WHERE campaign_id = ${id!} LIMIT 5000`,
-    ]);
-    return json({ nodes, edges });
-  }
-
-  if (parts[0] === "campaigns" && parts[2] === "manuscript" && parts.length === 3) {
-    const rows = await sql`
-      SELECT DISTINCT ON (e.artifact_type) e.artifact_type, convert_from(e.content, 'UTF8') AS text, e.created_at
-        FROM plato.evidence_artifacts e
-        JOIN plato.exploration_nodes n ON n.id = e.node_id
-       WHERE n.campaign_id = ${id!} AND n.node_type = 'goal' AND n.dedup_key = 'root-goal'
-         AND e.artifact_type IN ('latex_section', 'bibtex', 'peer_review') AND e.content IS NOT NULL
-       ORDER BY e.artifact_type, e.created_at DESC`;
-    if (rows.length === 0) return json({ error: "manuscript not written yet" }, 404);
-    return json(Object.fromEntries(rows.map((r) => [r.artifact_type, r.text])));
-  }
-
-  if (parts[0] === "campaigns" && parts[2] === "usage" && parts.length === 3) {
-    // Cumulative token and sandbox burn from the usage ledger, at most ~240 points: the
-    // ledger is cut into equal-count buckets and each bucket's last running total is kept,
-    // so the series stays monotone and ends exactly on the ledger's total.
-    const points = await sql`
-      WITH run AS (
-        SELECT id, created_at,
-               sum(tokens)      OVER w AS tokens,
-               sum(gpu_seconds) OVER w AS gpu_seconds,
-               ntile(240)       OVER (ORDER BY created_at, id) AS bucket
-          FROM plato.usage_events WHERE campaign_id = ${id!}
-        WINDOW w AS (ORDER BY created_at, id ROWS UNBOUNDED PRECEDING)
-      )
-      SELECT DISTINCT ON (bucket) extract(epoch FROM created_at)::float8 AS t,
-             tokens::float8 AS tokens, gpu_seconds::float8 AS gpu_seconds
-        FROM run ORDER BY bucket, created_at DESC, id DESC`;
-    return json({ points });
-  }
-
-  if (parts[0] === "campaigns" && parts[2] === "draft" && parts.length === 3) {
-    // The paper while it is being written (streamed by the writer, throttled to ~1.5s).
-    // Polled every 2s while writing, so "nothing yet" is a normal answer, not a 404.
-    const [row] = await sql`
-      SELECT stage, body, updated_at FROM plato.manuscript_drafts WHERE campaign_id = ${id!}`;
-    return json(row ?? { stage: null, body: "", updated_at: null });
-  }
-
-  if (parts[0] === "nodes" && parts[2] === "provenance" && parts.length === 3) {
-    // plato.lineage() is the same SQL function the Python store uses.
-    const nodes = await sql`
-      SELECT n.id, n.node_type::text AS node_type, n.status::text AS status, n.title, n.metrics,
-             n.confidence_score, l.depth
-        FROM plato.lineage(${id!}::uuid, 32) l JOIN plato.exploration_nodes n ON n.id = l.node_id
-       ORDER BY l.depth, n.created_at`;
-    if (nodes.length === 0) return json({ error: "node not found" }, 404);
-    // Postgres array literal (fetch_types is off, so postgres.js cannot infer array types).
-    const ids = `{${nodes.map((n) => n.id as string).join(",")}}`;
-    const [edges, anchors, evidence] = await Promise.all([
-      sql`SELECT source_node_id, target_node_id, edge_type::text AS edge_type FROM plato.exploration_edges
-           WHERE source_node_id = ANY(${ids}::uuid[]) AND target_node_id = ANY(${ids}::uuid[])`,
-      sql`SELECT x.node_id, x.anchor_role, a.id AS asset_id, a.asset_type::text AS asset_type,
-                 a.canonical_name, a.uri_or_commit
-            FROM plato.exploration_anchors x JOIN plato.knowledge_assets a ON a.id = x.asset_id
-           WHERE x.node_id = ANY(${ids}::uuid[])`,
-      sql`SELECT id, node_id, artifact_type, sha256_checksum, vlm_quality_score, approval_actor, created_at
-            FROM plato.evidence_artifacts WHERE node_id = ANY(${ids}::uuid[]) ORDER BY created_at`,
-    ]);
-    return json({ root: id, nodes, edges, anchors, evidence });
-  }
-
-  if (parts[0] === "evidence" && parts.length === 2) {
-    const [row] = await sql`
-      SELECT artifact_type, content, sha256_checksum FROM plato.evidence_artifacts WHERE id = ${id!}`;
-    if (!row || row.content === null) return json({ error: "evidence not found or stored externally" }, 404);
-    return new Response(row.content as Uint8Array, {
-      headers: {
-        "content-type": EVIDENCE_TYPES[row.artifact_type as string] ?? "text/plain; charset=utf-8",
-        // Evidence is model- or experiment-generated: never let it run as active content.
-        "content-security-policy": "default-src 'none'; img-src 'self'; sandbox",
-        "x-content-type-options": "nosniff",
-        etag: `"${row.sha256_checksum}"`,
-        "cache-control": "private, max-age=31536000, immutable", // content is immutable by trigger
-      },
-    });
-  }
-
+  if (allowed.length) return json({ error: "method not allowed" }, 405, { allow: allowed.join(", ") });
   return json({ error: "not found" }, 404);
 }
 
@@ -272,28 +132,73 @@ export default {
   async fetch(req, env, ctx): Promise<Response> {
     const url = new URL(req.url);
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(req);
-    if (!(await authorized(req, env))) {
-      return json({ error: "unauthorized" }, 401);
+    // Browsers send Origin on cross-origin writes: refuse them (with the SameSite=Lax cookie
+    // and JSON-only bodies, this closes cross-site request forgery).
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      const origin = req.headers.get("origin");
+      if (origin && origin !== url.origin) return json({ error: "cross-origin request refused" }, 403);
     }
+    const sql = db(env);
+    const c: Ctx = { req, env, ctx, url, sql, who: null, cookies: [] };
+    let res: Response;
     try {
-      return await api(req, env, ctx, url);
+      res = await dispatch(c);
     } catch (err) {
-      console.error("api error", url.pathname, err);
-      return json({ error: "internal error" }, 500);
+      if (err instanceof HttpError) res = json({ error: err.message }, err.status);
+      else {
+        console.error("api error", url.pathname, err);
+        res = json({ error: "internal error" }, 500);
+      }
+    } finally {
+      // Close only after the queries ran; Hyperdrive keeps the pooled origin connection warm.
+      ctx.waitUntil(sql.end({ timeout: 5 }).catch(() => undefined));
     }
+    if (c.cookies.length) {
+      res = new Response(res.body, res);
+      for (const cookie of c.cookies) res.headers.append("set-cookie", cookie);
+    }
+    return res;
   },
 
   async scheduled(_controller, env, ctx): Promise<void> {
     const sql = db(env);
     try {
       const active = await sql`
-        SELECT id FROM plato.research_campaigns
-         WHERE NOT status = ANY(${TERMINAL_STATUSES}::text[]) ORDER BY created_at LIMIT 100`;
+        SELECT c.id, c.own_key, c.account_id, encode(k.ciphertext, 'hex') AS ct, encode(k.iv, 'hex') AS iv,
+               k.key_version
+          FROM plato.research_campaigns c
+          LEFT JOIN plato.account_keys k ON c.own_key AND k.account_id = c.account_id
+         WHERE NOT c.status = ANY(${TERMINAL_STATUSES}::text[]) ORDER BY c.created_at LIMIT 100`;
+      // An own-key campaign resumes only with its owner's key; without it, it waits.
+      const runnable = active.filter((r) => !r.own_key || r.ct);
       const results = await Promise.allSettled(
-        active.map((r) => toContainer(env, r.id as string, `/internal/campaigns/${r.id}/run`, { method: "POST" })),
+        runnable.map(async (r) => {
+          const key = r.own_key
+            ? await auth.decryptKey(env, r.account_id as string, r.ct as string, r.iv as string, Number(r.key_version))
+            : null;
+          const res = await campaigns.toContainer(env, r.id as string, `/internal/campaigns/${r.id}/run`, { method: "POST" }, key);
+          if (!res.ok) throw new Error(`run ${r.id}: ${res.status}`);
+        }),
       );
-      const failed = results.filter((r) => r.status === "rejected" || !r.value.ok).length;
-      console.log(JSON.stringify({ event: "resume", active: active.length, failed }));
+      const failed = results.filter((r) => r.status === "rejected").length;
+      const [sessions, attempts, stuck] = await Promise.all([
+        sql`DELETE FROM plato.sessions WHERE expires_at < now() RETURNING 1`,
+        sql`DELETE FROM plato.auth_attempts WHERE created_at < now() - interval '1 day' RETURNING 1`,
+        sql`UPDATE plato.projects SET agent_status = 'error',
+                   agent_error = 'The agent stopped responding. Retry to continue.'
+             WHERE agent_status = 'working' AND updated_at < now() - interval '20 minutes' RETURNING 1`,
+      ]);
+      console.log(
+        JSON.stringify({
+          event: "resume",
+          active: active.length,
+          waiting_for_key: active.length - runnable.length,
+          failed,
+          expired_sessions: sessions.length,
+          old_attempts: attempts.length,
+          stuck_agents: stuck.length,
+        }),
+      );
     } finally {
       ctx.waitUntil(sql.end({ timeout: 5 }));
     }
