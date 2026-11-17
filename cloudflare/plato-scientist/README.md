@@ -21,7 +21,8 @@ Why this shape:
   (claims with leases, facts, evidence, budgets, campaign status) is committed to the
   dual graph. A restarted container resumes from the database, and a session-level
   advisory lock guarantees one runner per campaign.
-* **Hyperdrive for Worker reads.** It pools and caches the Worker's connections to Supabase.
+* **Hyperdrive for Worker reads.** It pools the Worker's connections to Supabase. Query caching is
+  disabled so the UI sees live campaign progress.
 
 ## Deploy
 
@@ -39,7 +40,7 @@ npx wrangler login            # or export CLOUDFLARE_API_TOKEN=...
 The script:
 
 1. Applies the schema migrations.
-2. Creates or reuses the `plato-supabase` Hyperdrive config.
+2. Creates or reuses the `plato-supabase` Hyperdrive config, with caching disabled.
 3. Deploys the Worker and Container.
 4. Sets the secrets.
 5. Smoke-tests `https://jarvisos.xyz/api/health`.

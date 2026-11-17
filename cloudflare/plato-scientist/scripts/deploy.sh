@@ -34,10 +34,12 @@ fi
 echo "Ensuring Hyperdrive config 'plato-supabase'..."
 HD_ID="$(npx wrangler hyperdrive list 2>/dev/null | grep -E '\bplato-supabase\b' | grep -oE '[0-9a-f]{32}' | head -n1 || true)"
 if [[ -z "$HD_ID" ]]; then
+  # Caching off: the UI polls campaign status, and cached reads showed stale phases for minutes.
   HD_ID="$(npx wrangler hyperdrive create plato-supabase --connection-string="$PLATO_DATABASE_URL" \
-    | grep -oE '[0-9a-f]{32}' | head -n1)"
+    --caching-disabled | grep -oE '[0-9a-f]{32}' | head -n1)"
 fi
 [[ "$HD_ID" =~ ^[0-9a-f]{32}$ ]] || { echo "Could not determine the Hyperdrive id." >&2; exit 1; }
+npx wrangler hyperdrive update "$HD_ID" --caching-disabled >/dev/null  # also for a reused config
 sed -i.bak -E "s/(\"id\": \")[0-9a-f]{32}(\")/\1${HD_ID}\2/" wrangler.jsonc && rm -f wrangler.jsonc.bak
 echo "Hyperdrive: $HD_ID"
 

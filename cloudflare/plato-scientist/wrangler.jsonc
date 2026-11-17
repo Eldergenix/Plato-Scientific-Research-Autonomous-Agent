@@ -20,7 +20,7 @@
     {
       "binding": "HYPERDRIVE",
       // Replaced by scripts/deploy.sh with the id of the `plato-supabase` Hyperdrive config.
-      "id": "00000000000000000000000000000000",
+      "id": "7bdfd8b8daa54814acd0390ccf1dffd9",
       "localConnectionString": "postgresql://postgres:postgres@127.0.0.1:5432/postgres"
     }
   ],
