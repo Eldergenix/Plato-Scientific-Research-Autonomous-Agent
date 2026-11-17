@@ -201,10 +201,10 @@ async function read(sql: ReturnType<typeof db>, env: Env, parts: string[], id: s
 
   if (parts[0] === "campaigns" && parts[2] === "draft" && parts.length === 3) {
     // The paper while it is being written (streamed by the writer, throttled to ~1.5s).
+    // Polled every 2s while writing, so "nothing yet" is a normal answer, not a 404.
     const [row] = await sql`
       SELECT stage, body, updated_at FROM plato.manuscript_drafts WHERE campaign_id = ${id!}`;
-    if (!row) return json({ error: "no draft yet" }, 404);
-    return json(row);
+    return json(row ?? { stage: null, body: "", updated_at: null });
   }
 
   if (parts[0] === "nodes" && parts[2] === "provenance" && parts.length === 3) {

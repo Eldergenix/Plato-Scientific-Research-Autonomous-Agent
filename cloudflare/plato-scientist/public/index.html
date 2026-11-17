@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/app/kit.css">
 <script>
 // Apply the saved theme before first paint.
 try{const t=localStorage.getItem("plato_theme");if(t)document.documentElement.dataset.theme=t;else if(matchMedia("(prefers-color-scheme: light)").matches)document.documentElement.dataset.theme="light"}catch{}
@@ -20,6 +21,7 @@ try{const t=localStorage.getItem("plato_theme");if(t)document.documentElement.da
   --accent:#5e6ad2;--accent-2:#7480e0;--accent-soft:rgba(94,106,210,.16);
   --green:#4cb782;--yellow:#f0bf00;--orange:#f2994a;--red:#eb5757;--blue:#4ea7fc;--purple:#a78bfa;--gray:#7b7f87;
   --shadow:0 0 0 1px var(--border-2),0 12px 40px rgba(0,0,0,.55);
+  --sk-a:rgba(255,255,255,.055);--sk-b:rgba(255,255,255,.12);
 }
 [data-theme="light"]{
   --bg:#ffffff;--panel:#f8f8f9;--elev:#ffffff;--elev-2:#f3f3f5;--hover:rgba(0,0,0,.04);--active:rgba(0,0,0,.065);
@@ -28,6 +30,7 @@ try{const t=localStorage.getItem("plato_theme");if(t)document.documentElement.da
   --accent:#5e6ad2;--accent-2:#4b56c0;--accent-soft:rgba(94,106,210,.11);
   --green:#2f9e6a;--yellow:#c99a00;--orange:#e07b1f;--red:#d64545;--blue:#2b8de0;--purple:#7c5ce0;--gray:#8b8f96;
   --shadow:0 0 0 1px var(--border-2),0 12px 40px rgba(20,20,30,.14);
+  --sk-a:rgba(0,0,0,.05);--sk-b:rgba(0,0,0,.095);
 }
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -225,13 +228,137 @@ pre.src{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.6 "JetBr
 .toasts{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:30}
 .toast{background:var(--elev);box-shadow:var(--shadow);border-radius:8px;padding:10px 12px;display:flex;gap:8px;align-items:center;max-width:360px;font-size:12.5px}
 .err{color:var(--red)}
-.spin{width:14px;height:14px;border:1.5px solid var(--border-2);border-top-color:var(--text-2);border-radius:50%;animation:spin .7s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-@media (prefers-reduced-motion:reduce){.spin{animation:none}}
 :focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 
+/* Right panel: Details | Paper, with zoom states panel → split → focus */
+.body{position:relative}
+.body.mode-split{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.body.mode-focus{grid-template-columns:minmax(0,1fr)}
+.body.mode-focus>.pane{display:none}
+.ph{position:sticky;top:0;z-index:4;display:flex;align-items:center;gap:8px;height:40px;padding:0 8px 0 12px;border-bottom:1px solid var(--border);
+  background:color-mix(in srgb,var(--panel) 90%,transparent);backdrop-filter:blur(8px)}
+.ph .seg button{display:inline-flex;align-items:center;gap:6px;height:24px}
+.zoom{margin-left:auto;display:inline-flex;gap:1px;padding:2px;border-radius:7px;background:var(--hover)}
+.zoom button{display:grid;place-items:center;width:26px;height:22px;border:0;border-radius:5px;background:none;color:var(--text-3);cursor:pointer}
+.zoom button:hover{color:var(--text)}
+.zoom button[aria-checked="true"]{background:var(--elev);color:var(--text);box-shadow:0 0 0 1px var(--border-2)}
+.btn.sm{height:24px;padding:0 8px;font-size:12px;gap:5px}
+.btn.done{background:var(--green)}
+.btn svg{flex:none}
+
+/* Overview charts */
+.doc{container-type:inline-size}
+.cards2{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:10px;margin-bottom:10px}
+.card{border:1px solid var(--border);border-radius:10px;background:var(--panel);padding:14px 16px;min-width:0}
+.card-h{display:flex;align-items:baseline;gap:4px 8px;flex-wrap:wrap;margin-bottom:12px}
+.card-h b{font-weight:500}
+.card-h .t3{font-size:12px}
+.card-h .act{margin-left:auto;align-self:center}
+@container (max-width:640px){.cards2{grid-template-columns:minmax(0,1fr)}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* Narrow: finished phases shrink to their check mark so the current phase stays in view. */
+@container (max-width:700px){.step.done:not(:last-child) .sl{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.link{width:18px;margin:0 6px}}
+.nw{white-space:nowrap}.nw .katex{white-space:normal}
+/* Following the writer keeps the caret clear of the sticky panel and paper headers. */
+.lp .caret{scroll-margin:104px 0 72px}
+@container (max-width:400px){.radial:not(.gauge){flex-direction:column;align-items:stretch}.radial:not(.gauge) .rf{margin:0 auto}}
+
+/* Results */
+.res{padding:20px 24px 48px;max-width:1320px;margin:0 auto;container-type:inline-size}
+.res [data-seq]{display:flex;flex-direction:column;gap:12px}
+.tiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.tile{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:10px 12px;border:1px solid var(--border);border-radius:9px;background:var(--panel);color:var(--text-2);text-align:left;cursor:pointer;min-width:0;transition:border-color .15s,box-shadow .15s}
+.tile:hover{border-color:var(--border-2)}
+.tile[aria-pressed="true"]{border-color:color-mix(in srgb,var(--c) 55%,var(--border));box-shadow:0 0 0 1px color-mix(in srgb,var(--c) 30%,transparent);color:var(--text)}
+.tile .k{font-size:12px;display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden;max-width:100%}
+.tile .k i{width:7px;height:7px;border-radius:50%;flex:none}
+.tile b{font-size:19px;font-weight:500;color:var(--text);letter-spacing:-.01em}
+.tbar{width:100%;height:3px;border-radius:2px;background:var(--active);overflow:hidden;margin-top:5px}
+.tbar i{display:block;height:100%;border-radius:2px;background:var(--c);transition:width .5s var(--spring,ease)}
+@container (max-width:760px){.tiles{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@container (max-width:440px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.insp{display:flex;align-items:center;gap:10px;min-width:0}
+.insp .t2{font-size:12px}
+.gbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.gsearch{display:flex;align-items:center;gap:6px;height:28px;padding:0 6px 0 9px;border:1px solid var(--border-2);border-radius:6px;background:var(--bg);color:var(--text-3);flex:1 1 200px;max-width:340px;min-width:0}
+.gsearch:focus-within{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+.gsearch input{border:0;outline:0;background:none;flex:1;min-width:0;color:var(--text);height:26px}
+.gsearch input::-webkit-search-cancel-button{display:none}
+.menu-w{position:relative}
+.menu{position:absolute;top:calc(100% + 6px);left:0;z-index:10;min-width:190px;padding:6px;border-radius:9px;background:var(--elev);box-shadow:var(--shadow)}
+.menu label{display:flex;align-items:center;gap:8px;height:28px;padding:0 8px;border-radius:5px;cursor:pointer;color:var(--text-2);white-space:nowrap}
+.menu label:hover{background:var(--hover);color:var(--text)}
+.menu input{accent-color:var(--accent);margin:0}
+.gwrap{overflow:auto;max-height:min(640px,72vh);border:1px solid var(--border);border-radius:8px;background:var(--bg);overscroll-behavior-x:contain;outline:0}
+.gwrap:focus-visible{box-shadow:0 0 0 2px var(--accent-soft)}
+.dg{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;font-size:12.5px}
+.dg th,.dg td{height:40px;padding:0 12px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap;background:var(--bg)}
+.dg.dense th,.dg.dense td{height:30px}
+.dg tbody tr:last-child td{border-bottom:0}
+.dg thead th{position:sticky;top:0;z-index:2;background:var(--panel);font-weight:500;color:var(--text-2);font-size:12px;height:34px}
+.dg th button{all:unset;display:inline-flex;align-items:center;gap:4px;cursor:pointer;border-radius:4px}
+.dg th button:hover{color:var(--text)}
+.dg th button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sarr{opacity:0;font-size:11px;transition:opacity .15s}.sarr.on{opacity:1;color:var(--text)}
+.dg th button:hover .sarr{opacity:.5}.dg th button:hover .sarr.on{opacity:1}
+.dg .num{text-align:right;font-variant-numeric:tabular-nums}
+.dg th.num button{flex-direction:row-reverse}
+.dg .pin1{position:sticky;left:0;z-index:1;width:40px;min-width:40px;max-width:40px;padding:0 0 0 14px}
+.dg .pin1 svg{display:block}
+.dg .pin2{position:sticky;left:40px;z-index:1;min-width:220px;max-width:min(380px,48vw);overflow:hidden;text-overflow:ellipsis;box-shadow:inset -1px 0 0 var(--border)}
+.dg thead .pin1,.dg thead .pin2{z-index:3}
+.dg .gt{color:var(--text)}
+.dg tbody tr{cursor:pointer}
+.dg tbody tr:hover td{background:color-mix(in srgb,var(--text) 4%,var(--bg))}
+.dg tbody tr.on td{background:color-mix(in srgb,var(--accent) 13%,var(--bg))}
+.dg tbody tr.kb td.pin1{box-shadow:inset 2px 0 0 var(--accent)}
+.dg .sig{color:var(--green)}
+.gempty{text-align:center!important;color:var(--text-2);height:72px!important}
+.drift{display:inline-flex;align-items:center;gap:8px}
+.dtrack{position:relative;width:84px;height:14px;flex:none}
+.dtrack::before{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:var(--border-2)}
+.dtol{position:absolute;top:2px;bottom:2px;left:33.333%;width:33.333%;border-radius:3px;background:color-mix(in srgb,var(--green) 16%,transparent)}
+.dbar{position:absolute;top:5px;bottom:5px;border-radius:2px;background:color-mix(in srgb,var(--c) 55%,transparent)}
+.dmark{position:absolute;top:1px;bottom:1px;width:2px;margin-left:-1px;border-radius:1px;background:var(--c)}
+.conf{display:inline-flex;align-items:center;gap:8px}.conf .bar{width:56px}
+.gfoot{display:flex;align-items:center;gap:8px 14px;flex-wrap:wrap;padding:10px 2px 0;color:var(--text-2);font-size:12px}
+.gsize{display:inline-flex;align-items:center;gap:6px}
+.gfoot select{height:26px;border:1px solid var(--border-2);border-radius:6px;background:var(--elev);padding:0 4px}
+.pg{margin-left:auto;display:flex;align-items:center;gap:4px}
+.pg .icon-btn:disabled{opacity:.35;cursor:default;background:none}
+
+/* Manuscript and the live paper */
+.ms-bar{display:flex;gap:8px;align-items:center;margin-bottom:18px;flex-wrap:wrap}
+.lp{position:relative;min-height:100%}
+.lp-head{position:sticky;top:40px;z-index:3;display:flex;align-items:center;gap:6px 8px;flex-wrap:wrap;min-height:40px;padding:6px 12px;border-bottom:1px solid var(--border);
+  background:color-mix(in srgb,var(--panel) 92%,transparent);backdrop-filter:blur(8px);font-size:12px;color:var(--text-2)}
+.lp.in-tab .lp-head{top:0;background:color-mix(in srgb,var(--bg) 92%,transparent);padding:6px 20px}
+.lp-head b{color:var(--text);font-weight:500}
+.lp-steps{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--text-3);margin-left:auto}
+.lp-steps i{font-style:normal;opacity:.6}
+.lp-steps .done{color:var(--text-2)}.lp-steps .cur{color:var(--text);font-weight:500}
+.lp-act{display:flex;gap:4px}
+.lp-steps+.lp-act{margin-left:0}
+.lp-head>.lp-act:first-of-type{margin-left:auto}
+.props .paper{padding:18px 16px 48px;font-size:13px;line-height:1.65}
+.props .paper h1{font-size:17px}.props .paper h2{font-size:15px;margin-top:22px}
+.mode-split .props .paper{padding:24px 28px 56px;font-size:14px}
+.mode-split .props .paper h1{font-size:20px}.mode-split .props .paper h2{font-size:16.5px}
+.mode-focus .props .paper{padding:28px 28px 64px;font-size:14.5px;line-height:1.7}
+.mode-focus .props .paper h1{font-size:22px}.mode-focus .props .paper h2{font-size:18px}
+.lp section:empty{display:none}
+.paper .ghost{color:var(--text-3)}
+.lp .fd{opacity:.5}
+.fd-tag{font-size:11px;color:var(--text-3);font-weight:400;margin-left:8px;letter-spacing:0}
+.lp-empty{padding:22px 16px 40px;font-size:12.5px;color:var(--text)}
+.lp-empty b{font-weight:500}
+.lp-empty p{margin:6px 0 18px;max-width:60ch}
+.ghost-paper .gh{font-size:12px;color:var(--text-3);margin:14px 0 8px}
+.ghost-paper i{display:block;height:7px;border-radius:4px;background:var(--active);margin:0 0 9px}
+.props .paper .review{font-size:12.5px}
+
 /* Responsive */
-@media (max-width:1100px){.body{grid-template-columns:minmax(0,1fr)}.props{border-left:0;border-top:1px solid var(--border)}.body{overflow:auto;display:block}.pane{overflow:visible}}
+@media (max-width:1100px){.body,.body.mode-split,.body.mode-focus{grid-template-columns:minmax(0,1fr)}.props{border-left:0;border-top:1px solid var(--border)}.body{overflow:auto;display:block}.pane{overflow:visible}
+  .body.mode-focus>.pane{display:block}.zoom{display:none}.lp-head{top:40px}}
 @media (max-width:820px){
   .app{grid-template-columns:minmax(0,1fr)}
   .side{position:fixed;inset:0 auto 0 0;width:min(280px,86vw);z-index:15;transform:translateX(-100%);transition:transform .18s ease}
@@ -241,6 +368,8 @@ pre.src{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.6 "JetBr
   .doc,.paper{padding:20px 16px 48px}
   .row,.group{padding:0 16px}
   .row .id,.row .meta .hide-sm{display:none}
+  .res{padding:16px 12px 40px}
+  .lp-steps{display:none}
   .top,.tabs{padding-left:12px;padding-right:12px}
 }
 </style>
@@ -270,446 +399,7 @@ pre.src{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.6 "JetBr
 </div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
 <div id="overlay"></div>
-<script>
-"use strict";
-const $=s=>document.querySelector(s);
-const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const ls={get(k,d=""){try{return localStorage.getItem(k)??d}catch{return d}},set(k,v){try{localStorage.setItem(k,v)}catch{}}};
-const fmt=n=>Number(n||0).toLocaleString();
-const short=n=>{n=Number(n||0);return n>=1e6?(n/1e6).toFixed(n%1e6?1:0)+"M":n>=1e3?Math.round(n/1e3)+"k":String(n)};
-const ago=t=>{if(!t)return"";const s=(Date.now()-new Date(t))/1000;if(s<60)return"just now";if(s<3600)return Math.floor(s/60)+"m ago";if(s<86400)return Math.floor(s/3600)+"h ago";
-  if(s<86400*7)return Math.floor(s/86400)+"d ago";return new Date(t).toLocaleDateString(undefined,{month:"short",day:"numeric"})};
-const when=t=>t?new Date(t).toLocaleString(undefined,{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}):"";
-const cid=id=>esc("PLT-"+String(id).slice(0,4).toUpperCase());
-const eid=id=>encodeURIComponent(String(id??""));
-
-/* ---------- icons (status glyphs in the style of issue trackers) ---------- */
-const C=2*Math.PI*3;
-function ring(color,frac,dashed){return `<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="6" fill="none" stroke="${color}" stroke-width="1.5"${dashed?' stroke-dasharray="1.6 1.9"':""}/>`+
-  (frac?`<circle cx="7" cy="7" r="3" fill="none" stroke="${color}" stroke-width="6" stroke-dasharray="${(frac*C).toFixed(2)} ${C.toFixed(2)}" transform="rotate(-90 7 7)"/>`:"")+"</svg>"}
-const check=color=>`<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="6.5" fill="${color}"/><path d="M4.3 7.2 6.2 9l3.5-3.8" fill="none" stroke="var(--bg)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-const cross=color=>`<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="6.5" fill="${color}"/><path d="m4.9 4.9 4.2 4.2m0-4.2-4.2 4.2" stroke="var(--bg)" stroke-width="1.5" stroke-linecap="round"/></svg>`;
-const minus=color=>`<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="6" fill="none" stroke="${color}" stroke-width="1.5"/><path d="M4.5 7h5" stroke="${color}" stroke-width="1.5" stroke-linecap="round"/></svg>`;
-const PHASES=["ideation","investigating","ablating","sealed_eval","writing","completed"];
-const PHASE_LABEL={ideation:"Ideation",investigating:"Investigating",ablating:"Ablating",sealed_eval:"Sealed eval",writing:"Writing",completed:"Completed",halted:"Halted"};
-function campaignIcon(s){return {ideation:ring("var(--text-3)",0,true),investigating:ring("var(--yellow)",.25),ablating:ring("var(--yellow)",.5),
-  sealed_eval:ring("var(--yellow)",.75),writing:ring("var(--blue)",.75),completed:check("var(--accent)"),halted:cross("var(--gray)")}[s]||ring("var(--text-3)")}
-function nodeIcon(s){return {open:ring("var(--text-2)"),claimed:ring("var(--yellow)",.25),running:ring("var(--yellow)",.5),verified:check("var(--green)"),
-  refuted:cross("var(--red)"),exhausted:minus("var(--text-3)")}[s]||ring("var(--text-3)")}
-const TYPE={goal:{c:"var(--accent)",l:"Goal"},intent:{c:"var(--orange)",l:"Experiment"},fact:{c:"var(--blue)",l:"Claim"},finding:{c:"var(--purple)",l:"Finding"},hint:{c:"var(--gray)",l:"Lead"}};
-const typeChip=t=>`<span class="chip"><i style="background:${TYPE[t]?.c||"var(--gray)"}"></i>${esc(TYPE[t]?.l||t)}</span>`;
-const GATE_LABEL={stats_ok:"Statistics",figures_ok:"Figures",replicated:"Replicated",skeptic:"Skeptic review"};
-const gatesOf=n=>{const m=n&&n.metrics&&typeof n.metrics==="object"?n.metrics:{};return m.gates&&typeof m.gates==="object"?Object.entries(m.gates):[]};
-function gateDots(n){const g=gatesOf(n);if(!g.length)return"";const ok=g.filter(([,v])=>v).length;
-  return `<span class="gates" title="${esc(g.map(([k,v])=>(v?"✓ ":"✕ ")+(GATE_LABEL[k]||k)).join("\n"))}" aria-label="${ok} of ${g.length} checks passed">${g.map(([,v])=>`<i class="${v?"ok":""}"></i>`).join("")}</span>`}
-function gateChips(n){const g=gatesOf(n);if(!g.length)return"";
-  return `<div class="sep"></div><h4>Verification checks</h4><div class="gchips">${g.map(([k,v])=>`<span class="chip ${v?"pass":"fail"}">${v?"✓":"✕"} ${esc(GATE_LABEL[k]||k)}</span>`).join("")}</div>`}
-const STATUS_LABEL={open:"Open",claimed:"Claimed",running:"Running",verified:"Verified",refuted:"Refuted",exhausted:"Exhausted"};
-
-/* ---------- state ---------- */
-const S={token:ls.get("plato_token"),campaigns:[],route:{},summary:null,graph:null,manuscript:undefined,selected:null,prov:{},timer:null,listTimer:null,msView:"paper"};
-
-/* ---------- API ---------- */
-class ApiError extends Error{constructor(m,status){super(m);this.status=status}}
-async function api(path,opt={}){
-  const r=await fetch("/api/"+path,{...opt,headers:{...(opt.headers||{}),authorization:"Bearer "+S.token}});
-  if(!r.ok){let m=`Request failed (${r.status})`;try{m=(await r.json()).error||m}catch{}
-    if(r.status===401){setHealth(false,"Invalid token");}throw new ApiError(m,r.status)}
-  return r}
-const getJSON=p=>api(p).then(r=>r.json());
-
-/* ---------- toasts ---------- */
-function toast(msg,bad){const el=document.createElement("div");el.className="toast";el.innerHTML=(bad?cross("var(--red)"):check("var(--green)"))+`<span>${esc(msg)}</span>`;
-  $("#toasts").append(el);setTimeout(()=>el.remove(),4500)}
-
-/* ---------- theme ---------- */
-function themeLabel(){$("#themeLbl").textContent=document.documentElement.dataset.theme==="dark"?"Light theme":"Dark theme"}
-$("#themeBtn").onclick=()=>{const t=document.documentElement.dataset.theme==="dark"?"light":"dark";document.documentElement.dataset.theme=t;ls.set("plato_theme",t);themeLabel();
-  if(S.route.tab==="graph")renderTab()};
-themeLabel();
-
-/* ---------- health ---------- */
-function setHealth(ok,text){$("#health").innerHTML=`<span class="dot ${ok?"ok":"bad"}"></span><span class="trunc">${esc(text)}</span>`}
-async function health(){if(!S.token){$("#health").innerHTML='<span class="dot"></span><span>Not connected</span>';return}
-  try{const h=await getJSON("health");setHealth(true,`Connected · ${h.model}`)}catch(e){if(e.status!==401)setHealth(false,"API unreachable")}}
-
-/* ---------- routing: #/  #/c/<id>/<tab> ---------- */
-function parseRoute(){const p=location.hash.replace(/^#\/?/,"").split("/");return p[0]==="c"&&p[1]?{id:decodeURIComponent(p[1]),tab:p[2]||"overview",node:p[3]||null}:{}}
-const go=(id,tab="overview")=>{location.hash=id?`#/c/${eid(id)}/${tab}`:"#/"};
-addEventListener("hashchange",route);
-
-/* ---------- sidebar ---------- */
-const ACTIVE=c=>!["completed","halted"].includes(c.status);
-function renderNav(){const cur=S.route.id;const act=S.campaigns.filter(ACTIVE),done=S.campaigns.filter(c=>!ACTIVE(c));
-  const item=c=>`<a class="item${c.id===cur?" on":""}" href="#/c/${eid(c.id)}/overview" title="${esc(c.research_question)}">${campaignIcon(c.status)}<span class="trunc">${esc(c.research_question)}</span></a>`;
-  $("#nav").innerHTML=`<a class="item${!cur?" on":""}" href="#/"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2.5" y="2.5" width="11" height="11" rx="2.5"/><path d="M5.5 6h5M5.5 8.5h5M5.5 11h3"/></svg>All campaigns<span class="n">${S.campaigns.length||""}</span></a>`+
-    (act.length?`<div class="nav-h">Running<span style="margin-left:auto">${act.length}</span></div>${act.map(item).join("")}`:"")+
-    (done.length?`<div class="nav-h">Finished<span style="margin-left:auto">${done.length}</span></div>${done.slice(0,30).map(item).join("")}`:"")}
-async function loadList(){if(!S.token)return;try{S.campaigns=(await getJSON("campaigns")).campaigns;renderNav();if(!S.route.id)renderHome()}catch(e){if(e.status!==401)toast(e.message,true)}}
-
-/* ---------- home (campaign list) ---------- */
-function renderHome(){
-  $("#crumb").innerHTML=`<b>Campaigns</b>`;$("#tabs").innerHTML="";
-  $("#topActions").innerHTML=`<button class="btn primary" id="newTop" type="button">New campaign</button>`;$("#newTop").onclick=openNew;
-  const body=$("#body");body.className="body full";
-  if(!S.token){body.innerHTML=`<div class="pane">${connectView()}</div>`;bindConnect();return}
-  if(!S.campaigns.length){body.innerHTML=`<div class="pane"><div class="empty"><div>${ring("var(--text-3)",0,true)}<h3>No campaigns yet</h3>
-    <p>Give Plato a question or idea. A swarm of agents researches it, runs experiments and writes up what holds.</p><button class="btn primary" onclick="openNew()">New campaign</button></div></div></div>`;return}
-  const groups=[["Running",S.campaigns.filter(ACTIVE)],["Completed",S.campaigns.filter(c=>c.status==="completed")],["Halted",S.campaigns.filter(c=>c.status==="halted")]];
-  body.innerHTML=`<div class="pane">${groups.filter(g=>g[1].length).map(([name,list])=>`<div class="group">${campaignIcon(list[0].status)}${name}<span class="n">${list.length}</span></div>`+
-    list.map(c=>{const pct=Math.min(100,100*c.tokens_used/Math.max(1,c.token_budget_max));
-      return `<a class="row" href="#/c/${eid(c.id)}/overview" style="text-decoration:none;color:inherit"><span class="id mono">${cid(c.id)}</span>${campaignIcon(c.status)}<span class="title trunc">${esc(c.research_question)}</span>
-      <span class="meta"><span class="chip hide-sm">${esc(PHASE_LABEL[c.status]||c.status)}</span><span class="hide-sm" title="${fmt(c.tokens_used)} / ${fmt(c.token_budget_max)} tokens" style="display:flex;align-items:center;gap:6px"><span class="bar"><span style="width:${pct}%"></span></span>${short(c.tokens_used)}</span><span style="width:64px;text-align:right">${ago(c.created_at)}</span></span></a>`}).join("")).join("")}</div>`}
-function connectView(){return `<div class="empty"><div style="width:min(380px,100%)"><div class="logo" style="margin:0 auto;width:36px;height:36px;font-size:16px;border-radius:9px">P</div>
-  <h3>Connect to Plato</h3><p>Paste the API token from your deploy. It stays in this browser only.</p>
-  <form id="connect" style="display:flex;gap:8px;margin-top:14px"><input class="field" id="tokIn" type="password" placeholder="API token" autocomplete="off" required><button class="btn primary">Connect</button></form></div></div>`}
-function bindConnect(){const f=$("#connect");if(f)f.onsubmit=e=>{e.preventDefault();setToken($("#tokIn").value.trim())}}
-async function setToken(t){S.token=t;ls.set("plato_token",t);closeOverlay();await health();await loadList();route()}
-
-/* ---------- campaign view ---------- */
-const TABS=[["overview","Overview"],["graph","Graph"],["findings","Findings"],["experiments","Experiments"],["manuscript","Manuscript"],["guardrails","Guardrails"]];
-async function openCampaign(id){
-  const fresh=S.summary?.campaign?.id!==id;
-  if(fresh){S.summary=null;S.graph=null;S.manuscript=undefined;S.prov={};$("#body").className="body";$("#body").innerHTML=`<div class="pane"><div class="empty"><div class="spin"></div></div></div><aside class="props"></aside>`}
-  try{const [s,g]=await Promise.all([getJSON("campaigns/"+id),getJSON("campaigns/"+id+"/graph")]);S.summary=s;S.graph=g}
-  catch(e){$("#body").innerHTML=`<div class="pane"><div class="empty"><div>${cross("var(--red)")}<h3>${e.status===404?"Campaign not found":"Could not load campaign"}</h3><p>${esc(e.message)}</p></div></div></div>`;return}
-  renderCampaign();schedulePoll();
-}
-function counts(){const out={};(S.summary?.node_counts||[]).forEach(r=>{(out[r.node_type]??={})[r.status]=r.n});return out}
-const sum=o=>Object.values(o||{}).reduce((a,b)=>a+b,0);
-function renderCampaign(){
-  const c=S.summary.campaign,nodes=S.graph.nodes,cnt=counts();
-  $("#crumb").innerHTML=`<a href="#/" style="text-decoration:none">Campaigns</a><span class="t3">›</span>${campaignIcon(c.status)}<b class="trunc">${esc(c.research_question)}</b>`;
-  $("#topActions").innerHTML=ACTIVE(c)?`<button class="btn" id="resume" type="button" title="Ask the runner to resume now">Resume</button>`:"";
-  if($("#resume"))$("#resume").onclick=async()=>{try{await api(`campaigns/${c.id}/run`,{method:"POST"});toast("Resume requested")}catch(e){toast(e.message,true)}};
-  const n={findings:nodes.filter(x=>x.node_type==="finding"||x.node_type==="fact").length,experiments:sum(cnt.intent),guardrails:S.summary.guard_events.length};
-  $("#tabs").className="tabs";
-  $("#tabs").innerHTML=TABS.map(([k,l])=>`<a class="tab${S.route.tab===k?" on":""}" href="#/c/${eid(c.id)}/${k}" style="text-decoration:none">${l}${n[k]!=null?`<span class="c">${n[k]}</span>`:""}</a>`).join("");
-  renderTab();
-}
-function renderTab(){
-  const tab=S.route.tab,body=$("#body");body.className=tab==="manuscript"?"body full":"body";
-  const pane=({overview:overview,graph:graphView,findings:findingsView,experiments:experimentsView,manuscript:manuscriptView,guardrails:guardView}[tab]||overview)();
-  body.innerHTML=`<div class="pane" id="pane">${pane}</div>`+(tab==="manuscript"?"":`<aside class="props" id="props">${propsView()}</aside>`);
-  bindPane();KB=-1;
-}
-
-/* overview */
-function overview(){
-  const c=S.summary.campaign,cnt=counts(),halted=c.status==="halted";
-  const idx=PHASES.indexOf(c.status);
-  const reached=halted?Math.max(0,lastPhase()):idx;
-  const steps=PHASES.map((p,i)=>{const done=i<reached||(c.status==="completed"),cur=i===reached&&!halted&&c.status!=="completed",fail=halted&&i===reached;
-    return (i?`<span class="link${done||cur||fail?" done":""}"></span>`:"")+`<span class="step${done?" done":""}${cur?" cur":""}${fail?" fail":""}">${fail?cross("var(--red)"):done?check("var(--accent)"):cur?campaignIcon(p):ring("var(--text-3)")}${PHASE_LABEL[p]}</span>`}).join("");
-  const verified=cnt.finding?.verified||0,claimsV=cnt.fact?.verified||0,claimsR=cnt.fact?.refuted||0,claimsO=(cnt.fact?.open||0)+(cnt.fact?.claimed||0)+(cnt.fact?.running||0);
-  const exps=sum(cnt.intent),expsDone=(cnt.intent?.verified||0)+(cnt.intent?.refuted||0);
-  let call="";
-  if(halted)call=`<div class="callout bad">${cross("var(--red)")}<div><b>Halted.</b> <span class="t2">${esc(c.halted_reason||"No reason recorded.")}</span></div></div>`;
-  else if(c.status==="completed")call=`<div class="callout ${verified?"good":""}">${verified?check("var(--green)"):minus("var(--text-2)")}<div><b>${verified?`${verified} verified finding${verified>1?"s":""}.`:"Completed with no verified finding."}</b>
-    <span class="t2">${claimsR} claim${claimsR===1?"":"s"} refuted, ${claimsV} supported across ${exps} experiment${exps===1?"":"s"}. ${verified?"":"Negative results are recorded in the graph and the manuscript."}</span></div></div>`;
-  else call=`<div class="callout"><div class="spin" style="margin-top:2px"></div><div><b>${PHASE_LABEL[c.status]}.</b> <span class="t2">The swarm is working. This page updates live.</span></div></div>`;
-  const tokPct=Math.min(100,100*c.tokens_used/Math.max(1,c.token_budget_max)),gpuPct=Math.min(100,100*c.gpu_seconds_used/Math.max(1,c.gpu_seconds_max));
-  const ev=S.summary.guard_events.slice(0,12);
-  const root=S.graph.nodes.find(x=>x.node_type==="goal"&&x.title==="Research question"),rq=root&&root.metrics&&typeof root.metrics==="object"?root.metrics.refined_question:"";
-  return `<div class="doc"><h1>${esc(c.research_question)}</h1>${rq&&rq!==c.research_question?`<p class="refined">${esc(rq)}</p>`:""}
-  <div class="sub" style="margin-top:10px"><span class="mono t3">${cid(c.id)}</span>${typeChip("goal")}<span>${esc(c.program_domain||"general")}</span><span class="t3">·</span><span>Started ${ago(c.created_at)}</span></div>
-  <div class="steps">${steps}</div>${call}
-  <div class="stats">
-    <div class="stat"><div class="k">Tokens</div><div class="v">${short(c.tokens_used)} <small>/ ${short(c.token_budget_max)}</small></div><div class="bar wide"><span style="width:${tokPct}%"></span></div></div>
-    <div class="stat"><div class="k">Sandbox compute</div><div class="v">${fmt(c.gpu_seconds_used)}s <small>/ ${short(c.gpu_seconds_max)}s</small></div><div class="bar wide"><span style="width:${gpuPct}%"></span></div></div>
-    <div class="stat"><div class="k">Experiments</div><div class="v">${expsDone} <small>/ ${exps} done</small></div><div class="t3" style="font-size:12px">${cnt.intent?.exhausted||0} exhausted</div></div>
-    <div class="stat"><div class="k">Claims</div><div class="v">${claimsV+claimsR+claimsO}</div><div style="display:flex;gap:8px;font-size:12px" class="t2"><span style="color:var(--green)">${claimsV} ✓</span><span style="color:var(--red)">${claimsR} ✕</span><span>${claimsO} open</span></div></div>
-  </div>
-  <div class="sec-h">Guardrail activity</div>
-  ${ev.length?`<div class="feed">${ev.map(e=>`<div class="ev ${esc(e.decision)}"><b>${esc(e.kind)}</b> ${esc(e.decision)}${e.detail?.node?` in <span class="mono">${esc(e.detail.node)}</span>`:""}${e.detail?.error?` · <span class="t3">${esc(String(e.detail.error).slice(0,140))}</span>`:""}<span class="t3"> · ${ago(e.created_at)}</span></div>`).join("")}</div>`:`<p class="t3">No guardrail events. Every sandbox run, budget check and data-scope check passed.</p>`}
-  </div>`}
-function lastPhase(){// phase a halted campaign stopped in: recorded by the store; inferred for older campaigns
-  const from=PHASES.indexOf(S.summary.campaign.halted_from);if(from>=0)return from;
-  const cnt=counts();if(sum(cnt.intent)===0)return 0;if((cnt.finding&&sum(cnt.finding))||S.manuscript)return 4;return 1}
-
-/* properties panel */
-function propsView(){
-  const c=S.summary.campaign;
-  if(S.selected){const node=S.graph.nodes.find(n=>n.id===S.selected);if(node)return nodeProps(node)}
-  const cfg=c.config||{};
-  return `<div class="pp"><h4>Properties</h4>
-  <div class="prop"><span>Status</span><span>${campaignIcon(c.status)}${PHASE_LABEL[c.status]||esc(c.status)}</span></div>
-  <div class="prop"><span>Model</span><span class="trunc">${esc(cfg.model||"claude-haiku-5-5")}</span></div>
-  <div class="prop"><span>Workers</span><span>${esc(cfg.workers??"–")}</span></div>
-  <div class="prop"><span>Rounds</span><span>${esc(cfg.max_rounds??"–")}</span></div>
-  <div class="prop"><span>Domain</span><span class="trunc">${esc(c.program_domain||"general")}</span></div>
-  <div class="prop"><span>Created</span><span>${when(c.created_at)}</span></div>
-  <div class="prop"><span>Updated</span><span>${ago(c.updated_at)}</span></div>
-  <div class="sep"></div><h4>Graph</h4>
-  ${Object.entries(counts()).map(([t,st])=>`<div class="prop"><span>${typeChip(t)}</span><span class="t2">${Object.entries(st).map(([k,v])=>`${v} ${k}`).join(" · ")}</span></div>`).join("")||'<p class="t3">Empty</p>'}
-  <div class="sep"></div><div class="prop"><span>ID</span><span class="mono t3 trunc" title="${esc(c.id)}">${esc(c.id)}</span></div>
-  <p class="t3" style="font-size:12px;margin-top:12px">Select any node to see its evidence and lineage.</p></div>`}
-function nodeProps(n){
-  const p=S.prov[n.id];
-  const m=n.metrics&&typeof n.metrics==="object"?n.metrics:{},pk=typeof m.primary_metric==="string"?m.primary_metric:null;
-  // Gate booleans render as chips; the primary metric gets its own row; the rest is a table.
-  const metrics=Object.entries(m).filter(([k])=>!["gates","primary_metric","replication","test_kind",pk,pk&&pk+"_se",...Object.keys(GATE_LABEL)].includes(k));
-  const fmt=v=>typeof v==="number"?String(+v.toPrecision(5)):JSON.stringify(v);
-  const rep=pk&&m.replication&&typeof m.replication==="object"?m.replication[pk]:undefined;
-  // A finding's code, logs and plots live on the claim that proves it.
-  const provers=p?p.edges.filter(e=>e.edge_type==="proves"&&e.target_node_id===n.id).map(e=>p.nodes.find(x=>x.id===e.source_node_id)).filter(Boolean):[];
-  const evGroups=p?[[null,p.evidence.filter(e=>e.node_id===n.id)],...provers.map(f=>[f,p.evidence.filter(e=>e.node_id===f.id)])].filter(([,l])=>l.length):[];
-  const evRow=e=>`<div class="lin" data-ev="${esc(e.id)}" data-type="${esc(e.artifact_type)}">${evIcon(e.artifact_type)}<span class="trunc">${esc(EV_LABEL[e.artifact_type]||e.artifact_type)}</span><span class="t3 mono" style="margin-left:auto;font-size:11px">${esc(e.sha256_checksum.slice(0,8))}</span></div>`;
-  const lineage=p?p.nodes.filter(x=>x.id!==n.id):[];
-  const anchors=p?p.anchors:[];
-  return `<div class="pp"><div style="display:flex;align-items:center;gap:8px"><button class="icon-btn" data-close aria-label="Back to properties"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M10 3 5 8l5 5"/></svg></button>${typeChip(n.node_type)}<span class="chip">${nodeIcon(n.status)}${STATUS_LABEL[n.status]||esc(n.status)}</span></div>
-  <div class="node-t">${esc(n.title)}</div>
-  ${n.hypothesis_or_spec?`<div class="para">${esc(n.hypothesis_or_spec)}</div>`:""}
-  ${n.confidence_score!=null?`<div class="sep"></div><div class="prop"><span>Confidence</span><span><span class="bar" style="width:90px"><span style="width:${Math.round(100*n.confidence_score)}%"></span></span>${Number(n.confidence_score).toFixed(2)}</span></div>`:""}
-  ${gateChips(n)}
-  ${pk&&pk in m?`<div class="sep"></div><h4>Primary metric</h4><div class="prim"><span class="mono t2" title="${esc(pk)}">${esc(pk)}</span><span class="pv">${esc(fmt(m[pk]))}</span>${m[pk+"_se"]!=null?`<span class="t3">± ${esc(fmt(m[pk+"_se"]))} SE</span>`:""}${rep!==undefined?`<span class="t3">seed 2: ${esc(fmt(rep))}</span>`:""}${m.test_kind?`<span class="chip">${esc(m.test_kind)} test</span>`:""}</div>`:""}
-  ${metrics.length?`<div class="sep"></div><h4>Metrics</h4><div class="kv mono">${metrics.slice(0,24).map(([k,v])=>`<span title="${esc(k)}">${esc(k)}</span><span title="${esc(JSON.stringify(v))}">${esc(fmt(v))}</span>`).join("")}</div>`:""}
-  <div class="sep"></div><h4>Evidence</h4>
-  ${!p?'<div class="spin"></div>':evGroups.length?evGroups.map(([f,l])=>(f?`<div class="t3" style="font-size:11px;margin:6px 0 2px">From claim · ${esc(f.title)}</div>`:"")+l.map(evRow).join("")).join(""):'<p class="t3">No artifacts on this node.</p>'}
-  ${anchors.length?`<div class="sep"></div><h4>Sources</h4>${anchors.slice(0,12).map(a=>`<div class="lin" style="cursor:default"><span class="chip">${esc(a.anchor_role)}</span><span class="trunc" title="${esc(a.canonical_name)}">${esc(a.canonical_name)}</span></div>`).join("")}`:""}
-  ${lineage.length?`<div class="sep"></div><h4>Lineage</h4>${lineage.slice(0,20).map(x=>`<div class="lin" data-node="${esc(x.id)}">${nodeIcon(x.status)}<span class="trunc">${esc(x.title)}</span></div>`).join("")}`:""}
-  </div>`}
-const EV_LABEL={stdout_log:"Run log",git_patch:"Code",plot_png:"Plot",vlm_critique:"Figure critique",sealed_eval_json:"Sealed evaluation",latex_section:"LaTeX",bibtex:"BibTeX",peer_review:"Peer review"};
-function evIcon(t){const p={plot_png:'<rect x="2.5" y="2.5" width="11" height="11" rx="2"/><path d="m4.5 10.5 2.5-3 2 2 2.5-3.5"/>',git_patch:'<path d="m6 4.5-3.5 3.5L6 11.5m4-7 3.5 3.5-3.5 3.5"/>',stdout_log:'<rect x="2.5" y="3" width="11" height="10" rx="2"/><path d="m5 6.5 2 1.5-2 1.5M8.5 10h2.5"/>'}[t]||'<path d="M4 2.5h5l3 3v8H4z"/><path d="M9 2.5v3h3"/>';
-  return `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--text-2)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`}
-async function selectNode(id){
-  S.selected=id;const props=$("#props");
-  document.querySelectorAll("[data-node].on").forEach(e=>e.classList.remove("on"));document.querySelectorAll(`[data-node="${CSS.escape(id)}"]`).forEach(e=>e.classList.add("on"));
-  if(props)props.innerHTML=propsView();bindProps();
-  if(!S.prov[id]){try{S.prov[id]=await getJSON("nodes/"+id+"/provenance")}catch(e){toast(e.message,true);return}if(S.selected===id&&$("#props")){$("#props").innerHTML=propsView();bindProps()}}
-  if(innerWidth<=1100)$("#props")?.scrollIntoView({behavior:"smooth",block:"start"});
-}
-function bindProps(){const p=$("#props");if(!p)return;
-  p.querySelectorAll("[data-node]").forEach(e=>e.onclick=()=>selectNode(e.dataset.node));
-  p.querySelector("[data-close]")?.addEventListener("click",()=>{S.selected=null;p.innerHTML=propsView();bindProps();document.querySelectorAll("#pane [data-node].on").forEach(e=>e.classList.remove("on"))});
-  p.querySelectorAll("[data-ev]").forEach(e=>e.onclick=()=>openEvidence(e.dataset.ev,e.dataset.type))}
-function bindPane(){$("#pane").querySelectorAll("[data-node]").forEach(e=>e.onclick=()=>selectNode(e.dataset.node));bindProps();
-  $("#pane").querySelectorAll("[data-ms]").forEach(b=>b.onclick=()=>{S.msView=b.dataset.ms;renderTab()});
-  $("#pane").querySelectorAll("[data-dl]").forEach(b=>b.onclick=()=>download(b.dataset.dl));
-  $("#pane").querySelectorAll("[data-gev]").forEach(r=>r.onclick=()=>r.nextElementSibling.hidden=!r.nextElementSibling.hidden);
-  if(S.route.tab==="manuscript"&&S.manuscript===undefined)loadManuscript()}
-
-/* lists */
-function nodeRow(n,extra=""){return `<div class="row${S.selected===n.id?" on":""}" data-node="${esc(n.id)}">${nodeIcon(n.status)}<span class="title trunc">${esc(n.title)}</span><span class="meta">${extra}<span class="hide-sm">${ago(n.created_at)}</span></span></div>`}
-function grouped(list,order,label){const g={};list.forEach(n=>(g[n.status]??=[]).push(n));
-  return order.filter(s=>g[s]?.length).map(s=>`<div class="group">${nodeIcon(s)}${label(s)}<span class="n">${g[s].length}</span></div>`+g[s].map(n=>nodeRow(n,gateDots(n)+(n.confidence_score!=null?`<span class="chip">conf ${Number(n.confidence_score).toFixed(2)}</span>`:""))).join("")).join("")}
-function findingsView(){const nodes=S.graph.nodes,f=nodes.filter(n=>n.node_type==="finding"),facts=nodes.filter(n=>n.node_type==="fact");
-  if(!f.length&&!facts.length)return emptyPane("No findings or claims yet","Claims appear as the swarm turns literature and experiments into testable statements.");
-  return (f.length?grouped(f,["verified","open","running","claimed","refuted","exhausted"],s=>s==="verified"?"Verified findings":"Findings · "+STATUS_LABEL[s]):"")+
-    grouped(facts,["verified","refuted","open","running","claimed","exhausted"],s=>"Claims · "+STATUS_LABEL[s])}
-function experimentsView(){const xs=S.graph.nodes.filter(n=>n.node_type==="intent");
-  if(!xs.length)return emptyPane("No experiments yet","The planner proposes experiments after the literature scout finishes.");
-  return grouped(xs,["running","claimed","open","verified","refuted","exhausted"],s=>({verified:"Succeeded",refuted:"Failed",exhausted:"Out of attempts"}[s]||STATUS_LABEL[s]))}
-function guardView(){const ev=S.summary.guard_events;if(!ev.length)return emptyPane("No guardrail events","Sandbox, budget and data-scope checks log here when they fire.");
-  return `<div class="group">Latest ${ev.length} events</div>`+ev.map(e=>`<div class="row" data-gev>${e.decision==="deny"?cross("var(--red)"):e.decision==="allow"?check("var(--green)"):minus("var(--yellow)")}
-    <span class="chip">${esc(e.kind)}</span><span class="title trunc">${esc(guardSummary(e))}</span><span class="meta">${ago(e.created_at)}</span></div>
-    <div hidden style="padding:10px 20px;border-bottom:1px solid var(--border)"><pre class="src">${esc(JSON.stringify(e.detail,null,2))}</pre></div>`).join("")}
-function guardSummary(e){const d=e.detail||{};if(d.error||d.reason||d.message)return (d.node?d.node+": ":"")+(d.error||d.reason||d.message);
-  return Object.entries(d).slice(0,4).map(([k,v])=>`${k}: ${typeof v==="object"?JSON.stringify(v):v}`).join(" · ")||"(no detail)"}
-const emptyPane=(h,p)=>`<div class="empty"><div>${ring("var(--text-3)",0,true)}<h3>${esc(h)}</h3><p>${esc(p)}</p></div></div>`;
-
-/* graph: columns by depth, edges as curves */
-function graphView(){
-  const nodes=S.graph.nodes,edges=S.graph.edges;if(!nodes.length)return emptyPane("Graph is empty","Nodes appear as soon as the campaign starts.");
-  const byId=Object.fromEntries(nodes.map(n=>[n.id,n])),inc={};edges.forEach(e=>{if(byId[e.source_node_id]&&byId[e.target_node_id])(inc[e.target_node_id]??=[]).push(e.source_node_id)});
-  const depth={},seen=new Set();const d=id=>{if(depth[id]!=null)return depth[id];if(seen.has(id))return 0;seen.add(id);const p=inc[id]||[];depth[id]=p.length?1+Math.max(...p.map(d)):0;return depth[id]};
-  nodes.forEach(n=>d(n.id));
-  const order={goal:0,hint:1,intent:2,fact:3,finding:4},cols={};
-  nodes.forEach(n=>(cols[depth[n.id]]??=[]).push(n));
-  const keys=Object.keys(cols).map(Number).sort((a,b)=>a-b),CW=264,RH=40,TOP=44,LEFT=20,pos={};
-  keys.forEach((k,i)=>{cols[k].sort((a,b)=>(order[a.node_type]-order[b.node_type])||String(a.created_at).localeCompare(String(b.created_at)));cols[k].forEach((n,j)=>pos[n.id]=[LEFT+i*CW,TOP+j*RH])});
-  const W=LEFT*2+keys.length*CW,H=TOP+Math.max(...keys.map(k=>cols[k].length))*RH+20;
-  const ecol={refutes:"var(--red)",proves:"var(--green)"};
-  const paths=edges.map(e=>{const a=pos[e.source_node_id],b=pos[e.target_node_id];if(!a||!b)return"";const x1=a[0]+216,y1=a[1]+15,x2=b[0],y2=b[1]+15,mx=(x1+x2)/2;
-    return `<path d="M${x1} ${y1}C${mx} ${y1} ${mx} ${y2} ${x2} ${y2}" fill="none" stroke="${ecol[e.edge_type]||"var(--border-2)"}" stroke-width="1.2"${e.edge_type==="derived_from"?' stroke-dasharray="3 3"':""}/>`}).join("");
-  const colName=k=>{const ts=new Set(cols[k].map(n=>n.node_type));return [...ts].map(t=>TYPE[t]?.l||t).join(" · ")};
-  return `<div class="gtools"><div class="legend">${Object.entries(TYPE).map(([k,v])=>`<span><i class="dot" style="background:${v.c}"></i>${v.l}</span>`).join("")}
-    <span><svg width="18" height="6"><path d="M0 3h18" stroke="var(--green)" stroke-width="1.5"/></svg>proves</span><span><svg width="18" height="6"><path d="M0 3h18" stroke="var(--red)" stroke-width="1.5"/></svg>refutes</span></div>
-    <span class="t3" style="margin-left:auto;font-size:12px">${nodes.length} nodes · ${edges.length} edges</span></div>
-  <div class="gcanvas" style="width:${W}px;height:${H}px"><svg class="edges" width="${W}" height="${H}">${paths}</svg>
-  ${keys.map((k,i)=>`<div class="gcol" style="left:${LEFT+i*CW+2}px">${esc(colName(k))}</div>`).join("")}
-  ${nodes.map(n=>{const [x,y]=pos[n.id];return `<div class="gn${S.selected===n.id?" on":""}${["refuted","exhausted"].includes(n.status)?" dim":""}" data-node="${esc(n.id)}" style="left:${x}px;top:${y}px" title="${esc((TYPE[n.node_type]?.l||n.node_type)+" · "+n.status+"\n"+n.title)}">
-    <i class="dot" style="background:${TYPE[n.node_type]?.c};flex:none"></i>${nodeIcon(n.status)}<span class="trunc">${esc(n.title)}</span></div>`}).join("")}</div>`}
-
-/* manuscript */
-async function loadManuscript(){const id=S.route.id;S.manuscript=null;
-  try{const m=await getJSON(`campaigns/${id}/manuscript`);if(S.route.id===id){S.manuscript=m;if(S.route.tab==="manuscript")renderTab()}}
-  catch(e){if(S.route.id===id){S.manuscript=e.status===404?false:e.message;if(S.route.tab==="manuscript")renderTab()}}}
-/* Math: KaTeX is vendored (same origin, no CDN) and loaded only when a paper is shown. */
-const KATEX="/vendor/katex-0.16.11/";let katexP=null;
-function loadKatex(){if(window.katex)return Promise.resolve();if(katexP)return katexP;
-  katexP=new Promise((res,rej)=>{const l=document.createElement("link");l.rel="stylesheet";l.href=KATEX+"katex.min.css";document.head.appendChild(l);
-    const sc=document.createElement("script");sc.src=KATEX+"katex.min.js";sc.onload=res;sc.onerror=()=>{katexP=null;rej(new Error("KaTeX failed to load"))};document.head.appendChild(sc)});
-  return katexP}
-function renderMath(tex,display){
-  // trust:false + strict:"ignore": KaTeX escapes all text and never emits links, styles or HTML from the source.
-  if(window.katex){try{return katex.renderToString(tex,{displayMode:display,throwOnError:false,trust:false,strict:"ignore",output:"htmlAndMathml"})}catch{}}
-  return display?`<pre class="mono">${esc(tex)}</pre>`:`<code>${esc(tex)}</code>`}
-function latexToHtml(src){
-  // Math is lifted out of the raw source first (KaTeX renders it safely), then the rest is
-  // escaped and a safe subset of LaTeX is rewritten into HTML (all text stays escaped).
-  const math=[];const keep=(tex,display)=>{math.push(renderMath(tex.replace(/\\(label|nonumber|notag)(\{[^}]*\})?/g,"").trim(),display));return `\u0000M${math.length-1}\u0000`};
-  const ENV={equation:null,align:"aligned",gather:"gathered",multline:"gathered"};
-  let raw=String(src).replace(/[\r\u0000]/g,"").replace(/(^|[^\\])%.*$/gm,"$1")
-    .replace(/\\begin\{(equation|align|gather|multline)(\*?)\}([\s\S]*?)\\end\{\1\2\}/g,(_,env,star,b)=>keep(ENV[env]?`\\begin{${ENV[env]}}${b}\\end{${ENV[env]}}`:b,true))
-    .replace(/\$\$([\s\S]+?)\$\$/g,(_,b)=>keep(b,true)).replace(/\\\[([\s\S]+?)\\\]/g,(_,b)=>keep(b,true))
-    .replace(/\\\(([\s\S]+?)\\\)/g,(_,b)=>keep(b,false)).replace(/(^|[^\\])\$((?:\\\$|[^$\n])+?)\$/g,(_,pre,b)=>pre+keep(b,false));
-  let s=esc(raw);
-  const doc=s.match(/\\begin\{document\}([\s\S]*?)(\\end\{document\}|$)/);
-  const pre=doc?s.slice(0,doc.index):"";if(doc)s=doc[1];
-  const title=(pre.match(/\\title\{([^}]*)\}/)||s.match(/\\title\{([^}]*)\}/)||[])[1],author=(pre.match(/\\author\{([^}]*)\}/)||s.match(/\\author\{([^}]*)\}/)||[])[1];
-  s=s
-   .replace(/\\(documentclass|usepackage)(\[[^\]]*\])?\{[^}]*\}/g,"").replace(/\\(title|author|date)\{[^}]*\}/g,"")
-   .replace(/\\(label|vspace|hspace|bibliographystyle|bibliography)\*?\{[^}]*\}/g,"").replace(/\\(noindent|centering|maketitle|toprule|midrule|bottomrule|hline|small|footnotesize|newpage|clearpage)\b/g,"")
-   .replace(/\\begin\{abstract\}([\s\S]*?)\\end\{abstract\}/g,(_,a)=>`\n\n<div class="abs"><b>Abstract.</b> ${a.trim()}</div>\n\n`)
-   .replace(/\\begin\{tabular\}\{[^}]*\}([\s\S]*?)\\end\{tabular\}/g,(_,body)=>{const rows=body.split(/\\\\/).map(r=>r.trim()).filter(Boolean);
-      return "\n\n<table>"+rows.map(r=>"<tr>"+r.split(/(?<!\\)&amp;/).map(c=>`<td>${c.trim()}</td>`).join("")+"</tr>").join("")+"</table>\n\n"})
-   .replace(/\\caption\{([^}]*)\}/g,"<figcaption>$1</figcaption>")
-   .replace(/\\begin\{(table|figure)\}(\[[^\]]*\])?|\\end\{(table|figure)\}/g,"")
-   .replace(/\\section\*?\{([^}]*)\}/g,"\n\n<h2>$1</h2>\n\n").replace(/\\subsection\*?\{([^}]*)\}/g,"\n\n<h3>$1</h3>\n\n").replace(/\\subsubsection\*?\{([^}]*)\}/g,"\n\n<h3>$1</h3>\n\n")
-   .replace(/\\textbf\{([^}]*)\}/g,"<strong>$1</strong>").replace(/\\(emph|textit)\{([^}]*)\}/g,"<em>$2</em>").replace(/\\texttt\{([^}]*)\}/g,"<code>$1</code>")
-   .replace(/\\cite[pt]?\{([^}]*)\}/g,(_,k)=>`<cite>[${k.split(",").map(x=>x.trim()).join(", ")}]</cite>`).replace(/\\(eq)?ref\{([^}]*)\}/g,"<code>$2</code>")
-   .replace(/\\begin\{(itemize|enumerate)\}/g,"\n\n<ul>").replace(/\\end\{(itemize|enumerate)\}/g,"</ul>\n\n").replace(/\\item\s*/g,"<li>")
-   .replace(/\\begin\{[^}]*\}(\{[^}]*\})?|\\end\{[^}]*\}/g,"").replace(/~/g,"&nbsp;").replace(/\\\\/g,"<br>")
-   .replace(/\\&amp;/g,"&amp;").replace(/\\([%_#$])/g,"$1")
-   // Text-mode leftovers the writer commonly emits.
-   .replace(/\\par\b\s*/g,"\n\n").replace(/\\(med|big|small)skip\b\s*/g,"\n\n")
-   .replace(/\\paragraph\*?\{([^}]*)\}\s*/g,"\n\n<strong>$1</strong> ")
-   .replace(/\\href\{[^}]*\}\{([^}]*)\}/g,"$1").replace(/\\footnote\{([^}]*)\}/g," ($1)").replace(/\\url\{([^}]*)\}/g,"<code>$1</code>")
-   .replace(/\\(ldots|dots)\b/g,"…").replace(/---/g,"—").replace(/--/g,"–").replace(/``/g,"“").replace(/&#39;&#39;/g,"”")
-   .replace(/\\(textsc|underline|textrm|textsf|mbox|text)\{([^}]*)\}/g,"$2").replace(/\\[,;:! ]/g," ")
-   // Anything still unrecognised: keep its braced argument, drop the command word.
-   .replace(/\\[a-zA-Z]+\*?(\[[^\]]*\])?\{([^}]*)\}/g,"$2").replace(/\\[a-zA-Z]+\*?/g,"");
-  const plain=t=>t.replace(/\\([&%_#$])/g,"$1").replace(/\\&amp;/g,"&amp;").replace(/\\[a-zA-Z]+\*?\{([^}]*)\}/g,"$1").replace(/\\[a-zA-Z]+\*?/g,"");
-  const head=(title?`<h1>${plain(title)}</h1>`:"")+(author?`<p class="by">${plain(author)}</p>`:"");
-  const html=head+s.split(/\n\s*\n/).map(b=>b.trim()).filter(Boolean).map(b=>/^<(h2|h3|ul|table|div|figcaption)/.test(b)||/^\u0000M\d+\u0000$/.test(b)?b:`<p>${b}</p>`).join("\n");
-  return html.replace(/\u0000M(\d+)\u0000/g,(_,i)=>math[+i]??"")}
-function manuscriptView(){
-  // undefined: not requested yet, null: loading, false: none yet, string: load error, object: loaded
-  if(S.manuscript==null)return `<div class="empty"><div class="spin"></div></div>`;
-  if(typeof S.manuscript==="string")return emptyPane("Could not load the manuscript",S.manuscript);
-  if(S.manuscript&&typeof S.manuscript==="object"&&!window.katex)loadKatex().then(()=>{if(S.route.tab==="manuscript")renderTab()}).catch(()=>{});
-  if(S.manuscript===false)return emptyPane("No manuscript yet",S.summary.campaign.status==="halted"?"This campaign halted before writing.":"The paper is written after the experiments and the sealed evaluation finish.");
-  const m=S.manuscript;let rv="";
-  try{const r=m.peer_review?JSON.parse(m.peer_review):null;if(r){const pips=v=>{v=Number(v);v=Number.isFinite(v)?v:0;return `<span class="pips" title="${v} of 4">${[1,2,3,4].map(i=>`<i class="${i<=v?"on":""}"></i>`).join("")}</span>`};
-    const dc={accept:"var(--green)",minor_revision:"var(--yellow)",major_revision:"var(--orange)",reject:"var(--red)"}[r.decision]||"var(--gray)";
-    rv=`<div class="review"><div style="display:flex;align-items:center;gap:8px"><b style="font-weight:500">Automated peer review</b><span class="chip"><i style="background:${dc}"></i>${esc(String(r.decision).replace("_"," "))}</span></div>
-    <div class="scores"><span class="score">Soundness ${pips(r.soundness)}</span><span class="score">Presentation ${pips(r.presentation)}</span><span class="score">Contribution ${pips(r.contribution)}</span></div>
-    <div class="t2">${esc(r.summary)}</div>${r.required_changes?.length?`<ul class="t2" style="margin:8px 0 0;padding-left:18px">${r.required_changes.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>`:""}</div>`}}catch{}
-  return `<div class="paper"><div style="display:flex;gap:8px;align-items:center;margin-bottom:18px;flex-wrap:wrap"><div class="seg"><button data-ms="paper" class="${S.msView==="paper"?"on":""}">Paper</button><button data-ms="src" class="${S.msView==="src"?"on":""}">LaTeX</button><button data-ms="bib" class="${S.msView==="bib"?"on":""}">BibTeX</button></div>
-    <span style="margin-left:auto;display:flex;gap:6px"><button class="btn" data-dl="tex">Download .tex</button>${m.bibtex?'<button class="btn" data-dl="bib">.bib</button>':""}</span></div>
-    ${rv}${S.msView==="paper"?latexToHtml(m.latex_section||""):`<pre class="src">${esc(S.msView==="bib"?m.bibtex||"":m.latex_section||"")}</pre>`}</div>`}
-function download(kind){const m=S.manuscript;if(!m)return;const text=kind==="bib"?m.bibtex:m.latex_section,a=document.createElement("a");
-  a.href=URL.createObjectURL(new Blob([text||""],{type:"text/plain"}));a.download=`${cid(S.route.id).toLowerCase()}.${kind}`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
-
-/* evidence viewer */
-let blobUrl=null;
-async function openEvidence(id,type){
-  overlay(`<div class="modal wide"><div class="m-h">${evIcon(type)}<span>${esc(EV_LABEL[type]||type)}</span><button class="icon-btn" style="margin-left:auto" data-x aria-label="Close">✕</button></div><div class="m-b" id="evb"><div class="spin"></div></div></div>`);
-  try{const r=await api("evidence/"+id);
-    if(type==="plot_png"){if(blobUrl)URL.revokeObjectURL(blobUrl);blobUrl=URL.createObjectURL(await r.blob());$("#evb").innerHTML=`<img alt="Experiment plot" style="max-width:100%;border-radius:6px;background:#fff" src="${blobUrl}">`}
-    else{let t=await r.text();try{t=JSON.stringify(JSON.parse(t),null,2)}catch{}$("#evb").innerHTML=`<pre class="src">${esc(t)}</pre>`}}
-  catch(e){$("#evb").innerHTML=`<p class="err">${esc(e.message)}</p>`}}
-
-/* overlays */
-function overlay(html){$("#overlay").innerHTML=`<div class="scrim">${html}</div>`;const sc=$("#overlay .scrim");
-  sc.addEventListener("mousedown",e=>{if(e.target===sc)closeOverlay()});sc.querySelectorAll("[data-x]").forEach(b=>b.onclick=closeOverlay)}
-function closeOverlay(){$("#overlay").innerHTML=""}
-function openSettings(){overlay(`<div class="modal" style="width:min(440px,100%)"><div class="m-h">API token</div><form class="m-b" id="tokForm"><p class="t2" style="margin:2px 0 10px">The bearer token printed by the deploy script. Stored in this browser only.</p>
-  <input class="field" id="tokIn2" type="password" autocomplete="off" placeholder="API token" value="${esc(S.token)}"><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
-  ${S.token?'<button type="button" class="btn ghost" id="signout">Forget token</button>':""}<button type="button" class="btn" data-x>Cancel</button><button class="btn primary">Save</button></div></form></div>`);
-  $("#tokIn2").focus();$("#tokForm").onsubmit=e=>{e.preventDefault();setToken($("#tokIn2").value.trim())};
-  if($("#signout"))$("#signout").onclick=()=>setToken("")}
-$("#settingsBtn").onclick=openSettings;
-
-/* new campaign */
-function openNew(){
-  if(!S.token)return openSettings();
-  overlay(`<form class="modal" id="newForm"><div class="m-h"><span class="chip">${ring("var(--text-3)",0,true)}Ideation</span><span>New campaign</span><button type="button" class="icon-btn" style="margin-left:auto" data-x aria-label="Close">✕</button></div>
-  <div class="m-b"><textarea class="bare big" name="question" rows="2" required minlength="3" maxlength="4000" placeholder="Research question or idea"></textarea>
-  <textarea class="bare t2" name="context" rows="3" maxlength="2000" placeholder="Add context, constraints or what a good answer looks like… (optional)"></textarea>
-  <div class="pchips">
-    <label class="pchip" title="Token budget">Budget <select name="token_budget"><option value="200000">200k</option><option value="500000">500k</option><option value="1000000">1M</option><option value="2000000" selected>2M</option><option value="5000000">5M</option><option value="10000000">10M</option></select></label>
-    <label class="pchip" title="Parallel experiment workers">Workers <input name="workers" type="number" min="1" max="16" value="4"></label>
-    <label class="pchip" title="Investigation rounds">Rounds <input name="max_rounds" type="number" min="1" max="10" value="2"></label>
-    <label class="pchip" title="Research domain">Domain <input class="dom" name="domain" value="general" maxlength="64"></label>
-  </div>
-  <div class="files"><label class="btn ghost" style="cursor:pointer">${evIcon("file")}<span id="trainLbl">Attach training data</span><input name="train" type="file" multiple hidden accept=".csv,.tsv,.json,.parquet,.txt"></label>
-  <label class="btn ghost" style="cursor:pointer" title="Held out from all experiments; only used for the final sealed evaluation">${evIcon("file")}<span id="sealLbl">Attach sealed holdout</span><input name="sealed" type="file" multiple hidden accept=".csv,.tsv,.json,.parquet,.txt"></label></div>
-  </div><div class="m-f"><span class="t3" id="nmsg" style="font-size:12px">Runs on Claude Haiku 5.5</span><span style="margin-left:auto" class="kbd">⌘ ↵</span><button class="btn primary" id="createBtn">Create campaign</button></div></form>`);
-  const f=$("#newForm");f.question.focus();
-  const lbl=(inp,el,def)=>inp.onchange=()=>{el.textContent=inp.files.length?[...inp.files].map(x=>x.name).join(", "):def};
-  lbl(f.train,$("#trainLbl"),"Attach training data");lbl(f.sealed,$("#sealLbl"),"Attach sealed holdout");
-  f.addEventListener("keydown",e=>{if((e.metaKey||e.ctrlKey)&&e.key==="Enter")f.requestSubmit()});
-  f.onsubmit=async e=>{e.preventDefault();const b=$("#createBtn");b.disabled=true;$("#nmsg").innerHTML='<span class="spin" style="display:inline-block;vertical-align:middle"></span> Uploading…';
-    try{const datasets=[];for(const [k,sealed] of [["train",false],["sealed",true]])for(const file of f[k].files)
-        datasets.push({file_name:file.name.replace(/[^A-Za-z0-9._-]/g,"_").replace(/^[^A-Za-z0-9]+/,"d").slice(0,128),content_base64:await b64(file),sealed});
-      const q=f.question.value.trim(),ctx=f.context.value.trim();
-      const body={question:ctx?`${q}\n\nContext: ${ctx}`:q,domain:f.domain.value.trim()||"general",token_budget:+f.token_budget.value,workers:+f.workers.value,max_rounds:+f.max_rounds.value,datasets};
-      const r=await (await api("campaigns",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)})).json();
-      closeOverlay();toast("Campaign started");await loadList();go(r.id)}
-    catch(err){b.disabled=false;$("#nmsg").innerHTML=`<span class="err">${esc(err.message)}</span>`}}}
-const b64=f=>f.arrayBuffer().then(b=>{let s="";const u=new Uint8Array(b);for(let i=0;i<u.length;i+=0x8000)s+=String.fromCharCode(...u.subarray(i,i+0x8000));return btoa(s)});
-$("#newBtn").onclick=openNew;
-
-/* live updates: summary every 5s while running, full reload when it changes */
-function schedulePoll(){clearTimeout(S.timer);const c=S.summary?.campaign;if(!c||!ACTIVE(c))return;
-  const sig=c.updated_at+JSON.stringify(S.summary.node_counts)+S.summary.guard_events.length;
-  S.timer=setTimeout(async()=>{if(S.route.id!==c.id||document.hidden)return schedulePoll();
-    try{const s=await getJSON("campaigns/"+c.id);if(s.campaign.updated_at+JSON.stringify(s.node_counts)+s.guard_events.length!==sig){
-      S.summary=s;S.graph=await getJSON(`campaigns/${c.id}/graph`);if(!ACTIVE(s.campaign)){S.manuscript=undefined;loadList()}
-      const y=$("#pane")?.scrollTop;renderCampaign();if($("#pane"))$("#pane").scrollTop=y}}catch{}schedulePoll()},5000)}
-
-/* command menu */
-let CMD={items:[],sel:0};
-function openCmd(){overlay(`<div class="modal cmd" role="dialog" aria-label="Command menu"><input class="cmd-in" id="cmdIn" placeholder="Search campaigns or type a command…" autocomplete="off" aria-label="Command"><div class="cmd-l" id="cmdL" role="listbox"></div></div>`);
-  const i=$("#cmdIn");CMD.sel=0;i.oninput=()=>{CMD.sel=0;renderCmd()};
-  i.onkeydown=e=>{if(e.key==="ArrowDown"||(e.ctrlKey&&e.key==="n")){e.preventDefault();CMD.sel=Math.min(CMD.items.length-1,CMD.sel+1);renderCmd()}
-    else if(e.key==="ArrowUp"||(e.ctrlKey&&e.key==="p")){e.preventDefault();CMD.sel=Math.max(0,CMD.sel-1);renderCmd()}
-    else if(e.key==="Enter"){e.preventDefault();runCmd(CMD.sel)}};
-  renderCmd();i.focus()}
-function renderCmd(){const q=($("#cmdIn")?.value||"").trim().toLowerCase(),id=S.route.id;
-  const acts=[{s:"Actions",l:"New campaign",k:"C",run:openNew},{s:"Actions",l:"All campaigns",run:()=>go(null)},
-    {s:"Actions",l:document.documentElement.dataset.theme==="dark"?"Switch to light theme":"Switch to dark theme",run:()=>$("#themeBtn").click()},{s:"Actions",l:S.token?"Change API token":"Add API token",run:openSettings}];
-  const tabs=id?TABS.map(([k,l],i)=>({s:"This campaign",l:"Open "+l,k:String(i+1),run:()=>go(id,k)})):[];
-  const camps=S.campaigns.map(c=>({s:"Campaigns",l:c.research_question,icon:campaignIcon(c.status),run:()=>go(c.id)}));
-  CMD.items=[...acts,...tabs,...camps].filter(x=>!q||x.l.toLowerCase().includes(q)).slice(0,50);CMD.sel=Math.min(CMD.sel,Math.max(0,CMD.items.length-1));
-  let h="",last="";CMD.items.forEach((x,i)=>{if(x.s!==last){h+=`<div class="cmd-s">${esc(x.s)}</div>`;last=x.s}
-    h+=`<button class="cmd-i${i===CMD.sel?" on":""}" data-ci="${i}" role="option" aria-selected="${i===CMD.sel}" type="button">${x.icon||'<span style="width:14px"></span>'}<span class="trunc">${esc(x.l)}</span>${x.k?`<span class="kbd">${esc(x.k)}</span>`:""}</button>`});
-  const L=$("#cmdL");if(!L)return;L.innerHTML=h||'<p class="t3" style="padding:10px">No matches.</p>';
-  L.querySelectorAll("[data-ci]").forEach(b=>{b.onclick=()=>runCmd(+b.dataset.ci);b.onmousemove=()=>{if(CMD.sel!==+b.dataset.ci){CMD.sel=+b.dataset.ci;renderCmd()}}});
-  L.querySelector(".cmd-i.on")?.scrollIntoView({block:"nearest"})}
-function runCmd(i){const x=CMD.items[i];if(!x)return;closeOverlay();x.run()}
-$("#cmdBtn").onclick=openCmd;
-
-/* list navigation: J/K moves, Enter opens */
-let KB=-1;
-function kbRows(){return [...document.querySelectorAll("#body .row[data-node], #body a.row")]}
-function kbMove(d){const rows=kbRows();if(!rows.length)return;rows.forEach(r=>r.classList.remove("kb"));
-  KB=Math.max(0,Math.min(rows.length-1,(rows.indexOf(document.querySelector("#body .row.kb"))>=0?KB:KB<0?-1:KB)+d));
-  const r=rows[KB];r.classList.add("kb");r.scrollIntoView({block:"nearest"})}
-
-/* keyboard */
-addEventListener("keydown",e=>{
-  if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==="k"){e.preventDefault();if($("#cmdIn"))closeOverlay();else openCmd();return}
-  if(e.key==="Escape"){closeOverlay();$("#side").classList.remove("open");return}
-  if($("#overlay .scrim"))return;
-  if(/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)||e.metaKey||e.ctrlKey||e.altKey)return;
-  if(e.key==="c"||e.key==="C"){e.preventDefault();openNew()}
-  if(e.key==="j"||e.key==="ArrowDown"){if(kbRows().length){e.preventDefault();kbMove(1)}}
-  if(e.key==="k"||e.key==="ArrowUp"){if(kbRows().length){e.preventDefault();kbMove(-1)}}
-  if(e.key==="Enter"){const r=document.querySelector("#body .row.kb");if(r){e.preventDefault();r.click()}}
-  if(S.route.id&&/^[1-6]$/.test(e.key))go(S.route.id,TABS[+e.key-1][0])});
-$("#menuBtn").onclick=()=>$("#side").classList.toggle("open");
-$("#nav").addEventListener("click",()=>$("#side").classList.remove("open"));
-
-/* router */
-function route(){const prev=S.route;S.route=parseRoute();renderNav();
-  if(prev.id!==S.route.id){S.selected=null}
-  if(!S.route.id||!S.token){clearTimeout(S.timer);renderHome();return}
-  if(prev.id===S.route.id&&S.summary?.campaign?.id===S.route.id){renderCampaign();return}
-  openCampaign(S.route.id)}
-(async()=>{await health();if(S.token)await loadList();route();setInterval(loadList,20000)})();
-</script>
+<script src="/app/kit.js"></script>
+<script src="/app/app.js"></script>
 </body>
 </html>

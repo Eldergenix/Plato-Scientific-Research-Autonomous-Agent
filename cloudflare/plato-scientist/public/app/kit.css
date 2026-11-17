@@ -1,0 +1,81 @@
+/* Plato UI kit styles. Colours come from the app's tokens (--text, --border, ...). */
+.sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* Smart skeleton: frames stay, text and boxes become bars sharing one shimmer phase. */
+.sk{position:relative;opacity:0;animation:sk-show .22s ease-out 150ms forwards}
+.sk-src,.sk-src *{color:transparent!important;text-shadow:none!important;caret-color:transparent;pointer-events:none;user-select:none}
+.sk-src :is(svg,img,canvas,.chip,.btn,.bar,.field,.seg,.pips,.kbd,.live,[data-sk-box]){visibility:hidden}
+.sk-layer{position:absolute;inset:0;pointer-events:none}
+.sk-layer i{position:absolute;display:block;background:linear-gradient(90deg,var(--sk-a) 0 38%,var(--sk-b) 50%,var(--sk-a) 62% 100%) 0 0/900px 100% repeat-x;
+  animation:sk-shine 1.6s linear infinite;animation-delay:var(--d,0ms)}
+@keyframes sk-shine{from{background-position-x:calc(-900px - var(--x,0px))}to{background-position-x:calc(0px - var(--x,0px))}}
+@keyframes sk-show{to{opacity:1}}
+
+/* Text morph */
+.mx{display:inline-block;position:relative;max-width:100%}
+.mx [data-k]{display:inline-block;white-space:pre}
+.mw{white-space:nowrap}
+[data-mk]{font-variant-numeric:tabular-nums}
+
+/* Live indicator: a dot with an expanding ring, not a spinner. */
+.live{position:relative;display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--c,var(--yellow));flex:none}
+.live::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:1.5px solid var(--c,var(--yellow));opacity:0;animation:live 1.8s cubic-bezier(.22,1,.36,1) infinite}
+@keyframes live{0%{transform:scale(.45);opacity:.85}100%{transform:scale(1.5);opacity:0}}
+.caret{display:inline-block;width:2px;height:1.05em;margin-left:2px;border-radius:1px;background:var(--accent);vertical-align:-.15em;animation:caret 1.05s steps(1) infinite}
+@keyframes caret{50%{opacity:0}}
+
+/* Radial charts */
+.radial{display:flex;align-items:center;gap:22px;min-width:0}
+.rf{position:relative;flex:none}
+.rf svg{display:block;overflow:visible}
+.radial .trk{fill:none;stroke:var(--active)}
+.radial .arc{fill:none;stroke-linecap:round;transition:opacity .2s}
+.radial .hit{fill:none;stroke:transparent;pointer-events:stroke;cursor:default}
+.radial.iso [data-series]:not(.on) .arc,.radial.iso .rl-i:not(.on){opacity:.28}
+.rc{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;pointer-events:none;padding:0 22px}
+.rc b{font-size:20px;font-weight:500;letter-spacing:-.01em;line-height:1.2}
+.rc>span{font-size:11.5px;color:var(--text-2);line-height:1.3;max-width:100%}
+.gauge{flex-direction:column;align-items:stretch;gap:12px}
+.gauge .rf{margin:0 auto}
+.gauge .rc{justify-content:flex-end;padding-bottom:0}
+.rl{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.gauge .rl{flex-direction:row;flex-wrap:wrap;justify-content:center;gap:2px 10px}
+.rl-i{display:flex;align-items:center;gap:8px;height:28px;padding:0 8px;border:0;border-radius:6px;background:none;color:var(--text-2);cursor:default;text-align:left;min-width:0;transition:opacity .2s,background .15s}
+.rl-i:hover,.rl-i.on{background:var(--hover);color:var(--text)}
+.rl-i i{width:8px;height:8px;border-radius:50%;flex:none}
+.rl-i b{margin-left:auto;font-weight:500;color:var(--text);padding-left:10px}
+.gauge .rl-i b{margin-left:6px;padding-left:0}
+
+/* Slope chart */
+.sl{position:relative;outline:0;border-radius:8px}
+.sl:focus-visible{box-shadow:0 0 0 2px var(--accent-soft),0 0 0 1px var(--accent)}
+.sl svg{display:block;overflow:visible;cursor:crosshair}
+.sl-band{fill:color-mix(in srgb,var(--green) 9%,transparent)}
+.sl-bl{font-size:11px;fill:color-mix(in srgb,var(--green) 70%,var(--text-2))}
+.sl-grid{stroke:var(--border);stroke-width:1}.sl-grid.z{stroke:var(--border-2);stroke-dasharray:3 3}
+.sl-axis{stroke:var(--border-2)}
+.sl-tick,.sl-lab{font-size:11px;fill:var(--text-2);font-variant-numeric:tabular-nums}
+.sl-head{font-size:11.5px;font-weight:500;fill:var(--text-2)}
+.sl-ln{fill:none;stroke:var(--c);stroke-width:1.6;stroke-dasharray:1;stroke-dashoffset:0;stroke-linecap:round;transition:stroke-width .15s,opacity .2s}
+.sl-dot{fill:var(--c);transition:opacity .2s}
+.sl-dot[data-clip]{fill:var(--bg);stroke:var(--c);stroke-width:1.5}
+.sl-lab{transition:opacity .2s}
+.sl svg.iso .sl-it:not(.on){opacity:.18}
+.sl .sl-it.on .sl-ln{stroke-width:2.6}
+.sl .sl-it.on .sl-lab{fill:var(--text);font-weight:500}
+.sl-insp{min-height:44px;padding:10px 2px 0;font-size:12.5px;color:var(--text-2);line-height:1.5}
+
+/* Layout morph: panes are captured only while a transition runs. */
+.vt #pane{view-transition-name:pane}
+.vt #props{view-transition-name:props}
+::view-transition-group(pane),::view-transition-group(props){animation-duration:var(--spring-ms,.5s);animation-timing-function:var(--spring,ease)}
+::view-transition-old(pane),::view-transition-new(pane),::view-transition-old(props),::view-transition-new(props){height:100%;width:100%;object-fit:none;object-position:left top}
+::view-transition-old(pane),::view-transition-old(props){animation-duration:.16s}
+::view-transition-new(pane),::view-transition-new(props){animation-duration:.28s;animation-delay:.06s;animation-fill-mode:both}
+::view-transition-image-pair(pane),::view-transition-image-pair(props){overflow:hidden}
+
+@media (prefers-reduced-motion:reduce){
+  .sk{animation:sk-show 0s 150ms forwards}
+  .sk-layer i,.live::after,.caret{animation:none}
+  .radial .arc,.sl-ln,.sl-dot,.sl-lab,.rl-i{transition:none}
+}
