@@ -176,6 +176,28 @@ def metrics_agree(a: float, b: float, rel_tol: float) -> bool:
     return scale > 0 and abs(a - b) / scale <= rel_tol
 
 
+def replicates(
+    key: str, original: dict[str, Any], replica: dict[str, Any] | None, rel_tol: float
+) -> bool:
+    """Does the seed-2 run reproduce the seed-1 primary metric?
+
+    With standard errors reported (``<key>_se``) the two runs are independent estimates,
+    so they agree when their difference is within 3 combined SEs; this is the only sound
+    test for near-zero quantities such as bias, whose sign flips between seeds. Without
+    SEs, fall back to a relative tolerance."""
+    if replica is None:
+        return False
+    a, b = original.get(key), replica.get(key)
+    if not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in (a, b)):
+        return False
+    se_a, se_b = original.get(f"{key}_se"), replica.get(f"{key}_se")
+    if all(isinstance(v, (int, float)) and v >= 0 for v in (se_a, se_b)):
+        return abs(a - b) <= 3 * (se_a**2 + se_b**2) ** 0.5 or metrics_agree(
+            float(a), float(b), rel_tol
+        )
+    return metrics_agree(float(a), float(b), rel_tol)
+
+
 async def _guarded(
     ctx: ScientistContext, campaign_id: uuid.UUID, framed_sources: list
 ) -> None:
@@ -475,7 +497,8 @@ _CODE_RULES = (
     "with it; it may read the provided dataset files from the working directory; it may save "
     "figures as PNG in the working directory; it must finish in under two minutes; its last "
     f"line of output must be '{METRICS_MARKER} ' followed by a JSON object of numeric metrics "
-    "that includes the primary metric under exactly its given key. For a 'difference' test, "
+    "that includes the primary metric under exactly its given key, and its standard error under "
+    "'<key>_se' when the metric is a Monte Carlo or sample estimate. For a 'difference' test, "
     "report p_value from a test of the null of no effect when one is performed. For an "
     "'equivalence' test, p_value is required and must come from a TOST equivalence test "
     "(H0: |estimate - reference| >= tolerance), so a small p_value means agreement is shown. "
@@ -758,15 +781,8 @@ async def verifier(ctx: ScientistContext, campaign_id: uuid.UUID) -> dict[str, i
         # Replication with a different seed (ablation of randomness).
         rep = await _run_code(ctx, campaign_id, code, seed=2, datasets=datasets)
         rep_metrics = parse_metrics(rep.stdout) if rep.ok else None
-        replicated = (
-            rep_metrics is not None
-            and isinstance(original, (int, float))
-            and primary in rep_metrics
-            and metrics_agree(
-                float(original),
-                float(rep_metrics[primary]),
-                ctx.config.replication_rel_tolerance,
-            )
+        replicated = bool(primary) and replicates(
+            primary, fact["metrics"], rep_metrics, ctx.config.replication_rel_tolerance
         )
         await store.add_evidence(
             fact["id"], "stdout_log", f"REPLICATION seed=2\n{rep.stdout}\n{rep.stderr}"

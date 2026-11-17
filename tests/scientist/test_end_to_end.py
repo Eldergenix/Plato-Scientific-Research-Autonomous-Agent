@@ -536,3 +536,21 @@ def test_metric_key_and_required_metrics():
     assert missing_required_metrics({"cov": 0.9}, spec) == ["p_value"]
     assert missing_required_metrics({"cov": 0.9, "p_value": 0.01}, spec) == []
     assert missing_required_metrics({"x": 1}, {"primary_metric": "cov"}) == ["cov"]
+
+
+def test_replication_uses_standard_errors_for_near_zero_metrics():
+    from plato.scientist.nodes import replicates
+
+    # Bias near zero flips sign between seeds: relative tolerance says "no", SEs say "yes".
+    a = {"bias": 0.0003, "bias_se": 0.0004}
+    b = {"bias": -0.0002, "bias_se": 0.0004}
+    assert replicates("bias", a, b, 0.1)
+    assert not replicates("bias", {"bias": 0.0003}, {"bias": -0.0002}, 0.1)
+    # A real discrepancy beyond 3 combined SEs does not replicate.
+    assert not replicates(
+        "bias", {"bias": 0.01, "bias_se": 0.001}, {"bias": 0.0, "bias_se": 0.001}, 0.1
+    )
+    # Without SEs the relative tolerance still applies; missing values never replicate.
+    assert replicates("cov", {"cov": 0.95}, {"cov": 0.948}, 0.1)
+    assert not replicates("cov", {"cov": 0.95}, None, 0.1)
+    assert not replicates("cov", {"cov": 0.95}, {"other": 1}, 0.1)
