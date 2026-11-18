@@ -30,10 +30,10 @@ const PHASE_LABEL={ideation:"Ideation",investigating:"Investigating",ablating:"A
 const PHASE_HINT={ideation:"Scouting the literature and sharpening the question.",investigating:"Running experiments in parallel sandboxes.",ablating:"Judging claims: replication, statistics, figures and a skeptic review.",
   sealed_eval:"Scoring verified findings on the held-out data.",writing:"Writing the paper. It appears in the Paper panel as it is written."};
 function campaignIcon(s){return {ideation:ring("var(--text-3)",0,true),investigating:ring("var(--yellow)",.25),ablating:ring("var(--yellow)",.5),
-  sealed_eval:ring("var(--yellow)",.75),writing:ring("var(--blue)",.75),completed:check("var(--accent)"),halted:cross("var(--gray)")}[s]||ring("var(--text-3)")}
+  sealed_eval:ring("var(--yellow)",.75),writing:ring("var(--blue)",.75),completed:check("var(--indigo)"),halted:cross("var(--gray)")}[s]||ring("var(--text-3)")}
 function nodeIcon(s){return {open:ring("var(--text-2)"),claimed:ring("var(--yellow)",.25),running:ring("var(--yellow)",.5),verified:check("var(--green)"),
   refuted:cross("var(--red)"),exhausted:minus("var(--text-3)")}[s]||ring("var(--text-3)")}
-const TYPE={goal:{c:"var(--accent)",l:"Goal"},intent:{c:"var(--orange)",l:"Experiment"},fact:{c:"var(--blue)",l:"Claim"},finding:{c:"var(--purple)",l:"Finding"},hint:{c:"var(--gray)",l:"Lead"}};
+const TYPE={goal:{c:"var(--indigo)",l:"Goal"},intent:{c:"var(--orange)",l:"Experiment"},fact:{c:"var(--blue)",l:"Claim"},finding:{c:"var(--purple)",l:"Finding"},hint:{c:"var(--gray)",l:"Lead"}};
 const typeChip=t=>`<span class="chip"><i style="background:${TYPE[t]?.c||"var(--gray)"}"></i>${esc(TYPE[t]?.l||t)}</span>`;
 const GATE_LABEL={replicated:"Replicated",stats_ok:"Statistics",figures_ok:"Figures",skeptic:"Skeptic review"};
 const GATE_COLOR={replicated:"--green",stats_ok:"--blue",figures_ok:"--purple",skeptic:"--orange"};   // CSS tokens, resolved for the canvas charts

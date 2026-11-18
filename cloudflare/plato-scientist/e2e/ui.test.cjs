@@ -55,16 +55,23 @@ const fail = (m) => { throw new Error(m); };
   const h1 = await page.textContent(".ah h1");
   if (!h1.includes("Ada")) fail("greeting: " + h1);
   if (await page.isVisible("#askFab")) fail("ask button shown on the agent page");
-  // dark primary buttons are white with #0a0a0a text
+  // Linear custom theme (dark): #101010 frame, #171717 raised panel, blue pill primary
   await page.goto(BASE + "/#/campaigns");
   await page.waitForSelector("#newTop");
-  const bg = await css("#newTop", "backgroundColor"), fg = await css("#newTop", "color");
-  if (bg !== "rgb(255, 255, 255)" || fg !== "rgb(10, 10, 10)") fail(`primary button ${bg} / ${fg}`);
+  const bg = await css("#newTop", "backgroundColor"), fg = await css("#newTop", "color"), br = await css("#newTop", "borderTopLeftRadius");
+  if (bg !== "rgb(0, 147, 255)" || fg !== "rgb(253, 254, 255)" || parseFloat(br) < 14) fail(`primary button ${bg} / ${fg} / ${br}`);
+  const shell = await page.evaluate(() => {
+    const g = (sel, p) => getComputedStyle(document.querySelector(sel))[p];
+    return { body: g("body", "backgroundColor"), main: g(".main", "backgroundColor"), frame: g(".main", "borderTopColor"), radius: g(".main", "borderTopLeftRadius"),
+      nav: g(".item.on", "backgroundColor"), text: g("body", "color") };
+  });
+  const want = { body: "rgb(16, 16, 16)", main: "rgb(23, 23, 23)", frame: "rgb(40, 40, 42)", radius: "12px", nav: "rgba(255, 255, 255, 0.11)", text: "rgb(228, 228, 230)" };
+  for (const k of Object.keys(want)) if (shell[k] !== want[k]) fail(`theme ${k}: ${shell[k]} (want ${want[k]})`);
   if (!(await page.isVisible("#askFab"))) fail("ask button missing on campaigns");
   const glint = await page.$eval("#askFab .glint", (el) => ({ style: el.getAttribute("style"), inner: el.firstElementChild.getAttribute("aria-hidden"), vars: el.firstElementChild.firstElementChild.getAttribute("style") }));
   if (!glint.style.includes("top: -7px") || glint.inner !== "true" || !glint.vars.includes("--x-backgroundColor: lch(100% 0 0 / 0.15)")) fail("glint markup " + JSON.stringify(glint));
   await shot("campaigns-dark");
-  step("agent home default; white primary; ask button with glint");
+  step("agent home default; Linear theme shell and blue primary; ask button with glint");
 
   // 4. prompt the agent from home → project; the orchestrator starts a research thread
   await page.goto(BASE + "/#/agent");
@@ -91,7 +98,12 @@ const fail = (m) => { throw new Error(m); };
   const threadHref = await page.getAttribute("#threads a.trow", "href");
   await page.click("#threads a.trow");
   await page.waitForFunction((h) => location.hash === h, threadHref);
-  await page.waitForSelector("#tabs .tab");
+  await page.waitForSelector("#tabs a.tab.on");
+  const pill = await page.evaluate(() => { const on = getComputedStyle(document.querySelector("#tabs a.tab.on")), off = getComputedStyle(document.querySelector("#tabs a.tab:not(.on)"));
+    return { on: on.backgroundColor, onC: on.color, off: off.backgroundColor, offC: off.color, h: on.height, r: on.borderTopLeftRadius }; });
+  if (pill.on !== "rgb(49, 49, 50)" || pill.onC !== "rgb(255, 255, 255)" || pill.off !== "rgb(34, 34, 34)" || pill.offC !== "rgb(152, 153, 154)" || pill.h !== "28px" || parseFloat(pill.r) < 14)
+    fail("pill tabs " + JSON.stringify(pill));
+  await shot("campaign-dark");
   await page.waitForSelector("#askFab:not([hidden])");
   await page.keyboard.press("Control+j");
   await page.waitForSelector("#ask:not([hidden]) #askC textarea");
