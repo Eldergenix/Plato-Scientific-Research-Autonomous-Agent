@@ -16,8 +16,6 @@ from plato.scientist.nodes import ScientistContext, _bib_key
 from plato.scientist.schemas import (
     CitationSupport,
     EvidenceMatrix,
-    PanelCritique,
-    ReviewIssue,
     ExperimentCode,
     FigureCritique,
     GoalSpec,
@@ -27,8 +25,10 @@ from plato.scientist.schemas import (
     LiteratureHints,
     Manuscript,
     Observation,
+    PanelCritique,
     PeerReview,
     ResearchPlan,
+    ReviewIssue,
     SkepticVerdict,
 )
 from plato.state.models import Source
