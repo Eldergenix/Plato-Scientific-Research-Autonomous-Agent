@@ -91,7 +91,13 @@ def _wrapper_commands() -> list[str]:
     for env, (_, _, exes) in CONDA_TOOL_ENVS.items():
         for exposed, exe in exes.items():
             prefix = f"/opt/conda/envs/{env}/bin"
-            script = f'#!/bin/sh\nPATH={prefix}:$PATH exec {prefix}/{exe} "$@"\n'
+            # The env's own lib first: a manylinux wheel in the env (pip-installed torch
+            # extensions) can otherwise bind the base image's older libstdc++ first.
+            lib = f"/opt/conda/envs/{env}/lib"
+            script = (
+                f'#!/bin/sh\nPATH={prefix}:$PATH LD_LIBRARY_PATH={lib}${{LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}} '
+                f'exec {prefix}/{exe} "$@"\n'
+            )
             target = f"/opt/conda/bin/{exposed}"
             cmds.append(f"printf %s {shlex.quote(script)} > {target} && chmod +x {target}")
     return cmds

@@ -51,7 +51,7 @@ DATA = r"""
 set -euo pipefail
 mkdir -p ~/vdata && cd ~/vdata
 if [ ! -s lambda.fa ]; then
-  curl -fsSL --retry 3 "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nuccore&id=NC_001416.1&rettype=fasta&retmode=text" -o lambda.fa
+  curl -fsSL --retry 5 --retry-all-errors "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nuccore&id=NC_001416.1&rettype=fasta&retmode=text" -o lambda.fa
 fi
 grep -c '>' lambda.fa >/dev/null
 python - <<'EOF'
@@ -215,7 +215,7 @@ check("gwas_plink2", ["plink2"], 600)(
 set -euo pipefail
 mkdir -p ~/v/gwas && cd ~/v/gwas
 # PLINK 1.07 tutorial data (HapMap, 89 samples, 83,534 SNPs); the tutorial's top hit is rs2222162.
-curl -fsSL --retry 3 https://zzz.bwh.harvard.edu/plink/hapmap1.zip -o hapmap1.zip
+curl -fsSL --retry 5 --retry-all-errors https://zzz.bwh.harvard.edu/plink/hapmap1.zip -o hapmap1.zip
 unzip -o -q hapmap1.zip
 plink2 --pedmap hapmap1 --make-pgen --out hm > /dev/null
 plink2 --pfile hm --maf 0.01 --glm allow-no-covars --out assoc > glm.log 2>&1 || { tail glm.log; exit 1; }
@@ -234,7 +234,7 @@ check("cnvkit", ["cnvkit.py"], 600)(
     r"""
 set -euo pipefail
 mkdir -p ~/v/cnv && cd ~/v/cnv
-curl -fsSL --retry 3 https://raw.githubusercontent.com/etal/cnvkit/v0.9.12/test/formats/amplicon.cnr -o amplicon.cnr
+curl -fsSL --retry 5 --retry-all-errors https://raw.githubusercontent.com/etal/cnvkit/v0.9.12/test/formats/amplicon.cnr -o amplicon.cnr
 cnvkit.py segment amplicon.cnr -m haar -o amplicon.cns > seg.log 2>&1 || { tail seg.log; exit 1; }
 cnvkit.py call amplicon.cns -o amplicon.call.cns > call.log 2>&1
 cnvkit.py scatter amplicon.cnr -s amplicon.cns -o scatter.png > sc.log 2>&1
@@ -349,15 +349,13 @@ set -euo pipefail
 mkdir -p ~/v/pcn && cd ~/v/pcn
 Rscript - <<'EOF'
 suppressMessages(library(PureCN))
-normal <- system.file("extdata", "example_normal_tiny.txt.gz", package = "PureCN")
-tumor <- system.file("extdata", "example_tumor_tiny.txt.gz", package = "PureCN")
-vcf <- system.file("extdata", "example.vcf.gz", package = "PureCN")
-intervals <- system.file("extdata", "example_intervals_tiny.txt", package = "PureCN")
+# The vignette's segmentation-input example, from files bundled with the package.
+ex <- function(f) { p <- system.file("extdata", f, package = "PureCN"); stopifnot(nzchar(p)); p }
 set.seed(123)
-ret <- runAbsoluteCN(normal.coverage.file = normal, tumor.coverage.file = tumor, vcf.file = vcf,
-                     genome = "hg19", sampleid = "Sample1", interval.file = intervals,
-                     max.candidate.solutions = 1, max.ploidy = 4, test.purity = seq(0.3, 0.7, by = 0.05),
-                     post.optimize = FALSE, plot.cnv = FALSE, verbose = FALSE)
+ret <- runAbsoluteCN(seg.file = ex("example_seg.txt"), interval.file = ex("example_intervals.txt"),
+                     vcf.file = ex("example.vcf.gz"), genome = "hg19", sampleid = "Sample1",
+                     max.candidate.solutions = 1, test.purity = seq(0.3, 0.7, by = 0.05),
+                     plot.cnv = FALSE, verbose = FALSE)
 p <- ret$results[[1]]$purity; pl <- ret$results[[1]]$ploidy
 cat(sprintf('CHECK_RESULT {"pass": %s, "purity": %.3f, "ploidy": %.3f}\n', tolower(is.finite(p) && p > 0 && p < 1), p, pl))
 EOF
@@ -462,8 +460,8 @@ micromamba create -y -q -n hail -c conda-forge python=3.11 openjdk=11 pip > /dev
 mkdir -p ~/v/hail && cd ~/v/hail
 PATH=/opt/conda/envs/hail/bin:$PATH python - <<'EOF'
 import json, hail as hl
-hl.init(quiet=True, master="local[2]", spark_conf={"spark.driver.memory": "3g"})
-mt = hl.balding_nichols_model(n_populations=3, n_samples=150, n_variants=2000, seed=1)
+hl.init(quiet=True, master="local[2]", global_seed=1, spark_conf={"spark.driver.memory": "3g"})
+mt = hl.balding_nichols_model(n_populations=3, n_samples=150, n_variants=2000)
 eig, scores, _ = hl.hwe_normalized_pca(mt.GT, k=2)
 print("CHECK_RESULT", json.dumps({"pass": len(eig) == 2 and scores.count() == 150, "eigenvalues": [round(e, 3) for e in eig], "hail": hl.__version__}))
 EOF
@@ -474,9 +472,9 @@ check("spliceai_runtime", ["SpliceAI (runtime install)"], 2400, heavy=True)(
     r"""
 set -euo pipefail
 micromamba create -y -q -n spliceai -c conda-forge python=3.10 pip > /dev/null
-/opt/conda/envs/spliceai/bin/python -m pip install -q spliceai tensorflow-cpu==2.15.1 'numpy<2'
+/opt/conda/envs/spliceai/bin/python -m pip install -q spliceai tensorflow-cpu==2.15.1 'numpy<2' 'setuptools<81'
 mkdir -p ~/v/sai && cd ~/v/sai
-[ -s chr21.fa ] || { curl -fsSL https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr21.fa.gz | gunzip > chr21.fa; }
+[ -s chr21.fa ] || { curl -fsSL --retry 5 --retry-all-errors https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr21.fa.gz | gunzip > chr21.fa; }
 # Break the canonical GT donor of the first multi-exon plus-strand chr21 gene in SpliceAI's own
 # GRCh38 annotation, plus a far-intronic control; the donor break must score high.
 PATH=/opt/conda/envs/spliceai/bin:$PATH python - <<'EOF'
