@@ -20,11 +20,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING
+import re
+from typing import TYPE_CHECKING, Literal
 
 from . import ADAPTER_REGISTRY, SourceAdapter, get_adapter
 from .citation_graph import ExpansionDirection, expand_citations
-from .dedup import dedup_sources
+from .dedup import _dedup_key, dedup_sources, title_key
 from .reranker import rerank
 from ..state.models import Source
 
@@ -33,7 +34,19 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["retrieve", "retrieve_with_expansion"]
+__all__ = ["is_supplementary", "retrieve", "retrieve_with_expansion"]
+
+# Repository records for a paper's supplementary files ("Additional file 5: of ...",
+# "Supplemental material for: ...", "Figure S2 from ..."): DOIs, but not literature.
+_SUPPLEMENTARY = re.compile(
+    r"^\s*(additional\s+file\b|source\s+data\s+(for|of)\b|supplementa(l|ry)\s+(material|information|file|data|table|figure|text|method)s?\b|(figure|fig\.?|table|data|movie|video)\s+s?\d+\b"
+    r"[^a-z]*(from|of)\b)",
+    re.IGNORECASE,
+)
+
+
+def is_supplementary(source: Source) -> bool:
+    return bool(_SUPPLEMENTARY.match(source.title))
 
 
 def _resolve_adapter_names(
@@ -68,6 +81,9 @@ async def retrieve(
     *,
     profile: "DomainProfile | None" = None,
     adapter_names: list[str] | None = None,
+    rerank_fallback: Literal["passthrough", "bm25", "fused"] = "passthrough",
+    adapter_timeout: float | None = None,
+    drop_supplementary: bool = False,
 ) -> list[Source]:
     """Search every selected adapter for ``query`` and return up to ``limit`` deduped Sources.
 
@@ -83,6 +99,14 @@ async def retrieve(
         when ``adapter_names`` is not provided.
     adapter_names:
         Optional explicit list of adapter names. Overrides ``profile``.
+    rerank_fallback:
+        Ranking used when no Cohere/CrossEncoder backend is installed: ``"bm25"``
+        ranks lexically, ``"passthrough"`` keeps first-seen order.
+    drop_supplementary:
+        Drop records of supplementary files (see :func:`is_supplementary`).
+    adapter_timeout:
+        Seconds each adapter may take (retries included) before it is skipped, so one
+        slow or rate-limited source cannot hold up the others. ``None``: no limit.
     """
     if limit <= 0:
         return []
@@ -96,27 +120,48 @@ async def retrieve(
     # Over-fetch so dedup has more candidates to fold together.
     per_adapter_limit = max(limit * 2, limit)
 
+    def _search(adapter: SourceAdapter):
+        call = adapter.search(query, per_adapter_limit)
+        return (
+            call if adapter_timeout is None else asyncio.wait_for(call, adapter_timeout)
+        )
+
     results = await asyncio.gather(
-        *(adapter.search(query, per_adapter_limit) for adapter in adapters),
+        *(_search(adapter) for adapter in adapters),
         return_exceptions=True,
     )
 
     flat: list[Source] = []
+    # Reciprocal-rank credit per work from every adapter that returned it.
+    prior: dict[str, float] = {}
     for adapter, result in zip(adapters, results, strict=True):
         if isinstance(result, BaseException):
             logger.warning(
-                "Adapter %r raised during retrieval: %s",
+                "Adapter %r raised during retrieval: %s: %s",
                 adapter.name,
+                type(result).__name__,
                 result,
             )
             continue
-        flat.extend(result)
+        kept = [s for s in result if not (drop_supplementary and is_supplementary(s))]
+        for rank, src in enumerate(kept, start=1):
+            for key in {_dedup_key(src), title_key(src)} - {None}:
+                prior[key] = prior.get(key, 0.0) + 1 / (60 + rank)
+        flat.extend(kept)
 
     deduped = dedup_sources(flat)
+    if rerank_fallback == "fused":
+        source_prior = [
+            max(prior.get(k, 0.0) for k in {_dedup_key(s), title_key(s)} - {None})
+            for s in deduped
+        ]
+        return rerank(
+            query, deduped, top_k=limit, fallback="fused", source_prior=source_prior
+        )
     # R4 — relevance-rerank deduplicated candidates. Backends are
     # opt-in (``plato[rerank]``); without them the call falls through
     # to a first-seen-wins slice with a one-time warning.
-    return rerank(query, deduped, top_k=limit)
+    return rerank(query, deduped, top_k=limit, fallback=rerank_fallback)
 
 
 async def retrieve_with_expansion(

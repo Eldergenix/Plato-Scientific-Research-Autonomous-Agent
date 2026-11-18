@@ -14,6 +14,13 @@
 #                        pepper and encrypts saved API keys; it is set once and never replaced.
 #   COMPOSIO_API_KEY     enables connected services (Google Drive, Dropbox, OneDrive, Gmail, Outlook);
 #                        the webhook subscription for triggers is created by scripts/composio-setup.mjs
+#   E2B_API_KEY, ADS_API_KEY, NCBI_API_KEY, SEMANTIC_SCHOLAR_KEY, MODAL_TOKEN_ID, MODAL_TOKEN_SECRET
+#                        optional keys: E2B experiment sandboxes (built from the plato-lab template,
+#                        python scripts/e2b_lab_template.py; without it experiments run in the
+#                        container's own sandbox), ADS search, higher PubMed/Semantic Scholar
+#                        rate limits, Modal GPU executor. Each is read from the environment or
+#                        from ~/.config/plato/<name in lower case, "_" as "-"> (chmod 600) and
+#                        uploaded only when present.
 #   SKIP_MIGRATIONS=1    skip applying the schema from this machine (the container also migrates on start)
 #
 # Needs: node/npm, docker (wrangler builds and pushes the container image), python3 with asyncpg for migrations.
@@ -93,6 +100,22 @@ PLATO_API_TOKEN="$PLATO_API_TOKEN" PLATO_INTERNAL_TOKEN="$PLATO_INTERNAL_TOKEN" 
     ...(e.COMPOSIO_API_KEY ? { COMPOSIO_API_KEY: e.COMPOSIO_API_KEY } : {}),
   }));' > "$SECRETS"
 npx wrangler secret bulk "$SECRETS"
+
+# Optional keys: environment first, then ~/.config/plato/<name>. Never generated.
+OPTIONAL="$(mktemp)"; chmod 600 "$OPTIONAL"; trap 'rm -f "$SECRETS" "$OPTIONAL"' EXIT
+OPT_NAMES=()
+for name in E2B_API_KEY ADS_API_KEY NCBI_API_KEY SEMANTIC_SCHOLAR_KEY MODAL_TOKEN_ID MODAL_TOKEN_SECRET; do
+  file="$HOME/.config/plato/$(printf '%s' "$name" | tr 'A-Z_' 'a-z-')"
+  if [[ -z "${!name:-}" && -r "$file" ]]; then export "$name=$(tr -d '[:space:]' < "$file")"; fi
+  if [[ -n "${!name:-}" ]]; then OPT_NAMES+=("$name"); fi
+done
+if [[ "${#OPT_NAMES[@]}" -gt 0 ]]; then
+  OPT_NAMES="${OPT_NAMES[*]}" node -e '
+    const e = process.env;
+    process.stdout.write(JSON.stringify(Object.fromEntries(e.OPT_NAMES.split(" ").map(n => [n, e[n]]))));' > "$OPTIONAL"
+  npx wrangler secret bulk "$OPTIONAL"
+  echo "Uploaded optional secrets: ${OPT_NAMES[*]}"
+fi
 
 if [[ -n "${COMPOSIO_API_KEY:-}" ]]; then
   echo "Ensuring the Composio webhook subscription for triggers..."

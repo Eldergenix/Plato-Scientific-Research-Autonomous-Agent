@@ -60,6 +60,9 @@ ArtifactType = Literal[
     "latex_section",
     "bibtex",
     "peer_review",
+    "citation_report",
+    "evidence_matrix",
+    "review_panel",
 ]
 CampaignStatus = Literal[
     "ideation",

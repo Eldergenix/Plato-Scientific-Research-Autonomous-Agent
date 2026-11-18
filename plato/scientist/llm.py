@@ -18,11 +18,13 @@ from __future__ import annotations
 
 import base64
 import functools
+import json
 import logging
 import os
 import uuid
 from collections.abc import Awaitable, Callable
-from typing import Literal, Protocol, TypeVar
+from dataclasses import dataclass
+from typing import Any, Literal, Protocol, TypeVar
 
 import pydantic
 from pydantic import BaseModel
@@ -41,8 +43,20 @@ def resolve_model(model: str | None = None) -> str:
     return model or os.environ.get("PLATO_SCIENTIST_MODEL", DEFAULT_MODEL)
 
 
+# Calls that may use the writing reserve: the paper and its review must still happen when
+# the research budget is spent. Review calls after the first draft are best effort.
 WRITING_PURPOSES = frozenset(
-    {"manuscript", "peer_review", "manuscript_revision", "publication_format"}
+    {
+        "manuscript",
+        "peer_review",
+        "manuscript_revision",
+        "evidence_matrix",
+        "review_methodology",
+        "review_statistics",
+        "review_novelty",
+        "review_writing",
+        "publication_format",
+    }
 )
 Effort = Literal["low", "medium", "high", "xhigh", "max"]
 T = TypeVar("T", bound=BaseModel)
@@ -56,6 +70,38 @@ class ModelRefusal(RuntimeError):
 
 class ModelOutputError(RuntimeError):
     """The model's output was truncated or failed schema validation."""
+
+
+@dataclass
+class ToolTurn:
+    """One assistant turn of a tool-use conversation.
+
+    ``content`` is the response's content blocks exactly as returned; they must be sent
+    back unchanged in the next request (thinking blocks carry signatures)."""
+
+    content: list[Any]
+    stop_reason: str | None
+    tool_uses: list[tuple[str, str, dict[str, Any]]]
+    text: str
+
+
+def _block_get(block: Any, key: str) -> Any:
+    return block.get(key) if isinstance(block, dict) else getattr(block, key, None)
+
+
+def _estimate_messages_chars(messages: list[dict[str, Any]]) -> int:
+    total = 0
+    for m in messages:
+        content = m.get("content")
+        if isinstance(content, str):
+            total += len(content)
+            continue
+        for block in content or []:
+            for key in ("text", "thinking", "content", "input"):
+                value = _block_get(block, key)
+                if value is not None:
+                    total += len(value if isinstance(value, str) else json.dumps(value, default=str))
+    return total
 
 
 class ScientistModel(Protocol):
@@ -72,6 +118,18 @@ class ScientistModel(Protocol):
         images: list[bytes] | None = None,
         on_text: TextSink | None = None,
     ) -> T: ...
+
+    async def converse(
+        self,
+        *,
+        campaign_id: uuid.UUID,
+        purpose: str,
+        system: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        max_tokens: int = 16000,
+        effort: Effort = "medium",
+    ) -> ToolTurn: ...
 
 
 @functools.cache
@@ -230,5 +288,78 @@ class AnthropicScientistModel:
                 raise ModelOutputError(
                     f"{purpose}: output failed schema validation: {exc.errors()[:3]}"
                 ) from exc
+        finally:
+            await self._store.settle_tokens(campaign_id, reserved, actual)
+
+    async def converse(
+        self,
+        *,
+        campaign_id: uuid.UUID,
+        purpose: str,
+        system: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        max_tokens: int = 16000,
+        effort: Effort = "medium",
+    ) -> ToolTurn:
+        """One request of a client-side tool loop (the caller runs the tools).
+
+        The conversation only grows, so top-level ``cache_control`` caches the whole prefix
+        and each turn pays full price only for what is new. Cache reads are charged to
+        the campaign budget at a tenth of their count, matching their price; everything
+        else counts in full."""
+        reserved = (
+            _estimate_input_tokens(system, json.dumps(tools))
+            + _estimate_messages_chars(messages) // 3
+            + max_tokens
+        )
+        await self._store.reserve_tokens(
+            campaign_id, reserved, keep_free=self._writing_reserve
+        )
+        actual = 0
+        try:
+            async with self._sem:
+                response = await self._client.messages.create(
+                    model=self._model,
+                    max_tokens=max_tokens,
+                    system=system,
+                    messages=messages,
+                    tools=tools,
+                    tool_choice={"type": "auto"},
+                    cache_control={"type": "ephemeral"},
+                    output_config={"effort": effort},
+                    metadata={"user_id": f"campaign-{campaign_id}"},
+                )
+            usage = response.usage
+            actual = (
+                usage.input_tokens
+                + usage.output_tokens
+                + (usage.cache_creation_input_tokens or 0)
+                + -(-(usage.cache_read_input_tokens or 0) // 10)
+            )
+            logger.info(
+                "llm %s: model=%s in=%s out=%s cache_read=%s stop=%s request_id=%s",
+                purpose,
+                self._model,
+                usage.input_tokens,
+                usage.output_tokens,
+                usage.cache_read_input_tokens,
+                response.stop_reason,
+                getattr(response, "_request_id", None),
+            )
+            if response.stop_reason == "refusal":
+                details = getattr(response, "stop_details", None)
+                raise ModelRefusal(
+                    f"{purpose}: model refused ({getattr(details, 'category', None)})"
+                )
+            tool_uses = [
+                (b.id, b.name, dict(b.input or {}))
+                for b in response.content
+                if getattr(b, "type", None) == "tool_use"
+            ]
+            text = "".join(
+                b.text for b in response.content if getattr(b, "type", None) == "text"
+            )
+            return ToolTurn(list(response.content), response.stop_reason, tool_uses, text)
         finally:
             await self._store.settle_tokens(campaign_id, reserved, actual)

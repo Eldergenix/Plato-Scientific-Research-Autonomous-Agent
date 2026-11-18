@@ -62,6 +62,9 @@ _CROSSREF_WORKS = "https://api.crossref.org/works/{doi}"
 _CROSSREF_SEARCH = "https://api.crossref.org/works?query.title={title}&rows=1"
 _ARXIV_ABS = "https://export.arxiv.org/abs/{arxiv_id}"
 _ARXIV_API = "https://export.arxiv.org/api/query?id_list={arxiv_id}"
+# Registration-agency-neutral DOI existence check (DataCite, mEDRA, ... DOIs are not
+# in Crossref). responseCode 1 means the handle exists.
+_DOI_HANDLE = "https://doi.org/api/handles/{doi}"
 _LOGGER = logging.getLogger(__name__)
 HallucinationAssessor = Callable[[Source, list[dict[str, Any]]], Any]
 
@@ -129,7 +132,10 @@ class CitationValidator:
                     except ValueError as exc:
                         transport_errors.append(f"crossref-json: {exc}")
                 elif resp.status_code == 404:
-                    doi_resolved = False
+                    # Not a Crossref DOI: ask the DOI resolver itself.
+                    doi_resolved = await self._doi_handle_exists(
+                        normalized_doi, transport_errors
+                    )
                 else:
                     transport_errors.append(f"crossref: HTTP {resp.status_code}")
 
@@ -257,6 +263,19 @@ class CitationValidator:
 
     async def __aexit__(self, exc_type, exc, tb) -> None:
         await self.aclose()
+
+    async def _doi_handle_exists(self, doi: str, errors: list[str]) -> bool:
+        try:
+            resp = await self._http.get(_DOI_HANDLE.format(doi=quote(doi, safe="/")))
+        except httpx.HTTPError as exc:
+            errors.append(f"doi.org: {type(exc).__name__}: {exc}")
+            return False
+        if resp.status_code != 200:
+            return False
+        try:
+            return resp.json().get("responseCode") == 1
+        except ValueError:
+            return False
 
     async def _search_crossref_by_title(self, title: str) -> dict[str, Any] | None:
         try:

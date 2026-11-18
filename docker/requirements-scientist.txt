@@ -1,7 +1,10 @@
 # Runtime dependencies of plato.scientist (the Cloudflare Container image).
 # Pinned to the versions the test suite was run against.
 anthropic==0.125.0
+e2b==2.64.0
 asyncpg==0.32.0
+# Citation checks parse arXiv Atom feeds with defusedxml (plato.tools.citation_validator).
+defusedxml==0.7.1
 dumb-init==1.2.5.post1
 fastapi==0.163.1
 httpx==0.28.1
@@ -15,6 +18,8 @@ langchain-protocol==0.0.20
 pydantic==2.14.3
 sqlalchemy==2.1.9
 uvicorn==0.38.0
+# Remote experiment runs on Modal Labs (CPU or GPU), used when MODAL_TOKEN_* are set.
+modal==1.6.4
 # Scientific stack available to sandboxed experiments.
 matplotlib==3.11.2
 numpy==2.5.5
@@ -25,3 +30,7 @@ scipy==1.18.1
 et-xmlfile==2.0.0
 openpyxl==3.1.5
 pillow==13.0.0
+# Domain profiles: statsmodels for every campaign, biopython (biology), astropy (astro).
+statsmodels==0.15.0
+biopython==1.88
+astropy==8.0.3

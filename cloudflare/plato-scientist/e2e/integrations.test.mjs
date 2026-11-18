@@ -229,9 +229,9 @@ step("Drive and Gmail triggers: signed deliveries import new files once; unsigne
 
 /* ---------- a new research thread from the library ---------- */
 const before = (await stubLog()).log.length;
-assert.equal((await a.req("POST", `campaigns?library=${vcfFile.id},${saved.id}`, { question: "Which variants matter?", start: false })).status, 422, "archives are refused");
-assert.equal((await b.req("POST", `campaigns?library=${vcfFile.id}`, { question: "Which variants matter?", start: false })).status, 404, "another person's file");
-const made = ok(await a.req("POST", `campaigns?library=${vcfFile.id},${csvId},${bib.id}`, { question: "Which variants matter?", start: false }), 202);
+assert.equal((await a.req("POST", `campaigns?library=${vcfFile.id},${saved.id}`, { question: "Which variants matter?", start: false, token_budget: 500000 })).status, 422, "archives are refused");
+assert.equal((await b.req("POST", `campaigns?library=${vcfFile.id}`, { question: "Which variants matter?", start: false, token_budget: 500000 })).status, 404, "another person's file");
+const made = ok(await a.req("POST", `campaigns?library=${vcfFile.id},${csvId},${bib.id}`, { question: "Which variants matter?", start: false, token_budget: 500000 }), 202);
 assert.deepEqual(made.materials, { references: 1, documents: 0, errors: [] });
 const ds = execFileSync("psql", [process.env.PLATO_DATABASE_URL, "-Atc", `SELECT string_agg(b.file_name, ',' ORDER BY b.file_name) FROM plato.campaign_scope s JOIN plato.asset_blobs b ON b.asset_id = s.asset_id WHERE s.campaign_id = '${made.id}' AND s.access_mode = 'train_val'`], { encoding: "utf8" }).trim();
 assert.equal(ds, "calls.vcf,expression.csv");

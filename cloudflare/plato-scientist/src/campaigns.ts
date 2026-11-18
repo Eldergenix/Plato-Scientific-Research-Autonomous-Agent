@@ -195,7 +195,8 @@ export async function manuscriptParts(sql: Sql, id: string) {
       FROM plato.evidence_artifacts e
       JOIN plato.exploration_nodes n ON n.id = e.node_id
      WHERE n.campaign_id = ${id} AND n.node_type = 'goal' AND n.dedup_key = 'root-goal'
-       AND e.artifact_type IN ('latex_section', 'bibtex', 'peer_review') AND e.content IS NOT NULL
+       AND e.artifact_type IN ('latex_section', 'bibtex', 'peer_review', 'citation_report', 'evidence_matrix', 'review_panel')
+       AND e.content IS NOT NULL
      ORDER BY e.artifact_type, e.created_at DESC`;
 }
 
@@ -268,6 +269,9 @@ const EVIDENCE_TYPES: Record<string, string> = {
   sealed_eval_json: "application/json",
   vlm_critique: "text/plain; charset=utf-8",
   peer_review: "text/plain; charset=utf-8",
+  citation_report: "application/json",
+  evidence_matrix: "application/json",
+  review_panel: "application/json",
 };
 
 export async function evidence(c: Ctx, id: string): Promise<Response> {
