@@ -41,7 +41,7 @@ def main() -> int:
     ap.add_argument("--dockerfile", action="store_true", help="print the Dockerfile and exit")
     args = ap.parse_args()
 
-    from e2b import Template, default_build_logger
+    from e2b import Template
 
     template = lab.lab_template()
     if args.dockerfile:
@@ -51,14 +51,38 @@ def main() -> int:
         print("E2B_API_KEY is not set", file=sys.stderr)
         return 2
     started = time.monotonic()
-    info = Template.build(
+    info = Template.build_in_background(
         template,
         args.name,
         cpu_count=args.cpu,
         memory_mb=args.memory_mb,
         skip_cache=args.skip_cache,
-        on_build_logs=default_build_logger(),
     )
+    print(f"build {info.build_id} of template {info.template_id} started", flush=True)
+    # Poll ourselves rather than through Template.build, so a slow status request (seen as an
+    # httpx ReadTimeout) is retried instead of abandoning a build that is still running.
+    offset, failures = 0, 0
+    while True:
+        try:
+            st = Template.get_build_status(info, logs_offset=offset)
+            failures = 0
+        except Exception as exc:  # transport errors while polling are not build errors
+            failures += 1
+            if failures > 20:
+                print(f"giving up polling after {failures} errors: {exc}", file=sys.stderr)
+                return 1
+            time.sleep(min(60, 5 * failures))
+            continue
+        for entry in st.log_entries:
+            print(entry, flush=True)
+        offset += len(st.log_entries)
+        status = getattr(st.status, "value", st.status)
+        if status == "ready":
+            break
+        if status == "error":
+            print(f"build failed: {st.reason}", file=sys.stderr)
+            return 1
+        time.sleep(5)
     print(f"built {args.name} in {time.monotonic() - started:.0f}s: {info}")
     return 0
 

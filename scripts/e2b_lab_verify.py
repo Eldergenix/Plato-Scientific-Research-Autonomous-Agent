@@ -2,9 +2,9 @@
 """Verify every tool in the ``plato-lab`` E2B template with real runs on small data.
 
 Each check runs a small but complete analysis whose correct answer is known in advance
-(planted variants, a planted deletion, a planted repeat expansion, a tutorial GWAS hit,
+(planted variants, a planted deletion, a planted repeat expansion, a planted GWAS hit,
 a known peptide mass, bundled package example data) and passes only if the tool
-recovers it. Public data comes from NCBI, the PLINK tutorial, the CNVkit repository and
+recovers it. Public data comes from NCBI, UCSC, the CNVkit repository and
 package-bundled examples; public APIs (Ensembl VEP, Reactome, cBioPortal) are called
 live.
 
@@ -214,18 +214,41 @@ check("gwas_plink2", ["plink2"], 600)(
     r"""
 set -euo pipefail
 mkdir -p ~/v/gwas && cd ~/v/gwas
-# PLINK 1.07 tutorial data (HapMap, 89 samples, 83,534 SNPs); the tutorial's top hit is rs2222162.
-curl -fsSL --retry 5 --retry-all-errors https://zzz.bwh.harvard.edu/plink/hapmap1.zip -o hapmap1.zip
-unzip -o -q hapmap1.zip
-plink2 --pedmap hapmap1 --make-pgen --out hm > /dev/null
-plink2 --pfile hm --maf 0.01 --glm allow-no-covars --out assoc > glm.log 2>&1 || { tail glm.log; exit 1; }
+# Simulated case-control cohort (the PLINK tutorial host serves a certificate for another
+# name, so the check carries its own data): 1,000 samples, 2,000 SNPs, one planted causal
+# SNP (rs_causal, odds ratio about 3 per allele); everything else is null.
+python - <<'EOF'
+import random
+random.seed(42)
+n, m, causal = 1000, 2000, 1234
+freqs = [random.uniform(0.1, 0.5) for _ in range(m)]
+geno = [[sum(random.random() < f for _ in range(2)) for f in freqs] for _ in range(n)]
+with open("cohort.vcf", "w") as v, open("pheno.tsv", "w") as ph:
+    v.write("##fileformat=VCFv4.2\n##contig=<ID=1,length=10000000>\n")
+    v.write('##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n')
+    v.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t" + "\t".join(f"s{i}" for i in range(n)) + "\n")
+    gt = {0: "0/0", 1: "0/1", 2: "1/1"}
+    for j in range(m):
+        sid = "rs_causal" if j == causal else f"rs{j}"
+        v.write(f"1\t{1000 + j * 1000}\t{sid}\tA\tG\t.\tPASS\t.\tGT\t" + "\t".join(gt[g[j]] for g in geno) + "\n")
+    ph.write("#IID\tCASE\n")
+    import math
+    for i, g in enumerate(geno):
+        p = 1 / (1 + math.exp(-(-1.2 + math.log(3) * g[causal])))
+        ph.write(f"s{i}\t{2 if random.random() < p else 1}\n")
+EOF
+plink2 --vcf cohort.vcf --make-pgen --out cohort > /dev/null
+plink2 --pfile cohort --pheno pheno.tsv --maf 0.01 --glm allow-no-covars --out assoc > glm.log 2>&1 || { tail glm.log; exit 1; }
 python - <<'EOF'
 import glob, json
 f = glob.glob("assoc*.glm.logistic*")[0]
 rows = [l.rstrip("\n").split("\t") for l in open(f)]
 h = rows[0]; ip, iid = h.index("P"), h.index("ID")
-best = min((r for r in rows[1:] if r[ip] != "NA"), key=lambda r: float(r[ip]))
-print("CHECK_RESULT", json.dumps({"pass": best[iid] == "rs2222162", "top_snp": best[iid], "p": float(best[ip]), "tested": len(rows) - 1}))
+ranked = sorted((r for r in rows[1:] if r[ip] != "NA"), key=lambda r: float(r[ip]))
+best, second = ranked[0], ranked[1]
+ok = best[iid] == "rs_causal" and float(best[ip]) < 5e-8 and float(second[ip]) > 1e-5
+print("CHECK_RESULT", json.dumps({"pass": ok, "planted": "rs_causal", "top_snp": best[iid], "p": float(best[ip]),
+                                  "next_best_p": float(second[ip]), "tested": len(rows) - 1}))
 EOF
 """
 )
