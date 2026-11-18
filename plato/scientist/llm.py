@@ -41,7 +41,9 @@ def resolve_model(model: str | None = None) -> str:
     return model or os.environ.get("PLATO_SCIENTIST_MODEL", DEFAULT_MODEL)
 
 
-WRITING_PURPOSES = frozenset({"manuscript", "peer_review", "manuscript_revision"})
+WRITING_PURPOSES = frozenset(
+    {"manuscript", "peer_review", "manuscript_revision", "publication_format"}
+)
 Effort = Literal["low", "medium", "high", "xhigh", "max"]
 T = TypeVar("T", bound=BaseModel)
 # Receives the accumulated output text while a call streams (used to show the paper live).

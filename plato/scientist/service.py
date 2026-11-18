@@ -19,10 +19,16 @@ import os
 import re
 import uuid
 from contextlib import asynccontextmanager
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response
 from pydantic import BaseModel, Field
+
+from plato.publish import journals as journal_profiles
+from plato.publish.collect import NotPublishable
+from plato.publish.materials import Material
+from plato.publish.materials import ingest as ingest_materials
+from plato.publish.package import build_package
 
 from .db.migrate import advisory_key
 from .db.store import TERMINAL_STATUSES, AllowanceExceeded, DualGraphStore
@@ -38,12 +44,24 @@ def _lock_key(campaign_id: uuid.UUID) -> int:
     return advisory_key(b"plato.campaign:" + campaign_id.bytes)
 
 
+# 10 MiB of data as base64 (4/3 expansion). Datasets are stored in Postgres
+# (asset_blobs allows 50 MB); the Worker caps a campaign's materials at 25 MiB in total.
+MAX_FILE_BASE64 = 13_981_016
+
+
 class DatasetIn(BaseModel):
     file_name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
-    # 1 MiB of data as base64 (4/3 expansion): datasets are stored inline in Postgres.
-    content_base64: str = Field(max_length=1_398_104)
+    content_base64: str = Field(max_length=MAX_FILE_BASE64)
     description: str = ""
     sealed: bool = False
+
+
+class MaterialIn(BaseModel):
+    """A reference file (.bib, .ris, .nbib, CSL-JSON) or a document (PDF, Word, ...)."""
+
+    file_name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._ ()-]{0,127}$")
+    kind: Literal["reference", "document"]
+    content_base64: str = Field(max_length=MAX_FILE_BASE64)
 
 
 class CampaignIn(BaseModel):
@@ -56,6 +74,7 @@ class CampaignIn(BaseModel):
     workers: int = Field(default=4, ge=1, le=16)
     max_rounds: int = Field(default=2, ge=1, le=10)
     datasets: list[DatasetIn] = Field(default_factory=list, max_length=8)
+    materials: list[MaterialIn] = Field(default_factory=list, max_length=16)
     start: bool = True
 
 
@@ -192,6 +211,15 @@ def create_app(dsn: str | None = None, internal_token: str | None = None) -> Fas
                     status_code=422,
                     detail=f"dataset {ds.file_name} is not valid base64",
                 )
+        materials = []
+        for mt in body.materials:
+            try:
+                content = base64.b64decode(mt.content_base64, validate=True)
+            except (binascii.Error, ValueError):
+                raise HTTPException(
+                    status_code=422, detail=f"file {mt.file_name} is not valid base64"
+                )
+            materials.append(Material(mt.file_name, content, mt.kind))
         title = re.sub(r"\s+", " ", body.program_slug.replace("-", " ")).title()
         program_id = await store.ensure_program(body.program_slug, title, body.domain)
         config = {"workers": body.workers, "max_rounds": body.max_rounds}
@@ -221,12 +249,20 @@ def create_app(dsn: str | None = None, internal_token: str | None = None) -> Fas
             await store.set_scope(
                 campaign_id, asset.id, "sealed_eval_only" if ds.sealed else "train_val"
             )
+        ingested = (
+            await ingest_materials(store, program_id, campaign_id, materials)
+            if materials
+            else None
+        )
         started = (
             app.state.runner.start(campaign_id, x_plato_anthropic_key)
             if body.start
             else False
         )
-        return {"id": str(campaign_id), "started": started}
+        out: dict[str, Any] = {"id": str(campaign_id), "started": started}
+        if ingested is not None:
+            out["materials"] = ingested
+        return out
 
     @app.post(
         "/internal/campaigns/{campaign_id}/run",
@@ -257,6 +293,76 @@ def create_app(dsn: str | None = None, internal_token: str | None = None) -> Fas
             "id": str(campaign_id),
             "started": app.state.runner.start(campaign_id, x_plato_anthropic_key),
         }
+
+    # Package builds are CPU-bound (pdfLaTeX, pandoc): two at a time per container.
+    export_slots = asyncio.Semaphore(2)
+
+    @app.get("/internal/publish/journals", dependencies=[Depends(require_token)])
+    async def journals() -> list[dict[str, Any]]:
+        return journal_profiles.catalogue()
+
+    @app.post(
+        "/internal/campaigns/{campaign_id}/exports/{journal}",
+        dependencies=[Depends(require_token)],
+        response_class=Response,
+    )
+    async def export(
+        campaign_id: uuid.UUID,
+        journal: str,
+        account_id: Annotated[uuid.UUID | None, Query(alias="account")] = None,
+        cap: Annotated[int | None, Query(ge=0)] = None,
+        x_plato_anthropic_key: Annotated[str | None, Header()] = None,
+    ) -> Response:
+        """Build the journal package. The zip is the response body (the Worker streams it
+        to R2); its metadata and checks are recorded in ``plato.publication_exports``."""
+        if journal not in journal_profiles.JOURNALS:
+            raise HTTPException(status_code=404, detail="unknown journal")
+        store: DualGraphStore = app.state.store
+        campaign = await store.get_campaign(campaign_id)
+        if campaign is None:
+            raise HTTPException(status_code=404, detail="campaign not found")
+        if campaign.get("own_key") and not x_plato_anthropic_key:
+            raise HTTPException(
+                status_code=422, detail="this campaign is paid with its owner's key"
+            )
+        model = AnthropicScientistModel(store, api_key=x_plato_anthropic_key)
+        # The allowance applies to an account's default-key campaigns only.
+        cap = None if campaign.get("own_key") else cap
+        async with export_slots:
+            try:
+                pkg = await build_package(store, model, campaign_id, journal, cap=cap)
+            except NotPublishable as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from None
+            except ValueError as exc:
+                raise HTTPException(status_code=413, detail=str(exc)) from None
+        export_id = uuid.uuid4()
+        r2_key = f"exports/{campaign_id}/{export_id}.zip"
+        await store.pool.execute(
+            """
+            INSERT INTO plato.publication_exports
+                (id, campaign_id, account_id, journal, status, name, r2_key, bytes, sha256, summary)
+            VALUES ($1, $2, $3, $4, 'building', $5, $6, $7, $8, $9)
+            """,
+            export_id,
+            campaign_id,
+            account_id or campaign.get("account_id"),
+            journal,
+            pkg.name,
+            r2_key,
+            len(pkg.zip_bytes),
+            pkg.sha256,
+            pkg.summary(),
+        )
+        return Response(
+            content=pkg.zip_bytes,
+            media_type="application/zip",
+            headers={
+                "x-plato-export-id": str(export_id),
+                "x-plato-export-key": r2_key,
+                "x-plato-export-sha256": pkg.sha256,
+                "x-plato-export-name": pkg.name,
+            },
+        )
 
     @app.get("/internal/campaigns/{campaign_id}", dependencies=[Depends(require_token)])
     async def summary(campaign_id: uuid.UUID) -> dict[str, Any]:

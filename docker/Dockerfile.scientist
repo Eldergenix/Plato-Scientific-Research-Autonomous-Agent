@@ -16,6 +16,26 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # reaps orphaned sandbox processes, so no apt repositories are needed.
 RUN command -v unshare && command -v setpriv
 
+# Publication packages: pdfLaTeX (TeX Live) for the journal PDFs, poppler-utils
+# (pdftotext) to read researchers' PDFs, and pandoc for Word, JATS and reference parsing.
+# pandoc is pinned to the release the export was built and tested with (Debian bookworm
+# ships 2.17, whose citeproc output differs), verified by its SHA-256.
+ARG PANDOC_VERSION=3.1.3
+ARG PANDOC_SHA256=caa7e0410f9e2cb1da2eb8db13cc97b5548fe455985e2c944e3929d22f99bcdc
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      ca-certificates curl poppler-utils lmodern \
+      texlive-latex-base texlive-latex-recommended texlive-latex-extra \
+      texlive-fonts-recommended texlive-science \
+ && curl -fsSL -o /tmp/pandoc.deb \
+      "https://github.com/jgm/pandoc/releases/download/${PANDOC_VERSION}/pandoc-${PANDOC_VERSION}-1-amd64.deb" \
+ && echo "${PANDOC_SHA256}  /tmp/pandoc.deb" | sha256sum -c - \
+ && dpkg -i /tmp/pandoc.deb \
+ && rm -f /tmp/pandoc.deb \
+ && apt-get purge -y curl && apt-get autoremove -y \
+ && rm -rf /var/lib/apt/lists/* /usr/share/doc/* /usr/share/man/* \
+ && pdflatex --version >/dev/null && pandoc --version | head -1 && command -v pdftotext
+
 WORKDIR /app
 COPY docker/requirements-scientist.txt /app/requirements.txt
 RUN pip install -r /app/requirements.txt

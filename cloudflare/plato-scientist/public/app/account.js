@@ -60,7 +60,7 @@ function renderAuth(mode){document.body.classList.add("signed-out");const login=
     catch(e2){b.disabled=false;Kit.morph(b.querySelector("[data-lbl]"),login?"Continue":"Create account");err.textContent=e2.message;err.hidden=false}}}
 
 /* ---------- settings ---------- */
-const SET_ACCOUNT=[["preferences","Preferences"],["profile","Profile"],["security","Security & access"],["api-key","API key"]];
+const SET_ACCOUNT=[["preferences","Preferences"],["profile","Profile"],["security","Security & access"],["api-key","API key"],["integrations","Connected services"],["files","Files"]];
 const SET_ADMIN=[["members","Members"]];
 const isAdmin=()=>!!S.me?.account?.is_admin;
 const setRow=(label,desc,control,attrs="")=>`<div class="set-row"${attrs}><div class="set-l"><div class="set-t">${label}</div>${desc?`<div class="set-d">${desc}</div>`:""}</div><div class="set-c">${control}</div></div>`;
@@ -74,14 +74,14 @@ function renderSettingsNav(){const cur=S.route.section,item=([k,l])=>`<a class="
   $("#nav").innerHTML=`<a class="item back" href="#/">${ico('<path d="M9.5 3.5 5 8l4.5 4.5"/>')}Back to app</a><div class="nav-l">Account</div>${SET_ACCOUNT.map(item).join("")}`+
     (isAdmin()?`<div class="nav-l">Administration</div>${SET_ADMIN.map(item).join("")}`:"")}
 
-const SECTIONS={preferences:prefsView,profile:profileView,security:securityView,"api-key":keyView,members:membersView};
+const SECTIONS={preferences:prefsView,profile:profileView,security:securityView,"api-key":keyView,integrations:integrationsView,files:filesView,members:membersView};
 function renderSettings(){let sec=S.route.section;if(!SECTIONS[sec]||(sec==="members"&&!isAdmin())){location.replace("#/settings/preferences");return}
   const label=[...SET_ACCOUNT,...SET_ADMIN].find(x=>x[0]===sec)[1];
   $("#crumb").innerHTML=`<span>Settings</span><span class="t3">›</span><b>${esc(label)}</b>`;$("#tabs").innerHTML="";$("#tabs").className="";$("#topActions").innerHTML="";
   const body=$("#body");body.className="body full";S.lastView="";
   const sc=$("#pane")?.dataset.sec===sec?$("#pane").scrollTop:0;
   body.innerHTML=`<div class="pane" id="pane" data-sec="${sec}"><div class="set${sec==="members"?" wide":""}"><h1>${esc(label)}</h1>${SECTIONS[sec]()}</div></div>`;$("#pane").scrollTop=sc;
-  bindSettings();if(sec==="security")loadSessions();if(sec==="members")loadMembers()}
+  bindSettings();bindServiceSettings();if(sec==="security")loadSessions();if(sec==="members")loadMembers()}
 
 function prefsView(){return setGroup("General",[
     setRow("Default home view","What you see when you open Plato.",prefSelect("home",[["agent","Agent"],["campaigns","Campaigns"]]))])+
