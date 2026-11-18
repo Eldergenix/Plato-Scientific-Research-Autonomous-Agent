@@ -71,7 +71,7 @@ ROOT_GOAL_KEY = "root-goal"
 # (query, limit, *, sources) -> papers. ``sources`` names the retrieval adapters to use.
 Retriever = Callable[..., Awaitable[list[Any]]]
 # Seconds one literature source may take (its retries included) before it is skipped.
-ADAPTER_TIMEOUT_SECONDS = 45.0
+ADAPTER_TIMEOUT_SECONDS = 60.0
 
 
 async def default_retriever(

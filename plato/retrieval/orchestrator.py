@@ -119,8 +119,9 @@ async def retrieve(
     for adapter, result in zip(adapters, results, strict=True):
         if isinstance(result, BaseException):
             logger.warning(
-                "Adapter %r raised during retrieval: %s",
+                "Adapter %r raised during retrieval: %s: %s",
                 adapter.name,
+                type(result).__name__,
                 result,
             )
             continue
