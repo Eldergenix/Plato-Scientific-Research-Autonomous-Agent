@@ -78,8 +78,7 @@ def extract_cited_claims(ms: Manuscript, allowed: set[str]) -> list[dict[str, An
 
 
 def _norm(text: str) -> str:
-    text = re.sub(r"\s+", " ", text).strip()
-    return re.sub(r"\s+([.,;:!?)])", r"\1", text)  # where a removed \cite left a gap.lower()
+    return re.sub(r"\s+", " ", text).strip().lower()
 
 
 def quote_span(abstract: str, quote: str) -> tuple[int, int] | None:
