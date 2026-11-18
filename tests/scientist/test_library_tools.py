@@ -299,6 +299,7 @@ def test_supplementary_files_are_recognised_but_real_titles_are_not():
         "Supplementary Information for Temporal changes in macrophages",
         "Figure S2 from CD8+ T cells maintain killing",
         "Table 3 of Gene expression in liver",
+        "Source data for Supplementary Data 12: Annotation of Humulus genes",
     ):
         assert is_supplementary(_src(title=title)), title
     for title in (
@@ -395,3 +396,50 @@ async def test_fused_retrieval_keeps_every_relevant_source_in_the_top_slots(
     assert len(out) == 8 and set(via) == {"pubmed", "openalex", "datacite"}
     assert max(via.count(v) for v in set(via)) <= 4  # no adapter takes more than half
     assert not any(s.title.startswith("Additional file") for s in out)
+
+
+async def test_literature_datacite_keeps_only_papers_and_profiles_use_it():
+    from plato.retrieval import get_adapter
+
+    def rec(doi, kind):
+        return {
+            "id": doi,
+            "attributes": {
+                "doi": doi,
+                "titles": [{"title": f"Record {doi}"}],
+                "types": {"resourceTypeGeneral": kind},
+            },
+        }
+
+    payload = {
+        "data": [
+            rec("10.5061/a", "Dataset"),
+            rec("10.5061/b", "JournalArticle"),
+            rec("10.5061/c", "Software"),
+            rec("10.5061/d", "Preprint"),
+            rec("10.5061/e", "Text"),
+        ]
+    }
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["size"] = request.url.params["page[size]"]
+        return httpx.Response(200, json=payload)
+
+    transport = httpx.MockTransport(handler)
+    real = httpx.AsyncClient.__init__
+
+    def patched(self, *a, **kw):
+        kw["transport"] = transport
+        real(self, *a, **kw)
+
+    import unittest.mock as um
+
+    with um.patch.object(httpx.AsyncClient, "__init__", patched):
+        papers = await get_adapter("datacite_literature").search("q", 2)
+        everything = await get_adapter("datacite").search("q", 5)
+    assert [p.doi for p in papers] == ["10.5061/b", "10.5061/d"]  # limit 2, papers only
+    assert seen["size"] == "5" and len(everything) == 5
+    assert all(p.retrieved_via == "datacite" for p in papers)
+    bio = get_profile("biology").retrieval_sources
+    assert "datacite_literature" in bio and "datacite" not in bio

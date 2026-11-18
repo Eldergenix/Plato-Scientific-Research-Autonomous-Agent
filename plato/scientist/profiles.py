@@ -28,6 +28,10 @@ BASE_PACKAGES: tuple[str, ...] = (
 )
 
 
+# Library source -> the variant that returns only citable literature.
+LITERATURE_ONLY = {"datacite": "datacite_literature"}
+
+
 @dataclass(frozen=True)
 class ScientistProfile:
     name: str
@@ -59,7 +63,10 @@ def _from_library(name: str, extra: tuple[str, ...], guidance: str) -> Scientist
     lib = get_domain(name)
     return ScientistProfile(
         name=name,
-        retrieval_sources=tuple(lib.retrieval_sources),
+        # Campaigns cite papers: DataCite is searched for literature records only.
+        retrieval_sources=tuple(
+            LITERATURE_ONLY.get(s, s) for s in lib.retrieval_sources
+        ),
         extra_packages=extra,
         guidance=guidance,
     )

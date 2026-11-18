@@ -39,7 +39,7 @@ __all__ = ["is_supplementary", "retrieve", "retrieve_with_expansion"]
 # Repository records for a paper's supplementary files ("Additional file 5: of ...",
 # "Supplemental material for: ...", "Figure S2 from ..."): DOIs, but not literature.
 _SUPPLEMENTARY = re.compile(
-    r"^\s*(additional\s+file\b|supplementa(l|ry)\s+(material|information|file|data|table|figure|text|method)s?\b|(figure|fig\.?|table|data|movie|video)\s+s?\d+\b"
+    r"^\s*(additional\s+file\b|source\s+data\s+(for|of)\b|supplementa(l|ry)\s+(material|information|file|data|table|figure|text|method)s?\b|(figure|fig\.?|table|data|movie|video)\s+s?\d+\b"
     r"[^a-z]*(from|of)\b)",
     re.IGNORECASE,
 )

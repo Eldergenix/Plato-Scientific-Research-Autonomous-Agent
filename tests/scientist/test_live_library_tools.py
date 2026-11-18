@@ -33,6 +33,7 @@ QUERIES = {
     "europe_pmc": "differential gene expression false discovery rate",
     "pubmed": "differential gene expression false discovery rate",
     "datacite": "gene expression dataset",
+    "datacite_literature": "false discovery rate gene expression",
     "ads": "exoplanet transit photometry",
     # OpenCitations Meta resolves DOIs; it is not a free-text search.
     "opencitations": "10.1038/nature12373",

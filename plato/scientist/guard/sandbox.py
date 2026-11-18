@@ -165,7 +165,15 @@ def _apply_limits(limits: SandboxLimits) -> None:  # runs in the child before ex
     resource.setrlimit(
         resource.RLIMIT_CPU, (limits.cpu_seconds, limits.cpu_seconds + 5)
     )
-    resource.setrlimit(resource.RLIMIT_AS, (limits.memory_bytes, limits.memory_bytes))
+    try:
+        resource.setrlimit(
+            resource.RLIMIT_AS, (limits.memory_bytes, limits.memory_bytes)
+        )
+    except ValueError:
+        # macOS refuses RLIMIT_AS below its (unlimited-looking) hard limit; development
+        # Macs only. Linux, where the service runs, always takes this limit.
+        if sys.platform != "darwin":
+            raise
     resource.setrlimit(
         resource.RLIMIT_FSIZE, (limits.max_file_bytes, limits.max_file_bytes)
     )
