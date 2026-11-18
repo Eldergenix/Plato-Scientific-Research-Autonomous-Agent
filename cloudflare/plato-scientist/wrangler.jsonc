@@ -61,6 +61,8 @@
   },
   // Secrets (wrangler secret put): PLATO_API_TOKEN, PLATO_INTERNAL_TOKEN, PLATO_SECRETS_KEY
   // (32 random bytes, base64: password pepper and API-key encryption; never rotate it casually),
-  // ANTHROPIC_API_KEY, PLATO_DATABASE_URL, and optionally E2B_API_KEY
+  // ANTHROPIC_API_KEY, PLATO_DATABASE_URL
+  // Optional secrets: E2B_API_KEY (E2B experiment sandboxes), ADS_API_KEY (NASA ADS search), NCBI_API_KEY and SEMANTIC_SCHOLAR_KEY
+  // (higher rate limits), MODAL_TOKEN_ID + MODAL_TOKEN_SECRET (Modal and GPU experiment runs)
   "observability": { "enabled": true }
 }

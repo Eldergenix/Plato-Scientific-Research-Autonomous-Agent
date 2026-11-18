@@ -160,13 +160,71 @@ async def test_valid_doi_resolves_and_is_not_retracted():
 async def test_hallucinated_doi_returns_404_unresolved():
     src = _make_source(doi="10.9999/hallucinated")
     client = _mock_client(
-        get_router={"https://api.crossref.org/works/": _response(404)},
+        get_router={
+            "https://api.crossref.org/works/": _response(404),
+            # The DOI resolver does not know it either (responseCode 100: not found).
+            "https://doi.org/api/handles/": _response(404, {"responseCode": 100}),
+        },
     )
     v = CitationValidator(http_client=client)
     result = await v.validate(src)
     assert result.doi_resolved is False
     assert result.retracted is False
     assert result.error is None  # 404 is not an "error", just an unresolved DOI.
+
+
+@pytest.mark.asyncio
+async def test_non_crossref_doi_resolves_through_doi_handle_api():
+    # A DataCite DOI (e.g. Zenodo) is absent from Crossref but exists at doi.org.
+    src = _make_source(doi="10.5281/zenodo.1234567")
+    client = _mock_client(
+        get_router={
+            "https://api.crossref.org/works/": _response(404),
+            "https://doi.org/api/handles/10.5281/zenodo.1234567": _response(
+                200, {"responseCode": 1, "handle": "10.5281/zenodo.1234567"}
+            ),
+        },
+    )
+    result = await CitationValidator(http_client=client).validate(src)
+    assert result.doi_resolved is True
+    assert not any(i["type"] == "unverified" for i in result.issues)
+
+
+@pytest.mark.asyncio
+async def test_crossref_updated_by_retraction_marks_original_retracted():
+    # The retracted article itself carries the notice under "updated-by".
+    src = _make_source(doi="10.1000/original")
+    payload = {
+        "message": {
+            "DOI": "10.1000/original",
+            "title": ["An article"],
+            "updated-by": [
+                {
+                    "DOI": "10.1000/notice",
+                    "type": "retraction",
+                    "source": "retraction-watch",
+                }
+            ],
+        }
+    }
+    client = _mock_client(
+        get_router={"https://api.crossref.org/works/": _response(200, payload)}
+    )
+    result = await CitationValidator(http_client=client).validate(src)
+    assert result.retracted is True
+
+
+@pytest.mark.asyncio
+async def test_retracted_title_prefix_marks_retracted():
+    src = _make_source(doi="10.1000/prefixed")
+    payload = {
+        "message": {"DOI": "10.1000/prefixed", "title": ["RETRACTED: An article"]}
+    }
+    client = _mock_client(
+        get_router={"https://api.crossref.org/works/": _response(200, payload)}
+    )
+    result = await CitationValidator(http_client=client).validate(src)
+    assert result.retracted is True
 
 
 @pytest.mark.asyncio

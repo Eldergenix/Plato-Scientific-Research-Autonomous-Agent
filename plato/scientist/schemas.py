@@ -131,3 +131,41 @@ class PeerReview(BaseModel):
     decision: Literal["accept", "minor_revision", "major_revision", "reject"]
     summary: str
     required_changes: list[str]
+
+
+class CitationSupport(BaseModel):
+    pair_index: int = Field(
+        description="Index of the claim-citation pair being judged."
+    )
+    support: Literal["supports", "refutes", "neutral", "unclear"] = Field(
+        description=(
+            "Does the cited abstract support the claim? 'neutral' when it is related but "
+            "does not bear on the claim; 'unclear' when the abstract is too thin to tell."
+        )
+    )
+    strength: Literal["weak", "moderate", "strong"]
+    quote: str = Field(
+        description=(
+            "For supports/refutes: the shortest verbatim span of the abstract (copied "
+            "exactly, 5 to 60 words) that supports or contradicts the claim. Empty otherwise."
+        )
+    )
+    rationale: str = Field(description="One sentence.")
+
+
+class EvidenceMatrix(BaseModel):
+    links: list[CitationSupport]
+
+
+class ReviewIssue(BaseModel):
+    section: str = Field(description="Manuscript section the issue is in.")
+    issue: str
+    fix: str = Field(description="Concrete change that resolves the issue.")
+
+
+class PanelCritique(BaseModel):
+    severity: int = Field(
+        description="0 (no problems) to 5 (fatal) for this reviewer's angle only."
+    )
+    summary: str = Field(description="Two sentences at most.")
+    issues: list[ReviewIssue] = Field(description="At most 6, most important first.")

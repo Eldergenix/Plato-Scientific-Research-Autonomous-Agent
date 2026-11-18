@@ -43,7 +43,20 @@ def resolve_model(model: str | None = None) -> str:
     return model or os.environ.get("PLATO_SCIENTIST_MODEL", DEFAULT_MODEL)
 
 
-WRITING_PURPOSES = frozenset({"manuscript", "peer_review", "manuscript_revision"})
+# Calls that may use the writing reserve: the paper and its review must still happen when
+# the research budget is spent. Review calls after the first draft are best effort.
+WRITING_PURPOSES = frozenset(
+    {
+        "manuscript",
+        "peer_review",
+        "manuscript_revision",
+        "evidence_matrix",
+        "review_methodology",
+        "review_statistics",
+        "review_novelty",
+        "review_writing",
+    }
+)
 Effort = Literal["low", "medium", "high", "xhigh", "max"]
 T = TypeVar("T", bound=BaseModel)
 # Receives the accumulated output text while a call streams (used to show the paper live).

@@ -22,6 +22,13 @@ export interface Env {
   PLATO_E2B_TEMPLATE?: string;
   /** "e2b" or "local"; campaigns that name an executor override it. */
   PLATO_DEFAULT_EXECUTOR?: string;
+  /** Optional literature-source keys: ADS needs a token; NCBI and Semantic Scholar raise rate limits. */
+  ADS_API_KEY?: string;
+  NCBI_API_KEY?: string;
+  SEMANTIC_SCHOLAR_KEY?: string;
+  /** Optional Modal Labs credentials: enable remote (and GPU) experiment runs. */
+  MODAL_TOKEN_ID?: string;
+  MODAL_TOKEN_SECRET?: string;
   /** Local development only: send container traffic to this URL (the Python service). */
   PLATO_DEV_SERVICE_URL?: string;
   /** Local development only: Anthropic API base URL (a stub server in tests). */

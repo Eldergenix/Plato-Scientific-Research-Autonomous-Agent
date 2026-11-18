@@ -23,6 +23,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from .citations import check_sources, exclusion_reason
 from .db.store import (
     BudgetExceeded,
     DualGraphStore,
@@ -31,15 +32,23 @@ from .db.store import (
     sha256_hex,
     spec_dedup_key,
 )
+from .executors import run_experiment
 from .guard import (
     SandboxLimits,
     SandboxResult,
     frame_untrusted,
     framing_instructions,
     new_nonce,
-    run_python,
 )
 from .llm import ModelOutputError, ModelRefusal, ScientistModel
+from .profiles import ScientistProfile, get_profile, resolve_profile
+from .review import (
+    build_evidence_matrix,
+    matrix_digest,
+    matrix_required_changes,
+    panel_digest,
+    run_review_panel,
+)
 from .schemas import (
     ExperimentCode,
     FigureCritique,
@@ -61,14 +70,24 @@ SEED_FILE = "plato_seed.txt"
 SEALED_MANIFEST = "plato_sealed.json"
 ROOT_GOAL_KEY = "root-goal"
 
-Retriever = Callable[[str, int], Awaitable[list[Any]]]
+# (query, limit, *, sources) -> papers. ``sources`` names the retrieval adapters to use.
+Retriever = Callable[..., Awaitable[list[Any]]]
+# Seconds one literature source may take (its retries included) before it is skipped.
+ADAPTER_TIMEOUT_SECONDS = 60.0
 
 
-async def default_retriever(query: str, limit: int) -> list[Any]:
+async def default_retriever(
+    query: str, limit: int, *, sources: list[str] | None = None
+) -> list[Any]:
     from plato.retrieval.orchestrator import retrieve
 
     return await retrieve(
-        query, limit, adapter_names=["arxiv", "openalex", "semantic_scholar"]
+        query,
+        limit,
+        adapter_names=list(sources or get_profile("general").retrieval_sources),
+        rerank_fallback="fused",
+        adapter_timeout=ADAPTER_TIMEOUT_SECONDS,
+        drop_supplementary=True,
     )
 
 
@@ -85,11 +104,16 @@ class ScientistConfig:
     min_promote_confidence: float = 0.6
     min_figure_score: float = 0.5
     require_network_isolation: bool = False
-    sandbox: SandboxLimits = field(default_factory=SandboxLimits)
-    # "local" runs experiments in the container sandbox above; "e2b" gives the research
-    # engineer a full E2B workspace (shell, packages, dataset downloads, bio tools) and
-    # records each result by re-running its recipe in a fresh sandbox.
+    # Requested research domain (selects the literature sources and packages).
+    domain: str = "general"
+    # Where experiments run: "local" (this container's sandbox), "modal" (Modal Labs
+    # sandbox, optionally with a GPU) or "e2b" (the research engineer gets a full E2B
+    # workspace: shell, packages, dataset downloads, bio tools; each result is recorded by
+    # re-running its recipe in a fresh sandbox).
     executor: str = "local"
+    # Modal GPU type such as "T4", "L4" or "A100"; empty means CPU only.
+    gpu: str = ""
+    sandbox: SandboxLimits = field(default_factory=SandboxLimits)
     workspace_session_seconds: int = 2400
     workspace_max_turns: int = 40
     workspace_setup_seconds: int = 1200
@@ -109,6 +133,11 @@ class ScientistConfig:
             # A deployment default of e2b without a key falls back to the container sandbox;
             # a campaign that names e2b explicitly fails loudly instead.
             cfg.executor = "local" if default == "e2b" and not e2b_configured() else default
+        if cfg.executor == "modal" and cfg.gpu:
+            # GPU experiments (training) get ten minutes on a larger machine.
+            cfg.sandbox = SandboxLimits(
+                wall_seconds=600.0, cpu_seconds=600, memory_bytes=16 * 1024**3
+            )
         return cfg
 
 
@@ -118,6 +147,10 @@ class ScientistContext:
     model: ScientistModel
     config: ScientistConfig = field(default_factory=ScientistConfig)
     retriever: Retriever = default_retriever
+    # (sources) -> one citation-check summary per source, in order (never raises).
+    citation_checker: Callable[[list[Any]], Awaitable[list[dict[str, Any]]]] = (
+        check_sources
+    )
     worker_prefix: str = field(
         default_factory=lambda: f"{socket.gethostname()}-{uuid.uuid4().hex[:6]}"
     )
@@ -287,6 +320,24 @@ def _system(role: str, nonce: str) -> str:
     )
 
 
+async def campaign_profile(
+    ctx: ScientistContext, campaign_id: uuid.UUID
+) -> ScientistProfile:
+    """The domain profile the literature scout chose (stored on the root goal)."""
+    root = await ctx.store.get_node(await _root_goal(ctx, campaign_id))
+    return get_profile((root["metrics"] or {}).get("profile"))
+
+
+def experiment_limits_text(config: ScientistConfig) -> str:
+    seconds = int(config.sandbox.wall_seconds)
+    where = (
+        f"on a Modal {config.gpu} GPU machine"
+        if config.executor == "modal" and config.gpu
+        else "on a CPU"
+    )
+    return f"in under {seconds} seconds {where}"
+
+
 async def _root_goal(ctx: ScientistContext, campaign_id: uuid.UUID) -> uuid.UUID:
     campaign = await ctx.store.get_campaign(campaign_id)
     root = await ctx.store.create_node(
@@ -329,10 +380,19 @@ async def literature_scout(ctx: ScientistContext, campaign_id: uuid.UUID) -> Non
             f"{question.text}"
         ),
     )
+    # The requested domain wins; the plan's own label refines an unspecific one.
+    profile = resolve_profile(
+        ctx.config.domain, campaign.get("program_domain"), plan.domain
+    )
     await store.set_node_status(
         root_id,
         "open",
-        metrics={"refined_question": plan.refined_question, "domain": plan.domain},
+        metrics={
+            "refined_question": plan.refined_question,
+            "domain": plan.domain,
+            "profile": profile.name,
+            "retrieval_sources": list(profile.retrieval_sources),
+        },
     )
     goal_ids = []
     for goal in plan.goals[:4]:
@@ -353,11 +413,15 @@ async def literature_scout(ctx: ScientistContext, campaign_id: uuid.UUID) -> Non
     domain_asset = await store.upsert_asset(
         campaign["program_id"], "corpus_domain", f"domain:{plan.domain}", plan.domain
     )
-    papers: list[tuple[uuid.UUID, Any]] = []
-    seen: set[uuid.UUID] = set()
+    # 1) Search every query across the profile's sources, deduplicated by paper key.
+    found: dict[str, tuple[str, Any]] = {}
     for query in plan.search_queries[:4]:
         try:
-            results = await ctx.retriever(query, ctx.config.papers_per_query)
+            results = await ctx.retriever(
+                query,
+                ctx.config.papers_per_query,
+                sources=list(profile.retrieval_sources),
+            )
         except Exception as exc:  # noqa: BLE001 - one failed source must not stop the campaign
             logger.warning("retrieval failed for %r: %s", query, exc)
             results = []
@@ -368,29 +432,69 @@ async def literature_scout(ctx: ScientistContext, campaign_id: uuid.UUID) -> Non
                 )
             except ValueError:
                 continue
-            asset = await store.upsert_asset(
-                campaign["program_id"],
-                "paper",
-                key,
-                src.title[:500],
-                uri_or_commit=src.url
-                or (f"https://doi.org/{src.doi}" if src.doi else None),
-                parent_id=domain_asset.id,
-                metadata={
-                    "title": src.title,
-                    "authors": list(src.authors)[:20],
-                    "year": src.year,
-                    "venue": src.venue,
+            found.setdefault(key, (query, src))
+
+    # 2) Citation and retraction checks: retracted papers, and papers whose identifier
+    # resolves to a different work, are kept out of the campaign.
+    keys = list(found)
+    checks = await ctx.citation_checker([found[k][1] for k in keys])
+    papers: list[tuple[uuid.UUID, Any]] = []
+    excluded: list[dict[str, Any]] = []
+    for key, check in zip(keys, checks, strict=True):
+        query, src = found[key]
+        asset = await store.upsert_asset(
+            campaign["program_id"],
+            "paper",
+            key,
+            src.title[:500],
+            uri_or_commit=src.url
+            or (f"https://doi.org/{src.doi}" if src.doi else None),
+            parent_id=domain_asset.id,
+            metadata={
+                "title": src.title,
+                "authors": list(src.authors)[:20],
+                "year": src.year,
+                "venue": src.venue,
+                "doi": src.doi,
+                "arxiv_id": src.arxiv_id,
+                "abstract": (src.abstract or "")[:3000],
+                "query": query,
+                "retrieved_via": getattr(src, "retrieved_via", None),
+                "citation_check": check,
+            },
+        )
+        reason = exclusion_reason(check)
+        if reason:
+            await store.set_scope(campaign_id, asset.id, "excluded")
+            excluded.append(
+                {
+                    "title": src.title[:300],
                     "doi": src.doi,
                     "arxiv_id": src.arxiv_id,
-                    "abstract": (src.abstract or "")[:3000],
-                    "query": query,
-                },
+                    "reason": reason,
+                }
             )
-            if asset.id not in seen:
-                seen.add(asset.id)
-                papers.append((asset.id, src))
-                await store.set_scope(campaign_id, asset.id, "read_only")
+            continue
+        papers.append((asset.id, src))
+        await store.set_scope(campaign_id, asset.id, "read_only")
+    if excluded:
+        await store.record_guard_event(
+            campaign_id,
+            "scope",
+            "deny",
+            {"note": "papers excluded by citation checks", "papers": excluded},
+        )
+    statuses: dict[str, int] = {}
+    for check in checks:
+        statuses[check["status"]] = statuses.get(check["status"], 0) + 1
+    await store.set_node_status(
+        root_id,
+        "open",
+        metrics={
+            "citation_checks": statuses,
+            "papers_excluded": excluded,
+        },
+    )
     await store.set_node_status(root_id, "open", metrics={"papers_found": len(papers)})
 
     framed_papers = [
@@ -456,6 +560,7 @@ async def experiment_planner(
     existing = await store.nodes(campaign_id, node_type="intent")
     datasets = await store.visible_assets(campaign_id, asset_types=["dataset"])
     uncovered = await store.query_uncovered_scope(campaign_id)
+    profile = await campaign_profile(ctx, campaign_id)
 
     framed = [
         frame_untrusted(
@@ -496,7 +601,9 @@ async def experiment_planner(
         + f"\n\nPapers not yet used by any experiment: {len(uncovered)}\n\n"
         f"Propose up to {ctx.config.intents_per_round} new, independent computational experiments. "
         "Prefer experiments that resolve open hints or follow up surprising facts. Each must run "
-        "offline in under two minutes with numpy/scipy/pandas/scikit-learn/matplotlib. Derive any "
+        f"offline {experiment_limits_text(ctx.config)} with {'/'.join(profile.packages)}. "
+        + (f"{profile.guidance} " if profile.guidance else "")
+        + "Derive any "
         "predicted value analytically before stating it, and set each success criterion relative to "
         "the standard error the protocol can resolve: a threshold below the sampling noise refutes "
         "true hypotheses. Mark claims of agreement with a reference value as 'equivalence' tests "
@@ -555,20 +662,30 @@ async def experiment_planner(
 # 3. Sandboxed experimenter swarm
 # ---------------------------------------------------------------------------
 
-_CODE_RULES = (
-    "Rules for the script: it runs offline with numpy, scipy, pandas, scikit-learn and "
-    f"matplotlib; it must read an integer seed from the file '{SEED_FILE}' and seed every RNG "
-    "with it; it may read the provided dataset files from the working directory; it may save "
-    "figures as PNG in the working directory; it must finish in under two minutes; its last "
-    f"line of output must be '{METRICS_MARKER} ' followed by a JSON object of numeric metrics "
-    "that includes the primary metric under exactly its given key, and its standard error under "
-    "'<key>_se' when the metric is a Monte Carlo or sample estimate. For a 'difference' test, "
-    "report p_value from a test of the null of no effect when one is performed. For an "
-    "'equivalence' test, p_value is required and must come from a TOST equivalence test "
-    "(H0: |estimate - reference| >= tolerance), so a small p_value means agreement is shown. "
-    f"If a file named '{SEALED_MANIFEST}' exists, it lists held-out evaluation files: evaluate "
-    "the final method on them and report those metrics with the prefix 'sealed_'."
-)
+
+def code_rules(profile: ScientistProfile, config: ScientistConfig) -> str:
+    packages = ", ".join(profile.packages)
+    gpu = (
+        " A CUDA GPU is available: torch is installed; move tensors to 'cuda' and fall back "
+        "to CPU when torch.cuda.is_available() is false."
+        if config.executor == "modal" and config.gpu
+        else ""
+    )
+    return (
+        f"Rules for the script: it runs offline with {packages} (nothing else is installed).{gpu} "
+        f"It must read an integer seed from the file '{SEED_FILE}' and seed every RNG "
+        "with it; it may read the provided dataset files from the working directory; it may save "
+        f"figures as PNG in the working directory; it must finish {experiment_limits_text(config)}; "
+        f"its last line of output must be '{METRICS_MARKER} ' followed by a JSON object of numeric "
+        "metrics that includes the primary metric under exactly its given key, and its standard "
+        "error under '<key>_se' when the metric is a Monte Carlo or sample estimate. For a "
+        "'difference' test, report p_value from a test of the null of no effect when one is "
+        "performed. For an 'equivalence' test, p_value is required and must come from a TOST "
+        "equivalence test (H0: |estimate - reference| >= tolerance), so a small p_value means "
+        f"agreement is shown. If a file named '{SEALED_MANIFEST}' exists, it lists held-out "
+        "evaluation files: evaluate the final method on them and report those metrics with the "
+        "prefix 'sealed_'." + (f" {profile.guidance}" if profile.guidance else "")
+    )
 
 
 async def _run_code(
@@ -586,11 +703,10 @@ async def _run_code(
     await ctx.store.reserve_gpu_seconds(campaign_id, seconds)
     result = None
     try:
-        result = await run_python(
+        result = await run_experiment(
+            ctx.config,
             code,
             inputs={**datasets, **(extra or {}), SEED_FILE: str(seed).encode()},
-            limits=ctx.config.sandbox,
-            require_network_isolation=ctx.config.require_network_isolation,
         )
         return result
     finally:
@@ -792,6 +908,7 @@ async def execute_intent(
         intent["id"], worker_id, lease_seconds=ctx.config.lease_seconds
     )
     dataset_assets, datasets = await store.dataset_inputs(campaign_id)
+    rules = code_rules(await campaign_profile(ctx, campaign_id), ctx.config)
     nonce = new_nonce()
     feedback = ""
     result: SandboxResult | None = None
@@ -816,7 +933,7 @@ async def execute_intent(
                 f"Hypothesis: {spec['hypothesis']}\nProtocol: {spec['protocol']}\n"
                 f"Primary metric key: {spec['primary_metric']}\nTest kind: {spec.get('test_kind', 'difference')}\n"
                 f"Success criterion: {spec['success_criterion']}\n"
-                f"Dataset files: {sorted(datasets) or 'none'}\n\n{_CODE_RULES}\n\n{feedback}"
+                f"Dataset files: {sorted(datasets) or 'none'}\n\n{rules}\n\n{feedback}"
                 "Write the complete script."
             ),
         )
@@ -1320,6 +1437,44 @@ def assemble_latex(ms: Manuscript, findings: list[dict[str, Any]]) -> str:
     )
 
 
+def citation_report(
+    citable: list[dict[str, Any]],
+    keys: dict[str, dict[str, Any]],
+    root_metrics: dict[str, Any],
+) -> dict[str, Any]:
+    """What the citation checks found: per cited paper, and the papers kept out."""
+    by_id = {p["id"]: k for k, p in keys.items()}
+    cited = []
+    for p in citable:
+        meta = p["metadata"] or {}
+        check = meta.get("citation_check") or {"status": "unchecked"}
+        cited.append(
+            {
+                "key": by_id.get(p["id"]),
+                "title": meta.get("title") or p["canonical_name"],
+                "doi": meta.get("doi"),
+                "arxiv_id": meta.get("arxiv_id"),
+                "retrieved_via": meta.get("retrieved_via"),
+                "status": check.get("status"),
+                "retracted": bool(check.get("retracted")),
+                "doi_resolved": check.get("doi_resolved"),
+                "arxiv_resolved": check.get("arxiv_resolved"),
+                "issues": check.get("issues") or [],
+            }
+        )
+    statuses: dict[str, int] = {}
+    for c in cited:
+        statuses[c["status"]] = statuses.get(c["status"], 0) + 1
+    return {
+        "cited": cited,
+        "cited_by_status": statuses,
+        "retrieved_by_status": root_metrics.get("citation_checks") or {},
+        "excluded": root_metrics.get("papers_excluded") or [],
+        "sources_searched": root_metrics.get("retrieval_sources") or [],
+        "profile": root_metrics.get("profile") or "general",
+    }
+
+
 class DraftSink:
     """Throttled writer of the streaming manuscript to ``plato.manuscript_drafts``.
 
@@ -1369,6 +1524,7 @@ async def write_manuscript(
             f"cannot write manuscript for campaign {campaign_id} in status {campaign['status']!r}"
         )
     root_id = await _root_goal(ctx, campaign_id)
+    root_metrics = (await store.get_node(root_id))["metrics"] or {}
     findings = await store.nodes(campaign_id, node_type="finding", status="verified")
     refuted = await store.nodes(campaign_id, node_type="fact", status="refuted")
     # Observations that ran but did not pass replication/skeptic review. The writer may report
@@ -1449,21 +1605,64 @@ async def write_manuscript(
     )
     await draft.stage_to("reviewing", ms.model_dump_json())
     # Review and revision improve the draft but must never cost the campaign its paper:
-    # if either fails (truncation, refusal, budget) the draft is kept and the failure logged.
-    review: PeerReview | None = None
-    revised = False
-    try:
-        review = await ctx.model.structured(
+    # if any step fails (truncation, refusal, budget) the draft is kept and the failure logged.
+    review_failures: list[dict[str, str]] = []
+
+    async def best_effort(stage: str, call):
+        try:
+            return await call
+        except (ModelOutputError, ModelRefusal, BudgetExceeded) as exc:
+            review_failures.append({"stage": stage, "error": str(exc)[:500]})
+        except Exception as exc:
+            logger.exception("%s failed for campaign %s", stage, campaign_id)
+            review_failures.append(
+                {"stage": stage, "error": f"{type(exc).__name__}: {exc}"[:500]}
+            )
+        return None
+
+    # Claim-to-evidence matrix: every cited sentence checked against the cited abstract.
+    matrix = await best_effort(
+        "evidence_matrix", build_evidence_matrix(ctx.model, campaign_id, ms, keys)
+    )
+    # Four single-angle reviewers (methodology, statistics, novelty, writing) in parallel;
+    # the chair below consolidates them with the evidence into one decision.
+    panel = await best_effort(
+        "review_panel", run_review_panel(ctx.model, campaign_id, ms, evidence_text)
+    )
+    review: PeerReview | None = await best_effort(
+        "peer_review",
+        ctx.model.structured(
             campaign_id=campaign_id,
             purpose="peer_review",
             schema=PeerReview,
             effort="high",
-            system=_system("peer reviewer for a top venue", nonce),
-            prompt=f"Review this manuscript against the evidence.\n\nEvidence:\n{evidence_text}\n\nManuscript:\n{ms.model_dump_json()}",
-        )
-        if review.decision in ("major_revision", "reject") and review.required_changes:
-            await draft.stage_to("revising")
-            ms = await ctx.model.structured(
+            system=_system("handling editor for a top venue", nonce),
+            prompt=(
+                "Write the consolidated review of this manuscript. Weigh the four reviewer "
+                "reports and the citation audit against the evidence; required changes must "
+                "be concrete edits.\n\n"
+                f"Evidence:\n{evidence_text}\n\n"
+                f"Reviewer reports:\n{panel_digest(panel or {})}\n\n"
+                f"Citation audit (claims whose cited abstract does not support them):\n"
+                f"{matrix_digest(matrix or {})}\n\n"
+                f"Manuscript:\n{ms.model_dump_json()}"
+            ),
+        ),
+    )
+    changes = (
+        list(review.required_changes)
+        if review and review.decision in ("major_revision", "reject")
+        else []
+    )
+    # Citation integrity is not negotiable: unsupported or contradicted citations are
+    # always revised, whatever the overall decision.
+    changes += matrix_required_changes(matrix or {})
+    revised = False
+    if changes:
+        await draft.stage_to("revising")
+        new_ms = await best_effort(
+            "manuscript_revision",
+            ctx.model.structured(
                 campaign_id=campaign_id,
                 purpose="manuscript_revision",
                 schema=Manuscript,
@@ -1472,19 +1671,28 @@ async def write_manuscript(
                 system=_system("scientific writer", nonce),
                 prompt=base_prompt
                 + "\n\nRevise the manuscript to address:\n"
-                + "\n".join(f"- {c}" for c in review.required_changes),
+                + "\n".join(f"- {c}" for c in changes),
                 on_text=draft,
+            ),
+        )
+        if new_ms is not None:
+            ms, revised = new_ms, True
+            # The stored matrix must describe the paper as published.
+            matrix = (
+                await best_effort(
+                    "evidence_matrix_final",
+                    build_evidence_matrix(ctx.model, campaign_id, ms, keys),
+                )
+                or matrix
             )
-            revised = True
-    except (ModelOutputError, ModelRefusal, BudgetExceeded) as exc:
+    if review_failures:
         await store.record_guard_event(
             campaign_id,
             "scope",
             "deny",
             {
-                "note": "kept the first draft; review or revision failed",
-                "stage": "manuscript_revision" if review else "peer_review",
-                "error": str(exc)[:500],
+                "note": "kept the latest draft; a review step failed",
+                "failures": review_failures,
             },
         )
 
@@ -1512,6 +1720,26 @@ async def write_manuscript(
         await store.add_evidence(
             root_id, "peer_review", review.model_dump_json(), approval_actor="model"
         )
+    if matrix is not None:
+        await store.add_evidence(
+            root_id,
+            "evidence_matrix",
+            json.dumps(matrix, sort_keys=True),
+            approval_actor="model",
+        )
+    if panel is not None:
+        await store.add_evidence(
+            root_id,
+            "review_panel",
+            json.dumps(panel, sort_keys=True),
+            approval_actor="model",
+        )
+    await store.add_evidence(
+        root_id,
+        "citation_report",
+        json.dumps(citation_report(citable, keys, root_metrics), sort_keys=True),
+        approval_actor="system",
+    )
     # The question counts as answered only when a finding passed verification.
     await store.set_node_status(
         root_id,
@@ -1520,6 +1748,10 @@ async def write_manuscript(
             "findings": len(findings),
             "review_decision": review.decision if review else "not_reviewed",
             "revised": revised,
+            "unsupported_claim_rate": matrix.get("unsupported_claim_rate")
+            if matrix
+            else None,
+            "panel_max_severity": panel.get("max_severity") if panel else None,
         },
     )
     await store.transition_campaign(campaign_id, "completed", from_statuses=["writing"])
@@ -1527,4 +1759,7 @@ async def write_manuscript(
         "findings": len(findings),
         "review": review.decision if review else "not_reviewed",
         "revised": revised,
+        "unsupported_claim_rate": matrix.get("unsupported_claim_rate")
+        if matrix
+        else None,
     }

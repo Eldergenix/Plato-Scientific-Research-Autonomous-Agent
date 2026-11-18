@@ -409,21 +409,42 @@ def library_triage(
     return tags, folder, {"markdown": markdown.strip(), "plain_text": text}
 
 
+_RETRACTION_TYPES = frozenset({"retraction", "withdrawal", "removal"})
+
+
 def crossref_indicates_retraction(payload: dict[str, Any]) -> bool:
+    """True when a Crossref work is retracted, withdrawn or removed, or is itself a
+    retraction notice.
+
+    A retracted article carries the notice under ``updated-by`` (Crossref merges
+    publisher deposits and Retraction Watch records there); the notice itself carries
+    ``update-to``. Either way the DOI must not be cited as supporting evidence. Some
+    publishers only prefix the title with "RETRACTED:", so that is checked too.
+    """
     candidates: list[dict[str, Any]] = [payload]
     msg = payload.get("message")
     if isinstance(msg, dict):
         candidates.append(msg)
 
     for body in candidates:
-        updates = body.get("update-to")
-        if not isinstance(updates, list):
-            continue
-        for entry in updates:
-            if not isinstance(entry, dict):
+        for field in ("updated-by", "update-to"):
+            updates = body.get(field)
+            if not isinstance(updates, list):
                 continue
-            update_type = entry.get("update-type") or entry.get("type")
-            if isinstance(update_type, str) and update_type.lower() == "retraction":
+            for entry in updates:
+                if not isinstance(entry, dict):
+                    continue
+                update_type = entry.get("update-type") or entry.get("type")
+                if (
+                    isinstance(update_type, str)
+                    and update_type.lower() in _RETRACTION_TYPES
+                ):
+                    return True
+        titles = body.get("title")
+        for title in titles if isinstance(titles, list) else [titles]:
+            if isinstance(title, str) and re.match(
+                r"\s*(retracted|withdrawn)\b", title, re.IGNORECASE
+            ):
                 return True
     return False
 

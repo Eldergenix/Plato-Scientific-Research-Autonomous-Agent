@@ -644,3 +644,16 @@ async def test_e2b_create_retries_transport_errors_only(monkeypatch):
     with pytest.raises(e2b.AuthenticationException):
         await backend_mod.E2BBackend.create(template="t", api_key="k", timeout_seconds=60)
     assert len(calls) == 1
+
+
+def test_deployment_default_executor(monkeypatch):
+    from plato.scientist.nodes import ScientistConfig
+
+    monkeypatch.delenv("PLATO_WORKSPACE_BACKEND", raising=False)
+    monkeypatch.setenv("PLATO_DEFAULT_EXECUTOR", "e2b")
+    monkeypatch.delenv("E2B_API_KEY", raising=False)
+    assert ScientistConfig.from_campaign({}).executor == "local"  # no key: container sandbox
+    monkeypatch.setenv("E2B_API_KEY", "test")
+    assert ScientistConfig.from_campaign({}).executor == "e2b"
+    assert ScientistConfig.from_campaign({"executor": "local"}).executor == "local"
+    assert ScientistConfig.from_campaign({"executor": "modal", "gpu": "T4"}).executor == "modal"
