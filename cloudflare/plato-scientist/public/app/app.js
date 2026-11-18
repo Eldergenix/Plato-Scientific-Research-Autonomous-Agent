@@ -48,7 +48,7 @@ const STATUS_LABEL={open:"Open",claimed:"Claimed",running:"Running",verified:"Ve
 
 /* ---------- state ---------- */
 const jsonLS=(k,d)=>{try{const v=JSON.parse(ls.get(k,""));return Array.isArray(v)?v:d}catch{return d}};
-const S={token:ls.get("plato_token"),campaigns:null,route:{},summary:null,graph:null,manuscript:undefined,selected:null,prov:{},timer:null,msView:"paper",lastView:"",
+const S={me:null,projects:null,proj:null,projTimer:0,next:"",campaigns:null,route:{},summary:null,graph:null,manuscript:undefined,selected:null,prov:{},timer:null,msView:"paper",lastView:"",
   panel:{mode:ls.get("plato_panel")==="split"?"split":"panel",view:"details",auto:new Set()},
   draft:undefined,firstDraft:null,draftTimer:null,draftBusy:false,paperEl:null,lp:null,lpRaf:0,follow:true,
   res:{q:"",filter:"all",sort:null,page:0,size:[10,25,50].includes(+ls.get("plato_grid_size"))?+ls.get("plato_grid_size"):10,dense:ls.get("plato_grid_dense")==="1",hidden:new Set(jsonLS("plato_grid_hidden",[]))},
@@ -57,9 +57,9 @@ const S={token:ls.get("plato_token"),campaigns:null,route:{},summary:null,graph:
 /* ---------- API ---------- */
 class ApiError extends Error{constructor(m,status){super(m);this.status=status}}
 async function api(path,opt={}){
-  const r=await fetch("/api/"+path,{...opt,headers:{...(opt.headers||{}),authorization:"Bearer "+S.token}});
+  const r=await fetch("/api/"+path,opt);   // the session cookie rides along (same origin)
   if(!r.ok){let m=`Request failed (${r.status})`;try{m=(await r.json()).error||m}catch{}
-    if(r.status===401){setHealth(false,"Invalid token");}throw new ApiError(m,r.status)}
+    if(r.status===401&&!/^(auth\/|me$)/.test(path))signedOut();throw new ApiError(m,r.status)}
   return r}
 const getJSON=p=>api(p).then(r=>r.json());
 
@@ -69,18 +69,25 @@ function toast(msg,bad){const el=document.createElement("div");el.className="toa
 
 /* ---------- theme ---------- */
 const themeText=()=>document.documentElement.dataset.theme==="dark"?"Light theme":"Dark theme";
-$("#themeBtn").onclick=()=>{const t=document.documentElement.dataset.theme==="dark"?"light":"dark";document.documentElement.dataset.theme=t;ls.set("plato_theme",t);Kit.morph($("#themeLbl"),themeText());
-  if(S.route.tab==="graph"&&S.summary)renderTab();else if(S.summary)mountCharts()};
+$("#themeBtn").onclick=()=>savePref("theme",document.documentElement.dataset.theme==="dark"?"light":"dark");
 $("#themeLbl").textContent=themeText();
 
 /* ---------- health ---------- */
 function setHealth(ok,text){$("#health").innerHTML=`<span class="dot ${ok?"ok":"bad"}"></span><span class="trunc">${esc(text)}</span>`}
-async function health(){if(!S.token){$("#health").innerHTML='<span class="dot"></span><span>Not connected</span>';return}
+async function health(){if(!S.me?.account)return;
   try{const h=await getJSON("health");setHealth(true,`Connected · ${h.model}`)}catch(e){if(e.status!==401)setHealth(false,"API unreachable")}}
 
-/* ---------- routing: #/  #/c/<id>/<tab> ---------- */
-function parseRoute(){const p=location.hash.replace(/^#\/?/,"").split("/");return p[0]==="c"&&p[1]?{id:decodeURIComponent(p[1]),tab:p[2]||"overview",node:p[3]||null}:{}}
-const go=(id,tab="overview")=>{location.hash=id?`#/c/${eid(id)}/${tab}`:"#/"};
+/* ---------- routing ----------
+   #/ (home: the agent or campaigns, per preference)  #/agent  #/campaigns  #/p/<project>
+   #/c/<campaign>/<tab>  #/settings/<section>  #/login  #/signup */
+const dec=s=>{try{return decodeURIComponent(s)}catch{return ""}};
+function parseRoute(){const p=location.hash.replace(/^#\/?/,"").split("/").map(dec);
+  if(p[0]==="c"&&p[1])return {view:"campaign",id:p[1],tab:p[2]||"overview",node:p[3]||null};
+  if(p[0]==="p"&&p[1])return {view:"project",pid:p[1]};
+  if(p[0]==="settings")return {view:"settings",section:p[1]||"preferences"};
+  if(["login","signup","agent","campaigns"].includes(p[0]))return {view:p[0]};
+  return {view:pref("home")==="campaigns"?"campaigns":"agent"}}
+const go=(id,tab="overview")=>{location.hash=id?`#/c/${eid(id)}/${tab}`:"#/campaigns"};
 addEventListener("hashchange",route);
 
 /* ---------- skeleton samples: the real views rendered with representative data ---------- */
@@ -105,13 +112,18 @@ const paperSample=()=>`<h1>Coverage of the ordinary least squares slope interval
 /* ---------- sidebar ---------- */
 const ACTIVE=c=>!["completed","halted"].includes(c.status);
 const NAV_CLOSED=new Set(jsonLS("plato_nav_closed",[]));   // collapsed sidebar sections, remembered
-function renderNav(){const cur=S.route.id,list=S.campaigns||[],act=list.filter(ACTIVE),done=list.filter(c=>!ACTIVE(c));
-  const item=c=>`<a class="item${c.id===cur?" on":""}" href="#/c/${eid(c.id)}/overview" title="${esc(c.research_question)}"${c.id===cur?' aria-current="page"':""}>${campaignIcon(c.status)}<span class="trunc">${esc(c.research_question)}</span></a>`;
-  const sec=(k,label,l)=>{if(!l.length)return"";const open=!NAV_CLOSED.has(k);
-    return `<button class="nav-h" type="button" data-sec="${k}" aria-expanded="${open}">${label}${ico('<path d="m5 6.5 3 3 3-3"/>',12)}<span class="n">${l.length}</span></button>`+(open?l.slice(0,30).map(item).join(""):"")};
-  $("#nav").innerHTML=`<a class="item${!cur?" on":""}" href="#/"${!cur?' aria-current="page"':""}>${ico('<rect x="2.5" y="2.5" width="11" height="11" rx="2.5"/><path d="M5.5 6h5M5.5 8.5h5M5.5 11h3"/>')}All campaigns<span class="n">${list.length||""}</span></a>`+
-    sec("running","Running",act)+sec("finished","Finished",done)}
-async function loadList(){if(!S.token)return;try{S.campaigns=(await getJSON("campaigns")).campaigns;renderNav();if(!S.route.id)renderHome()}catch(e){if(S.campaigns===null){S.campaigns=[];if(!S.route.id)renderHome()}if(e.status!==401)toast(e.message,true)}}
+function renderNav(){if(S.route.view==="settings")return renderSettingsNav();
+  const v=S.route.view,cur=S.route.id,list=S.campaigns||[],act=list.filter(ACTIVE),done=list.filter(c=>!ACTIVE(c));
+  const link=(href,on,icon,label,attrs="")=>`<a class="item${on?" on":""}" href="${href}"${on?' aria-current="page"':""}${attrs}>${icon}${label}</a>`;
+  const item=c=>link(`#/c/${eid(c.id)}/overview`,c.id===cur,campaignIcon(c.status),`<span class="trunc">${esc(c.research_question)}</span>`,` title="${esc(c.research_question)}"`);
+  const pitem=p=>link(`#/p/${eid(p.id)}`,p.id===S.route.pid,pico(p.agent_status==="working"?SPIN:ico(CHAT)),`<span class="trunc">${esc(p.title)}</span>`,` title="${esc(p.title)}"`);
+  const sec=(k,label,l,fn)=>{if(!l.length)return"";const open=!NAV_CLOSED.has(k);
+    return `<button class="nav-h" type="button" data-sec="${k}" aria-expanded="${open}">${label}${ico('<path d="m5 6.5 3 3 3-3"/>',12)}<span class="n">${l.length}</span></button>`+(open?l.slice(0,30).map(fn).join(""):"")};
+  $("#nav").innerHTML=link("#/agent",v==="agent",ico(SPARK),"Agent")+
+    link("#/campaigns",v==="campaigns",ico('<rect x="2.5" y="2.5" width="11" height="11" rx="2.5"/><path d="M5.5 6h5M5.5 8.5h5M5.5 11h3"/>'),`All campaigns<span class="n">${list.length||""}</span>`)+
+    sec("projects","Projects",S.projects||[],pitem)+sec("running","Running",act,item)+sec("finished","Finished",done,item)}
+async function loadList(){if(!S.me?.account)return;try{S.campaigns=(await getJSON("campaigns")).campaigns;renderNav();if(S.route.view==="campaigns")renderHome()}
+  catch(e){if(S.campaigns===null){S.campaigns=[];if(S.route.view==="campaigns")renderHome()}if(e.status!==401)toast(e.message,true)}}
 
 /* ---------- home (campaign list) ---------- */
 function homeRows(list){
@@ -124,23 +136,17 @@ function renderHome(){
   $("#crumb").innerHTML=`<b>Campaigns</b>`;$("#tabs").innerHTML="";$("#tabs").className="";
   $("#topActions").innerHTML=`<button class="btn primary" id="newTop" type="button">New campaign</button>`;$("#newTop").onclick=openNew;
   const body=$("#body");body.className="body full";S.lastView="";
-  if(!S.token){body.innerHTML=`<div class="pane">${connectView()}</div>`;bindConnect();return}
   if(S.campaigns===null){body.innerHTML=`<div class="pane" id="pane"></div>`;Kit.skeleton($("#pane"),homeRows(SAMPLE.campaigns),"home");return}
   if(!S.campaigns.length){body.innerHTML=`<div class="pane" id="pane"><div class="empty"><div>${ring("var(--text-3)",0,true)}<h3>No campaigns yet</h3>
     <p>Give Plato a question or idea. A swarm of agents researches it, runs experiments and writes up what holds.</p><button class="btn primary" type="button" id="newEmpty">New campaign</button></div></div></div>`;$("#newEmpty").onclick=openNew;Kit.reveal($("#pane"),"home");return}
   const sc=$("#pane")?.scrollTop||0;
   body.innerHTML=`<div class="pane" id="pane"><div data-seq>${homeRows(S.campaigns)}</div></div>`;$("#pane").scrollTop=sc;
   Kit.hydrate(body);Kit.reveal($("#pane"),"home")}
-function connectView(){return `<div class="empty"><div style="width:min(380px,100%)"><div class="logo" style="margin:0 auto;width:36px;height:36px;font-size:16px;border-radius:9px">P</div>
-  <h3>Connect to Plato</h3><p>Paste the API token from your deploy. It stays in this browser only.</p>
-  <form id="connect" style="display:flex;gap:8px;margin-top:14px"><input class="field" id="tokIn" type="password" placeholder="API token" autocomplete="off" required aria-label="API token"><button class="btn primary">Connect</button></form></div></div>`}
-function bindConnect(){const f=$("#connect");if(f)f.onsubmit=e=>{e.preventDefault();setToken($("#tokIn").value.trim())}}
-async function setToken(t){S.token=t;ls.set("plato_token",t);S.campaigns=null;closeOverlay();await health();route();await loadList()}
 
 /* ---------- campaign view ---------- */
 const TABS=[["overview","Overview"],["results","Results"],["graph","Graph"],["findings","Findings"],["experiments","Experiments"],["manuscript","Manuscript"],["guardrails","Guardrails"]];
 function resetCampaignState(){clearTimeout(S.draftTimer);cancelAnimationFrame(S.lpRaf);
-  Object.assign(S,{summary:null,graph:null,manuscript:undefined,prov:{},draft:undefined,firstDraft:null,draftTimer:null,paperEl:null,lp:null,lpRaf:0,follow:true,rows:null,rowsFor:null,lastView:"",usage:undefined,usageKey:null,t0:0});
+  Object.assign(S,{summary:null,graph:null,manuscript:undefined,prov:{},draft:undefined,firstDraft:null,draftTimer:null,paperEl:null,lp:null,lpRaf:0,follow:pref("follow_live_writing"),rows:null,rowsFor:null,lastView:"",usage:undefined,usageKey:null,t0:0});
   S.res.page=0;S.panel.view="details";if(S.panel.mode==="focus")S.panel.mode="panel"}
 async function openCampaign(id){
   const fresh=S.summary?.campaign?.id!==id;
@@ -155,14 +161,14 @@ async function openCampaign(id){
   catch(e){if(S.route.id!==id)return;$("#crumb").innerHTML=`<b>Campaign</b>`;$("#body").className="body full";
     $("#body").innerHTML=`<div class="pane" id="pane"><div class="empty"><div>${cross("var(--red)")}<h3>${e.status===404?"Campaign not found":"Could not load campaign"}</h3><p>${esc(e.message)}</p></div></div></div>`;
     ["crumb","pane","props"].forEach(k=>Kit.reveal(document.getElementById(k),k));return}
-  renderCampaign();["crumb","pane","props"].forEach(k=>Kit.reveal($("#"+k),k));schedulePoll();loadUsage();
+  renderCampaign();["crumb","pane","props"].forEach(k=>Kit.reveal($("#"+k),k));schedulePoll();loadUsage();renderAskCtx();
   if(S.summary.campaign.status==="writing")pollDraft();
 }
 function counts(){const out={};(S.summary?.node_counts||[]).forEach(r=>{(out[r.node_type]??={})[r.status]=r.n});return out}
 const sum=o=>Object.values(o||{}).reduce((a,b)=>a+b,0);
 function renderCampaign(){
   const c=S.summary.campaign,nodes=S.graph.nodes,cnt=counts();
-  $("#crumb").innerHTML=`<a href="#/" style="text-decoration:none">Campaigns</a><span class="t3">›</span>${campaignIcon(c.status)}<b class="trunc">${esc(c.research_question)}</b>`;
+  $("#crumb").innerHTML=`<a href="#/campaigns" style="text-decoration:none">Campaigns</a><span class="t3">›</span>${campaignIcon(c.status)}<b class="trunc">${esc(c.research_question)}</b>`;
   const act=$("#topActions");
   if(ACTIVE(c)){if(!$("#resume")){act.innerHTML=`<button class="btn" id="resume" type="button" title="Ask the runner to resume now"><span data-lbl>Resume</span></button>`;
       $("#resume").onclick=async e=>{const b=e.currentTarget;b.disabled=true;try{await api(`campaigns/${c.id}/run`,{method:"POST"});Kit.flash(b,"Requested",2200)}catch(err){toast(err.message,true)}finally{b.disabled=false}}}}
@@ -198,7 +204,7 @@ const wide=()=>innerWidth>1100;
 const msExists=c=>c.status==="completed"||(c.status==="halted"&&c.halted_from==="writing");
 const paperAvail=()=>{const c=S.summary.campaign;return c.status==="writing"||msExists(c)||!!S.draft?.stage||(S.manuscript&&typeof S.manuscript==="object")};
 function autoPanel(){const c=S.summary.campaign;   // writing starts: open the paper beside the work, once per campaign
-  if(c.status!=="writing"||S.panel.auto.has(c.id)||!wide())return;S.panel.auto.add(c.id);S.panel.view="paper";if(S.panel.mode==="panel")S.panel.mode="split"}
+  if(c.status!=="writing"||S.panel.auto.has(c.id)||!wide()||!pref("open_paper_while_writing"))return;S.panel.auto.add(c.id);S.panel.view="paper";if(S.panel.mode==="panel")S.panel.mode="split"}
 function setPanel(mode,view){
   if(!S.summary||S.route.tab==="manuscript")return;
   if(!wide()){if(view&&view!==S.panel.view){S.panel.view=view;refreshProps(false)}return}
@@ -711,16 +717,9 @@ async function openEvidence(id,type){
 function overlay(html){$("#overlay").innerHTML=`<div class="scrim">${html}</div>`;const sc=$("#overlay .scrim");
   sc.addEventListener("mousedown",e=>{if(e.target===sc)closeOverlay()});sc.querySelectorAll("[data-x]").forEach(b=>b.onclick=closeOverlay)}
 function closeOverlay(){$("#overlay").innerHTML=""}
-function openSettings(){overlay(`<div class="modal" style="width:min(440px,100%)" role="dialog" aria-label="API token"><div class="m-h">API token</div><form class="m-b" id="tokForm"><p class="t2" style="margin:2px 0 10px">The bearer token printed by the deploy script. Stored in this browser only.</p>
-  <input class="field" id="tokIn2" type="password" autocomplete="off" placeholder="API token" aria-label="API token" value="${esc(S.token)}"><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
-  ${S.token?'<button type="button" class="btn ghost" id="signout">Forget token</button>':""}<button type="button" class="btn" data-x>Cancel</button><button class="btn primary">Save</button></div></form></div>`);
-  $("#tokIn2").focus();$("#tokForm").onsubmit=e=>{e.preventDefault();setToken($("#tokIn2").value.trim())};
-  if($("#signout"))$("#signout").onclick=()=>setToken("")}
-$("#settingsBtn").onclick=openSettings;
 
 /* ---------- new campaign ---------- */
 function openNew(){
-  if(!S.token)return openSettings();
   overlay(`<form class="modal" id="newForm" role="dialog" aria-label="New campaign"><div class="m-h"><span class="chip">${ring("var(--text-3)",0,true)}Ideation</span><span>New campaign</span><button type="button" class="icon-btn" style="margin-left:auto" data-x aria-label="Close">✕</button></div>
   <div class="m-b"><textarea class="bare big" name="question" rows="2" required minlength="3" maxlength="4000" placeholder="Research question or idea" aria-label="Research question"></textarea>
   <textarea class="bare t2" name="context" rows="3" maxlength="2000" placeholder="Add context, constraints or what a good answer looks like… (optional)" aria-label="Context"></textarea>
@@ -759,7 +758,7 @@ function bindPane(){const pane=$("#pane");if(!pane)return;
     else if(d.filter){R.filter=R.filter===d.filter&&d.filter!=="all"?"all":d.filter;R.page=0;renderGrid()}
     else if(d.sort){const s=R.sort,c=RES_COLS.find(c=>c.k===d.sort),first=c?.num||c?.desc?-1:1;R.sort=!s||s.k!==d.sort?{k:d.sort,dir:first}:s.dir===first?{k:d.sort,dir:-first}:null;renderGrid()}
     else if(d.page){R.page+=+d.page;renderGrid()}
-    else if(d.dense){R.dense=d.dense==="1";ls.set("plato_grid_dense",R.dense?"1":"0");pane.querySelectorAll("[data-dense]").forEach(b=>{const on=b.dataset.dense===d.dense;b.classList.toggle("on",on);b.setAttribute("aria-pressed",String(on))});$(".dg")?.classList.toggle("dense",R.dense)}
+    else if(d.dense){R.dense=d.dense==="1";ls.set("plato_grid_dense",R.dense?"1":"0");savePref("compact_grid",R.dense);pane.querySelectorAll("[data-dense]").forEach(b=>{const on=b.dataset.dense===d.dense;b.classList.toggle("on",on);b.setAttribute("aria-pressed",String(on))});$(".dg")?.classList.toggle("dense",R.dense)}
     else if(d.csv)exportCsv(t);
     else if(d.clear!=null){R.q="";R.filter="all";R.page=0;const q=$("#gq");if(q)q.value="";renderGrid()}
     else if(d.pv)setPanel(S.panel.mode==="panel"?"split":S.panel.mode,d.pv);
@@ -772,7 +771,7 @@ function bindPane(){const pane=$("#pane");if(!pane)return;
   pane.onchange=e=>{const t=e.target;
     if(t.id==="gsize"){S.res.size=+t.value;S.res.page=0;ls.set("plato_grid_size",t.value);renderGrid()}
     else if(t.dataset.col){t.checked?S.res.hidden.delete(t.dataset.col):S.res.hidden.add(t.dataset.col);ls.set("plato_grid_hidden",JSON.stringify([...S.res.hidden]));renderGrid()}}}
-function closeMenus(){const m=$("#colMenu");if(m&&!m.hidden){m.hidden=true;$("#colBtn")?.setAttribute("aria-expanded","false");return true}return false}
+function closeMenus(){let any=false;document.querySelectorAll(".menu-w>.menu:not([hidden])").forEach(m=>{m.hidden=true;m.parentElement.querySelector("[aria-expanded]")?.setAttribute("aria-expanded","false");any=true});return any}
 document.addEventListener("pointerdown",e=>{if(!e.target.closest?.(".menu-w"))closeMenus()});
 
 /* ---------- live updates: summary every 5s while running, full reload when it changes ---------- */
@@ -791,20 +790,22 @@ document.addEventListener("visibilitychange",()=>{if(!document.hidden&&S.summary
 
 /* ---------- command menu ---------- */
 let CMD={items:[],sel:0};
-function openCmd(){overlay(`<div class="modal cmd" role="dialog" aria-label="Command menu"><input class="cmd-in" id="cmdIn" placeholder="Search campaigns or type a command…" autocomplete="off" aria-label="Command" role="combobox" aria-expanded="true" aria-controls="cmdL"><div class="cmd-l" id="cmdL" role="listbox"></div></div>`);
+function openCmd(){overlay(`<div class="modal cmd" role="dialog" aria-label="Command menu"><input class="cmd-in" id="cmdIn" placeholder="Search projects, campaigns or commands…" autocomplete="off" aria-label="Command" role="combobox" aria-expanded="true" aria-controls="cmdL"><div class="cmd-l" id="cmdL" role="listbox"></div></div>`);
   const i=$("#cmdIn");CMD.sel=0;i.oninput=()=>{CMD.sel=0;renderCmd()};
   i.onkeydown=e=>{if(e.key==="ArrowDown"||(e.ctrlKey&&e.key==="n")){e.preventDefault();CMD.sel=Math.min(CMD.items.length-1,CMD.sel+1);renderCmd()}
     else if(e.key==="ArrowUp"||(e.ctrlKey&&e.key==="p")){e.preventDefault();CMD.sel=Math.max(0,CMD.sel-1);renderCmd()}
     else if(e.key==="Enter"){e.preventDefault();runCmd(CMD.sel)}};
   renderCmd();i.focus()}
 function renderCmd(){const q=($("#cmdIn")?.value||"").trim().toLowerCase(),id=S.route.id;
-  const acts=[{s:"Actions",l:"New campaign",k:"C",run:openNew},{s:"Actions",l:"All campaigns",run:()=>go(null)},
-    {s:"Actions",l:document.documentElement.dataset.theme==="dark"?"Switch to light theme":"Switch to dark theme",run:()=>$("#themeBtn").click()},{s:"Actions",l:S.token?"Change API token":"Add API token",run:openSettings}];
+  const acts=[{s:"Actions",l:"Ask Plato",k:"⌘J",run:askShortcut},{s:"Actions",l:"New project",run:()=>{location.hash="#/agent"}},{s:"Actions",l:"New campaign",k:"C",run:openNew},
+    {s:"Actions",l:"All campaigns",run:()=>go(null)},{s:"Actions",l:document.documentElement.dataset.theme==="dark"?"Switch to light theme":"Switch to dark theme",run:()=>$("#themeBtn").click()},
+    {s:"Actions",l:"Settings",run:()=>{location.hash="#/settings/preferences"}},{s:"Actions",l:"Log out",run:logout}];
   const tabs=id?TABS.map(([k,l],i)=>({s:"This campaign",l:"Open "+l,k:String(i+1),run:()=>go(id,k)})):[];
   const panel=id&&S.summary&&wide()&&S.route.tab!=="manuscript"?[...(paperAvail()?[{s:"Panel",l:S.summary.campaign.status==="writing"?"Watch the paper being written":"Show the paper",k:"P",run:()=>setPanel(S.panel.mode==="panel"?"split":S.panel.mode,"paper")}]:[]),
     {s:"Panel",l:"Panel: side",k:"[",run:()=>setPanel("panel")},{s:"Panel",l:"Panel: split view",run:()=>setPanel("split")},{s:"Panel",l:"Panel: focus",k:"]",run:()=>setPanel("focus")}]:[];
   const camps=(S.campaigns||[]).map(c=>({s:"Campaigns",l:c.research_question,icon:campaignIcon(c.status),run:()=>go(c.id)}));
-  CMD.items=[...acts,...tabs,...panel,...camps].filter(x=>!q||x.l.toLowerCase().includes(q)).slice(0,50);CMD.sel=Math.min(CMD.sel,Math.max(0,CMD.items.length-1));
+  const projs=(S.projects||[]).map(p=>({s:"Projects",l:p.title,icon:ico(CHAT),run:()=>{location.hash=`#/p/${eid(p.id)}`}}));
+  CMD.items=[...acts,...tabs,...panel,...projs,...camps].filter(x=>!q||x.l.toLowerCase().includes(q)).slice(0,50);CMD.sel=Math.min(CMD.sel,Math.max(0,CMD.items.length-1));
   let h="",last="";CMD.items.forEach((x,i)=>{if(x.s!==last){h+=`<div class="cmd-s">${esc(x.s)}</div>`;last=x.s}
     h+=`<button class="cmd-i${i===CMD.sel?" on":""}" data-ci="${i}" role="option" aria-selected="${i===CMD.sel}" type="button">${x.icon||'<span style="width:14px"></span>'}<span class="trunc">${esc(x.l)}</span>${x.k?`<span class="kbd">${esc(x.k)}</span>`:""}</button>`});
   const L=$("#cmdL");if(!L)return;L.innerHTML=h||'<p class="t3" style="padding:10px">No matches.</p>';
@@ -821,9 +822,16 @@ function kbMove(d){const rows=kbRows();if(!rows.length)return;rows.forEach(r=>r.
   const r=rows[KB];r.classList.add("kb");r.scrollIntoView({block:"nearest"})}
 
 /* ---------- keyboard ---------- */
+/** ⌘J: the ask panel; on the agent's own pages, its composer. */
+function askShortcut(){if(["agent","project"].includes(S.route.view)){$("#homeC,#projC")?.text.focus();return}closeOverlay();toggleAsk()}
 addEventListener("keydown",e=>{
-  if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==="k"){e.preventDefault();if($("#cmdIn"))closeOverlay();else openCmd();return}
-  if(e.key==="Escape"){if(closeMenus())return;if($("#overlay .scrim")){closeOverlay();return}$("#side").classList.remove("open");if(S.panel.mode==="focus"&&S.summary)setPanel("split");return}
+  if(!S.me?.account)return;
+  const mod=e.metaKey||e.ctrlKey,k=e.key.toLowerCase();
+  if(mod&&k==="k"){e.preventDefault();if($("#cmdIn"))closeOverlay();else openCmd();return}
+  if(mod&&k==="j"&&!e.altKey&&!e.shiftKey){e.preventDefault();askShortcut();return}
+  if(e.key==="Escape"){if(closeMenus())return;if($("#overlay .scrim")){closeOverlay();return}if(S.ask.open){closeAsk();return}
+    if($("#body.show-threads")){$("#body").classList.remove("show-threads");return}
+    $("#side").classList.remove("open");if(S.panel.mode==="focus"&&S.summary&&S.route.view==="campaign")setPanel("split");return}
   if($("#overlay .scrim"))return;
   if(/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)||e.metaKey||e.ctrlKey||e.altKey)return;
   if(e.key==="c"||e.key==="C"){e.preventDefault();openNew()}
@@ -831,7 +839,7 @@ addEventListener("keydown",e=>{
   else if(e.key==="j"||e.key==="ArrowDown"){if(kbRows().length&&!e.target.closest?.(".sl")){e.preventDefault();kbMove(1)}}
   else if(e.key==="k"||e.key==="ArrowUp"){if(kbRows().length&&!e.target.closest?.(".sl")){e.preventDefault();kbMove(-1)}}
   else if(e.key==="Enter"){const r=document.querySelector("#body .kb");if(r&&!e.target.closest?.("button,a,.sl")){e.preventDefault();r.click()}}
-  else if(S.route.id&&S.summary){
+  else if(S.route.view==="campaign"&&S.summary){
     if(/^[1-7]$/.test(e.key))go(S.route.id,TABS[+e.key-1][0]);
     else if(e.key==="["||e.key==="]")stepPanel(e.key==="]"?1:-1);
     else if((e.key==="p"||e.key==="P")&&paperAvail()&&S.route.tab!=="manuscript"){if(S.panel.view==="paper")setPanel(S.panel.mode,"details");else setPanel(S.panel.mode==="panel"&&wide()?"split":S.panel.mode,"paper")}}});
@@ -841,9 +849,20 @@ $("#nav").addEventListener("click",e=>{const h=e.target.closest("[data-sec]");
   const k=h.dataset.sec;NAV_CLOSED.has(k)?NAV_CLOSED.delete(k):NAV_CLOSED.add(k);ls.set("plato_nav_closed",JSON.stringify([...NAV_CLOSED]));renderNav();$(`#nav [data-sec="${k}"]`)?.focus()});
 
 /* ---------- router ---------- */
-function route(){const prev=S.route;S.route=parseRoute();renderNav();
-  if(prev.id!==S.route.id){S.selected=null}
-  if(!S.route.id||!S.token){clearTimeout(S.timer);clearTimeout(S.draftTimer);S.draftTimer=null;renderHome();Kit.sweepCharts();return}
-  if(prev.id===S.route.id&&S.summary?.campaign?.id===S.route.id){renderCampaign();return}
-  openCampaign(S.route.id)}
-(async()=>{route();await health();if(S.token)await loadList();setInterval(()=>{if(!document.hidden)loadList()},20000)})();
+function route(){const prev=S.route,r=S.route=parseRoute(),v=r.view;
+  if(!S.me?.account){   // signed out: everything but the sign-in screens waits behind them
+    if(v!=="login"&&v!=="signup"){S.next=location.hash.length>2?location.hash:"";location.replace("#/login");return}
+    renderAuth(v);return}
+  if(v==="login"||v==="signup"){location.replace(S.next||"#/");S.next="";return}
+  document.body.classList.remove("signed-out");$("#auth").innerHTML="";$("#side").classList.remove("open");closeMenus();
+  if(prev.id!==r.id)S.selected=null;
+  if(prev.view==="campaign"&&v!=="campaign"){clearTimeout(S.timer);resetCampaignState()}
+  if(v!=="project")clearTimeout(S.projTimer);
+  if(v==="agent"||v==="project")closeAsk(true);
+  renderNav();updateAskBtn();renderAskCtx();
+  if(v==="campaign"){if(prev.id===r.id&&S.summary?.campaign?.id===r.id)renderCampaign();else openCampaign(r.id);return}
+  if(v==="project")openProject(r.pid);
+  else if(v==="settings")renderSettings();
+  else if(v==="campaigns")renderHome();
+  else renderAgentHome();
+  Kit.sweepCharts()}

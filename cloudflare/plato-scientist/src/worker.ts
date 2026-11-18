@@ -62,7 +62,7 @@ const ROUTES: [string, string, Access, Handler][] = [
   ["POST", "auth/signup", "public", auth.signup],
   ["POST", "auth/login", "public", auth.login],
   ["POST", "auth/logout", "public", auth.logout],
-  ["GET", "me", "user", auth.me],
+  ["GET", "me", "public", auth.me],
   ["PATCH", "me", "account", auth.updateMe],
   ["DELETE", "me", "account", auth.deleteMe],
   ["POST", "me/password", "account", auth.changePassword],

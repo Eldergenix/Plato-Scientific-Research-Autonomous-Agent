@@ -18,7 +18,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { DurableObject } from "cloudflare:workers";
 import { ownKey } from "./auth";
 import { containerError, createPath, manuscriptParts, toContainer } from "./campaigns";
-import { db, type Env, monthlyCap, nameUuid, type Sql, TERMINAL_STATUSES, UUID_RE } from "./lib";
+import { db, type Env, monthlyCap, nameUuid, type Sql, TERMINAL_STATUSES, toJson, UUID_RE } from "./lib";
 
 /** Model calls per person message; the last one must answer in text. */
 const MAX_MODEL_CALLS = 8;
@@ -275,7 +275,7 @@ async function runTool(a: Actor, use: Block, cutOff: boolean): Promise<Block> {
       String(use.name)
     ];
     if (!fn) throw new ToolError(`Unknown tool: ${String(use.name)}`);
-    out = result(JSON.stringify(await fn(a, input, id)).slice(0, 12_000));
+    out = result(toJson(await fn(a, input, id)).slice(0, 12_000));
   } catch (err) {
     if (!(err instanceof ToolError)) throw err; // transient: fail the turn, retry runs it again
     out = result(err.message, true);
@@ -322,7 +322,7 @@ async function startThread(a: Actor, input: Record<string, unknown>, toolUseId: 
 async function listThreads(a: Actor, input: Record<string, unknown>) {
   const all = input.scope === "all";
   const rows = await a.sql`
-    SELECT id AS thread_id, research_question AS question, status, halted_reason,
+    SELECT id AS thread_id, left(research_question, 300) AS question, status, halted_reason,
            tokens_used, token_budget_max AS token_budget, created_at, updated_at
       FROM plato.research_campaigns
      WHERE CASE WHEN ${all} THEN account_id = ${a.accountId} ELSE project_id = ${a.projectId} END

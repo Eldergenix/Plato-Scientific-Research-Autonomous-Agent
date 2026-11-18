@@ -4,7 +4,7 @@
 (() => {
 "use strict";
 const RM = matchMedia("(prefers-reduced-motion: reduce)");
-const still = () => RM.matches;
+const still = () => RM.matches || document.documentElement.dataset.motion === "reduce";
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const quiet = p => { p?.catch?.(() => {}); return p; };
 

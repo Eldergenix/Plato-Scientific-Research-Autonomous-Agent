@@ -337,8 +337,10 @@ export async function logout(c: Ctx): Promise<Response> {
   return json({ ok: true });
 }
 
+/** Public, so a signed-out visitor gets {account: null} rather than a 401 the browser logs as an error. */
 export async function me(c: Ctx): Promise<Response> {
-  const who = c.who!;
+  const who = (c.who = await authenticate(c));
+  if (!who) return json({ account: null });
   if (!who.accountId) {
     return json({ account: null, admin_token: true, model: c.env.PLATO_SCIENTIST_MODEL });
   }

@@ -10,8 +10,9 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="/app/kit.css">
 <script>
-// Apply the saved theme before first paint.
-try{const t=localStorage.getItem("plato_theme");if(t)document.documentElement.dataset.theme=t;else if(matchMedia("(prefers-color-scheme: light)").matches)document.documentElement.dataset.theme="light"}catch{}
+// Apply the saved theme ("system", "light" or "dark") and motion preference before first paint.
+try{const d=document.documentElement,t=localStorage.getItem("plato_theme");d.dataset.theme=t==="light"||t==="dark"?t:matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";
+  if(localStorage.getItem("plato_motion")==="reduce")d.dataset.motion="reduce"}catch{}
 </script>
 <style>
 :root,[data-theme="dark"]{
@@ -374,8 +375,10 @@ pre.src{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.6 "JetBr
   .top{padding:0 10px 0 6px}.tabs{padding:0 10px}
 }
 </style>
+<link rel="stylesheet" href="/app/shell.css">
 </head>
-<body>
+<body class="signed-out">
+<div id="auth"></div>
 <div class="app">
   <aside class="side" id="side" aria-label="Sidebar">
     <div class="ws"><span class="ws-n"><span class="logo" aria-hidden="true">P</span><span>Plato</span><span class="t3" style="font-weight:400">scientist</span></span>
@@ -383,11 +386,11 @@ pre.src{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.6 "JetBr
         <button class="icon-btn" id="cmdBtn" type="button" aria-label="Search" title="Search (⌘K)"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg></button>
         <button class="icon-btn" id="newBtn" type="button" aria-label="New campaign" title="New campaign (C)"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 9v3.5a1.5 1.5 0 0 1-1.5 1.5H3.5A1.5 1.5 0 0 1 2 12.5V4a1.5 1.5 0 0 1 1.5-1.5H7"/><path d="m11.3 1.9 2.8 2.8-5.6 5.6H5.7V7.5z"/></svg></button>
       </span></div>
-    <nav class="nav" id="nav" aria-label="Campaigns"></nav>
+    <nav class="nav" id="nav" aria-label="Navigation"></nav>
     <div class="side-f">
-      <div class="health" id="health"><span class="dot"></span><span>Not connected</span></div>
-      <button class="item" id="settingsBtn" type="button"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M14.2 8h-1.6M3.4 8H1.8M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1M12.4 12.4l-1.1-1.1M4.7 4.7 3.6 3.6"/></svg>API token</button>
-      <button class="item" id="themeBtn" type="button"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M13.5 9.6A5.6 5.6 0 0 1 6.4 2.5a5.6 5.6 0 1 0 7.1 7.1Z"/></svg><span id="themeLbl">Theme</span></button>
+      <div class="health" id="health"><span class="dot"></span><span>Connecting…</span></div>
+      <button class="item" id="themeBtn" type="button"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M13.5 9.6A5.6 5.6 0 0 1 6.4 2.5a5.6 5.6 0 1 0 7.1 7.1Z"/></svg><span id="themeLbl">Theme</span></button>
+      <a class="item acct" id="acct" href="#/settings/preferences" aria-label="Settings"></a>
     </div>
   </aside>
   <div class="main">
@@ -400,9 +403,17 @@ pre.src{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.6 "JetBr
     <div class="body" id="body"></div>
   </div>
 </div>
+<div class="ask-fab" id="askFab" hidden>
+  <button class="ask-btn" id="askBtn" type="button" title="Ask Plato" aria-keyshortcuts="Meta+J Control+J"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 1.5c.4 2.9 1.7 4.3 4.6 4.7.3 0 .3.5 0 .6C9.7 7.2 8.4 8.6 8 11.5c0 .3-.5.3-.6 0C7 8.6 5.6 7.2 2.8 6.8c-.3-.1-.3-.6 0-.6C5.6 5.8 7 4.4 7.4 1.5c.1-.3.6-.3.6 0Z"/><path d="M12.5 10.5c.2 1.2.7 1.7 1.9 1.9-1.2.2-1.7.7-1.9 1.9-.2-1.2-.7-1.7-1.9-1.9 1.2-.2 1.7-.7 1.9-1.9Z"/></svg>Ask Plato<span class="kbd" data-mod>⌘J</span></button>
+  <div class="glint" style="top: -7px; left: -1px; right: -1px;"><div aria-hidden="true"><div style="--x-backgroundColor: lch(100% 0 0 / 0.15); --x-color: lch(100% 0 0 / 0.15);"></div></div></div>
+</div>
+<aside class="ask" id="ask" hidden aria-label="Ask Plato"></aside>
 <div class="toasts" id="toasts" aria-live="polite"></div>
 <div id="overlay"></div>
 <script src="/app/kit.js"></script>
 <script src="/app/app.js"></script>
+<script src="/app/account.js"></script>
+<script src="/app/agent.js"></script>
+<script src="/app/main.js"></script>
 </body>
 </html>

@@ -37,14 +37,16 @@ export class HttpError extends Error {
   }
 }
 
+/** JSON text of query results: int8 columns arrive as BigInt, which JSON.stringify rejects. */
+export function toJson(data: unknown): string {
+  return JSON.stringify(data, (_k, v) => (typeof v === "bigint" ? Number(v) : v));
+}
+
 export function json(data: unknown, status = 200, headers: HeadersInit = {}): Response {
   const h = new Headers(headers);
   h.set("content-type", "application/json; charset=utf-8");
   h.set("cache-control", "no-store");
-  return new Response(
-    JSON.stringify(data, (_k, v) => (typeof v === "bigint" ? Number(v) : v)),
-    { status, headers: h },
-  );
+  return new Response(toJson(data), { status, headers: h });
 }
 
 /** Parse a JSON object body (at most ``maxBytes``). JSON-only bodies also stop HTML forms
