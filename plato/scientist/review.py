@@ -49,7 +49,8 @@ def _system(role: str, nonce: str) -> str:
 def _plain(sentence: str) -> str:
     text = _CITE.sub("", sentence)
     text = re.sub(r"\\[a-zA-Z]+\*?\{([^}]*)\}", r"\1", text)
-    return re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\s+", " ", text).strip()
+    return re.sub(r"\s+([.,;:!?)])", r"\1", text)  # where a removed \cite left a gap
 
 
 def extract_cited_claims(ms: Manuscript, allowed: set[str]) -> list[dict[str, Any]]:
@@ -77,7 +78,8 @@ def extract_cited_claims(ms: Manuscript, allowed: set[str]) -> list[dict[str, An
 
 
 def _norm(text: str) -> str:
-    return re.sub(r"\s+", " ", text).strip().lower()
+    text = re.sub(r"\s+", " ", text).strip()
+    return re.sub(r"\s+([.,;:!?)])", r"\1", text)  # where a removed \cite left a gap.lower()
 
 
 def quote_span(abstract: str, quote: str) -> tuple[int, int] | None:
