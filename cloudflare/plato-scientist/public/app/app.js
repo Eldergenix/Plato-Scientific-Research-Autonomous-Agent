@@ -235,7 +235,7 @@ function campaignProps(){
   ${Object.entries(counts()).map(([t,st])=>`<div class="prop"><span>${typeChip(t)}</span><span class="t2">${Object.entries(st).map(([k,v])=>`${v} ${k}`).join(" · ")}</span></div>`).join("")||'<p class="t3">Empty</p>'}
   <div class="sep"></div><div class="prop"><span>ID</span><span class="mono t3 trunc" title="${esc(c.id)}">${esc(c.id)}</span></div>
   <p class="t3" style="font-size:12px;margin-top:12px">Select any node to see its evidence and lineage.</p></div>`}
-const EV_LABEL={stdout_log:"Run log",git_patch:"Code",plot_png:"Plot",vlm_critique:"Figure critique",sealed_eval_json:"Sealed evaluation",latex_section:"LaTeX",bibtex:"BibTeX",peer_review:"Peer review"};
+const EV_LABEL={stdout_log:"Run log",git_patch:"Code",plot_png:"Plot",vlm_critique:"Figure critique",sealed_eval_json:"Sealed evaluation",latex_section:"LaTeX",bibtex:"BibTeX",peer_review:"Peer review",citation_report:"Citation checks",evidence_matrix:"Claim support",review_panel:"Reviewer panel"};
 function evIcon(t){const p={plot_png:'<rect x="2.5" y="2.5" width="11" height="11" rx="2"/><path d="m4.5 10.5 2.5-3 2 2 2.5-3.5"/>',git_patch:'<path d="m6 4.5-3.5 3.5L6 11.5m4-7 3.5 3.5-3.5 3.5"/>',stdout_log:'<rect x="2.5" y="3" width="11" height="10" rx="2"/><path d="m5 6.5 2 1.5-2 1.5M8.5 10h2.5"/>'}[t]||'<path d="M4 2.5h5l3 3v8H4z"/><path d="M9 2.5v3h3"/>';
   return `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--text-2)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`}
 const evRow=e=>`<div class="lin" role="button" tabindex="0" data-ev="${esc(e.id)}" data-type="${esc(e.artifact_type)}">${evIcon(e.artifact_type)}<span class="trunc">${esc(EV_LABEL[e.artifact_type]||e.artifact_type)}</span><span class="t3 mono" style="margin-left:auto;font-size:11px">${esc(e.sha256_checksum.slice(0,8))}</span></div>`;
@@ -558,6 +558,21 @@ function latexToHtml(src){
   return html.replace(/([(\[“‘]*)\u0000M(\d+)\u0000([)\].,;:!?”’%]*)/g,(_,a,i,b)=>{const [h,d]=math[+i]||["",true];return d||!(a||b)?a+h+b:`<span class="nw">${a}${h}${b}</span>`})}
 // Title/author text: escaped LaTeX reduced to its words.
 const plainTex=t=>t.replace(/\\([&%_#$])/g,"$1").replace(/\\&amp;/g,"&amp;").replace(/\\[a-zA-Z]+\*?\{([^}]*)\}/g,"$1").replace(/\\[a-zA-Z]+\*?/g,"");
+const pj=t=>{try{return t?JSON.parse(t):null}catch{return null}};
+const sevColor=v=>v==null?"var(--gray)":v>=4?"var(--red)":v>=3?"var(--orange)":v>=2?"var(--yellow)":"var(--green)";
+// Reviewer panel, claim support and citation checks: the receipts of the paper's audit.
+function auditHtml(m){const panel=pj(m.review_panel),mx=pj(m.evidence_matrix),cr=pj(m.citation_report);if(!panel&&!mx&&!cr)return"";
+  const parts=[];
+  if(panel){const rows=Object.entries(panel.reviewers||{});
+    parts.push(`<div class="audit-row"><b>Reviewer panel</b><span class="audit-chips">${rows.map(([a,r])=>`<span class="chip" title="${esc(r.error?"Review unavailable":r.summary||"")}"><i style="background:${sevColor(r.error?null:r.severity)}"></i>${esc(a[0].toUpperCase()+a.slice(1))} ${r.error?"n/a":`${Number(r.severity)}/5`}</span>`).join("")}</span></div>`
+      +`<details class="t2"><summary>Reviewer comments</summary>${rows.filter(([,r])=>!r.error).map(([a,r])=>`<p><b style="font-weight:500">${esc(a)}</b>: ${esc(r.summary||"")}</p>${r.issues?.length?`<ul>${r.issues.map(i=>`<li>[${esc(i.section)}] ${esc(i.issue)} <span class="t3">Fix: ${esc(i.fix)}</span></li>`).join("")}</ul>`:""}`).join("")}</details>`)}
+  if(mx){const cl=mx.claims||[],n=v=>cl.filter(c=>c.verdict===v).length;
+    parts.push(`<div class="audit-row"><b>Claim support</b><span class="t2">${cl.length?`${n("supported")} of ${cl.length} cited claims supported by the cited abstract${n("refuted")?` · ${n("refuted")} contradicted`:""}`:"No cited claims"}</span></div>`
+      +(cl.length?`<details class="t2"><summary>Claims and quotes</summary><ul>${cl.map(c=>`<li><span class="chip"><i style="background:${c.verdict==="supported"?"var(--green)":c.verdict==="refuted"?"var(--red)":"var(--orange)"}"></i>${esc(c.verdict)}</span> ${esc(c.text)}${c.citations.filter(x=>x.quote).map(x=>`<blockquote>“${esc(x.quote)}” <span class="t3">${esc(x.title)}</span></blockquote>`).join("")}</li>`).join("")}</ul></details>`:""))}
+  if(cr){const cs=cr.cited||[],ok=cs.filter(c=>c.status==="verified").length,ex=cr.excluded||[];
+    parts.push(`<div class="audit-row"><b>Citation checks</b><span class="t2">${ok} of ${cs.length} cited papers verified${ex.length?` · ${ex.length} retrieved paper${ex.length>1?"s":""} excluded`:""} · searched ${esc((cr.sources_searched||[]).join(", "))}</span></div>`
+      +(ex.length||cs.length?`<details class="t2"><summary>Details</summary><ul>${cs.map(c=>`<li>${esc(c.key||"")} ${esc(c.title)}: ${esc(c.status)}${c.retracted?" (retracted)":""}${c.issues?.length?` <span class="t3">${esc(c.issues.join(", "))}</span>`:""}</li>`).join("")}${ex.map(x=>`<li>Excluded: ${esc(x.title)} <span class="t3">${esc(x.reason)}</span></li>`).join("")}</ul></details>`:""))}
+  return `<div class="review audit">${parts.join("")}</div>`}
 function reviewHtml(m){try{const r=m.peer_review?JSON.parse(m.peer_review):null;if(!r)return"";
   const pips=v=>{v=Number(v);v=Number.isFinite(v)?v:0;return `<span class="pips" title="${v} of 4">${[1,2,3,4].map(i=>`<i class="${i<=v?"on":""}"></i>`).join("")}</span>`};
   const dc={accept:"var(--green)",minor_revision:"var(--yellow)",major_revision:"var(--orange)",reject:"var(--red)"}[r.decision]||"var(--gray)";
@@ -575,7 +590,7 @@ function manuscriptView(){
   const dl=ico('<path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10"/>'),cp=ico('<rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5v-2a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2"/>');
   return `<div class="paper"><div class="ms-bar"><div class="seg" role="tablist" aria-label="Manuscript view"><button type="button" role="tab" data-ms="paper" aria-selected="${S.msView==="paper"}" class="${S.msView==="paper"?"on":""}">Paper</button><button type="button" role="tab" data-ms="src" aria-selected="${S.msView==="src"}" class="${S.msView==="src"?"on":""}">LaTeX</button><button type="button" role="tab" data-ms="bib" aria-selected="${S.msView==="bib"}" class="${S.msView==="bib"?"on":""}">BibTeX</button></div>
     <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap"><button class="btn" type="button" data-copy="${S.msView==="bib"?"bib":"tex"}">${cp}<span data-lbl>${S.msView==="bib"?"Copy BibTeX":"Copy LaTeX"}</span></button><button class="btn" type="button" data-dl="tex">${dl}.tex</button>${m.bibtex?`<button class="btn" type="button" data-dl="bib">${dl}.bib</button>`:""}</span></div>
-    ${reviewHtml(m)}${S.msView==="paper"?latexToHtml(m.latex_section||""):`<pre class="src">${esc(S.msView==="bib"?m.bibtex||"":m.latex_section||"")}</pre>`}</div>`}
+    ${reviewHtml(m)}${auditHtml(m)}${S.msView==="paper"?latexToHtml(m.latex_section||""):`<pre class="src">${esc(S.msView==="bib"?m.bibtex||"":m.latex_section||"")}</pre>`}</div>`}
 function download(kind){const m=S.manuscript;if(!m)return;Kit.download(`${cid(S.route.id).toLowerCase()}.${kind}`,(kind==="bib"?m.bibtex:m.latex_section)||"")}
 async function copyPaper(btn){const m=S.manuscript,kind=btn.dataset.copy;
   const text=kind==="bib"?m?.bibtex:kind==="draft"?draftLatex():m?.latex_section;

@@ -56,7 +56,8 @@ const TOOLS: Anthropic.Tool[] = [
         },
         domain: {
           type: "string",
-          description: "Research domain, such as statistics, machine-learning or biology. Default: general.",
+          description:
+            "Research domain, such as statistics, machine-learning, biology, medicine or astronomy. It picks the literature sources (biology and medicine add PubMed and Europe PMC; astronomy adds NASA ADS) and the experiment packages (biopython, astropy). Default: general.",
         },
         token_budget: {
           type: "integer",
@@ -64,6 +65,12 @@ const TOOLS: Anthropic.Tool[] = [
         },
         max_rounds: { type: "integer", description: "Investigation rounds, 1 to 5. Default 2." },
         workers: { type: "integer", description: "Parallel experiment workers, 1 to 8. Default 4." },
+        gpu: {
+          type: "string",
+          enum: ["T4", "L4", "A10G", "A100"],
+          description:
+            "Run experiments on a Modal GPU of this type (PyTorch installed, 10 minutes per script). Only for work that needs a GPU, such as training neural networks; omit otherwise.",
+        },
       },
       required: ["question"],
       additionalProperties: false,
@@ -303,6 +310,7 @@ async function startThread(a: Actor, input: Record<string, unknown>, toolUseId: 
     token_budget: int(input.token_budget, "token_budget", 200_000, 10_000_000, DEFAULT_THREAD_BUDGET),
     max_rounds: int(input.max_rounds, "max_rounds", 1, 5, 2),
     workers: int(input.workers, "workers", 1, 8, 4),
+    ...(typeof input.gpu === "string" && input.gpu ? { gpu: input.gpu } : {}),
   };
   // Derived from the tool call, so a retried call addresses the same campaign (the
   // container's create is idempotent for a given id).
