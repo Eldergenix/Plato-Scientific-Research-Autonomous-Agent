@@ -603,3 +603,44 @@ async def test_converse_refusal_raises_and_still_settles():
             messages=[{"role": "user", "content": "x"}], tools=TOOL_SPECS,
         )
     assert store.settled and store.settled[0][1] == 10
+
+
+async def test_e2b_create_retries_transport_errors_only(monkeypatch):
+    e2b = pytest.importorskip("e2b")
+    import httpx
+
+    from plato.scientist.workspace import backend as backend_mod
+
+    calls, ran = [], []
+
+    class FakeSandbox:
+        sandbox_id = "sbx-1"
+
+        class commands:  # noqa: N801
+            @staticmethod
+            async def run(cmd, cwd=None, timeout=None, request_timeout=None):
+                ran.append((cmd, request_timeout))
+                return type("R", (), {"exit_code": 0, "stdout": "", "stderr": ""})()
+
+    async def flaky_create(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            raise httpx.WriteError("channel closed")
+        return FakeSandbox()
+
+    real_sleep = asyncio.sleep
+    monkeypatch.setattr(backend_mod.asyncio, "sleep", lambda *_: real_sleep(0))
+    monkeypatch.setattr(e2b.AsyncSandbox, "create", staticmethod(flaky_create))
+    b = await backend_mod.E2BBackend.create(template="t", api_key="k", timeout_seconds=60)
+    assert b.sandbox_id == "sbx-1" and len(calls) == 2
+    assert ran and ran[0][1] == backend_mod._REQUEST_TIMEOUT  # long stream-open wait
+
+    async def denied(**kwargs):
+        calls.append(kwargs)
+        raise e2b.AuthenticationException("bad key")
+
+    calls.clear()
+    monkeypatch.setattr(e2b.AsyncSandbox, "create", staticmethod(denied))
+    with pytest.raises(e2b.AuthenticationException):
+        await backend_mod.E2BBackend.create(template="t", api_key="k", timeout_seconds=60)
+    assert len(calls) == 1

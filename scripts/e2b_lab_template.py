@@ -51,13 +51,23 @@ def main() -> int:
         print("E2B_API_KEY is not set", file=sys.stderr)
         return 2
     started = time.monotonic()
-    info = Template.build_in_background(
-        template,
-        args.name,
-        cpu_count=args.cpu,
-        memory_mb=args.memory_mb,
-        skip_cache=args.skip_cache,
-    )
+    for attempt in range(1, 4):
+        try:
+            info = Template.build_in_background(
+                template,
+                args.name,
+                cpu_count=args.cpu,
+                memory_mb=args.memory_mb,
+                skip_cache=args.skip_cache,
+            )
+            break
+        except Exception as exc:  # e.g. httpx.WriteError "channel closed" before any build exists
+            import httpx
+
+            if attempt == 3 or not isinstance(exc, httpx.TransportError):
+                raise
+            print(f"starting the build failed ({type(exc).__name__}); retrying", file=sys.stderr)
+            time.sleep(10 * attempt)
     print(f"build {info.build_id} of template {info.template_id} started", flush=True)
     # Poll ourselves rather than through Template.build, so a slow status request (seen as an
     # httpx ReadTimeout) is retried instead of abandoning a build that is still running.

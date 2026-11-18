@@ -34,6 +34,12 @@ from typing import Protocol
 _TIMEOUT_EXIT = 124
 # Extra seconds the transport waits beyond the in-sandbox limit before giving up.
 _TRANSPORT_GRACE = 30.0
+# Seconds to wait for a request stream to open. The SDK default (60 s) is too short for a
+# busy sandbox: live verification saw a long-running check fail before its command started.
+# Commands are not retried (they are not idempotent), so the wait is generous instead.
+_REQUEST_TIMEOUT = 180.0
+# Attempts to create a sandbox; creation is retried on transport errors only.
+_CREATE_ATTEMPTS = 3
 
 
 @dataclass(frozen=True)
@@ -76,6 +82,14 @@ def wrap_with_timeout(command: str, timeout: float) -> str:
     return f"timeout -k 5 {seconds} bash -lc {shlex.quote(command)}"
 
 
+def _transient(exc: BaseException) -> bool:
+    """Network-level failures (dropped connection, timeout) worth one more attempt."""
+    import httpx
+    from e2b import TimeoutException
+
+    return isinstance(exc, (httpx.TransportError, TimeoutException, TimeoutError, ConnectionError))
+
+
 class E2BBackend:
     """One E2B sandbox (``e2b`` SDK 2.x, ``AsyncSandbox``)."""
 
@@ -108,7 +122,16 @@ class E2BBackend:
             kwargs["template"] = template
         if api_key:
             kwargs["api_key"] = api_key
-        sbx = await AsyncSandbox.create(**kwargs)
+        for attempt in range(1, _CREATE_ATTEMPTS + 1):
+            try:
+                sbx = await AsyncSandbox.create(**kwargs)
+                break
+            except Exception as exc:
+                # Auth, quota and template errors are permanent; only transport errors retry.
+                # A sandbox half-created by a failed attempt is reaped by its own timeout.
+                if attempt == _CREATE_ATTEMPTS or not _transient(exc):
+                    raise
+                await asyncio.sleep(2 * attempt)
         backend = cls(sbx, workdir)
         await backend.run(f"mkdir -p {shlex.quote(workdir)}", timeout=30)
         return backend
@@ -124,6 +147,7 @@ class E2BBackend:
                 wrap_with_timeout(command, timeout),
                 cwd=cwd or self.workdir,
                 timeout=timeout + _TRANSPORT_GRACE,
+                request_timeout=_REQUEST_TIMEOUT,
             )
             exit_code, out, err = res.exit_code, res.stdout or "", res.stderr or ""
         except CommandExitException as exc:  # non-zero exit is a result, not an error
@@ -141,10 +165,14 @@ class E2BBackend:
         )
 
     async def write_bytes(self, path: str, data: bytes) -> None:
-        await self._sbx.files.write(self._abs(path), data)
+        await self._sbx.files.write(self._abs(path), data, request_timeout=_REQUEST_TIMEOUT)
 
     async def read_bytes(self, path: str) -> bytes:
-        return bytes(await self._sbx.files.read(self._abs(path), format="bytes"))
+        return bytes(
+            await self._sbx.files.read(
+                self._abs(path), format="bytes", request_timeout=_REQUEST_TIMEOUT
+            )
+        )
 
     async def set_network(self, allow: bool) -> bool:
         from e2b import ALL_TRAFFIC
