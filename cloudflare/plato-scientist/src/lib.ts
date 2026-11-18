@@ -17,6 +17,11 @@ export interface Env {
   PLATO_SECRETS_KEY: string;
   ANTHROPIC_API_KEY: string;
   PLATO_DATABASE_URL: string;
+  /** Optional secret. When set, experiments run in E2B sandboxes built from PLATO_E2B_TEMPLATE. */
+  E2B_API_KEY?: string;
+  PLATO_E2B_TEMPLATE?: string;
+  /** "e2b" or "local"; campaigns that name an executor override it. */
+  PLATO_DEFAULT_EXECUTOR?: string;
   /** Local development only: send container traffic to this URL (the Python service). */
   PLATO_DEV_SERVICE_URL?: string;
   /** Local development only: Anthropic API base URL (a stub server in tests). */

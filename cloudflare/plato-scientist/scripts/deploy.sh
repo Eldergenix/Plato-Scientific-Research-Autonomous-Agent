@@ -12,6 +12,9 @@
 #   PLATO_SECRETS_KEY_FILE  where the account secrets key is kept on this machine
 #                        (default ~/.config/plato/secrets-key). The key derives the password
 #                        pepper and encrypts saved API keys; it is set once and never replaced.
+#   E2B_API_KEY          E2B key: agents then run experiments in E2B sandboxes built from the
+#                        plato-lab template (python scripts/e2b_lab_template.py). Without it,
+#                        experiments run in the container's own sandbox.
 #   SKIP_MIGRATIONS=1    skip applying the schema from this machine (the container also migrates on start)
 #
 # Needs: node/npm, docker (wrangler builds and pushes the container image), python3 with asyncpg for migrations.
@@ -77,12 +80,13 @@ else
 fi
 
 SECRETS="$(mktemp)"; chmod 600 "$SECRETS"; trap 'rm -f "$SECRETS"' EXIT
-PLATO_API_TOKEN="$PLATO_API_TOKEN" PLATO_INTERNAL_TOKEN="$PLATO_INTERNAL_TOKEN" NEW_SECRETS_KEY="$NEW_SECRETS_KEY" node -e '
+PLATO_API_TOKEN="$PLATO_API_TOKEN" PLATO_INTERNAL_TOKEN="$PLATO_INTERNAL_TOKEN" NEW_SECRETS_KEY="$NEW_SECRETS_KEY" E2B_API_KEY="${E2B_API_KEY:-}" node -e '
   const e = process.env;
   process.stdout.write(JSON.stringify({
     PLATO_API_TOKEN: e.PLATO_API_TOKEN, PLATO_INTERNAL_TOKEN: e.PLATO_INTERNAL_TOKEN,
     ANTHROPIC_API_KEY: e.ANTHROPIC_API_KEY, PLATO_DATABASE_URL: e.PLATO_DATABASE_URL,
     ...(e.NEW_SECRETS_KEY ? { PLATO_SECRETS_KEY: e.NEW_SECRETS_KEY } : {}),
+    ...(e.E2B_API_KEY ? { E2B_API_KEY: e.E2B_API_KEY } : {}),
   }));' > "$SECRETS"
 npx wrangler secret bulk "$SECRETS"
 

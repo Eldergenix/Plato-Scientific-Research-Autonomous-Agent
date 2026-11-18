@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+"""Build (or rebuild) the ``plato-lab`` E2B template the research agents run in.
+
+    pip install e2b==2.64.0
+    E2B_API_KEY=... python scripts/e2b_lab_template.py
+    E2B_API_KEY=... python scripts/e2b_lab_verify.py      # then verify every tool
+
+The template definition lives in ``plato/scientist/workspace/lab.py``. The build ends with
+smoke tests that load every preinstalled tool and library, so a broken install fails the
+build instead of surfacing later in an agent's session. Only ``e2b`` is needed here, not
+the scientist service's dependencies. The key is read from the environment and never
+printed.
+"""
+
+from __future__ import annotations
+
+import argparse
+import importlib.util
+import os
+import sys
+import time
+from pathlib import Path
+
+_LAB = Path(__file__).resolve().parents[1] / "plato" / "scientist" / "workspace" / "lab.py"
+
+
+def _load_lab():
+    spec = importlib.util.spec_from_file_location("plato_ws_lab", _LAB)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def main() -> int:
+    lab = _load_lab()
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--name", default=lab.TEMPLATE_NAME)
+    ap.add_argument("--cpu", type=int, default=4, help="vCPUs of sandboxes from this template")
+    ap.add_argument("--memory-mb", type=int, default=8192)
+    ap.add_argument("--skip-cache", action="store_true", help="rebuild every layer")
+    ap.add_argument("--dockerfile", action="store_true", help="print the Dockerfile and exit")
+    args = ap.parse_args()
+
+    from e2b import Template, default_build_logger
+
+    template = lab.lab_template()
+    if args.dockerfile:
+        print(Template.to_dockerfile(template))
+        return 0
+    if not os.environ.get("E2B_API_KEY"):
+        print("E2B_API_KEY is not set", file=sys.stderr)
+        return 2
+    started = time.monotonic()
+    info = Template.build(
+        template,
+        args.name,
+        cpu_count=args.cpu,
+        memory_mb=args.memory_mb,
+        skip_cache=args.skip_cache,
+        on_build_logs=default_build_logger(),
+    )
+    print(f"built {args.name} in {time.monotonic() - started:.0f}s: {info}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

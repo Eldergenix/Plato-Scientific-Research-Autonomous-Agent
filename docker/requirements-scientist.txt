@@ -1,6 +1,7 @@
 # Runtime dependencies of plato.scientist (the Cloudflare Container image).
 # Pinned to the versions the test suite was run against.
 anthropic==0.125.0
+e2b==2.64.0
 asyncpg==0.32.0
 dumb-init==1.2.5.post1
 fastapi==0.163.1

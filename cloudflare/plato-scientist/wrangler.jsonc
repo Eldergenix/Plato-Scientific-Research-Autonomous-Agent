@@ -53,10 +53,14 @@
     "PLATO_SCIENTIST_MODEL": "claude-haiku-5-5",
     // Tokens each account may spend per calendar month on the default Anthropic key
     // (admins and accounts with their own key are not capped; admins can set per-account caps).
-    "PLATO_DEFAULT_MONTHLY_TOKENS": "5000000"
+    "PLATO_DEFAULT_MONTHLY_TOKENS": "5000000",
+    // E2B template the agents' sandboxes start from (scripts/e2b_lab_template.py builds it) and
+    // the executor used when E2B_API_KEY is set (without the key, experiments run in the container).
+    "PLATO_E2B_TEMPLATE": "plato-lab",
+    "PLATO_DEFAULT_EXECUTOR": "e2b"
   },
   // Secrets (wrangler secret put): PLATO_API_TOKEN, PLATO_INTERNAL_TOKEN, PLATO_SECRETS_KEY
   // (32 random bytes, base64: password pepper and API-key encryption; never rotate it casually),
-  // ANTHROPIC_API_KEY, PLATO_DATABASE_URL
+  // ANTHROPIC_API_KEY, PLATO_DATABASE_URL, and optionally E2B_API_KEY
   "observability": { "enabled": true }
 }
