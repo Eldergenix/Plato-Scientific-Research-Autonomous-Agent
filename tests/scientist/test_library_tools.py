@@ -285,3 +285,113 @@ async def test_modal_executor_falls_back_to_local_sandbox_without_credentials(
     cfg = ScientistConfig.from_campaign({"executor": "modal"})
     result = await run_experiment(cfg, "print('PLATO_METRICS {\"x\": 1}')", inputs={})
     assert result.ok and "PLATO_METRICS" in result.stdout
+
+
+# --- merged ranking -----------------------------------------------------------------
+
+
+def test_supplementary_files_are_recognised_but_real_titles_are_not():
+    from plato.retrieval.orchestrator import is_supplementary
+
+    for title in (
+        "Additional file 5: of Three-dimensional printed PLA scaffold",
+        "Supplemental material for: [Maternal Estradiol Impacts Fetal HPA Axis]",
+        "Supplementary Information for Temporal changes in macrophages",
+        "Figure S2 from CD8+ T cells maintain killing",
+        "Table 3 of Gene expression in liver",
+    ):
+        assert is_supplementary(_src(title=title)), title
+    for title in (
+        "Supplemental oxygen therapy in acute myocardial infarction",
+        "Supplementary vitamin D and fracture risk",
+        "False discovery rate control: moving beyond Benjamini-Hochberg",
+    ):
+        assert not is_supplementary(_src(title=title)), title
+
+
+def test_dedup_merges_versioned_dois_with_the_same_title_and_year():
+    from plato.retrieval.dedup import dedup_sources
+
+    a = _src(
+        doi="10.6084/m9.figshare.1",
+        title="CD8+ T cells maintain killing of MHC-I-negative tumor cells",
+        year=2024,
+    )
+    b = _src(
+        doi="10.6084/m9.figshare.1.v1",
+        title="CD8+ T cells maintain killing of MHC-I-negative tumor cells",
+        year=2024,
+        abstract="x",
+    )
+    other_year = _src(
+        doi="10.1/z",
+        title="CD8+ T cells maintain killing of MHC-I-negative tumor cells",
+        year=2019,
+    )
+    generic = [
+        _src(doi="10.1/e1", title="Editorial"),
+        _src(doi="10.1/e2", title="Editorial"),
+    ]
+    out = dedup_sources([a, b, other_year, *generic])
+    assert len(out) == 4 and out[0].abstract == "x"  # merged pair keeps the abstract
+
+
+async def test_fused_retrieval_keeps_every_relevant_source_in_the_top_slots(
+    monkeypatch,
+):
+    """Regression for a live run where 7 of 8 merged slots went to DataCite records."""
+    from plato import retrieval
+    from plato.retrieval.orchestrator import retrieve
+
+    q = "Benjamini-Hochberg false discovery rate gene expression"
+    stuffed = "gene expression false discovery rate Benjamini Hochberg " * 8
+
+    def adapter(name, titles, abstract=""):
+        class A:
+            async def search(self, query, limit):
+                return [
+                    _src(
+                        doi=f"10.1/{name}{i}",
+                        title=t,
+                        abstract=abstract,
+                        retrieved_via=name,
+                    )
+                    for i, t in enumerate(titles)
+                ]
+
+        A.name = name
+        return A()
+
+    adapters = {
+        "pubmed": adapter(
+            "pubmed",
+            [f"Transcriptomic alterations in cohort {i}" for i in range(8)],
+            "we used FDR",
+        ),
+        "openalex": adapter(
+            "openalex",
+            ["On the operating characteristics of the Benjamini and Hochberg procedure"]
+            + [f"FDR paper {i}" for i in range(7)],
+        ),
+        "datacite": adapter(
+            "datacite",
+            [
+                f"Gene expression dataset number {i} for false discovery analysis"
+                for i in range(8)
+            ]
+            + ["Additional file 6: of Temporal changes in macrophage phenotype"],
+            stuffed,
+        ),
+    }
+    monkeypatch.setattr(retrieval.orchestrator, "get_adapter", lambda n: adapters[n])
+    out = await retrieve(
+        q,
+        8,
+        adapter_names=list(adapters),
+        rerank_fallback="fused",
+        drop_supplementary=True,
+    )
+    via = [s.retrieved_via for s in out]
+    assert len(out) == 8 and set(via) == {"pubmed", "openalex", "datacite"}
+    assert max(via.count(v) for v in set(via)) <= 4  # no adapter takes more than half
+    assert not any(s.title.startswith("Additional file") for s in out)

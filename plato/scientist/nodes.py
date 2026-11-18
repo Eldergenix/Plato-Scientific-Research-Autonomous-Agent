@@ -83,8 +83,9 @@ async def default_retriever(
         query,
         limit,
         adapter_names=list(sources or get_profile("general").retrieval_sources),
-        rerank_fallback="bm25",
+        rerank_fallback="fused",
         adapter_timeout=ADAPTER_TIMEOUT_SECONDS,
+        drop_supplementary=True,
     )
 
 
