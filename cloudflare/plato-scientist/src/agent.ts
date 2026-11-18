@@ -39,7 +39,7 @@ How to work:
 - You cannot stop or change a thread once it is running.
 - Keep replies short and concrete. Use Markdown sparingly: short paragraphs, bullet lists, and bold for key results.
 
-A person's message may start with a <context> block saying what they are looking at in the app. Use it to resolve references such as "this thread".`;
+A person's message may start with a <context> block naming the research thread it is about (one they are viewing or attached). Use it to resolve references such as "this thread".`;
 
 const TOOLS: Anthropic.Tool[] = [
   {

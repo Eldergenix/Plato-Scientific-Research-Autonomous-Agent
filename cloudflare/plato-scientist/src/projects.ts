@@ -13,8 +13,9 @@ const STALE = "15 minutes";
 
 type Block = Record<string, unknown> & { type: string };
 
-/** The person's message as content blocks: an optional <context> block naming the thread
- * they are looking at (only one they may see), then their text. */
+/** The person's message as content blocks: an optional <context> block naming the thread the
+ * message is about (one they are viewing or attached with "+", and only one they may see), then
+ * their text. */
 async function personMessage(c: Ctx, body: Record<string, unknown>): Promise<Block[]> {
   const text = typeof body.text === "string" ? body.text.trim() : "";
   if (!text) throw new HttpError(400, "Write a message first.");
@@ -29,7 +30,7 @@ async function personMessage(c: Ctx, body: Record<string, unknown>): Promise<Blo
       const q = String(r.research_question).replace(/\s+/g, " ").slice(0, 300);
       blocks.push({
         type: "text",
-        text: `<context>The person is looking at research thread ${r.id} ("${q}"), status: ${r.status}.</context>`,
+        text: `<context>The person's message is about research thread ${r.id} ("${q}"), status: ${r.status}.</context>`,
       });
     }
   }

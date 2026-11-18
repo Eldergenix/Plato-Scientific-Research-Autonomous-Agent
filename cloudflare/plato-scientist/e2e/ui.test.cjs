@@ -51,10 +51,31 @@ const fail = (m) => { throw new Error(m); };
 
   // 3. agent home is the default
   await page.goto(BASE + "/#/");
-  await page.waitForSelector(".ah h1");
-  const h1 = await page.textContent(".ah h1");
-  if (!h1.includes("Ada")) fail("greeting: " + h1);
+  await page.waitForSelector("#homeC textarea");
   if (await page.isVisible("#askFab")) fail("ask button shown on the agent page");
+  // Linear's Agent page, measured: 712×104 composer (#1b1b1c, 10px radius, 12px padding, 15/24 weight-450
+  // editor), 24px blue send that stays enabled, 336px watermark 208px above it, three 135px example cards
+  const home = await page.evaluate(() => {
+    const g = (s) => document.querySelector(s), cs = (s) => getComputedStyle(g(s)), r = (s) => g(s).getBoundingClientRect();
+    const comp = cs("#homeC"), ta = cs("#homeC textarea"), send = cs("#homeC .send");
+    return { title: g("#chatT").textContent.trim(), ph: g("#homeC textarea").placeholder, w: Math.round(r("#homeC").width), h: Math.round(r("#homeC").height),
+      bg: comp.backgroundColor, radius: comp.borderTopLeftRadius, pad: comp.paddingTop, font: `${ta.fontSize}/${ta.lineHeight}/${ta.fontWeight}`,
+      send: `${send.backgroundColor} ${send.width} ${send.height}`, sendOn: !g("#homeC .send").disabled, plus: cs("#homeC [data-add]").width,
+      wm: document.querySelectorAll(".ah-wm path").length, wmGap: Math.round(r("#homeC").top - r(".ah-wm").top),
+      cards: [...document.querySelectorAll(".ah-card")].map((c) => Math.round(c.getBoundingClientRect().height)), chip: g(".ah-chip")?.getAttribute("href") };
+  });
+  const wantHome = { title: "New chat", ph: "Ask Plato…", w: 712, h: 104, bg: "rgb(27, 27, 28)", radius: "10px", pad: "12px", font: "15px/24px/450",
+    send: "rgb(0, 147, 255) 24px 24px", sendOn: true, plus: "24px", wm: 10, wmGap: 208, cards: [135, 135, 135], chip: "#/settings/api-key" };
+  for (const k of Object.keys(wantHome)) if (JSON.stringify(home[k]) !== JSON.stringify(wantHome[k])) fail(`agent home ${k}: ${JSON.stringify(home[k])} (want ${JSON.stringify(wantHome[k])})`);
+  await page.click("#chatT");
+  await page.waitForSelector("#chatM:not([hidden]) .mi-e");
+  if ((await page.textContent("#chatM .mi-e")) !== "No history") fail("chat menu without history");
+  const menu = await page.$eval("#chatM", (m) => { const s = getComputedStyle(m); return `${s.backgroundColor} ${s.borderTopLeftRadius} ${m.offsetWidth}`; });
+  if (menu !== "rgb(40, 40, 40) 12px 321") fail("chat menu style " + menu);
+  await page.keyboard.press("Escape");
+  await page.waitForSelector("#chatM", { state: "hidden" });
+  await page.click('.ah-card[data-ex="1"]');
+  if ((await page.inputValue("#homeC textarea")) !== "Compare bootstrap and HC3 intervals at small sample sizes") fail("example card did not fill the composer");
   // Linear custom theme (dark): #101010 frame, #171717 raised panel, blue pill primary
   await page.goto(BASE + "/#/campaigns");
   await page.waitForSelector("#newTop");
@@ -71,7 +92,7 @@ const fail = (m) => { throw new Error(m); };
   const glint = await page.$eval("#askFab .glint", (el) => ({ style: el.getAttribute("style"), inner: el.firstElementChild.getAttribute("aria-hidden"), vars: el.firstElementChild.firstElementChild.getAttribute("style") }));
   if (!glint.style.includes("top: -7px") || glint.inner !== "true" || !glint.vars.includes("--x-backgroundColor: lch(100% 0 0 / 0.15)")) fail("glint markup " + JSON.stringify(glint));
   await shot("campaigns-dark");
-  step("agent home default; Linear theme shell and blue primary; ask button with glint");
+  step("agent home default, Linear Agent composer, watermark, examples and chat menu; theme shell; ask button with glint");
 
   // 4. prompt the agent from home → project; the orchestrator starts a research thread
   await page.goto(BASE + "/#/agent");
@@ -85,14 +106,29 @@ const fail = (m) => { throw new Error(m); };
   await page.waitForFunction(() => !document.querySelector("#chatIn .thinking") && document.querySelectorAll("#chatIn .msg.ai .md").length >= 2, null, { timeout: 30000 });
   await page.waitForSelector("#threads a.trow");
   await page.waitForSelector('#nav [data-sec="projects"]');
+  const conv = await page.evaluate(() => ({ title: document.querySelector("#chatT").textContent.trim(), bubble: getComputedStyle(document.querySelector("#chatIn .bubble")).backgroundColor,
+    md: getComputedStyle(document.querySelector("#chatIn .md")).fontSize, col: Math.round(document.querySelector("#chatIn").getBoundingClientRect().width) }));
+  if (conv.title !== "Please research whether OLS intervals keep coverage under heteroskedasticity" || conv.bubble !== "rgb(27, 27, 28)" || conv.md !== "15px" || conv.col > 712)
+    fail("conversation shell " + JSON.stringify(conv));
+  await page.click("#chatT");
+  await page.waitForSelector('#chatM:not([hidden]) [data-pm="delete"]');
+  const items = await page.$$eval("#chatM .mi", (ms) => ms.map((m) => (m.getAttribute("aria-current") ? "*" : "") + m.textContent.trim().split("\n")[0]));
+  if (items[0] !== "New chat" || !items.some((t) => t.startsWith("*Please research")) || !items.includes("Rename…")) fail("project chat menu " + JSON.stringify(items));
+  await page.keyboard.press("Escape");
   await shot("project-dark");
-  step("home prompt → project → thread card and threads panel");
+  step("home prompt → project → thread card, threads panel, title menu");
 
-  // follow-up in the project
+  // follow-up in the project, with the new thread attached through "+"
+  await page.click("#projC [data-add]");
+  await page.waitForSelector("#projC .menu:not([hidden]) [data-pick]", { timeout: 15000 });
+  await page.click("#projC .menu [data-pick]");
+  await page.waitForSelector("#projC .ctx");
   await page.fill("#projC textarea", "Thanks, what is the status?");
   await page.keyboard.press("Enter");
   await page.waitForFunction(() => [...document.querySelectorAll("#chatIn .tool")].some((t) => t.textContent.includes("Checked research threads")), null, { timeout: 30000 });
-  step("follow-up runs list_threads");
+  await page.waitForSelector("#chatIn .msg.me .ctxchip");
+  if (await page.isVisible("#projC .ctx")) fail("attached thread not cleared after sending");
+  step("follow-up with a thread attached by + runs list_threads; context chip on the message");
 
   // 5. open the thread → campaign; ⌘J opens the ask panel with that thread as context
   const threadHref = await page.getAttribute("#threads a.trow", "href");
@@ -206,12 +242,13 @@ const fail = (m) => { throw new Error(m); };
   await page.waitForSelector("#authErr:not([hidden])");
   await page.fill('input[name="password"]', pw);
   await page.click("#authBtn");
-  await page.waitForSelector(".ah h1, .set h1");
+  await page.waitForSelector("#homeC, .set h1");
   step("log out, wrong password, log in");
 
   // 8. command menu lists projects
   await page.goto(BASE + "/#/campaigns");
   await page.waitForSelector("#newTop");
+  await page.waitForSelector('#nav [data-sec="projects"]');   // projects load after sign-in; wait for them
   await page.keyboard.press("Control+k");
   await page.waitForSelector("#cmdL .cmd-s");
   const secs = await page.$$eval("#cmdL .cmd-s", (e) => e.map((x) => x.textContent));
@@ -233,7 +270,12 @@ const fail = (m) => { throw new Error(m); };
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(300);
   await shot("m-agent-light");
-  const proj = await page.$$eval("#recent a.prow", (as) => as.map((a) => a.getAttribute("href")).at(-1));
+  await page.click(".ah-exh [data-ex-x]");
+  await page.waitForSelector("#ahEx", { state: "detached" });
+  await page.reload();
+  await page.waitForSelector("#homeC");
+  if (await page.$("#ahEx")) fail("dismissed examples came back");
+  const proj = await page.$$eval('#nav a.item[href^="#/p/"]', (as) => as.map((a) => a.getAttribute("href")).at(-1));
   await page.goto(BASE + "/" + proj);
   await page.waitForSelector("#thBtn", { state: "visible", timeout: 10000 });
   await shot("m-project-light");
@@ -252,7 +294,7 @@ const fail = (m) => { throw new Error(m); };
   await shot("m-settings-light");
   const ow = await page.evaluate(() => document.documentElement.scrollWidth);
   if (ow > 390) fail("horizontal overflow at 390px: " + ow);
-  step("light theme and 390px layouts");
+  step("light theme and 390px layouts; examples stay dismissed");
 
   await browser.close();
   if (errors.length) { console.log("CONSOLE ERRORS:\n" + errors.join("\n")); process.exit(1); }

@@ -26,6 +26,9 @@ try{const d=document.documentElement,t=localStorage.getItem("plato_theme");d.dat
   --green:#4cb782;--yellow:#f0bf00;--orange:#f2994a;--red:#eb5757;--blue:#4ea7fc;--purple:#a78bfa;--gray:#7b7f87;
   --raise:0 .5px 1px 1px rgba(0,0,0,.3);
   --shadow:0 0 0 1px var(--border-2),0 4px 40px rgba(0,0,0,.35),0 3px 12px rgba(0,0,0,.3),0 1px 1px rgba(0,0,0,.3);
+  /* Agent composer and menus (Linear's Agent page): hairline gradient edge, raised surface */
+  --composer:#1b1b1c;--hair-a:#464749;--hair-b:#303032;--placeholder:#636365;--card-hover:#191a1b;--chip-line:rgba(255,255,255,.153);
+  --menu-bg:#282828;--menu-line:#47474a;--menu-shadow:0 4px 24px rgba(0,0,0,.4),0 2px 8px rgba(0,0,0,.3);
   --sk-a:rgba(255,255,255,.05);--sk-b:rgba(255,255,255,.11);
   color-scheme:dark;
 }
@@ -38,6 +41,8 @@ try{const d=document.documentElement,t=localStorage.getItem("plato_theme");d.dat
   --green:#2f9e6a;--yellow:#c99a00;--orange:#e07b1f;--red:#d64545;--blue:#2b8de0;--purple:#7c5ce0;--gray:#8b8f96;
   --raise:0 .5px 1px 1px rgba(0,0,0,.04);
   --shadow:0 0 0 1px var(--border-2),0 4px 24px rgba(0,0,0,.08),0 2px 6px rgba(0,0,0,.06);
+  --composer:#ffffff;--hair-a:#dcdcde;--hair-b:#d0d0d3;--placeholder:#8f8f93;--card-hover:#f3f3f4;--chip-line:rgba(0,0,0,.1);
+  --menu-bg:#ffffff;--menu-line:#dcdcde;--menu-shadow:0 4px 24px rgba(0,0,0,.1),0 2px 6px rgba(0,0,0,.06);
   --sk-a:rgba(0,0,0,.05);--sk-b:rgba(0,0,0,.095);
   color-scheme:light;
 }
@@ -297,7 +302,7 @@ pre.src{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.6 "JetBr
 .gsearch input{border:0;outline:0;background:none;flex:1;min-width:0;color:var(--text);height:26px}
 .gsearch input::-webkit-search-cancel-button{display:none}
 .menu-w{position:relative}
-.menu{position:absolute;top:calc(100% + 6px);left:0;z-index:10;min-width:190px;padding:6px;border-radius:10px;background:var(--elev);box-shadow:var(--shadow)}
+.menu{position:absolute;top:calc(100% + 6px);left:0;z-index:10;min-width:190px;padding:6px;border:.5px solid var(--menu-line);border-radius:12px;background:var(--menu-bg);box-shadow:var(--menu-shadow)}
 .menu label{display:flex;align-items:center;gap:8px;height:28px;padding:0 8px;border-radius:6px;cursor:pointer;color:var(--text-2);white-space:nowrap}
 .menu label:hover{background:var(--hover);color:var(--text)}
 .menu input{accent-color:var(--accent);margin:0}

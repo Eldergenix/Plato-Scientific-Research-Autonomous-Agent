@@ -83,70 +83,94 @@ body.signed-out #auth{display:block}
 .mwrap .members tr:last-child td{border-bottom:0}
 .mwrap .members th{padding-top:10px}
 
-/* ---------- composer (agent home, projects, ask panel) ---------- */
-.composer{position:relative;display:flex;flex-direction:column;border:1px solid var(--border-2);border-radius:12px;background:var(--elev);
-  box-shadow:0 1px 2px rgba(0,0,0,.08);transition:border-color .15s ease,box-shadow .15s ease}
-.composer:focus-within{border-color:color-mix(in srgb,var(--text) 22%,transparent);box-shadow:0 0 0 3px color-mix(in srgb,var(--text) 6%,transparent)}
-.composer textarea{display:block;width:100%;border:0;outline:0;background:none;resize:none;padding:12px 14px 4px;font-size:13.5px;line-height:1.55;max-height:40vh;min-height:24px}
-.composer.big textarea{font-size:15px;padding:16px 16px 6px;min-height:52px}
-.composer textarea::placeholder{color:var(--text-3)}
-.composer-f{display:flex;align-items:center;gap:8px;padding:6px 8px 8px 12px;min-height:40px}
-.composer-f .hint{font-size:12px;color:var(--text-3);min-width:0}
-.send{margin-left:auto;display:grid;place-items:center;width:28px;height:28px;border-radius:50%;border:0;background:var(--text);color:var(--bg);cursor:pointer;flex:none;transition:opacity .15s}
-.send:disabled{opacity:.25;cursor:default}
-.ctx{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 4px 0 8px;border:1px solid var(--border-2);border-radius:9999px;font-size:12px;color:var(--text-2);max-width:220px}
-.ctx button{border:0;background:none;color:var(--text-3);cursor:pointer;width:16px;height:16px;display:grid;place-items:center;border-radius:9999px;padding:0}
+/* ---------- composer (agent home, projects, ask panel): Linear's Agent composer ----------
+   712px max, 10px radius, raised #1b1b1c surface, a .5px edge that fades from #464749 at the top to
+   #303032 at the bottom (a gradient border cut out with a mask), 12px padding, 8px between rows. */
+.composer,.bubble{position:relative;background:var(--composer);border-radius:10px;box-shadow:var(--raise)}
+.composer::before,.bubble::before{content:"";position:absolute;inset:0;border-radius:inherit;border:.5px solid transparent;pointer-events:none;
+  background:linear-gradient(var(--hair-a),var(--hair-b)) border-box;
+  -webkit-mask:linear-gradient(#000 0 0) padding-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;
+  mask:linear-gradient(#000 0 0) padding-box exclude,linear-gradient(#000 0 0)}
+.composer{display:flex;flex-direction:column;gap:8px;padding:12px;cursor:text}
+.composer textarea{display:block;width:100%;border:0;outline:0;background:none;resize:none;padding:2px 6px;min-height:48px;max-height:min(288px,60vh);
+  font-size:15px;line-height:24px;font-weight:450;letter-spacing:-.1px;color:var(--text)}
+.composer textarea::placeholder{color:var(--placeholder);opacity:1}
+.composer-f{display:flex;align-items:center;justify-content:flex-end;gap:8px;height:24px;cursor:default}
+.composer-f .hint{flex:1;font-size:12px;color:var(--text-2);min-width:0;padding-left:6px}
+.composer-f .menu-w{display:flex}
+.cbtn{display:grid;place-items:center;flex:none;width:24px;height:24px;padding:0;border:0;border-radius:9999px;background:none;color:var(--text);cursor:pointer;transition:background-color .15s,color .15s}
+.cbtn:hover,.cbtn[aria-expanded="true"]{background:var(--hover)}
+.send{display:grid;place-items:center;flex:none;width:24px;height:24px;padding:0;border:0;border-radius:12px;background:var(--accent);color:var(--on-accent);box-shadow:var(--raise);cursor:pointer;transition:background-color .15s,opacity .15s}
+.send:hover{background:var(--accent-2)}
+.send svg{width:14px;height:14px}
+.send:disabled{opacity:.45;cursor:default}
+.ctxrow{display:flex;padding:0 2px}
+.ctxrow[hidden]{display:none}
+.ctx{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 4px 0 8px;border:.5px solid var(--chip-line);border-radius:9999px;background:var(--pill);font-size:12px;color:var(--text-2);max-width:min(320px,100%)}
+.ctx button{border:0;background:none;color:var(--text-3);cursor:pointer;width:16px;height:16px;display:grid;place-items:center;border-radius:9999px;padding:0;flex:none}
 .ctx button:hover{background:var(--hover);color:var(--text)}
 
-/* ---------- agent home ---------- */
-.ah{max-width:720px;margin:0 auto;padding:min(16vh,140px) 24px 64px}
-.ah-mark{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;margin:0 auto 18px;color:var(--text);background:var(--elev);border:1px solid var(--border-2)}
-.ah h1{font-size:24px;font-weight:500;letter-spacing:-.02em;text-align:center;margin:0 0 6px;color:var(--text-1)}
-.ah .lede{color:var(--text-2);text-align:center;margin:0 0 26px}
+/* ---------- agent home: Linear's Agent empty state ----------
+   Same grid rows (a 220px-minimum top track, the content, then the rest), 24px padding, a 712px
+   column. The 336px watermark sits 208px above the composer, which covers its lower 128px, and
+   fades out by 60% of its height. */
+.ah{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(220px,1fr) min-content minmax(0,max-content) minmax(0,1fr);
+  max-width:760px;min-height:100%;margin:0 auto;padding:24px}
+.ah-c{grid-row:2;position:relative;display:flex;flex-direction:column}
+.ah-wm{position:absolute;top:-208px;left:50%;width:336px;height:343px;margin-left:-168px;pointer-events:none;
+  -webkit-mask-image:linear-gradient(#000,transparent 60%);mask-image:linear-gradient(#000,transparent 60%)}
+.ah-wm path{stroke:var(--frame);stroke-width:.5;vector-effect:non-scaling-stroke}
+.ah-c>.composer{z-index:1}
+.ah-chip{align-self:center;display:inline-flex;align-items:center;gap:6px;height:28px;margin-top:12px;padding:0 10px;border:.5px solid var(--chip-line);border-radius:9999px;
+  background:var(--pill);box-shadow:var(--raise);color:var(--text);font-size:13px;font-weight:450;line-height:16px;text-decoration:none;transition:background-color .15s}
+.ah-chip:hover{background:var(--pill-hover)}
+.ah-ex{display:flex;flex-direction:column;gap:12px;padding-top:12px}
+.ah-exh{display:flex;align-items:center;justify-content:space-between;height:24px;padding:0 16px;font-size:12px;font-weight:450;color:var(--text-2)}
+.ah-exh .cbtn{color:var(--text-2)}
+.ah-exh .cbtn:hover{color:var(--text)}
+.ah-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.ah-card{display:flex;flex-direction:column;align-items:flex-start;gap:6px;height:135px;padding:16px 16px 12px;border:.5px solid var(--frame);border-radius:8px;background:transparent;
+  color:var(--text);text-align:left;cursor:pointer;transition:background-color .15s}
+.ah-card:hover{background:var(--card-hover)}
+.ah-card>svg{flex:none;margin-bottom:auto}
+.ah-ct{font-size:13px;font-weight:500;line-height:20px;color:var(--text-1)}
+.ah-cd{font-size:12px;font-weight:450;line-height:18px;color:var(--text-2)}
 .sugg{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:16px 0 0}
 .sugg button{height:28px;padding:0 11px;border-radius:9999px;border:.5px solid transparent;background:var(--pill);color:var(--text-2);cursor:pointer;font-size:12.5px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sugg button:hover{color:var(--text);background:var(--pill-hover)}
-.ah-recent{margin-top:56px}
-.ah-recent .ah-h{display:flex;align-items:center;font-size:12px;color:var(--text-2);font-weight:500;padding:0 4px 8px}
-.ah-recent .ah-h a{margin-left:auto;color:var(--text-2);text-decoration:none}
-.ah-recent .ah-h a:hover{color:var(--text)}
-.prow{display:flex;align-items:center;gap:10px;height:40px;padding:0 10px;border-radius:8px;color:inherit;text-decoration:none;min-width:0}
-.prow:hover{background:var(--hover)}
-.prow .title{flex:1}
-.prow .meta{display:flex;gap:10px;align-items:center;color:var(--text-2);font-size:12px;flex:none}
 .pico{width:16px;height:16px;display:grid;place-items:center;color:var(--text-2);flex:none}
 .spin{animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-/* ---------- conversation ---------- */
+/* ---------- conversation: the 712px column and editor type of the composer ---------- */
 .chat{display:flex;flex-direction:column;height:100%;min-height:0}
-.chat-s{flex:1;min-height:0;overflow:auto;padding:28px 24px 12px}
-.chat-in{max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
-.chat-c{padding:0 24px 16px;flex:none}
-.chat-c .composer{max-width:720px;margin:0 auto}
+.chat-s{flex:1;min-height:0;overflow:auto;padding:24px 24px 16px}
+.chat-in{max-width:712px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+.chat-c{padding:0 24px 24px;flex:none}
+.chat-c .composer{max-width:712px;margin:0 auto}
 .msg.me{align-self:flex-end;max-width:min(560px,85%);display:flex;flex-direction:column;align-items:flex-end;gap:6px}
-.bubble{background:var(--elev-2);border:1px solid var(--border);border-radius:12px;padding:8px 12px;white-space:pre-wrap;overflow-wrap:anywhere}
-.msg.ai{display:flex;flex-direction:column;gap:10px;min-width:0}
-.md{line-height:1.62;font-size:13.5px;overflow-wrap:anywhere}
+.bubble{padding:8px 12px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:15px;line-height:24px;font-weight:450;letter-spacing:-.1px;color:var(--text)}
+.msg.ai{display:flex;flex-direction:column;gap:12px;min-width:0}
+.md{font-size:15px;line-height:24px;font-weight:450;letter-spacing:-.1px;overflow-wrap:anywhere}
 .md>:first-child{margin-top:0}.md>:last-child{margin-bottom:0}
-.md p{margin:0 0 10px}
-.md ul,.md ol{margin:0 0 10px;padding-left:20px}
-.md li{margin:3px 0}
-.md h4{font-size:13.5px;font-weight:600;margin:14px 0 6px}
-.md code{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12px;background:var(--active);border-radius:4px;padding:1px 4px}
+.md p{margin:0 0 12px}
+.md ul,.md ol{margin:0 0 12px;padding-left:22px}
+.md li{margin:4px 0}
+.md h4{font-size:15px;font-weight:600;margin:18px 0 6px;color:var(--text-1)}
+.md code{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:13px;background:var(--active);border-radius:4px;padding:1px 4px}
 .md pre{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:10px 12px;overflow:auto;margin:0 0 10px}
 .md pre code{background:none;padding:0}
 .md a{color:var(--text);text-decoration:underline;text-underline-offset:2px;text-decoration-color:var(--text-3)}
 .md strong{font-weight:600}
 .tool{display:flex;align-items:center;gap:8px;color:var(--text-3);font-size:12.5px}
 .tool.bad{color:var(--text-2)}
-.tcard{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--panel);text-decoration:none;color:inherit;max-width:560px}
-a.tcard:hover{background:var(--hover);border-color:var(--border-2)}
+.tcard{display:flex;align-items:flex-start;gap:10px;padding:12px 16px;border:.5px solid var(--frame);border-radius:8px;background:transparent;text-decoration:none;color:inherit;max-width:560px;transition:background-color .15s}
+a.tcard:hover{background:var(--card-hover)}
 .tcard .pico{margin-top:1px}
 .tcard-b{flex:1;min-width:0}
 .tcard-k{font-size:12px;color:var(--text-2)}
-.tcard-q{margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.thinking{display:inline-block;color:var(--text-3);font-size:13px;background:linear-gradient(90deg,var(--text-3) 0%,var(--text-3) 40%,var(--text) 50%,var(--text-3) 60%,var(--text-3) 100%);
+.tcard-q{margin-top:2px;font-weight:500;color:var(--text-1);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.thinking{display:inline-block;color:var(--text-3);font-size:15px;font-weight:450;background:linear-gradient(90deg,var(--text-3) 0%,var(--text-3) 40%,var(--text) 50%,var(--text-3) 60%,var(--text-3) 100%);
   background-size:300% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:shine 2s linear infinite}
 @keyframes shine{from{background-position:100% 0}to{background-position:0 0}}
 [data-motion="reduce"] .thinking{-webkit-text-fill-color:var(--text-3)}
@@ -161,11 +185,25 @@ a.tcard:hover{background:var(--hover);border-color:var(--border-2)}
 .threads-btn{display:none}
 .threads-btn .t3{font-weight:400}
 
-/* Menus with actions (the project's ⋯ menu) */
-.menu button.mi{display:flex;align-items:center;width:100%;height:28px;padding:0 8px;border:0;border-radius:6px;background:none;color:var(--text-2);cursor:pointer;text-align:left;white-space:nowrap}
-.menu button.mi:hover,.menu button.mi:focus-visible{background:var(--hover);color:var(--text);outline:0}
-.menu button.mi.danger{color:var(--red)}
-.menu button.mi.danger:hover{background:color-mix(in srgb,var(--red) 10%,transparent)}
+/* Menus with actions: the chat title menu (Linear's 321px "New chat" menu) and the composer's "+" */
+.menu .mi{display:flex;align-items:center;gap:8px;width:100%;min-width:0;height:32px;padding:0 8px;border:0;border-radius:8px;background:none;color:var(--text);cursor:pointer;text-align:left;white-space:nowrap;text-decoration:none;font-size:13px}
+.menu .mi:hover,.menu .mi:focus-visible{background:var(--hover);outline:0}
+.menu .mi[aria-current]{background:var(--active)}
+.menu .mi .trunc{flex:1;min-width:0}
+.menu .mi .ago{flex:none;color:var(--text-3);font-size:12px}
+.menu .mi.danger{color:var(--red)}
+.menu .mi.danger:hover{background:color-mix(in srgb,var(--red) 10%,transparent)}
+.menu .mh{padding:6px 8px 4px;font-size:12px;color:var(--text-2)}
+.menu .mi-e{padding:6px 8px;font-size:13px;color:#69696b}
+[data-theme="light"] .menu .mi-e{color:var(--text-3)}
+.menu .msep{height:.5px;margin:4px -6px;background:var(--menu-line)}
+.menu.lm{width:321px;max-width:calc(100vw - 32px)}
+.menu.up{top:auto;bottom:calc(100% + 6px);left:auto;right:0}
+/* Header: the chat title button (13px/500, chevron), on Linear's .5px frame line */
+.top:has(.chat-t){border-bottom:.5px solid var(--frame);padding-left:8px}
+.chat-t{display:flex;align-items:center;gap:6px;max-width:min(520px,60vw);height:28px;padding:0 8px;border:0;border-radius:9999px;background:none;color:var(--text);font-size:13px;font-weight:500;cursor:pointer}
+.chat-t:hover,.chat-t[aria-expanded="true"]{background:var(--pill-hover)}
+.chat-t svg{flex:none;color:var(--text-2)}
 
 /* Threads beside the project conversation */
 .threads-h{display:flex;align-items:center;gap:8px;height:44px;padding:0 16px;font-weight:500;border-bottom:1px solid var(--border)}
@@ -218,7 +256,10 @@ a.tcard:hover{background:var(--hover);border-color:var(--border-2)}
   .set-row{flex-wrap:wrap}
   .set-c{max-width:100%}
   .set-c .field{width:100%}
-  .ah{padding:48px 16px 48px}
+  .ah{padding:16px}
+  .ah-cards{grid-template-columns:minmax(0,1fr)}
+  .ah-card{height:auto;min-height:0}
+  .ah-card>svg{margin-bottom:10px}
   .chat-s{padding:20px 16px 10px}
   .chat-c{padding:0 12px 12px}
   .ask{inset:0;width:auto;border-radius:0;border:0}
