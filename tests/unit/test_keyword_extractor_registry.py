@@ -54,8 +54,8 @@ def test_default_extractor_filters_stopwords() -> None:
     extractor = get_keyword_extractor("default")
     out = extractor.extract("the the the and and quasar quasar quasar", n_keywords=3)
     # ``the`` / ``and`` are stopwords; ``quasar`` is the only signal.
-    assert "quasar" in out.keys()
-    assert "the" not in out.keys()
+    assert "quasar" in out
+    assert "the" not in out
 
 
 def test_get_unknown_extractor_raises_keyerror() -> None:

@@ -18,16 +18,15 @@ from __future__ import annotations
 import os
 import re
 import warnings
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlencode
 
 import httpx  # noqa: F401  # kept so ``patch("httpx.AsyncClient.get", ...)`` still resolves.
 
+from ...state.models import Source
 from .. import register_adapter
 from ..middleware import RetrievalClient
-from ...state.models import Source
-
 
 _ADS_SEARCH_URL = "https://api.adsabs.harvard.edu/v1/search/query"
 _ADS_FIELDS = "bibcode,title,author,year,doi,abstract,pub,arxiv_class,identifier"
@@ -112,7 +111,7 @@ def _doc_to_source(doc: dict[str, Any]) -> Source | None:
         venue=venue,
         abstract=abstract,
         retrieved_via="ads",
-        fetched_at=datetime.now(timezone.utc),
+        fetched_at=datetime.now(UTC),
     )
 
 

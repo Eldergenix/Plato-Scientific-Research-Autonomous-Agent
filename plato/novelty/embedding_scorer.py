@@ -26,7 +26,6 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 
 from plato.state.models import Source
 
-
 _STUB_DIM = 384
 
 
@@ -115,9 +114,7 @@ class StubEmbeddingBackend:
         # Python's built-in ``hash``, which is salted per-process.
         out: list[float] = []
         for i in range(self.dim):
-            h = hashlib.sha1(
-                f"{text}|{i}".encode("utf-8"), usedforsecurity=False
-            ).digest()
+            h = hashlib.sha1(f"{text}|{i}".encode(), usedforsecurity=False).digest()
             out.append(int.from_bytes(h[:4], "big") % 1000 / 1000.0)
         return out
 
@@ -211,9 +208,9 @@ class EmbeddingScorer:
 
 __all__ = [
     "EmbeddingBackend",
-    "OpenAIEmbeddingBackend",
-    "TfidfEmbeddingBackend",
-    "StubEmbeddingBackend",
-    "NoveltyResult",
     "EmbeddingScorer",
+    "NoveltyResult",
+    "OpenAIEmbeddingBackend",
+    "StubEmbeddingBackend",
+    "TfidfEmbeddingBackend",
 ]

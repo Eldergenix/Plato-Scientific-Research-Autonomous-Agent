@@ -1,6 +1,7 @@
-from typing import Callable
-from pydantic import BaseModel
+from collections.abc import Callable
 from enum import Enum
+
+from pydantic import BaseModel
 
 
 class Journal(str, Enum):

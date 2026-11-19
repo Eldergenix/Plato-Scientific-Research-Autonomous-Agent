@@ -20,7 +20,7 @@ import os
 import subprocess
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -58,7 +58,7 @@ def _git_sha(repo_dir: str | os.PathLike[str]) -> str:
             timeout=2,
         )
         return out.decode().strip()
-    except Exception:
+    except Exception:  # noqa: BLE001 - no git metadata is not an error
         return ""
 
 
@@ -144,11 +144,11 @@ class ManifestRecorder:
         run_id: str | None = None,
         repo_dir: str | os.PathLike[str] | None = None,
         user_id: str | None = None,
-    ) -> "ManifestRecorder":
+    ) -> ManifestRecorder:
         manifest = RunManifest(
             run_id=run_id or uuid.uuid4().hex[:12],
             workflow=workflow,
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
             domain=domain,
             git_sha=_git_sha(repo_dir or os.getcwd()),
             project_sha=_project_sha(project_dir),
@@ -185,7 +185,7 @@ class ManifestRecorder:
 
     def finish(self, status: str = "success", error: str | None = None) -> None:
         self.manifest.status = status
-        self.manifest.ended_at = datetime.now(timezone.utc)
+        self.manifest.ended_at = datetime.now(UTC)
         if error:
             self.manifest.error = error
         self.flush()
@@ -205,4 +205,4 @@ class ManifestRecorder:
             os.replace(tmp, self._path)
 
 
-__all__ = ["RunManifest", "ManifestRecorder"]
+__all__ = ["ManifestRecorder", "RunManifest"]

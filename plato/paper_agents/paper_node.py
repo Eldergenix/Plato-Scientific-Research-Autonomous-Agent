@@ -1,20 +1,37 @@
-from langchain_core.runnables import RunnableConfig
-import random
+import asyncio
 import base64
 import json
+import random
 import time
-from pathlib import Path
-from tqdm import tqdm
-import asyncio
 from functools import partial
+from pathlib import Path
 from typing import Any, cast
 
+from langchain_core.runnables import RunnableConfig
+from tqdm import tqdm
+
+from ..config import INPUT_FILES
+from ..io import ScopedWriter
+from .journal import LatexPresets
+from .latex import (
+    compile_latex,
+    compile_tex_document,
+    fix_latex,
+    fix_percent,
+    process_bib_file,
+    sanitize_latex_section,
+    save_bib,
+    save_paper,
+)
+from .latex_presets import journal_dict
+from .literature import process_tex_file_with_references
 from .parameters import GraphState
 from .prompts import (
     abstract_prompt,
     abstract_reflection,
     caption_prompt,
     clean_section_prompt,
+    cmbagent_keywords_prompt,
     conclusions_prompt,
     introduction_prompt,
     introduction_reflection,
@@ -24,30 +41,7 @@ from .prompts import (
     references_prompt,
     refine_results_prompt,
     results_prompt,
-    cmbagent_keywords_prompt,
 )
-from .tools import (
-    json_parser3,
-    LaTeX_checker,
-    clean_section,
-    extract_latex_block,
-    LLM_call,
-    temp_file,
-    check_images_in_text,
-)
-from .literature import process_tex_file_with_references
-from .latex import (
-    compile_latex,
-    save_paper,
-    save_bib,
-    process_bib_file,
-    compile_tex_document,
-    fix_latex,
-    fix_percent,
-    sanitize_latex_section,
-)
-from .journal import LatexPresets
-from .latex_presets import journal_dict
 from .scopes import (
     ABSTRACT_SCOPE,
     CITATIONS_SCOPE,
@@ -59,8 +53,15 @@ from .scopes import (
     REFINE_SCOPE,
     RESULTS_SCOPE,
 )
-from ..config import INPUT_FILES
-from ..io import ScopedWriter
+from .tools import (
+    LaTeX_checker,
+    LLM_call,
+    check_images_in_text,
+    clean_section,
+    extract_latex_block,
+    json_parser3,
+    temp_file,
+)
 
 
 def _wrap_latex_section(state: GraphState, text: str) -> str:
@@ -227,7 +228,7 @@ def abstract_node(state: GraphState, config: RunnableConfig):
                 state["paper"]["Title"] = parsed_json["Title"]
                 state["paper"]["Abstract"] = parsed_json["Abstract"]
                 break  # success
-            except Exception:
+            except Exception:  # noqa: BLE001 - retry on malformed LLM output
                 time.sleep(2)
         else:
             fail_message = """Tried 5 times but failed to extract the abstract. Recommendations:
@@ -744,7 +745,7 @@ async def citations_node(state: GraphState, config: RunnableConfig):
     ]
     try:
         results = await asyncio.gather(*tasks)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - citation enrichment is optional
         paper["References"] = paper.get("References", "")
         paper["citation_error"] = str(exc)
         print(f"⚠️ Citation enrichment skipped: {exc}")

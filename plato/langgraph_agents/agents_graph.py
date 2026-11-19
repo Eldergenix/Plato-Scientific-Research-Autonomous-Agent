@@ -1,4 +1,3 @@
-# ruff: noqa: E402
 import warnings
 
 warnings.filterwarnings(
@@ -7,19 +6,21 @@ warnings.filterwarnings(
     category=Warning,
 )
 
-from langgraph.graph import START, StateGraph, END
+from langgraph.graph import END, START, StateGraph
 
-from .parameters import GraphState
-from .reader import preprocess_node
-from .idea import idea_maker, idea_hater
-from .methods import methods_fast
-from .literature import novelty_decider, semantic_scholar, literature_summary
-from .referee import referee
-from .clarifier import research_question_clarifier
+from ..io import scoped_node
+from ..state import make_checkpointer
 from .claim_extractor import claim_extractor
+from .clarifier import research_question_clarifier
 from .counter_evidence import counter_evidence_search
 from .gap_detector import gap_detector
-from .routers import router, task_router, literature_router, clarifier_router
+from .idea import idea_hater, idea_maker
+from .literature import literature_summary, novelty_decider, semantic_scholar
+from .methods import methods_fast
+from .parameters import GraphState
+from .reader import preprocess_node
+from .referee import referee
+from .routers import clarifier_router, literature_router, router, task_router
 from .scopes import (
     CLAIM_EXTRACTOR_SCOPE,
     CLARIFIER_SCOPE,
@@ -31,8 +32,6 @@ from .scopes import (
     REFEREE_SCOPE,
     SEMANTIC_SCHOLAR_SCOPE,
 )
-from ..io import scoped_node
-from ..state import make_checkpointer
 
 
 def build_lg_graph(mermaid_diagram=False, checkpointer=None):
@@ -135,7 +134,7 @@ def build_lg_graph(mermaid_diagram=False, checkpointer=None):
             with open("graph_diagram.png", "wb") as f:
                 f.write(graph_image)
             print("✅ Graph diagram saved to graph_diagram.png")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - diagram export is optional
             print(f"⚠️ Failed to generate or save graph diagram: {e}")
 
     return graph

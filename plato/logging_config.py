@@ -26,13 +26,13 @@ import contextvars
 import logging
 import os
 import sys
-from typing import Iterable
+from collections.abc import Iterable
 
 # Per-task ``run_id`` correlation. Workflows set this at the start of
 # ``Plato.get_*`` via ``run_id_var.set(recorder.manifest.run_id)`` and
 # every log record emitted under that task picks the value up. When
 # unset, the formatter writes ``"-"`` so the column stays aligned.
-run_id_var: "contextvars.ContextVar[str | None]" = contextvars.ContextVar(
+run_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "plato_run_id", default=None
 )
 

@@ -43,7 +43,7 @@ if os.getenv("PLATO_TEST_MODAL") != "1":
     )
 
 
-from plato.executor.modal_backend import ModalExecutor  # noqa: E402
+from plato.executor.modal_backend import ModalExecutor
 
 
 @pytest.mark.asyncio

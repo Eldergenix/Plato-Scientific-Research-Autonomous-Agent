@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from plato.state import Store
@@ -16,7 +16,7 @@ from plato.state.models import (
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc).replace(microsecond=0)
+    return datetime.now(UTC).replace(microsecond=0)
 
 
 def _make_source(

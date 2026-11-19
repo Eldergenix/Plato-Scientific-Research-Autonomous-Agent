@@ -50,7 +50,6 @@ from .scientific_capabilities import (
     build_scientific_capability_report,
 )
 
-
 # --- verify_citation -------------------------------------------------------
 
 
@@ -155,7 +154,7 @@ class ScientificCapabilityReportInput(BaseModel):
 
 
 def _scientific_capability_report(
-    payload: ScientificCapabilityReportInput,  # noqa: ARG001 - future filter hook
+    payload: ScientificCapabilityReportInput,
 ) -> ScientificCapabilityReport:
     """Return the scientific stack decision matrix and repeatability checks."""
     return build_scientific_capability_report()
@@ -208,7 +207,7 @@ register(_RUN_SCIENTIFIC_ANALYSIS_TOOL, overwrite=True)
 
 
 def _genomics_tool_report(
-    payload: GenomicsToolReportInput,  # noqa: ARG001 - future filter hook
+    payload: GenomicsToolReportInput,
 ) -> GenomicsToolReport:
     """Return the optional Illumina genomics adapter decision matrix."""
     return build_genomics_tool_report()
@@ -299,13 +298,6 @@ for name, description, input_schema, fn, permissions in _GENOMICS_TOOL_DEFINITIO
 
 
 __all__ = [
-    "VerifyCitationInput",
-    "VerifyCitationOutput",
-    "SearchLiteratureInput",
-    "SearchLiteratureOutput",
-    "ScientificAnalysisInput",
-    "ScientificAnalysisResult",
-    "ScientificCapabilityReportInput",
     "ExpansionHunterDenovoInput",
     "GauchianCallingInput",
     "GenomeKitQueryInput",
@@ -313,5 +305,12 @@ __all__ = [
     "GenomicsToolReportInput",
     "IlluminaIcaRequestInput",
     "ParagraphGenotypingInput",
+    "ScientificAnalysisInput",
+    "ScientificAnalysisResult",
+    "ScientificCapabilityReportInput",
+    "SearchLiteratureInput",
+    "SearchLiteratureOutput",
+    "VerifyCitationInput",
+    "VerifyCitationOutput",
     "ZippyPipelineInput",
 ]

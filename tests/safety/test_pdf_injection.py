@@ -19,7 +19,6 @@ import re
 from plato.safety import detect_injection_signals
 from plato.safety.sanitize import wrap_external
 
-
 # A minimal PDF that a parser would extract these strings from. We build
 # it as raw bytes so the test exercises the same "bytes-on-disk → text"
 # shape that the dashboard upload path produces, without needing pypdf
@@ -108,7 +107,7 @@ def test_hidden_unicode_in_pdf_text_is_flagged():
     """A PDF could carry U+202E or tag characters to hide payload text."""
     sneaky = (
         "Abstract: galaxy formation."
-        "‮"  # right-to-left override
+        "\u202e"  # right-to-left override
         "\U000e0049\U000e0067\U000e006e\U000e006f\U000e0072\U000e0065"  # tag-encoded "Ignore"
     )
     signals = detect_injection_signals(sneaky)

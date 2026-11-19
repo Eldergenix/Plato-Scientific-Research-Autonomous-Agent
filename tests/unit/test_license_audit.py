@@ -14,7 +14,7 @@ _SCRIPTS = _REPO_ROOT / "scripts"
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
-import license_audit  # noqa: E402  (path manipulation above)
+import license_audit
 
 
 def test_collect_distributions_non_empty() -> None:

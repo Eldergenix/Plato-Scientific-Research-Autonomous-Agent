@@ -18,7 +18,6 @@ from pathlib import Path
 
 import pytest
 
-
 # Only scan the production package, not tests / docs / vendored LaTeX.
 _PROD_ROOTS = (Path(__file__).parent.parent.parent / "plato",)
 # Anything matching this pattern is the function declaration itself.
@@ -49,11 +48,7 @@ def test_every_llm_call_passes_node_name(source_path: Path) -> None:
             continue
         # Skip docstrings/comments — only Python statement lines matter.
         stripped = line.strip()
-        if (
-            stripped.startswith("#")
-            or stripped.startswith('"""')
-            or stripped.startswith("'''")
-        ):
+        if stripped.startswith(("#", '"""', "'''")):
             continue
         # Skip conditional opt-out for one-off bypasses.
         if "# noqa: node-name" in line:

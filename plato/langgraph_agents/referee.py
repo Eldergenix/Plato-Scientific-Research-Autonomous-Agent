@@ -1,9 +1,9 @@
 from langchain_core.runnables import RunnableConfig
 
-from ..paper_agents.tools import extract_latex_block, LLM_call_stream, clean_section
-from .prompts import reviewer_fast_prompt
+from ..paper_agents.tools import LLM_call_stream, clean_section, extract_latex_block
 from .parameters import GraphState
 from .pdf_reader import pdf_to_images
+from .prompts import reviewer_fast_prompt
 
 
 def referee(state: GraphState, config: RunnableConfig):

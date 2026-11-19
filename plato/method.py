@@ -69,10 +69,7 @@ class Method:
 
         chat_history = results["chat_history"]
 
-        try:
-            task_result = get_task_result(chat_history, "researcher_response_formatter")
-        except Exception as e:
-            raise e
+        task_result = get_task_result(chat_history, "researcher_response_formatter")
         if task_result is None:
             raise ValueError("researcher_response_formatter returned no task result")
 

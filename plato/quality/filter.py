@@ -51,9 +51,12 @@ class QualityFilter:
 
         # 2) Venue allowlist — only enforced when both a ranker is configured
         # and the caller has opted in via ``allow_unranked_venues=False``.
-        if self.venue_ranker is not None and not self.allow_unranked_venues:
-            if not self.venue_ranker.is_allowed(source.venue):
-                return False, "venue_blocked"
+        if (
+            self.venue_ranker is not None
+            and not self.allow_unranked_venues
+            and not self.venue_ranker.is_allowed(source.venue)
+        ):
+            return False, "venue_blocked"
 
         return True, None
 

@@ -9,7 +9,6 @@ from typing import Any
 
 from plato.state.models import Source
 
-
 TITLE_MATCH_THRESHOLD = 0.75
 AUTHOR_OVERLAP_THRESHOLD = 0.60
 SUSPICIOUS_ISSUES = {
@@ -360,8 +359,7 @@ def build_corrections(source: Source, metadata: dict[str, Any]) -> dict[str, str
         bibtex_lines.append(f"  doi = {{{doi}}},")
     if url:
         bibtex_lines.append(f"  url = {{{url}}},")
-    if bibtex_lines[-1].endswith(","):
-        bibtex_lines[-1] = bibtex_lines[-1][:-1]
+    bibtex_lines[-1] = bibtex_lines[-1].removesuffix(",")
     bibtex_lines.append("}")
     plain_parts = [
         ", ".join(authors),

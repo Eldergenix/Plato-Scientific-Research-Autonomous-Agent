@@ -1,12 +1,12 @@
-import re
 import os
+import re
 from pathlib import Path
 from typing import Any, cast
 
 from .key_manager import KeyManager
 from .prompts.experiment import (
-    experiment_planner_prompt,
     experiment_engineer_prompt,
+    experiment_planner_prompt,
     experiment_researcher_prompt,
 )
 from .utils import create_work_dir, get_task_result
@@ -34,7 +34,7 @@ class Experiment:
         methodology: str,
         keys: KeyManager,
         work_dir: str | Path,
-        involved_agents: list[str] = ["engineer", "researcher"],
+        involved_agents: list[str] | None = None,
         engineer_model: str = "gpt-4.1",
         researcher_model: str = "o3-mini-2025-01-31",
         planner_model: str = "gpt-4o",
@@ -63,6 +63,8 @@ class Experiment:
 
         self.experiment_dir = create_work_dir(work_dir, "experiment")
 
+        if involved_agents is None:
+            involved_agents = ["engineer", "researcher"]
         involved_agents_str = ", ".join(involved_agents)
 
         # Set prompts
@@ -151,10 +153,7 @@ class Experiment:
         chat_history = results["chat_history"]
         final_context = results["final_context"]
 
-        try:
-            task_result = get_task_result(chat_history, "researcher_response_formatter")
-        except Exception as e:
-            raise e
+        task_result = get_task_result(chat_history, "researcher_response_formatter")
         if not isinstance(task_result, str) or not task_result.strip():
             raise RuntimeError(
                 "Experiment workflow finished without a researcher results summary. "
@@ -172,5 +171,3 @@ class Experiment:
         clean_results = re.sub(r"^<!--.*?-->\s*\n", "", extracted_results)
         self.results = clean_results
         self.plot_paths = final_context.get("displayed_images", [])
-
-        return None

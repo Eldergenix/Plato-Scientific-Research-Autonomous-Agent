@@ -22,7 +22,6 @@ from typing import Any
 
 from . import register_keyword_extractor
 
-
 __all__ = ["OpenAlexConceptsKeywordExtractor"]
 
 
@@ -64,7 +63,7 @@ class OpenAlexConceptsKeywordExtractor:
             )
             with urllib.request.urlopen(req, timeout=_TIMEOUT_SECONDS) as resp:
                 payload = json.loads(resp.read().decode("utf-8", errors="ignore"))
-        except Exception:
+        except Exception:  # noqa: BLE001 - network errors must not abort a paper run
             # Network errors must not abort a paper run. Return an empty
             # dict so the caller can fall back to the default extractor or
             # an empty keyword list.

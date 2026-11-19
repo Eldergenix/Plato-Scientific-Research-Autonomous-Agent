@@ -14,7 +14,6 @@ from evals.biomedical_benchmarks import (
     validate_payload,
 )
 
-
 HEADER = (
     "question_id\tcurator_name\tdomain\tquestion_style\tskills_tested\t"
     "question\tinternet_required\tgpu_preferred\tfile_paths\n"
@@ -41,11 +40,8 @@ def test_parse_compbiobench_tsv_normalizes_lists_and_booleans():
 
 
 def test_parse_compbiobench_tsv_rejects_duplicate_ids():
-    duplicate = (
-        _payload()
-        + (
-            "gene-q1\tEF\tGenomics\tRetrieval\tReasoning\tDuplicate.\tFalse\tFalse\t\n"
-        ).encode()
+    duplicate = _payload() + (
+        b"gene-q1\tEF\tGenomics\tRetrieval\tReasoning\tDuplicate.\tFalse\tFalse\t\n"
     )
 
     with pytest.raises(ValueError, match="Duplicate CompBioBench question_id"):

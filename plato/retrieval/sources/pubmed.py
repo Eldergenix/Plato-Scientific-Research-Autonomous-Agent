@@ -17,16 +17,16 @@ from __future__ import annotations
 
 import os
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import quote_plus
 
 import httpx
 
-from .. import register_adapter
-from ..middleware import RetrievalClient
 from ...state.models import Source
+from .. import register_adapter
 from ..doi import normalize_doi
+from ..middleware import RetrievalClient
 
 __all__ = ["PubMedAdapter"]
 
@@ -137,7 +137,7 @@ def _map_article_to_source(
         abstract=abstract,
         url=f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",
         retrieved_via="pubmed",
-        fetched_at=datetime.now(timezone.utc),
+        fetched_at=datetime.now(UTC),
     )
 
 

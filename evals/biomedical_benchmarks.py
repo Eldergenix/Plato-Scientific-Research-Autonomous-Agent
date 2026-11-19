@@ -18,9 +18,9 @@ import io
 import json
 import urllib.request
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Callable
 
 
 @dataclass(frozen=True)

@@ -40,7 +40,7 @@ __all__ = ["bm25_rank", "fused_rank", "rerank"]
 _WARNED = False
 
 
-def _doc(source: "Source") -> str:
+def _doc(source: Source) -> str:
     """Build the text passed to the reranker for a single source."""
     parts = [source.title]
     if source.abstract:
@@ -50,8 +50,42 @@ def _doc(source: "Source") -> str:
 
 _TOKEN = re.compile(r"[a-z0-9]+")
 _STOPWORDS = frozenset(
-    "a an and are as at be by for from has have in is it its of on or that the to was "
-    "were with we our this these those using via vs versus".split()
+    [
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "by",
+        "for",
+        "from",
+        "has",
+        "have",
+        "in",
+        "is",
+        "it",
+        "its",
+        "of",
+        "on",
+        "or",
+        "that",
+        "the",
+        "to",
+        "was",
+        "were",
+        "with",
+        "we",
+        "our",
+        "this",
+        "these",
+        "those",
+        "using",
+        "via",
+        "vs",
+        "versus",
+    ]
 )
 
 
@@ -62,8 +96,8 @@ def _tokens(text: str) -> list[str]:
 
 
 def bm25_rank(
-    query: str, sources: list["Source"], *, top_k: int, k1: float = 1.5, b: float = 0.75
-) -> list["Source"]:
+    query: str, sources: list[Source], *, top_k: int, k1: float = 1.5, b: float = 0.75
+) -> list[Source]:
     """Okapi BM25 over title (counted twice) + abstract. Stable: ties keep input order."""
     q = set(_tokens(query))
     if not q or not sources:
@@ -93,12 +127,12 @@ RRF_K = 60
 
 def fused_rank(
     query: str,
-    sources: list["Source"],
+    sources: list[Source],
     *,
     top_k: int,
     source_prior: list[float],
     max_share: float = 0.5,
-) -> list["Source"]:
+) -> list[Source]:
     """Reciprocal-rank fusion of each source's own relevance order with BM25.
 
     ``source_prior[i]`` is the sum of ``1 / (RRF_K + rank)`` over every adapter that
@@ -134,12 +168,12 @@ def fused_rank(
 
 def rerank(
     query: str,
-    sources: list["Source"],
+    sources: list[Source],
     *,
     top_k: int,
     fallback: Literal["passthrough", "bm25", "fused"] = "passthrough",
     source_prior: list[float] | None = None,
-) -> list["Source"]:
+) -> list[Source]:
     """Rerank ``sources`` by relevance to ``query``, returning at most ``top_k``.
 
     ``fallback="fused"`` needs ``source_prior`` (see :func:`fused_rank`)."""

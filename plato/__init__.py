@@ -6,24 +6,29 @@ warnings.filterwarnings(
     category=Warning,
 )
 
-from .config import REPO_DIR  # noqa: E402
-from .domain import DomainProfile, register_domain, get_domain, list_domains  # noqa: E402
+from .config import REPO_DIR
+from .domain import (
+    DomainProfile,
+    get_domain,
+    list_domains,
+    register_domain,
+)
 
 __all__ = [
+    "LLM",
+    "REPO_DIR",
+    "DomainProfile",
+    "Journal",
+    "KeyManager",
     "Plato",
     "Research",
-    "Journal",
-    "REPO_DIR",
-    "LLM",
-    "models",
-    "KeyManager",
-    "DomainProfile",
-    "register_domain",
     "get_domain",
     "list_domains",
+    "models",
+    "register_domain",
 ]
 
-from importlib.metadata import version, PackageNotFoundError  # noqa: E402
+from importlib.metadata import PackageNotFoundError, version
 
 try:
     __version__ = version("plato")

@@ -10,8 +10,8 @@ pass DOIs from any source format and still hit the set.
 from __future__ import annotations
 
 import csv
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 
 def _normalize_doi(doi: str) -> str:
@@ -53,7 +53,7 @@ class RetractionDB:
         return len(self._dois)
 
     @classmethod
-    def empty(cls) -> "RetractionDB":
+    def empty(cls) -> RetractionDB:
         """An empty database — useful for tests and as a default."""
         return cls((), source="empty")
 
@@ -62,7 +62,7 @@ class RetractionDB:
         cls,
         path: str | Path,
         doi_column: str = "OriginalPaperDOI",
-    ) -> "RetractionDB":
+    ) -> RetractionDB:
         """Load DOIs from a CSV (Retraction Watch format by default).
 
         Rows where the DOI column is missing or blank are skipped silently —

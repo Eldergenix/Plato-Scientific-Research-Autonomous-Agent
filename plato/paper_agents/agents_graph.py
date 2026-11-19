@@ -1,7 +1,6 @@
-# ruff: noqa: E402
+import warnings
 from pathlib import Path
 from typing import Any, cast
-import warnings
 
 warnings.filterwarnings(
     "ignore",
@@ -9,9 +8,13 @@ warnings.filterwarnings(
     category=Warning,
 )
 
-from langgraph.graph import START, StateGraph, END
+from langgraph.graph import END, START, StateGraph
 
-from .parameters import GraphState
+from ..langgraph_agents.claim_extractor import claim_extractor
+from ..state import make_checkpointer
+from .citation_validator_node import citation_validator_node
+from .critique_aggregator import critique_aggregator
+from .evidence_matrix_node import evidence_matrix_node
 from .paper_node import (
     abstract_node,
     citations_node,
@@ -23,21 +26,17 @@ from .paper_node import (
     refine_results,
     results_node,
 )
+from .parameters import GraphState
 from .reader import preprocess_node
-from .routers import citation_router, revision_router
+from .redraft_node import redraft_node
 from .reviewer_panel import (
     methodology_reviewer,
     novelty_reviewer,
     statistics_reviewer,
     writing_reviewer,
 )
+from .routers import citation_router, revision_router
 from .scientific_verifier import scientific_verifier_node
-from .critique_aggregator import critique_aggregator
-from .redraft_node import redraft_node
-from .citation_validator_node import citation_validator_node
-from .evidence_matrix_node import evidence_matrix_node
-from ..langgraph_agents.claim_extractor import claim_extractor
-from ..state import make_checkpointer
 
 
 def _reviewer_panel_fanout(state: GraphState):
@@ -200,7 +199,7 @@ def build_graph(mermaid_diagram=False, checkpointer=None):
             with open("graph_diagram.png", "wb") as f:
                 f.write(graph_image)
             print("✅ Graph diagram saved to graph_diagram.png")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - diagram export is optional
             print(f"⚠️ Failed to generate or save graph diagram: {e}")
 
     return graph

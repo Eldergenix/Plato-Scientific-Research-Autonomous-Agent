@@ -16,15 +16,14 @@ the existing ``ADAPTER_REGISTRY`` test pattern).
 
 from __future__ import annotations
 
-from contextlib import contextmanager
-from contextvars import ContextVar
 import inspect
 import os
-from collections.abc import Iterator
-from typing import Any, Awaitable, Callable, Literal, Union, cast
+from collections.abc import Awaitable, Callable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict
-
 
 Permission = Literal[
     "network",
@@ -41,7 +40,7 @@ Permission = Literal[
 # ``BaseModel`` (async tool). Async detection happens via
 # :func:`is_async`. The Union is necessary because Python typing can't
 # express "either sync or async" any more precisely.
-ToolFn = Callable[[BaseModel], Union[BaseModel, Awaitable[BaseModel]]]
+ToolFn = Callable[[BaseModel], BaseModel | Awaitable[BaseModel]]
 """Type of the underlying callable a :class:`Tool` wraps."""
 
 
@@ -209,16 +208,16 @@ def is_async(name: str) -> bool:
 
 __all__ = [
     "Permission",
+    "Tool",
     "ToolFn",
     "ToolMetadata",
-    "Tool",
-    "register",
-    "get",
-    "list_tools",
-    "set_disabled_tools",
-    "get_disabled_tools",
-    "disabled_tools_context",
-    "is_enabled",
     "call",
+    "disabled_tools_context",
+    "get",
+    "get_disabled_tools",
     "is_async",
+    "is_enabled",
+    "list_tools",
+    "register",
+    "set_disabled_tools",
 ]

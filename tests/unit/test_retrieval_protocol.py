@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -24,7 +24,7 @@ class _FakeAdapter:
                 id=f"{self.name}-{i}",
                 title=f"q={query} #{i}",
                 retrieved_via="arxiv",  # acceptable literal for the contract test
-                fetched_at=datetime.now(timezone.utc),
+                fetched_at=datetime.now(UTC),
             )
             for i in range(min(limit, 2))
         ]

@@ -17,7 +17,6 @@ from plato.retrieval import ADAPTER_REGISTRY, get_adapter
 from plato.retrieval.sources.ads import ADSAdapter
 from plato.state.models import Source
 
-
 _SAMPLE_ADS_JSON = json.dumps(
     {
         "responseHeader": {"status": 0, "QTime": 12},

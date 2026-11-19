@@ -134,8 +134,8 @@ class LLMJudge:
                 f"Unknown judge model {model!r}. "
                 f"Add it to plato.llm.models or pick one of {sorted(_models)}."
             )
-        from langchain_core.messages import HumanMessage
         from langchain_anthropic import ChatAnthropic
+        from langchain_core.messages import HumanMessage
         from langchain_google_genai import ChatGoogleGenerativeAI
         from langchain_openai import ChatOpenAI
 
@@ -230,4 +230,4 @@ def _aggregate(results: list[JudgeResult]) -> JudgeResult:
     )
 
 
-__all__ = ["LLMJudge", "JudgeResult"]
+__all__ = ["JudgeResult", "LLMJudge"]

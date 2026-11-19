@@ -6,7 +6,6 @@ import pytest
 
 from plato.safety import detect_injection_signals, is_suspicious, wrap_external
 
-
 # ---------------------------------------------------------------------------
 # wrap_external
 # ---------------------------------------------------------------------------
@@ -90,9 +89,9 @@ def test_base64_blob_signal() -> None:
 
 
 def test_hidden_unicode_rlo() -> None:
-    assert "hidden_unicode" in detect_injection_signals("hello‮world")
+    assert "hidden_unicode" in detect_injection_signals("hello\u202eworld")
     # Literal RLO via the spec example.
-    assert "hidden_unicode" in detect_injection_signals("‮reverse")
+    assert "hidden_unicode" in detect_injection_signals("\u202ereverse")
 
 
 def test_hidden_unicode_tag_block() -> None:

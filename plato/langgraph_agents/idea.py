@@ -1,8 +1,8 @@
 from langchain_core.runnables import RunnableConfig
 
-from ..paper_agents.tools import extract_latex_block, LLM_call_stream, clean_section
-from .prompts import idea_maker_prompt, idea_hater_prompt
+from ..paper_agents.tools import LLM_call_stream, clean_section, extract_latex_block
 from .parameters import GraphState
+from .prompts import idea_hater_prompt, idea_maker_prompt
 
 
 def idea_maker(state: GraphState, config: RunnableConfig):

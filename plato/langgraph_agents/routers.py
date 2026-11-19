@@ -14,7 +14,7 @@ def task_router(state: GraphState) -> str:
     elif state["task"] == "referee":
         return "referee"
     else:
-        raise Exception("Wrong task choosen!")
+        raise ValueError("Wrong task choosen!")
 
 
 # Workflow gap #1: clarifier router. If the clarifier produced questions

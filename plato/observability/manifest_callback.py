@@ -9,9 +9,12 @@ the manifest still records token counts).
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from langchain_core.callbacks.base import BaseCallbackHandler
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ..state.manifest import ManifestRecorder
@@ -88,7 +91,7 @@ class ManifestCallbackHandler(BaseCallbackHandler):
 
     def __init__(
         self,
-        recorder: "ManifestRecorder",
+        recorder: ManifestRecorder,
         *,
         cost_cap_usd: float | None = None,
     ) -> None:
@@ -117,7 +120,7 @@ class ManifestCallbackHandler(BaseCallbackHandler):
                 cap_usd=self._cost_cap_usd or 0.0,
             )
 
-    def on_llm_end(self, response: Any, **kwargs: Any) -> None:  # noqa: ARG002
+    def on_llm_end(self, response: Any, **kwargs: Any) -> None:
         llm_output = getattr(response, "llm_output", None)
         if not isinstance(llm_output, dict):
             return
@@ -138,9 +141,9 @@ class ManifestCallbackHandler(BaseCallbackHandler):
             self._recorder.add_tokens(
                 input_tokens=inp, output_tokens=out, cost_usd=cost
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             # Recorder failures must never crash the LLM call path.
-            pass
+            logger.debug("manifest recorder rejected token usage", exc_info=True)
 
 
 class CostCapExceeded(RuntimeError):
@@ -158,4 +161,4 @@ class CostCapExceeded(RuntimeError):
         )
 
 
-__all__ = ["ManifestCallbackHandler", "CostCapExceeded"]
+__all__ = ["CostCapExceeded", "ManifestCallbackHandler"]

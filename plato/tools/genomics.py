@@ -15,7 +15,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-
 GenomicsStatus = Literal["ready", "missing_requirements", "executed", "failed"]
 IcaOperation = Literal[
     "token",

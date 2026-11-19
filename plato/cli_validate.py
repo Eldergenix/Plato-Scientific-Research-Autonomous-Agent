@@ -18,16 +18,15 @@ import argparse
 import asyncio
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
 from plato.paper_agents.citation_validator_node import _parse_bibtex_entries
 from plato.state.models import RetrievedVia, Source
+from plato.tools.citation_matching import coerce_authors, coerce_year
 from plato.tools.citation_reports import STRICT_ACCURACY_THRESHOLD
 from plato.tools.citation_validator import CitationValidator, build_validation_report
-from plato.tools.citation_matching import coerce_authors, coerce_year
-
 
 _DEFAULT_THRESHOLD = STRICT_ACCURACY_THRESHOLD
 
@@ -66,11 +65,11 @@ def _entry_to_source(entry: Any, idx: int) -> Source | None:
     fetched_at_raw = entry.get("fetched_at")
     if isinstance(fetched_at_raw, str):
         try:
-            fetched_at = datetime.fromisoformat(fetched_at_raw.replace("Z", "+00:00"))
+            fetched_at = datetime.fromisoformat(fetched_at_raw)
         except ValueError:
-            fetched_at = datetime.now(timezone.utc)
+            fetched_at = datetime.now(UTC)
     else:
-        fetched_at = datetime.now(timezone.utc)
+        fetched_at = datetime.now(UTC)
 
     return Source(
         id=str(src_id),
@@ -264,6 +263,6 @@ def main(argv: list[str] | None = None) -> int:
 
 __all__ = [
     "collect_sources_from_project",
-    "run_validation",
     "main",
+    "run_validation",
 ]

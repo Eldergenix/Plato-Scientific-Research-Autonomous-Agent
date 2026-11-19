@@ -16,12 +16,12 @@ from typing import Protocol, runtime_checkable
 from ..state.models import Source
 
 __all__ = [
-    "SourceAdapter",
-    "register_adapter",
-    "get_adapter",
-    "list_adapters",
     "ADAPTER_REGISTRY",
     "Source",
+    "SourceAdapter",
+    "get_adapter",
+    "list_adapters",
+    "register_adapter",
 ]
 
 
@@ -68,4 +68,4 @@ def list_adapters() -> list[str]:
 # ADAPTER_REGISTRY are all defined before the adapter modules reference
 # them. Without this, ADAPTER_REGISTRY stays empty and orchestrator.retrieve()
 # silently returns no papers.
-from . import sources as _sources  # noqa: E402, F401
+from . import sources as _sources  # noqa: F401

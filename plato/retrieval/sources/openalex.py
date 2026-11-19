@@ -8,16 +8,16 @@ adapter registry on import.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import quote_plus
 
 import httpx  # noqa: F401  # kept so ``patch("httpx.AsyncClient.get", ...)`` still resolves.
 
-from .. import register_adapter
-from ..middleware import RetrievalClient
 from ...state.models import Source
+from .. import register_adapter
 from ..doi import normalize_doi
+from ..middleware import RetrievalClient
 
 __all__ = ["OpenAlexAdapter"]
 
@@ -122,7 +122,7 @@ def _map_work_to_source(work: dict[str, Any]) -> Source | None:
         pdf_url=pdf_url,
         url=raw_id if isinstance(raw_id, str) else None,
         retrieved_via="openalex",
-        fetched_at=datetime.now(timezone.utc),
+        fetched_at=datetime.now(UTC),
     )
 
 

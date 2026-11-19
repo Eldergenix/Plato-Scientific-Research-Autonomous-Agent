@@ -22,7 +22,6 @@ from plato.executor.local_jupyter import (
     _extract_code_cells,
 )
 
-
 # --- _extract_code_cells ----------------------------------------------------
 
 
@@ -151,7 +150,7 @@ async def test_run_explicit_code_kwarg_overrides_methodology(
         def start_kernel(self) -> None:
             pass
 
-        def client(self) -> "_StubClient":
+        def client(self) -> _StubClient:
             return _StubClient(captured_cells)
 
         def shutdown_kernel(self, *, now: bool = True, restart: bool = False) -> None:

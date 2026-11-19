@@ -114,9 +114,9 @@ def assert_safe(text: str, kind: str = "external_text", threshold: int = 2) -> N
 
 
 __all__ = [
-    "wrap_external",
+    "PromptInjectionDetected",
+    "assert_safe",
     "detect_injection_signals",
     "is_suspicious",
-    "assert_safe",
-    "PromptInjectionDetected",
+    "wrap_external",
 ]

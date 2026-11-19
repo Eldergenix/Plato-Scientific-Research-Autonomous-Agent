@@ -25,9 +25,10 @@ from __future__ import annotations
 import os
 import sqlite3
 import warnings
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, AsyncIterator, Literal
+from typing import Any, Literal
 
 # ``MemorySaver`` is the fallback path; lazy-import so plato.state
 # (which is imported by every graph builder) doesn't pay the

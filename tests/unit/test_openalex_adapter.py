@@ -15,7 +15,6 @@ from plato.retrieval.sources.openalex import (
 )
 from plato.state.models import Source
 
-
 # ---------------------------------------------------------------------------
 # Sample payload — a single OpenAlex 'work'
 # ---------------------------------------------------------------------------

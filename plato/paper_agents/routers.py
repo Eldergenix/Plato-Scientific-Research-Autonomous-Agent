@@ -1,5 +1,6 @@
-from langgraph.graph import END
 from typing import Any, cast
+
+from langgraph.graph import END
 
 from .parameters import GraphState
 
@@ -18,7 +19,7 @@ def citation_router(state: GraphState) -> str:
     elif state["paper"]["add_citations"] is False:
         return "citation_validator_node"
     else:
-        raise Exception("Wrong add_citations value")
+        raise ValueError("Wrong add_citations value")
 
 
 # Phase 3 — R6: severity-gated revision-loop router.

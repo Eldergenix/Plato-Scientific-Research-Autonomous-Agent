@@ -8,4 +8,4 @@ iteration can be inspected post-hoc.
 
 from .research_loop import AcceptanceScore, ResearchLoop
 
-__all__ = ["ResearchLoop", "AcceptanceScore"]
+__all__ = ["AcceptanceScore", "ResearchLoop"]

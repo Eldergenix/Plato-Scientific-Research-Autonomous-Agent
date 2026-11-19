@@ -7,7 +7,7 @@ straightforward synchronous arrange/act/assert.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from plato.langgraph_agents.gap_detector import gap_detector
 from plato.state.models import Claim, EvidenceLink, Source
@@ -19,7 +19,7 @@ def _src(idx: int, *, title: str, abstract: str) -> Source:
         title=title,
         abstract=abstract,
         retrieved_via="arxiv",
-        fetched_at=datetime.now(timezone.utc),
+        fetched_at=datetime.now(UTC),
     )
 
 

@@ -36,9 +36,9 @@ from urllib.parse import quote_plus
 
 import httpx
 
+from ..state.models import Source
 from .dedup import dedup_sources
 from .sources.openalex import _map_work_to_source
-from ..state.models import Source
 
 __all__ = [
     "ExpansionDirection",

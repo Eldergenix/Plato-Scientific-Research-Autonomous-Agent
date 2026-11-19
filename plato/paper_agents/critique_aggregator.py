@@ -96,4 +96,4 @@ def critique_aggregator(state: GraphState, config: RunnableConfig):
     return {"critique_digest": digest.model_dump()}
 
 
-__all__ = ["critique_aggregator", "CritiqueDigest"]
+__all__ = ["CritiqueDigest", "critique_aggregator"]

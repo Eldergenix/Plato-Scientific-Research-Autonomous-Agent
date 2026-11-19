@@ -20,7 +20,6 @@ from __future__ import annotations
 
 from plato.io import FileScope
 
-
 # Idea generation: the canonical idea.md plus per-iteration history
 # sidecars that the maker/hater debate writes between rounds.
 IDEA_SCOPE = FileScope(
@@ -118,13 +117,13 @@ NOVELTY_DECIDER_SCOPE = FileScope(
 
 
 __all__ = [
-    "IDEA_SCOPE",
-    "IDEA_HATER_SCOPE",
-    "METHODS_FAST_SCOPE",
-    "LITERATURE_SUMMARY_SCOPE",
-    "SEMANTIC_SCHOLAR_SCOPE",
     "CLAIM_EXTRACTOR_SCOPE",
-    "REFEREE_SCOPE",
     "CLARIFIER_SCOPE",
+    "IDEA_HATER_SCOPE",
+    "IDEA_SCOPE",
+    "LITERATURE_SUMMARY_SCOPE",
+    "METHODS_FAST_SCOPE",
     "NOVELTY_DECIDER_SCOPE",
+    "REFEREE_SCOPE",
+    "SEMANTIC_SCHOLAR_SCOPE",
 ]

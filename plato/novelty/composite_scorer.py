@@ -16,7 +16,6 @@ from pydantic import BaseModel, Field
 from plato.novelty.embedding_scorer import EmbeddingScorer
 from plato.state.models import Source
 
-
 _AGREEMENT_THRESHOLD = 0.3
 
 

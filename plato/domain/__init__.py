@@ -149,7 +149,7 @@ register_domain(
 
 __all__ = [
     "DomainProfile",
-    "register_domain",
     "get_domain",
     "list_domains",
+    "register_domain",
 ]

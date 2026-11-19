@@ -10,7 +10,7 @@ environment, so we use plain ``AsyncMock`` instead.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import httpx
@@ -18,7 +18,6 @@ import pytest
 
 from plato.state.models import Source
 from plato.tools.citation_validator import CitationValidator
-
 
 # ---------- fixtures & helpers --------------------------------------------
 
@@ -39,7 +38,7 @@ def _make_source(
         pdf_url=pdf_url,
         title="Some Paper",
         retrieved_via="crossref",
-        fetched_at=datetime.now(timezone.utc),
+        fetched_at=datetime.now(UTC),
     )
 
 

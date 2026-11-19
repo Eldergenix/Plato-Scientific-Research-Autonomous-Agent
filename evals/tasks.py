@@ -31,7 +31,7 @@ class GoldSource(BaseModel):
     note: str | None = None
 
     @classmethod
-    def from_any(cls, value) -> "GoldSource":
+    def from_any(cls, value) -> GoldSource:
         """Coerce a list element to GoldSource.
 
         Accepts:
@@ -104,4 +104,4 @@ def discover_tasks(directory: str | Path = "evals/golden") -> list[GoldenTask]:
     return tasks
 
 
-__all__ = ["GoldenTask", "load_task", "discover_tasks"]
+__all__ = ["GoldenTask", "discover_tasks", "load_task"]

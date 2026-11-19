@@ -19,15 +19,17 @@ once and runs without commits.
 
 from __future__ import annotations
 
+import contextlib
 import inspect
 import logging
 import shutil
 import signal
 import subprocess
 import time
-from datetime import datetime, timezone
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Awaitable, Callable, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
@@ -164,7 +166,7 @@ class ResearchLoop:
             )
             return
         self._git_root = root
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         self._branch_name = f"{self.branch_prefix}/{timestamp}"
         try:
             self._git("checkout", "-b", self._branch_name)
@@ -214,18 +216,17 @@ class ResearchLoop:
             return
         # Sanitize tabs/newlines out of the description so the TSV stays parseable.
         desc = description.replace("\t", " ").replace("\n", " ")
-        ts = datetime.now(timezone.utc).isoformat()
+        ts = datetime.now(UTC).isoformat()
         self._tsv_handle.write(
             f"{self._iter}\t{ts}\t{composite:.6f}\t{status}\t{desc}\n"
         )
 
     def _close_tsv(self) -> None:
         if self._tsv_handle is not None:
-            try:
+            # Never mask the original exception while closing the log.
+            with contextlib.suppress(Exception):
                 self._tsv_handle.flush()
                 self._tsv_handle.close()
-            except Exception:  # noqa: BLE001 — never mask the original exception
-                pass
             self._tsv_handle = None
 
     # ---------------------------------------------------------------- caps
@@ -312,7 +313,7 @@ class ResearchLoop:
                     raw = score_fn(plato)
                     score = await raw if inspect.isawaitable(raw) else raw
                     composite = score.composite()
-                except Exception as exc:  # noqa: BLE001 — record + continue
+                except Exception as exc:
                     logger.exception("ResearchLoop: iter %d errored", self._iter)
                     self._write_row(
                         composite=float("nan"),
@@ -349,8 +350,7 @@ class ResearchLoop:
                     )
                     self._git_reset_discard()
 
-                if composite > self._best_composite:
-                    self._best_composite = composite
+                self._best_composite = max(self._best_composite, composite)
         finally:
             # Restore the prior SIGINT handler so we don't leak it into the parent process.
             if self._prev_sigint_handler is not None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC
 from pathlib import Path
 
 import pytest
@@ -88,12 +89,12 @@ def test_project_sha_excludes_runs_directory(tmp_path: Path):
 
 def test_run_manifest_pydantic_round_trip():
     """RunManifest serializes and deserializes via Pydantic JSON mode."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     m = RunManifest(
         run_id="x" * 12,
         workflow="get_paper",
-        started_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
     )
     payload = m.model_dump(mode="json")
     restored = RunManifest.model_validate(payload)

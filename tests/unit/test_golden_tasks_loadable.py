@@ -9,7 +9,6 @@ import pytest
 
 from evals.tasks import GoldenTask, discover_tasks, load_task
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GOLDEN_DIR = REPO_ROOT / "evals" / "golden"
 

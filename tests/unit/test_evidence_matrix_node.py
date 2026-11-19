@@ -12,7 +12,7 @@ never reaches a chat model. We verify:
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -69,7 +69,7 @@ def test_two_drafted_claims_one_source_claim_produces_two_links(tmp_path):
                 id="src-1",
                 title="Stub",
                 retrieved_via="arxiv",
-                fetched_at=datetime.now(timezone.utc),
+                fetched_at=datetime.now(UTC),
             ),
         ],
     )

@@ -21,13 +21,13 @@ from evals.runner import EvalRunner
 from evals.tasks import GoldenTask, discover_tasks, load_task
 
 __all__ = [
+    "EvalRunner",
     "GoldenTask",
-    "load_task",
-    "discover_tasks",
+    "JudgeResult",
+    "LLMJudge",
     "Metrics",
     "citation_validation_rate",
+    "discover_tasks",
+    "load_task",
     "unsupported_claim_rate",
-    "LLMJudge",
-    "JudgeResult",
-    "EvalRunner",
 ]

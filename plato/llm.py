@@ -1,5 +1,4 @@
 from pydantic import BaseModel
-from typing import Dict
 
 
 class LLM(BaseModel):
@@ -110,7 +109,7 @@ nemotron3_super = LLM(
 gemini31pro = LLM(name="gemini-3.1-pro", max_output_tokens=65536, temperature=0.7)
 """`gemini-3.1-pro` model."""
 
-models: Dict[str, LLM] = {
+models: dict[str, LLM] = {
     "gemini-2.0-flash": gemini20flash,
     "gemini-2.5-flash": gemini25flash,
     "gemini-2.5-pro": gemini25pro,

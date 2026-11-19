@@ -1,8 +1,9 @@
-from typing_extensions import TypedDict, Any
-from typing import Annotated
+from typing import Annotated, Any
+
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AnyMessage
 from langgraph.graph.message import add_messages
+from typing_extensions import TypedDict
 
 from ..key_manager import KeyManager
 

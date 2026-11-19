@@ -1,4 +1,4 @@
-from plato import Plato, Journal
+from plato import Journal, Plato
 
 den = Plato()
 

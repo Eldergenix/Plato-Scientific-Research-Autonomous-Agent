@@ -172,7 +172,7 @@ def test_get_results_does_not_import_cmbagent_when_using_fake(
     confirm the mock is *not* hit."""
     import plato.experiment as plato_experiment
 
-    def _explode(self, *a, **kw):  # noqa: ANN001
+    def _explode(self, *a, **kw):
         raise AssertionError(
             "Experiment.run_experiment should not be called when dispatching "
             "to a non-cmbagent executor."

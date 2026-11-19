@@ -14,11 +14,11 @@ Covers:
 from __future__ import annotations
 
 import json
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 from unittest.mock import patch
 
 from langgraph.graph import END
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -344,8 +344,8 @@ def test_redraft_node_tolerates_unparseable_llm_output():
 
 def test_revision_loop_terminates_when_severity_drops():
     """Simulate: first pass severity=4, redraft, second pass severity=1, END."""
-    from plato.paper_agents import reviewer_panel
     from plato.paper_agents import redraft_node as redraft_module
+    from plato.paper_agents import reviewer_panel
     from plato.paper_agents.critique_aggregator import critique_aggregator
     from plato.paper_agents.routers import revision_router
 
@@ -447,6 +447,7 @@ def test_revision_loop_terminates_at_iteration_cap_even_if_severity_high():
 def test_build_graph_compiles_with_revision_loop_nodes():
     """The full paper graph compiles and exposes the new nodes."""
     from langgraph.checkpoint.memory import MemorySaver
+
     from plato.paper_agents.agents_graph import build_graph
 
     graph = build_graph(checkpointer=MemorySaver())

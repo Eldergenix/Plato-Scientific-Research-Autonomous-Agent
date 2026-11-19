@@ -6,11 +6,11 @@ from typing import cast
 
 import pytest
 
+from plato.paper_agents.parameters import GraphState
 from plato.paper_agents.scientific_verifier import (
     build_scientific_verification_report,
     scientific_verifier_node,
 )
-from plato.paper_agents.parameters import GraphState
 
 
 def _state(tmp_path: Path, *, methods: str, results: str) -> GraphState:

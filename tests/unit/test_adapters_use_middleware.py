@@ -19,7 +19,6 @@ import pytest
 from plato.retrieval import middleware as mw
 from plato.retrieval.sources.crossref import CrossrefAdapter
 
-
 _CROSSREF_PAYLOAD: dict[str, Any] = {
     "status": "ok",
     "message": {

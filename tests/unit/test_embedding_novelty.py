@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -24,7 +24,7 @@ def _src(idx: int, title: str, abstract: str | None = None) -> Source:
         title=title,
         abstract=abstract,
         retrieved_via="arxiv",
-        fetched_at=datetime.now(timezone.utc),
+        fetched_at=datetime.now(UTC),
     )
 
 
@@ -85,7 +85,7 @@ async def test_corpus_without_usable_text_returns_perfect_novelty():
         title="",
         abstract=None,
         retrieved_via="arxiv",
-        fetched_at=datetime.now(timezone.utc),
+        fetched_at=datetime.now(UTC),
     )
     result = await scorer.score("a brand-new idea", [bare])
     assert result.score == 1.0
@@ -145,9 +145,11 @@ async def test_openai_backend_raises_clear_error_when_package_missing():
     # test suite. ``patch.dict(sys.modules, {"openai": None})`` makes
     # Python raise ImportError for the lazy import.
     backend = OpenAIEmbeddingBackend()
-    with patch.dict(sys.modules, {"openai": None}):
-        with pytest.raises(ImportError, match="openai"):
-            await backend.embed(["hello"])
+    with (
+        patch.dict(sys.modules, {"openai": None}),
+        pytest.raises(ImportError, match="openai"),
+    ):
+        await backend.embed(["hello"])
 
 
 @pytest.mark.asyncio

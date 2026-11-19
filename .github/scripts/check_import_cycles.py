@@ -16,6 +16,7 @@ Exit codes:
     1 — cycles or self-imports detected
     2 — usage / IO error
 """
+
 from __future__ import annotations
 
 import argparse
@@ -28,12 +29,35 @@ from collections import defaultdict
 def module_name(path: str, root: str) -> str:
     """Convert a filesystem path under ``root`` into a Python module name."""
     rel = os.path.relpath(path, ".")
-    if rel.endswith(".py"):
-        rel = rel[:-3]
+    rel = rel.removesuffix(".py")
     parts = rel.split(os.sep)
     if parts and parts[-1] == "__init__":
         parts = parts[:-1]
     return ".".join(parts)
+
+
+def _is_type_checking_guard(test: ast.expr) -> bool:
+    """True for ``if TYPE_CHECKING:`` and ``if typing.TYPE_CHECKING:``."""
+    if isinstance(test, ast.Name):
+        return test.id == "TYPE_CHECKING"
+    return isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING"
+
+
+def _runtime_nodes(tree: ast.AST):
+    """Yield every node except the bodies of ``if TYPE_CHECKING:`` blocks.
+
+    Imports under ``TYPE_CHECKING`` never execute, so they cannot form a
+    runtime import cycle; they exist precisely to break one. Their ``else``
+    branches do execute and are still walked.
+    """
+    stack = [tree]
+    while stack:
+        node = stack.pop()
+        yield node
+        if isinstance(node, ast.If) and _is_type_checking_guard(node.test):
+            stack.extend(node.orelse)
+            continue
+        stack.extend(ast.iter_child_nodes(node))
 
 
 def collect_imports(path: str, current_mod: str, package: str) -> set[str]:
@@ -46,7 +70,7 @@ def collect_imports(path: str, current_mod: str, package: str) -> set[str]:
         return set()
 
     found: set[str] = set()
-    for node in ast.walk(tree):
+    for node in _runtime_nodes(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.name.startswith(package):
@@ -65,7 +89,9 @@ def collect_imports(path: str, current_mod: str, package: str) -> set[str]:
     return found
 
 
-def find_cycles(graph: dict[str, set[str]], modules: set[str]) -> tuple[list[list[str]], list[str]]:
+def find_cycles(
+    graph: dict[str, set[str]], modules: set[str]
+) -> tuple[list[list[str]], list[str]]:
     """Tarjan's SCC. Returns (strongly_connected_components, self_imports)."""
     index_counter = [0]
     stack: list[str] = []

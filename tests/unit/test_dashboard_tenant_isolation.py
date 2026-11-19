@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -32,7 +32,7 @@ def _write_manifest(project_dir: Path, run_id: str, user_id: str | None) -> Path
     payload: dict[str, object] = {
         "run_id": run_id,
         "workflow": "test_workflow",
-        "started_at": datetime.now(timezone.utc).isoformat(),
+        "started_at": datetime.now(UTC).isoformat(),
         "status": "running",
         "domain": "astro",
         "git_sha": "",

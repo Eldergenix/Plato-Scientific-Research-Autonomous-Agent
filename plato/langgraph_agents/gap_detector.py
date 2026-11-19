@@ -23,12 +23,13 @@ from __future__ import annotations
 import logging
 import re
 from collections import Counter, defaultdict
-from typing import Any, Iterable, Optional, cast
+from collections.abc import Iterable
+from typing import Any, cast
 
 from langchain_core.runnables import RunnableConfig
 
-from .parameters import GraphState
 from ..state.models import Claim, EvidenceLink, Source
+from .parameters import GraphState
 
 logger = logging.getLogger(__name__)
 
@@ -62,13 +63,81 @@ _METHOD_KEYWORDS = (
 # extraction. Conservative list — we'd rather show a marginally noisy
 # keyword than miss a real coverage hole.
 _STOPWORDS = frozenset(
-    """
-    a an the and or but if then so to of in on for with without by from at
-    is are was were be been being has have had do does did this that these
-    those it its as we i you he she they them our their there here over
-    under not no yes can could would should may might will shall would
-    about into through between among across versus via per
-    """.split()
+    [
+        "a",
+        "an",
+        "the",
+        "and",
+        "or",
+        "but",
+        "if",
+        "then",
+        "so",
+        "to",
+        "of",
+        "in",
+        "on",
+        "for",
+        "with",
+        "without",
+        "by",
+        "from",
+        "at",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "has",
+        "have",
+        "had",
+        "do",
+        "does",
+        "did",
+        "this",
+        "that",
+        "these",
+        "those",
+        "it",
+        "its",
+        "as",
+        "we",
+        "i",
+        "you",
+        "he",
+        "she",
+        "they",
+        "them",
+        "our",
+        "their",
+        "there",
+        "here",
+        "over",
+        "under",
+        "not",
+        "no",
+        "yes",
+        "can",
+        "could",
+        "would",
+        "should",
+        "may",
+        "might",
+        "will",
+        "shall",
+        "would",
+        "about",
+        "into",
+        "through",
+        "between",
+        "among",
+        "across",
+        "versus",
+        "via",
+        "per",
+    ]
 )
 
 # Idea keywords are unique tokens of length >= MIN_KEYWORD_LEN. Two-letter
@@ -226,7 +295,7 @@ def _detect_homogeneity(
     ]
 
 
-def gap_detector(state: GraphState, config: Optional[RunnableConfig] = None):
+def gap_detector(state: GraphState, config: RunnableConfig | None = None):
     # Sync, not async: pure analysis with no awaits. ``async def`` would
     # force ``graph.invoke`` to refuse the node; see clarifier.py for
     # the same fix and rationale.

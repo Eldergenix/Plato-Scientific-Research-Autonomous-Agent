@@ -20,7 +20,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-
 RetrievedVia = Literal[
     "semantic_scholar",
     "arxiv",
@@ -126,11 +125,11 @@ class ValidationResult(BaseModel):
 
 
 __all__ = [
-    "Source",
     "Claim",
     "EvidenceLink",
-    "ValidationResult",
     "RetrievedVia",
-    "SupportLabel",
+    "Source",
     "StrengthLabel",
+    "SupportLabel",
+    "ValidationResult",
 ]

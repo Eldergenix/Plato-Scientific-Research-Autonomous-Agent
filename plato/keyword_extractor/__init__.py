@@ -23,15 +23,17 @@ own without touching Plato.
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Protocol, runtime_checkable
 
+logger = logging.getLogger(__name__)
 
 __all__ = [
-    "KeywordExtractor",
     "KEYWORD_EXTRACTOR_REGISTRY",
-    "register_keyword_extractor",
+    "KeywordExtractor",
     "get_keyword_extractor",
     "list_keyword_extractors",
+    "register_keyword_extractor",
 ]
 
 
@@ -145,4 +147,4 @@ def _ensure_builtins_registered() -> None:
             # Optional-dep failures (cmbagent, requests, ...) shouldn't
             # break the other extractors. Each module handles its own
             # missing-dep behaviour at extract() time.
-            pass
+            logger.debug("keyword extractor %r not loaded", name, exc_info=True)

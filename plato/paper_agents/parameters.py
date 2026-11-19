@@ -1,11 +1,12 @@
-from typing_extensions import TypedDict, Any
-from typing import Annotated, Optional
+from typing import Annotated, Any
+
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AnyMessage
 from langgraph.graph.message import add_messages
+from typing_extensions import TypedDict
 
-from .journal import Journal
 from ..key_manager import KeyManager
+from .journal import Journal
 
 
 # Paper class
@@ -151,19 +152,19 @@ class GraphState(TypedDict):
     # Phase 3 — R6: multi-reviewer panel + revision loop
     # e.g. {"methodology": {"severity": 3, "issues": [...]}, ...}
     critiques: Annotated[dict[str, dict], merge_critiques]
-    critique_digest: Optional[
-        dict
-    ]  # CritiqueDigest payload (max_severity, issues, iteration)
+    critique_digest: (
+        dict | None
+    )  # CritiqueDigest payload (max_severity, issues, iteration)
     revision_state: REVISION_STATE  # iteration counter and max_iterations cap
     # Phase 2 — R3 citation validation pipeline
-    run_id: Optional[str]  # unique id for the current run (used for run-dir + manifest)
+    run_id: str | None  # unique id for the current run (used for run-dir + manifest)
     sources: list[Any]  # Source objects threaded through the validator
     references: list[Any]  # Reference rows extracted by ``citations_node``
-    validation_report: Optional[dict]  # populated by ``citation_validator_node``
-    scientific_verification_report: Optional[
-        dict
-    ]  # publication provenance + repeatability gate
-    store: Optional[Any]  # SQLite store handle when persistence is wired
+    validation_report: dict | None  # populated by ``citation_validator_node``
+    scientific_verification_report: (
+        dict | None
+    )  # publication provenance + repeatability gate
+    store: Any | None  # SQLite store handle when persistence is wired
     # Phase 2 — R5 claim/evidence matrix
     claims: list[Any]  # Claim objects produced by ``claim_extractor``
     evidence_links: list[Any]  # EvidenceLink rows produced by ``evidence_matrix_node``

@@ -86,10 +86,9 @@ def _drop_checkpoint_tables(dsn: str) -> None:
         "checkpoints",
         "checkpoint_migrations",
     )
-    with psycopg.connect(dsn, autocommit=True) as conn:
-        with conn.cursor() as cur:
-            for table in tables:
-                cur.execute(f'DROP TABLE IF EXISTS "{table}" CASCADE')
+    with psycopg.connect(dsn, autocommit=True) as conn, conn.cursor() as cur:
+        for table in tables:
+            cur.execute(f'DROP TABLE IF EXISTS "{table}" CASCADE')
 
 
 @pytest.fixture(scope="module")
@@ -214,14 +213,13 @@ def test_cleanup_drops_checkpoint_tables(postgres_dsn: str):
     _drop_checkpoint_tables(postgres_dsn)
 
     expected = ("checkpoints", "checkpoint_blobs", "checkpoint_writes")
-    with psycopg.connect(postgres_dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT table_name FROM information_schema.tables "
-                "WHERE table_schema = 'public' AND table_name = ANY(%s)",
-                [list(expected)],
-            )
-            remaining = {row[0] for row in cur.fetchall()}
+    with psycopg.connect(postgres_dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_name = ANY(%s)",
+            [list(expected)],
+        )
+        remaining = {row[0] for row in cur.fetchall()}
 
     assert remaining == set(), (
         f"Expected checkpoint tables to be dropped; still found: {remaining!r}"

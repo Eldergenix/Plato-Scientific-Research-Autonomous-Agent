@@ -18,7 +18,7 @@ from . import crossref as _crossref  # noqa: F401
 from . import datacite as _datacite  # noqa: F401
 from . import doaj as _doaj  # noqa: F401
 from . import europe_pmc as _europe_pmc  # noqa: F401
-from . import opencitations as _opencitations  # noqa: F401
 from . import openalex as _openalex  # noqa: F401
+from . import opencitations as _opencitations  # noqa: F401
 from . import pubmed as _pubmed  # noqa: F401
 from . import semantic_scholar as _semantic_scholar  # noqa: F401

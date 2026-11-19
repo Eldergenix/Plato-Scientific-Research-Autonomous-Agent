@@ -16,7 +16,6 @@ from typing import Any
 
 from . import register_keyword_extractor
 
-
 __all__ = ["DefaultKeywordExtractor"]
 
 

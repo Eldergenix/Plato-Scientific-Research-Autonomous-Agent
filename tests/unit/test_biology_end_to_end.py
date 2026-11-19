@@ -17,7 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -25,7 +25,6 @@ import pytest
 from evals import EvalRunner
 from evals.tasks import GoldenTask, load_task
 from plato.domain import DomainProfile, get_domain
-
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GOLDEN_DIR = REPO_ROOT / "evals" / "golden"
@@ -97,7 +96,7 @@ class _FakeBiologyPlato:
         run_id = uuid.uuid4().hex[:12]
         run_dir = self.project_dir / "runs" / run_id
         run_dir.mkdir(parents=True, exist_ok=True)
-        started = datetime.now(timezone.utc)
+        started = datetime.now(UTC)
         ended = started + timedelta(seconds=self.latency_per_call)
         payload = {
             "run_id": run_id,
