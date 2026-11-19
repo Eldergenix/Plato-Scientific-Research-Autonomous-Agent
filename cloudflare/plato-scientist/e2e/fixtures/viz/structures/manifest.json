@@ -1,0 +1,18 @@
+{
+  "recipe": "structures",
+  "ok": true,
+  "exit_code": 0,
+  "network_isolated": true,
+  "seconds": 11.5,
+  "metrics": {
+    "radius_of_gyration": 11.4929,
+    "contacts": 177
+  },
+  "files": {
+    "hemoglobin_4hhb.cif": 351404,
+    "ubiquitin_1ubq.pdb": 48851,
+    "ubiquitin_contacts.csv": 2253
+  },
+  "stdout_tail": "1UBQ: 76 residues, Rg 11.49 A, 177 Calpha contacts under 8 A\nPLATO_METRICS {\"radius_of_gyration\": 11.4929, \"contacts\": 177}\n",
+  "stderr_tail": ""
+}

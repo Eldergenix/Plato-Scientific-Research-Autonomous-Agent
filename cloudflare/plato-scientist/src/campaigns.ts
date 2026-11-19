@@ -259,10 +259,39 @@ export async function nodeProvenance(c: Ctx, id: string): Promise<Response> {
                  a.canonical_name, a.uri_or_commit
             FROM plato.exploration_anchors x JOIN plato.knowledge_assets a ON a.id = x.asset_id
            WHERE x.node_id = ANY(${ids}::uuid[])`,
-    c.sql`SELECT id, node_id, artifact_type, sha256_checksum, vlm_quality_score, approval_actor, created_at
+    c.sql`SELECT id, node_id, artifact_type, sha256_checksum, vlm_quality_score, approval_actor, file_name,
+                 octet_length(content) AS size_bytes, created_at
             FROM plato.evidence_artifacts WHERE node_id = ANY(${ids}::uuid[]) ORDER BY created_at`,
   ]);
   return json({ root: id, nodes, edges, anchors, evidence });
+}
+
+/** Every figure and data file the campaign's experiments wrote, newest first, without
+ * contents (each is fetched on demand from ``evidence/:id``). */
+export async function campaignFiles(c: Ctx, id: string): Promise<Response> {
+  await campaignOwner(c, id);
+  const files = await c.sql`
+    SELECT e.id, e.node_id, e.artifact_type, e.file_name, e.sha256_checksum,
+           octet_length(e.content) AS size_bytes, e.created_at
+      FROM plato.evidence_artifacts e
+      JOIN plato.exploration_nodes n ON n.id = e.node_id
+     WHERE n.campaign_id = ${id} AND e.artifact_type IN ('plot_png', 'data_file')
+     ORDER BY e.created_at DESC, e.id
+     LIMIT 1000`;
+  return json({ files });
+}
+
+/** Data files are served by extension. Structures and networks go out as plain text: the
+ * viewer parses them, and nothing an experiment wrote is ever rendered as active content. */
+const DATA_TYPES: Record<string, string> = {
+  csv: "text/csv; charset=utf-8",
+  tsv: "text/tab-separated-values; charset=utf-8",
+  json: "application/json",
+  pdf: "application/pdf",
+};
+export function dataFileType(name: string | null): string {
+  const ext = (name ?? "").toLowerCase().split(".").pop() ?? "";
+  return DATA_TYPES[ext] ?? "text/plain; charset=utf-8";
 }
 
 const EVIDENCE_TYPES: Record<string, string> = {
@@ -278,16 +307,22 @@ const EVIDENCE_TYPES: Record<string, string> = {
 export async function evidence(c: Ctx, id: string): Promise<Response> {
   const row = await visible(
     c,
-    c.sql`SELECT r.account_id, e.artifact_type, e.content, e.sha256_checksum
+    c.sql`SELECT r.account_id, e.artifact_type, e.content, e.sha256_checksum, e.file_name
             FROM plato.evidence_artifacts e
             JOIN plato.exploration_nodes n ON n.id = e.node_id
             JOIN plato.research_campaigns r ON r.id = n.campaign_id
            WHERE e.id = ${id}`,
   );
   if (row.content === null) throw new HttpError(404, "evidence not found or stored externally");
+  const name = row.file_name as string | null;
+  const type =
+    row.artifact_type === "data_file"
+      ? dataFileType(name)
+      : (EVIDENCE_TYPES[row.artifact_type as string] ?? "text/plain; charset=utf-8");
   return new Response(row.content as Uint8Array, {
     headers: {
-      "content-type": EVIDENCE_TYPES[row.artifact_type as string] ?? "text/plain; charset=utf-8",
+      "content-type": type,
+      ...(name ? { "content-disposition": `inline; filename*=UTF-8''${encodeURIComponent(name)}` } : {}),
       // Evidence is model- or experiment-generated: never let it run as active content.
       "content-security-policy": "default-src 'none'; img-src 'self'; sandbox",
       "x-content-type-options": "nosniff",

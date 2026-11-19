@@ -1,0 +1,17 @@
+{
+  "recipe": "ligands",
+  "ok": true,
+  "exit_code": 0,
+  "network_isolated": true,
+  "seconds": 22.7,
+  "metrics": {
+    "mean_mol_weight": 193.546
+  },
+  "files": {
+    "caffeine.mol": 2085,
+    "ligand_descriptors.csv": 248,
+    "ligands.sdf": 6742
+  },
+  "stdout_tail": "PLATO_METRICS {\"mean_mol_weight\": 193.546}\n",
+  "stderr_tail": ""
+}

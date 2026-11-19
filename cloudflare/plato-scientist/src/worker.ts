@@ -119,6 +119,7 @@ const ROUTES: [string, string, Access, Handler][] = [
   ["DELETE", "integrations/triggers/:id", "account", integrations.deleteTrigger],
   // Composio deliveries: verified by signature, not by session.
   ["POST", "integrations/webhook", "public", integrations.webhook],
+  ["GET", "campaigns/:id/files", "user", campaigns.campaignFiles],
   ["GET", "nodes/:id/provenance", "user", campaigns.nodeProvenance],
   ["GET", "evidence/:id", "user", campaigns.evidence],
   ["GET", "projects", "account", projects.listProjects],

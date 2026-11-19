@@ -194,7 +194,27 @@ def _clip(text: bytes, limit: int) -> str:
     return f"{decoded[:half]}\n...[{len(decoded) - limit} chars elided]...\n{decoded[-half:]}"
 
 
-_COLLECT_SUFFIXES = (".png", ".json", ".csv", ".txt", ".tex")
+# Output files an experiment leaves in its working directory that are kept: figures,
+# tables, molecular structures (proteins as PDB/mmCIF, small molecules as SDF/MOL/MOL2/XYZ),
+# networks and pathways (SIF, GraphML) and documents. Every executor collects the same set.
+_COLLECT_SUFFIXES = (
+    ".png",
+    ".json",
+    ".csv",
+    ".tsv",
+    ".txt",
+    ".tex",
+    ".pdf",
+    ".pdb",
+    ".cif",
+    ".mmcif",
+    ".sdf",
+    ".mol",
+    ".mol2",
+    ".xyz",
+    ".sif",
+    ".graphml",
+)
 _COLLECT_MAX_BYTES = 1_048_576
 
 
@@ -226,7 +246,7 @@ def _collect(workdir: Path, input_names: set[str]) -> dict[str, bytes]:
             path.is_file()
             and not path.is_symlink()
             and path.name != _SCRIPT
-            and path.suffix in _COLLECT_SUFFIXES
+            and path.suffix.lower() in _COLLECT_SUFFIXES
             and path.name not in input_names
             and path.stat().st_size <= _COLLECT_MAX_BYTES
         ):

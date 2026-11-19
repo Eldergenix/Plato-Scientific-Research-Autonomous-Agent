@@ -70,6 +70,8 @@ ROLE_PURPOSES: dict[str, tuple[str, ...]] = {
         "review_statistics",
         "review_novelty",
         "review_writing",
+        # Re-checks each reviewer finding against the revised manuscript.
+        "peer_review_check",
     ),
     # Journal front matter for a publication export.
     "publication_formatter": ("publication_format",),

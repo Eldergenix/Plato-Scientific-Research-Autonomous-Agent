@@ -32,6 +32,7 @@ from .db.store import (
     paper_dedup_key,
     sha256_hex,
     spec_dedup_key,
+    valid_file_name,
 )
 from .executors import run_experiment
 from .guard import (
@@ -732,6 +733,16 @@ async def experiment_planner(
 # ---------------------------------------------------------------------------
 
 
+# Readers explore these files in the app (charts and tables, 2D/3D structures, networks).
+OUTPUT_FILES_RULE = (
+    "Save outputs in the working directory under short descriptive file names: figures as "
+    "PNG; tables as CSV or TSV with one header row (columns such as log2FC and p-values "
+    "under their usual names); protein structures as PDB or mmCIF and small molecules as SDF; "
+    "networks and pathways as SIF (source, interaction, target per line) or JSON "
+    '{"nodes": [{"id": ...}], "edges": [{"source": ..., "target": ...}]}.'
+)
+
+
 def code_rules(profile: ScientistProfile, config: ScientistConfig) -> str:
     packages = ", ".join(profile.packages)
     gpu = (
@@ -743,8 +754,8 @@ def code_rules(profile: ScientistProfile, config: ScientistConfig) -> str:
     return (
         f"Rules for the script: it runs offline with {packages} (nothing else is installed).{gpu} "
         f"It must read an integer seed from the file '{SEED_FILE}' and seed every RNG "
-        "with it; it may read the provided dataset files from the working directory; it may save "
-        f"figures as PNG in the working directory; it must finish {experiment_limits_text(config)}; "
+        "with it; it may read the provided dataset files from the working directory; "
+        f"{OUTPUT_FILES_RULE} It must finish {experiment_limits_text(config)}; "
         f"its last line of output must be '{METRICS_MARKER} ' followed by a JSON object of numeric "
         "metrics that includes the primary metric under exactly its given key, and its standard "
         "error under '<key>_se' when the metric is a Monte Carlo or sample estimate. For a "
@@ -755,6 +766,60 @@ def code_rules(profile: ScientistProfile, config: ScientistConfig) -> str:
         "evaluation files: evaluate the final method on them and report those metrics with the "
         "prefix 'sealed_'." + (f" {profile.guidance}" if profile.guidance else "")
     )
+
+
+# Output files kept per experiment run beyond figures: tables, structures, networks and
+# documents, so readers can chart, browse and view them in 2D/3D. Bounded per run so one
+# chatty script cannot bloat the evidence store (each file is already at most 1 MiB).
+DATA_FILE_SUFFIXES = (
+    ".csv",
+    ".tsv",
+    ".json",
+    ".txt",
+    ".pdf",
+    ".pdb",
+    ".cif",
+    ".mmcif",
+    ".sdf",
+    ".mol",
+    ".mol2",
+    ".xyz",
+    ".sif",
+    ".graphml",
+)
+MAX_DATA_FILES = 16
+MAX_DATA_BYTES = 6 * 1_048_576
+MAX_PLOTS = 12
+
+
+async def store_outputs(
+    store: Any, node_id: uuid.UUID, files: dict[str, bytes]
+) -> None:
+    """Record a run's figures as ``plot_png`` and its data outputs as ``data_file``.
+
+    Figures come first (they feed the figure critique), then data files smallest first
+    so a size budget keeps as many as possible; names are recorded with each file."""
+    plots = [(n, d) for n, d in sorted(files.items()) if n.lower().endswith(".png")]
+    for name, data in plots[:MAX_PLOTS]:
+        await store.add_evidence(
+            node_id, "plot_png", data, approval_actor="model", file_name=name
+        )
+    data_files = sorted(
+        (
+            (n, d)
+            for n, d in files.items()
+            if n.lower().endswith(DATA_FILE_SUFFIXES) and d and valid_file_name(n)
+        ),
+        key=lambda item: (len(item[1]), item[0]),
+    )
+    budget = MAX_DATA_BYTES
+    for name, data in data_files[:MAX_DATA_FILES]:
+        if len(data) > budget:
+            break
+        budget -= len(data)
+        await store.add_evidence(
+            node_id, "data_file", data, approval_actor="system", file_name=name
+        )
 
 
 async def _run_code(
@@ -821,7 +886,7 @@ _WORKSPACE_RULES = (
     "has rebuilt the environment with network access. It may call command-line tools through "
     f"subprocess and read the provided dataset files and downloaded data; it must read an "
     f"integer seed from '{SEED_FILE}' and seed every RNG (and any tool that takes a seed) with it; "
-    "it may save figures as PNG and tables as CSV/TSV/JSON in the working directory; its last "
+    f"{OUTPUT_FILES_RULE} Its last "
     f"line of output must be '{METRICS_MARKER} ' followed by a JSON object of numeric metrics "
     "that includes the primary metric under exactly its given key, and its standard error under "
     "'<key>_se' when the metric is a Monte Carlo or sample estimate. For a 'difference' test, "
@@ -1131,9 +1196,7 @@ async def execute_intent(
     await store.add_evidence(
         fact_id, "stdout_log", result.stdout, approval_actor="system"
     )
-    for name, data in result.files.items():
-        if name.endswith(".png"):
-            await store.add_evidence(fact_id, "plot_png", data, approval_actor="model")
+    await store_outputs(store, fact_id, result.files)
     for text in obs.follow_up_hints[:2]:
         hint = await store.create_node(
             campaign_id,

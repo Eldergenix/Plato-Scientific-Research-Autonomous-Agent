@@ -1,0 +1,528 @@
+{
+ "name": "Cell cycle",
+ "source": "KEGG hsa04110",
+ "nodes": [
+  {
+   "id": "CDKN2A",
+   "type": "gene",
+   "entrez": [
+    "1029"
+   ],
+   "log2FC": 1.0405
+  },
+  {
+   "id": "CDK1",
+   "type": "gene",
+   "entrez": [
+    "983"
+   ],
+   "log2FC": 2.4222
+  },
+  {
+   "id": "PCNA",
+   "type": "gene",
+   "entrez": [
+    "5111"
+   ],
+   "log2FC": 1.1309
+  },
+  {
+   "id": "PLK1",
+   "type": "gene",
+   "entrez": [
+    "5347"
+   ],
+   "log2FC": 1.8543
+  },
+  {
+   "id": "ATM",
+   "type": "gene",
+   "entrez": [
+    "472",
+    "545"
+   ],
+   "log2FC": -0.2633
+  },
+  {
+   "id": "MAD2L2",
+   "type": "gene",
+   "entrez": [
+    "10459",
+    "4085"
+   ],
+   "log2FC": 2.4152
+  },
+  {
+   "id": "BUB1",
+   "type": "gene",
+   "entrez": [
+    "699"
+   ],
+   "log2FC": 1.1855
+  },
+  {
+   "id": "BUB3",
+   "type": "gene",
+   "entrez": [
+    "9184"
+   ],
+   "log2FC": -0.0382
+  },
+  {
+   "id": "YWHAQ",
+   "type": "gene",
+   "entrez": [
+    "10971",
+    "7529",
+    "7531",
+    "7532",
+    "7533",
+    "7534"
+   ],
+   "log2FC": 0.2423
+  },
+  {
+   "id": "SFN",
+   "type": "gene",
+   "entrez": [
+    "2810"
+   ],
+   "log2FC": 0.814
+  },
+  {
+   "id": "CHEK1",
+   "type": "gene",
+   "entrez": [
+    "1111",
+    "11200"
+   ],
+   "log2FC": 1.4659
+  },
+  {
+   "id": "CDKN1A",
+   "type": "gene",
+   "entrez": [
+    "1026"
+   ],
+   "log2FC": 0.2497
+  },
+  {
+   "id": "PRKDC",
+   "type": "gene",
+   "entrez": [
+    "5591"
+   ],
+   "log2FC": 0.4023
+  },
+  {
+   "id": "MDM2",
+   "type": "gene",
+   "entrez": [
+    "4193"
+   ],
+   "log2FC": 0.0972
+  },
+  {
+   "id": "CREBBP",
+   "type": "gene",
+   "entrez": [
+    "1387",
+    "2033"
+   ],
+   "log2FC": -0.3296
+  },
+  {
+   "id": "PKMYT1",
+   "type": "gene",
+   "entrez": [
+    "9088"
+   ],
+   "log2FC": 0.773
+  },
+  {
+   "id": "WEE2",
+   "type": "gene",
+   "entrez": [
+    "494551",
+    "7465"
+   ],
+   "log2FC": 0.1738
+  },
+  {
+   "id": "PTTG2",
+   "type": "gene",
+   "entrez": [
+    "10744",
+    "9232"
+   ],
+   "log2FC": 1.106
+  },
+  {
+   "id": "ESPL1",
+   "type": "gene",
+   "entrez": [
+    "9700"
+   ],
+   "log2FC": 1.6265
+  },
+  {
+   "id": "RB1",
+   "type": "gene",
+   "entrez": [
+    "5925"
+   ],
+   "log2FC": -0.5199
+  },
+  {
+   "id": "GADD45G",
+   "type": "gene",
+   "entrez": [
+    "10912",
+    "1647",
+    "4616"
+   ],
+   "log2FC": -0.2067
+  },
+  {
+   "id": "TP53",
+   "type": "gene",
+   "entrez": [
+    "7157"
+   ],
+   "log2FC": -0.5628
+  },
+  {
+   "id": "CDKN2B",
+   "type": "gene",
+   "entrez": [
+    "1030"
+   ],
+   "log2FC": 0.5215
+  },
+  {
+   "id": "TGFB1",
+   "type": "gene",
+   "entrez": [
+    "7040",
+    "7042",
+    "7043"
+   ],
+   "log2FC": -0.8315
+  },
+  {
+   "id": "SMAD2",
+   "type": "gene",
+   "entrez": [
+    "4087",
+    "4088"
+   ],
+   "log2FC": -0.3608
+  },
+  {
+   "id": "CDC25B",
+   "type": "gene",
+   "entrez": [
+    "994",
+    "995"
+   ],
+   "log2FC": 1.0074
+  },
+  {
+   "id": "CDC25A",
+   "type": "gene",
+   "entrez": [
+    "993"
+   ],
+   "log2FC": 1.89
+  },
+  {
+   "id": "GSK3B",
+   "type": "gene",
+   "entrez": [
+    "2932"
+   ],
+   "log2FC": 0.35
+  },
+  {
+   "id": "CCNB3",
+   "type": "gene",
+   "entrez": [
+    "85417",
+    "891",
+    "9133"
+   ],
+   "log2FC": 2.586
+  },
+  {
+   "id": "CDK2",
+   "type": "gene",
+   "entrez": [
+    "1017"
+   ],
+   "log2FC": 0.2654
+  },
+  {
+   "id": "CDK4",
+   "type": "gene",
+   "entrez": [
+    "1019",
+    "1021"
+   ],
+   "log2FC": 0.2891
+  },
+  {
+   "id": "CCND1",
+   "type": "gene",
+   "entrez": [
+    "595",
+    "894",
+    "896"
+   ],
+   "log2FC": -0.1321
+  },
+  {
+   "id": "MAD1L1",
+   "type": "gene",
+   "entrez": [
+    "8379"
+   ],
+   "log2FC": 0.2796
+  },
+  {
+   "id": "TTK",
+   "type": "gene",
+   "entrez": [
+    "7272"
+   ],
+   "log2FC": 2.2882
+  },
+  {
+   "id": "MYC",
+   "type": "gene",
+   "entrez": [
+    "4609"
+   ],
+   "log2FC": 1.1711
+  },
+  {
+   "id": "ZBTB17",
+   "type": "gene",
+   "entrez": [
+    "7709"
+   ],
+   "log2FC": -0.1944
+  },
+  {
+   "id": "ABL1",
+   "type": "gene",
+   "entrez": [
+    "25"
+   ],
+   "log2FC": -0.2626
+  },
+  {
+   "id": "HDAC1",
+   "type": "gene",
+   "entrez": [
+    "3065",
+    "3066"
+   ],
+   "log2FC": 0.4919
+  },
+  {
+   "id": "FBXO5",
+   "type": "gene",
+   "entrez": [
+    "26271"
+   ],
+   "log2FC": 1.0866
+  }
+ ],
+ "edges": [
+  {
+   "source": "GSK3B",
+   "target": "CCND1",
+   "interaction": "inhibition"
+  },
+  {
+   "source": "TP53",
+   "target": "CDKN1A",
+   "interaction": "expression"
+  },
+  {
+   "source": "TP53",
+   "target": "GADD45G",
+   "interaction": "expression"
+  },
+  {
+   "source": "TP53",
+   "target": "SFN",
+   "interaction": "expression"
+  },
+  {
+   "source": "GADD45G",
+   "target": "PCNA",
+   "interaction": "activation"
+  },
+  {
+   "source": "MDM2",
+   "target": "RB1",
+   "interaction": "inhibition"
+  },
+  {
+   "source": "MDM2",
+   "target": "TP53",
+   "interaction": "inhibition"
+  },
+  {
+   "source": "CREBBP",
+   "target": "TP53",
+   "interaction": "activation"
+  },
+  {
+   "source": "PRKDC",
+   "target": "TP53",
+   "interaction": "activation"
+  },
+  {
+   "source": "CHEK1",
+   "target": "TP53",
+   "interaction": "activation"
+  },
+  {
+   "source": "CHEK1",
+   "target": "CDC25A",
+   "interaction": "inhibition"
+  },
+  {
+   "source": "CDC25A",
+   "target": "CDK4",
+   "interaction": "activation"
+  },
+  {
+   "source": "CDC25A",
+   "target": "CDK2",
+   "interaction": "activation"
+  },
+  {
+   "source": "CDC25A",
+   "target": "CDK1",
+   "interaction": "activation"
+  },
+  {
+   "source": "CHEK1",
+   "target": "CDC25B",
+   "interaction": "inhibition"
+  },
+  {
+   "source": "PTTG2",
+   "target": "ESPL1",
+   "interaction": "inhibition"
+  },
+  {
+   "source": "YWHAQ",
+   "target": "CDC25B",
+   "interaction": "binding/association"
+  },
+  {
+   "source": "WEE2",
+   "target": "CDK1",
+   "interaction": "inhibition"
+  },
+  {
+   "source": "PKMYT1",
+   "target": "CDK1",
+   "interaction": "inhibition"
+  },
+  {
+   "source": "PLK1",
+   "target": "CDC25B",
+   "interaction": "activation"
+  },
+  {
+   "source": "PLK1",
+   "target": "PKMYT1",
+   "interaction": "inhibition"
+  },
+  {
+   "source": "CDC25B",
+   "target": "CDK1",
+   "interaction": "activation"
+  },
+  {
+   "source": "SFN",
+   "target": "CCNB3",
+   "interaction": "inhibition"
+  },
+  {
+   "source": "GADD45G",
+   "target": "CCNB3",
+   "interaction": "inhibition"
+  },
+  {
+   "source": "CDKN2A",
+   "target": "MDM2",
+   "interaction": "inhibition"
+  },
+  {
+   "source": "ATM",
+   "target": "TP53",
+   "interaction": "activation"
+  },
+  {
+   "source": "ATM",
+   "target": "CHEK1",
+   "interaction": "activation"
+  },
+  {
+   "source": "TTK",
+   "target": "MAD1L1",
+   "interaction": "activation"
+  },
+  {
+   "source": "MAD1L1",
+   "target": "MAD2L2",
+   "interaction": "activation"
+  },
+  {
+   "source": "BUB1",
+   "target": "BUB3",
+   "interaction": "binding/association"
+  },
+  {
+   "source": "MYC",
+   "target": "ZBTB17",
+   "interaction": "inhibition"
+  },
+  {
+   "source": "ZBTB17",
+   "target": "CDKN2B",
+   "interaction": "expression"
+  },
+  {
+   "source": "TGFB1",
+   "target": "SMAD2",
+   "interaction": "activation"
+  },
+  {
+   "source": "ABL1",
+   "target": "RB1",
+   "interaction": "binding/association"
+  },
+  {
+   "source": "HDAC1",
+   "target": "RB1",
+   "interaction": "binding/association"
+  },
+  {
+   "source": "TP53",
+   "target": "CDKN1A",
+   "interaction": "repression"
+  },
+  {
+   "source": "CDKN1A",
+   "target": "FBXO5",
+   "interaction": "inhibition"
+  }
+ ]
+}

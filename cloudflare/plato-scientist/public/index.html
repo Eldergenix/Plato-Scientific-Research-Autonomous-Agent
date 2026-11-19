@@ -9,6 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400..700&family=JetBrains+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="/app/kit.css">
+<link rel="stylesheet" href="/app/data.css">
 <script>
 // Apply the saved theme ("system", "light" or "dark") and motion preference before first paint.
 try{const d=document.documentElement,t=localStorage.getItem("plato_theme");d.dataset.theme=t==="light"||t==="dark"?t:matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";
@@ -434,6 +435,7 @@ pre.src{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.6 "JetBr
 <div class="toasts" id="toasts" aria-live="polite"></div>
 <div id="overlay"></div>
 <script src="/app/kit.js"></script>
+<script src="/app/data.js"></script>
 <script src="/app/app.js"></script>
 <script src="/app/review.js"></script>
 <script src="/app/publish.js"></script>
