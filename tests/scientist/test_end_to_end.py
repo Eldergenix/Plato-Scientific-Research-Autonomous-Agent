@@ -10,6 +10,8 @@ import json
 import uuid
 from datetime import UTC, datetime
 
+import pytest
+
 from plato.scientist.graph import run_campaign
 from plato.scientist.llm import WRITING_PURPOSES
 from plato.scientist.nodes import ScientistContext, _bib_key
@@ -1100,3 +1102,157 @@ async def test_papers_without_an_abstract_are_backfilled_or_not_citable(store):
             assert paper["metadata"]["abstract_source"] == "openalex_or_arxiv"
             assert _bib_key(paper) in bib
             assert "no abstract to check claims against" not in events
+
+
+# ---------------------------------------------------------------------------
+# The verifier computes the test itself from unit-level data
+# ---------------------------------------------------------------------------
+
+
+def _code_with_units(key: str, reported_p: float, shift: float) -> str:
+    """Two groups of 40 deterministic units, the treatment shifted by ``shift``. The
+    script reports ``reported_p`` whatever its data show, as a careless one might; the
+    replication run resamples the units, and the held-out run writes its own unit file."""
+    return f"""
+import json, os
+import numpy as np
+n = 40
+base = np.linspace(-1.0, 1.0, n)
+ctrl = 1.0 + base
+trt = 1.0 + {shift} + base[::-1]
+if os.path.exists("plato_replicate.json"):
+    r = np.random.default_rng(json.load(open("plato_replicate.json"))["seed"])
+    ctrl = ctrl[r.integers(0, n, n)]
+    trt = trt[r.integers(0, n, n)]
+
+def write(name, c, t):
+    with open(name, "w") as f:
+        f.write("unit,group,value\\n")
+        for i, v in enumerate(c):
+            f.write(f"c{{i}},control,{{v}}\\n")
+        for i, v in enumerate(t):
+            f.write(f"t{{i}},treatment,{{v}}\\n")
+
+write("plato_units.csv", ctrl, trt)
+d = float(trt.mean() - ctrl.mean())
+se = float((ctrl.var(ddof=1) / n + trt.var(ddof=1) / n) ** 0.5)
+m = {{"{key}": d, "{key}_se": se, "p_value": {reported_p}}}
+if os.path.exists("plato_sealed.json"):
+    write("plato_sealed_units.csv", ctrl, trt)
+    m.update({{"sealed_{key}": d, "sealed_p_value": {reported_p}}})
+print("PLATO_METRICS", json.dumps(m))
+"""
+
+
+class UnitModel(GateModel):
+    """One two-group difference experiment that writes its unit-level data."""
+
+    def __init__(self, store, *, shift, reported_p, direction, analyst, **kw):
+        super().__init__(
+            store, test_kind="difference", p_value=reported_p, supports=analyst, **kw
+        )
+        self.shift = shift
+        self.direction = direction
+
+    async def structured(self, *, purpose, schema, prompt, **kw):
+        if schema is IntentBatch:
+            await self.store.reserve_tokens(kw["campaign_id"], self.per_call)
+            self.calls.append(purpose)
+            self.plan_rounds += 1
+            if self.plan_rounds > 1:
+                return IntentBatch(intents=[])
+            return IntentBatch(
+                intents=[
+                    IntentSpec(
+                        title="Treatment raises y",
+                        hypothesis="mean y is higher under treatment",
+                        protocol="simulate two groups",
+                        primary_metric="mean_difference",
+                        test_kind="difference",
+                        expected_direction=self.direction,
+                        success_criterion="p < 0.05",
+                        priority=0.9,
+                        goal_index=0,
+                    )
+                ]
+            )
+        if schema is ExperimentCode:
+            await self.store.reserve_tokens(kw["campaign_id"], self.per_call)
+            self.calls.append(purpose)
+            self.code_prompts.append(prompt)
+            return ExperimentCode(
+                code=_code_with_units("mean_difference", self.p_value, self.shift),
+                notes="n",
+            )
+        return await super().structured(
+            purpose=purpose, schema=schema, prompt=prompt, **kw
+        )
+
+
+async def _run_units(store, **kw):
+    _, cid, *_ = await _new_campaign(store)
+    model = UnitModel(store, **kw)
+    summary = await run_campaign(
+        ScientistContext(
+            store=store,
+            model=model,
+            retriever=fake_retriever,
+            citation_checker=fake_checker,
+        ),
+        cid,
+    )
+    (fact,) = await store.nodes(cid, node_type="fact")
+    return cid, model, summary["campaign"], fact
+
+
+async def test_a_reported_p_the_data_do_not_support_is_not_verified(store):
+    # No real effect, but the script claims p = 0.001: the verifier's own Welch test on
+    # the unit data finds nothing, so the claim is inconclusive (not verified, not refuted).
+    cid, model, campaign, fact = await _run_units(
+        store, shift=0.0, reported_p=0.001, direction="increase", analyst="yes"
+    )
+    m = fact["metrics"]
+    assert m["stats_source"] == "unit_data" and m["stats_test"] == "welch_t"
+    assert m["p_value_reported"] == 0.001 and m["p_value"] > 0.5
+    assert m["stats_n"] == 80
+    # The analyst said "yes"; the rule on the recomputed test overrides it.
+    assert m["supports_hypothesis"] == "inconclusive" and m["supports_source"] == "rule"
+    assert m["gates"]["stats_ok"] is False
+    assert fact["status"] == "inconclusive"
+    assert not await store.nodes(cid, node_type="finding", status="verified")
+    # The engineer was told the pre-registered test, and the reviewer where p came from.
+    assert (
+        "Pre-registered test: test kind difference, predicted effect sign increase"
+        in (model.code_prompts[0])
+    )
+    assert "plato_units.csv" in model.code_prompts[0]
+    assert "recomputed by the verifier from 80 units" in model.prompts["skeptic"]
+    assert campaign["status"] == "completed"
+
+
+async def test_a_real_effect_is_verified_from_unit_data_and_held_out_data(store):
+    cid, _, campaign, fact = await _run_units(
+        store, shift=1.5, reported_p=0.2, direction="increase", analyst="no"
+    )
+    m = fact["metrics"]
+    # The script under-reported its evidence (p = 0.2); the recomputed test decides.
+    assert m["p_value_reported"] == 0.2 and m["p_value"] < 1e-6
+    assert m["supports_hypothesis"] == "yes" and m["supports_source"] == "rule"
+    assert m["stats_effect"] == pytest.approx(1.5)
+    assert fact["status"] == "verified", m
+    (finding,) = await store.nodes(cid, node_type="finding", status="verified")
+    assert finding["metrics"]["held_out"] is True
+    sealed = finding["metrics"]["sealed_eval"]
+    assert sealed["sealed_p_value"] < 1e-6 and sealed["sealed_p_value_reported"] == 0.2
+    assert sealed["sealed_stats_effect"] == pytest.approx(1.5)
+    assert campaign["status"] == "completed"
+
+
+async def test_a_significant_effect_against_the_prediction_is_refuted_by_rule(store):
+    # Prediction "decrease", data show a clear increase that replicates: the rule says the
+    # result goes against the hypothesis (the analyst's "yes" notwithstanding).
+    _, _, _, fact = await _run_units(
+        store, shift=1.5, reported_p=0.001, direction="decrease", analyst="yes"
+    )
+    assert fact["metrics"]["supports_hypothesis"] == "no"
+    assert fact["metrics"]["supports_source"] == "rule"

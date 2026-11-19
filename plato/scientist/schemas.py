@@ -60,6 +60,31 @@ class IntentSpec(BaseModel):
             "from a TOST equivalence test against that tolerance)."
         ),
     )
+    expected_direction: Literal["increase", "decrease", "nonzero"] = Field(
+        default="nonzero",
+        description=(
+            "For a 'difference' test, the sign the hypothesis predicts for the effect "
+            "(treatment minus control, or the sample mean minus reference_value): "
+            "'increase', 'decrease', or 'nonzero' when either sign supports it. Ignored for "
+            "equivalence tests."
+        ),
+    )
+    reference_value: float | None = Field(
+        default=None,
+        description=(
+            "When one sample is compared with a fixed value (no control group): that value, "
+            "e.g. 2 for 'mean(y) > 2', 0.95 for 'coverage is 0.95', 0 for 'the bias is zero'. "
+            "null when two groups are compared."
+        ),
+    )
+    tolerance: float | None = Field(
+        default=None,
+        description=(
+            "For an 'equivalence' test: the equivalence margin as a positive number in the "
+            "metric's units (at least 3 standard errors the protocol can resolve). null for "
+            "difference tests."
+        ),
+    )
     success_criterion: str = Field(
         description=(
             "Threshold on the primary metric that supports the hypothesis. Express tolerances "
