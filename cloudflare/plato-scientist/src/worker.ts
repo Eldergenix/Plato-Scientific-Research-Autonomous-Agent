@@ -23,7 +23,7 @@ export type { Env } from "./lib";
 export class ScientistContainer extends Container<Env> {
   defaultPort = 8080;
   sleepAfter = "15m";
-  enableInternet = true; // Anthropic API, Supabase, arXiv/OpenAlex
+  enableInternet = true; // Anthropic API, Supabase, literature APIs, Crossref/doi.org checks, Modal
   pingEndpoint = "localhost/healthz";
 
   constructor(ctx: ConstructorParameters<typeof Container<Env>>[0], env: Env) {
@@ -35,6 +35,11 @@ export class ScientistContainer extends Container<Env> {
       PLATO_SCIENTIST_MODEL: env.PLATO_SCIENTIST_MODEL,
       PLATO_DB_POOL_SIZE: "8",
     };
+    // Optional secrets: set only when configured, so the container can tell "absent" apart.
+    for (const key of ["ADS_API_KEY", "NCBI_API_KEY", "SEMANTIC_SCHOLAR_KEY", "MODAL_TOKEN_ID", "MODAL_TOKEN_SECRET"] as const) {
+      const value = env[key];
+      if (value) this.envVars[key] = value;
+    }
   }
 
   /** Inactivity only means no HTTP traffic; keep running while a campaign is in flight. */

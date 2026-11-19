@@ -35,7 +35,7 @@ from ...state.models import Source
 
 logger = logging.getLogger(__name__)
 
-ARXIV_ENDPOINT = "http://export.arxiv.org/api/query"
+ARXIV_ENDPOINT = "https://export.arxiv.org/api/query"
 
 # Atom feed namespaces used by the arXiv API.
 _NS = {

@@ -17,6 +17,13 @@ export interface Env {
   PLATO_SECRETS_KEY: string;
   ANTHROPIC_API_KEY: string;
   PLATO_DATABASE_URL: string;
+  /** Optional literature-source keys: ADS needs a token; NCBI and Semantic Scholar raise rate limits. */
+  ADS_API_KEY?: string;
+  NCBI_API_KEY?: string;
+  SEMANTIC_SCHOLAR_KEY?: string;
+  /** Optional Modal Labs credentials: enable remote (and GPU) experiment runs. */
+  MODAL_TOKEN_ID?: string;
+  MODAL_TOKEN_SECRET?: string;
   /** Local development only: send container traffic to this URL (the Python service). */
   PLATO_DEV_SERVICE_URL?: string;
   /** Local development only: Anthropic API base URL (a stub server in tests). */

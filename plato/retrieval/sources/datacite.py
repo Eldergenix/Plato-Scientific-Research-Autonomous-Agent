@@ -175,13 +175,20 @@ class DataCiteAdapter:
         base_url: str = _DATACITE_DOIS_URL,
         user_agent: str = _USER_AGENT,
         timeout: float = 20.0,
+        name: str = "datacite",
+        resource_types: frozenset[str] | None = None,
     ) -> None:
+        self.name = name
+        # resourceTypeGeneral values to keep (lower case); None keeps every record.
+        self._resource_types = resource_types
         self._base_url = base_url
         self._user_agent = user_agent
         self._timeout = timeout
 
     async def search(self, query: str, limit: int) -> list[Source]:
-        page_size = max(1, min(int(limit), 1000))
+        limit = max(1, int(limit))
+        # Over-fetch when filtering by type: most DataCite records are datasets.
+        page_size = min(limit * (3 if self._resource_types else 1), 1000)
         params = urlencode(
             {
                 "query": query,
@@ -205,10 +212,44 @@ class DataCiteAdapter:
         for record in records[:page_size]:
             if not isinstance(record, dict):
                 continue
+            if self._resource_types is not None and (
+                _resource_type(record) not in self._resource_types
+            ):
+                continue
             mapped = _map_record_to_source(record)
             if mapped is not None:
                 sources.append(mapped)
-        return sources
+        return sources[:limit]
 
+
+def _resource_type(record: dict[str, Any]) -> str:
+    attrs = record.get("attributes")
+    types = attrs.get("types") if isinstance(attrs, dict) else None
+    value = types.get("resourceTypeGeneral") if isinstance(types, dict) else None
+    return value.lower() if isinstance(value, str) else ""
+
+
+# DataCite resourceTypeGeneral values that are literature (DataCite Metadata Schema 4.5).
+LITERATURE_TYPES = frozenset(
+    {
+        "text",
+        "journalarticle",
+        "preprint",
+        "conferencepaper",
+        "conferenceproceeding",
+        "book",
+        "bookchapter",
+        "dissertation",
+        "report",
+        "peerreview",
+        "standard",
+    }
+)
 
 register_adapter(DataCiteAdapter(), overwrite=True)
+# Papers only (no datasets, software, images or supplementary files), for callers that
+# need citable literature, such as the live scientist.
+register_adapter(
+    DataCiteAdapter(name="datacite_literature", resource_types=LITERATURE_TYPES),
+    overwrite=True,
+)

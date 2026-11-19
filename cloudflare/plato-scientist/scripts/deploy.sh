@@ -12,6 +12,11 @@
 #   PLATO_SECRETS_KEY_FILE  where the account secrets key is kept on this machine
 #                        (default ~/.config/plato/secrets-key). The key derives the password
 #                        pepper and encrypts saved API keys; it is set once and never replaced.
+#   ADS_API_KEY, NCBI_API_KEY, SEMANTIC_SCHOLAR_KEY, MODAL_TOKEN_ID, MODAL_TOKEN_SECRET
+#                        optional library-tool keys (ADS search, higher PubMed/Semantic Scholar
+#                        rate limits, Modal GPU executor). Each is read from the environment or
+#                        from ~/.config/plato/<name in lower case, "_" as "-"> (chmod 600) and
+#                        uploaded only when present.
 #   SKIP_MIGRATIONS=1    skip applying the schema from this machine (the container also migrates on start)
 #
 # Needs: node/npm, docker (wrangler builds and pushes the container image), python3 with asyncpg for migrations.
@@ -85,6 +90,22 @@ PLATO_API_TOKEN="$PLATO_API_TOKEN" PLATO_INTERNAL_TOKEN="$PLATO_INTERNAL_TOKEN" 
     ...(e.NEW_SECRETS_KEY ? { PLATO_SECRETS_KEY: e.NEW_SECRETS_KEY } : {}),
   }));' > "$SECRETS"
 npx wrangler secret bulk "$SECRETS"
+
+# Optional library-tool keys: environment first, then ~/.config/plato/<name>. Never generated.
+OPTIONAL="$(mktemp)"; chmod 600 "$OPTIONAL"; trap 'rm -f "$SECRETS" "$OPTIONAL"' EXIT
+OPT_NAMES=()
+for name in ADS_API_KEY NCBI_API_KEY SEMANTIC_SCHOLAR_KEY MODAL_TOKEN_ID MODAL_TOKEN_SECRET; do
+  file="$HOME/.config/plato/$(printf '%s' "$name" | tr 'A-Z_' 'a-z-')"
+  if [[ -z "${!name:-}" && -r "$file" ]]; then export "$name=$(tr -d '[:space:]' < "$file")"; fi
+  if [[ -n "${!name:-}" ]]; then OPT_NAMES+=("$name"); fi
+done
+if [[ "${#OPT_NAMES[@]}" -gt 0 ]]; then
+  OPT_NAMES="${OPT_NAMES[*]}" node -e '
+    const e = process.env;
+    process.stdout.write(JSON.stringify(Object.fromEntries(e.OPT_NAMES.split(" ").map(n => [n, e[n]]))));' > "$OPTIONAL"
+  npx wrangler secret bulk "$OPTIONAL"
+  echo "Uploaded optional secrets: ${OPT_NAMES[*]}"
+fi
 
 echo "Smoke test..."
 for i in $(seq 1 30); do

@@ -19,7 +19,7 @@ import os
 import re
 import uuid
 from contextlib import asynccontextmanager
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -28,6 +28,7 @@ from .db.migrate import advisory_key
 from .db.store import TERMINAL_STATUSES, AllowanceExceeded, DualGraphStore
 from .graph import run_campaign
 from .guard import network_isolation_prefix
+from .guard.modal_runner import GPU_TYPES, modal_configured
 from .llm import AnthropicScientistModel, resolve_model
 from .nodes import ScientistContext
 
@@ -56,6 +57,10 @@ class CampaignIn(BaseModel):
     workers: int = Field(default=4, ge=1, le=16)
     max_rounds: int = Field(default=2, ge=1, le=10)
     datasets: list[DatasetIn] = Field(default_factory=list, max_length=8)
+    # Where experiments run. "modal" needs MODAL_TOKEN_ID/MODAL_TOKEN_SECRET on the server.
+    executor: Literal["local", "modal", "e2b"] = "local"
+    # Modal GPU type (e.g. "T4", "A100"); implies executor "modal".
+    gpu: str = Field(default="", max_length=16)
     start: bool = True
 
 
@@ -154,6 +159,14 @@ def create_app(dsn: str | None = None, internal_token: str | None = None) -> Fas
             "ok": True,
             "network_isolation": bool(network_isolation_prefix()),
             "model": resolve_model(),
+            "executors": {"local": True, "modal": modal_configured()},
+            "literature_keys": {
+                "ads": bool(
+                    os.environ.get("ADS_API_KEY") or os.environ.get("ADS_DEV_KEY")
+                ),
+                "ncbi": bool(os.environ.get("NCBI_API_KEY")),
+                "semantic_scholar": bool(os.environ.get("SEMANTIC_SCHOLAR_KEY")),
+            },
             "active_runs": sum(1 for t in runner.tasks.values() if not t.done()),
         }
 
@@ -194,7 +207,25 @@ def create_app(dsn: str | None = None, internal_token: str | None = None) -> Fas
                 )
         title = re.sub(r"\s+", " ", body.program_slug.replace("-", " ")).title()
         program_id = await store.ensure_program(body.program_slug, title, body.domain)
-        config = {"workers": body.workers, "max_rounds": body.max_rounds}
+        executor = "modal" if body.gpu else body.executor
+        if body.gpu and body.gpu not in GPU_TYPES:
+            raise HTTPException(
+                status_code=422,
+                detail=f"gpu must be one of {sorted(GPU_TYPES)}",
+            )
+        if executor == "modal" and not modal_configured():
+            raise HTTPException(
+                status_code=422,
+                detail="GPU and Modal runs are not configured on this server yet",
+            )
+        config = {
+            "workers": body.workers,
+            "max_rounds": body.max_rounds,
+            "executor": executor,
+            "gpu": body.gpu,
+            # Per campaign: the program's domain is fixed when the program is first created.
+            "domain": body.domain,
+        }
         try:
             campaign_id = await store.create_campaign(
                 program_id,
