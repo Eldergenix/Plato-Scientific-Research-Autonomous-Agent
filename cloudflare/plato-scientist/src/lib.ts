@@ -37,6 +37,10 @@ export interface Env {
   ADS_API_KEY?: string;
   NCBI_API_KEY?: string;
   SEMANTIC_SCHOLAR_KEY?: string;
+  /** Optional Firecrawl key: Research Index literature search and the deep research sub-agent. */
+  FIRECRAWL_API_KEY?: string;
+  /** Allowance tokens charged per Firecrawl credit (default 9900, see plato/scientist/deep_research.py). */
+  PLATO_FIRECRAWL_CREDIT_TOKENS?: string;
   /** Optional Modal Labs credentials: enable remote (and GPU) experiment runs. */
   MODAL_TOKEN_ID?: string;
   MODAL_TOKEN_SECRET?: string;

@@ -31,6 +31,10 @@ BASE_PACKAGES: tuple[str, ...] = (
 # Library source -> the variant that returns only citable literature.
 LITERATURE_ONLY = {"datacite": "datacite_literature"}
 
+# Firecrawl's Research Index (PubMed, bioRxiv, medRxiv and arXiv abstracts) joins every
+# profile. It returns nothing without FIRECRAWL_API_KEY, so profiles need no key check.
+FIRECRAWL_RESEARCH = "firecrawl_research"
+
 
 @dataclass(frozen=True)
 class ScientistProfile:
@@ -55,6 +59,7 @@ GENERAL = ScientistProfile(
         "crossref",
         "doaj",
         "europe_pmc",
+        FIRECRAWL_RESEARCH,
     ),
 )
 
@@ -66,7 +71,8 @@ def _from_library(name: str, extra: tuple[str, ...], guidance: str) -> Scientist
         # Campaigns cite papers: DataCite is searched for literature records only.
         retrieval_sources=tuple(
             LITERATURE_ONLY.get(s, s) for s in lib.retrieval_sources
-        ),
+        )
+        + (FIRECRAWL_RESEARCH,),
         extra_packages=extra,
         guidance=guidance,
     )

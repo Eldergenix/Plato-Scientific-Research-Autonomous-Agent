@@ -13,6 +13,7 @@
 | crossref        | `plato/retrieval/sources/crossref.py`           | DOI registry; also feeds the citation validator |
 | pubmed          | `plato/retrieval/sources/pubmed.py`             | NCBI E-utilities (esearch → esummary → efetch) |
 | semantic_scholar| `plato/retrieval/sources/semantic_scholar.py`   | S2 Graph API; honours `SEMANTIC_SCHOLAR_KEY` |
+| firecrawl_research | `plato/retrieval/sources/firecrawl_research.py` | Firecrawl Research Index (PubMed, bioRxiv, medRxiv, arXiv abstracts); needs `FIRECRAWL_API_KEY`, no-op without it |
 
 Each adapter implements the same `SourceAdapter` Protocol from
 `plato/retrieval/__init__.py` and registers itself at module

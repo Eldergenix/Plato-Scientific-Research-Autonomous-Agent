@@ -200,6 +200,7 @@ def create_app(dsn: str | None = None, internal_token: str | None = None) -> Fas
                 ),
                 "ncbi": bool(os.environ.get("NCBI_API_KEY")),
                 "semantic_scholar": bool(os.environ.get("SEMANTIC_SCHOLAR_KEY")),
+                "firecrawl": bool(os.environ.get("FIRECRAWL_API_KEY")),
             },
             "active_runs": sum(1 for t in runner.tasks.values() if not t.done()),
         }

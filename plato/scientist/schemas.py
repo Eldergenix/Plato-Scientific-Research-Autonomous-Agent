@@ -73,6 +73,15 @@ class IntentSpec(BaseModel):
     source_hint_index: int | None = Field(
         default=None, description="Index of the hint it derives from, if any."
     )
+    research_needs: list[str] = Field(
+        default_factory=list,
+        description=(
+            "0 to 3 specific facts the research engineer must look up before designing this "
+            "experiment, each a self-contained question (e.g. 'published prevalence of "
+            "Braak stage >= III by age decade in post-mortem cohorts'). Empty when the "
+            "protocol is self-contained."
+        ),
+    )
 
 
 class IntentBatch(BaseModel):
@@ -262,3 +271,35 @@ class PanelCritique(BaseModel):
     )
     summary: str = Field(description="Two sentences at most.")
     issues: list[ReviewIssue] = Field(description="At most 6, most important first.")
+
+
+class ResearchFinding(BaseModel):
+    statement: str = Field(
+        description="One fact the experiment can use, with its numbers and units."
+    )
+    sources: list[str] = Field(
+        description="Ids of the sources that state it (e.g. ['P2', 'W1'])."
+    )
+
+
+class ResearchParameter(BaseModel):
+    name: str = Field(description="Parameter the experiment should use.")
+    value: str = Field(description="Value or range, with units.")
+    sources: list[str] = Field(description="Ids of the sources it comes from.")
+
+
+class ResearchBrief(BaseModel):
+    """What the deep research sub-agent hands the research engineer."""
+
+    summary: str = Field(description="Two to four sentences answering the needs.")
+    findings: list[ResearchFinding] = Field(
+        description="Up to 10 sourced facts, most useful first."
+    )
+    parameters: list[ResearchParameter] = Field(
+        default_factory=list,
+        description="Up to 10 concrete values the experiment should use, each sourced.",
+    )
+    unresolved: list[str] = Field(
+        default_factory=list,
+        description="Needs the sources did not answer; the engineer must make (and state) an assumption.",
+    )
