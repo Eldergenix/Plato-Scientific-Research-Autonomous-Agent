@@ -139,6 +139,10 @@ class ScientistConfig:
     workspace_max_turns: int = 40
     workspace_setup_seconds: int = 1200
     workspace_run_seconds: int = 1200
+    # Deep research before an experiment that lists research needs (needs FIRECRAWL_API_KEY).
+    deep_research: bool = True
+    # Firecrawl credits one intent's research may spend (the token budget is the hard cap).
+    research_max_credits: float = 12.0
 
     @classmethod
     def from_campaign(cls, config: dict[str, Any] | None) -> ScientistConfig:
@@ -183,6 +187,23 @@ class ScientistContext:
     )
     # Creates workspace sandboxes for executor "e2b" (None: E2B from the environment).
     backend_factory: Any = None
+    # () -> Firecrawl client for the deep research sub-agent (None: from FIRECRAWL_API_KEY;
+    # research is off when neither is available).
+    research_client_factory: Callable[[], Any] | None = None
+
+    def research_available(self) -> bool:
+        from plato.retrieval.firecrawl import configured
+
+        return self.config.deep_research and (
+            self.research_client_factory is not None or configured()
+        )
+
+    def research_client(self) -> Any:
+        if self.research_client_factory is not None:
+            return self.research_client_factory()
+        from plato.retrieval.firecrawl import FirecrawlClient
+
+        return FirecrawlClient()
 
     def workspace_backends(self):
         if self.backend_factory is None:
@@ -521,6 +542,80 @@ def _frame_documents(docs: list[dict[str, Any]], nonce: str, chars: int) -> list
     ]
 
 
+async def store_checked_papers(
+    ctx: ScientistContext,
+    campaign_id: uuid.UUID,
+    program_id: uuid.UUID,
+    parent_id: uuid.UUID | None,
+    found: dict[str, tuple[str, Any]],
+) -> tuple[list[tuple[uuid.UUID, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Store retrieved papers (dedup key -> (query, Source)) as knowledge assets after the
+    citation and retraction checks, filling missing abstracts.
+
+    Retracted papers, and papers whose identifier resolves to a different work, are scoped
+    ``excluded`` so they can neither seed hypotheses nor be cited. Returns the usable papers
+    as (asset id, title/year/abstract), the excluded ones, and every check in input order.
+    """
+    store = ctx.store
+    keys = list(found)
+    checks = await ctx.citation_checker([found[k][1] for k in keys])
+    # Papers retrieved without an abstract get one from OpenAlex/arXiv where possible: a
+    # paper is citable only with an abstract to check the citing claim against.
+    filled = await ctx.abstract_fetcher([found[k][1] for k in keys])
+    papers: list[tuple[uuid.UUID, Any]] = []
+    excluded: list[dict[str, Any]] = []
+    for key, check, extra_abstract in zip(keys, checks, filled, strict=True):
+        query, src = found[key]
+        abstract = (extra_abstract or src.abstract or "")[:3000]
+        asset = await store.upsert_asset(
+            program_id,
+            "paper",
+            key,
+            src.title[:500],
+            uri_or_commit=src.url
+            or (f"https://doi.org/{src.doi}" if src.doi else None),
+            parent_id=parent_id,
+            metadata={
+                "title": src.title,
+                "authors": list(src.authors)[:20],
+                "year": src.year,
+                "venue": src.venue,
+                "doi": src.doi,
+                "arxiv_id": src.arxiv_id,
+                # Never overwrite an abstract another campaign stored with an empty one.
+                **({"abstract": abstract} if abstract.strip() else {}),
+                "abstract_source": "openalex_or_arxiv"
+                if extra_abstract
+                else "retrieval"
+                if abstract.strip()
+                else None,
+                "query": query,
+                "retrieved_via": getattr(src, "retrieved_via", None),
+                "citation_check": check,
+            },
+        )
+        reason = exclusion_reason(check)
+        if reason:
+            await store.set_scope(campaign_id, asset.id, "excluded")
+            excluded.append(
+                {
+                    "title": src.title[:300],
+                    "doi": src.doi,
+                    "arxiv_id": src.arxiv_id,
+                    "reason": reason,
+                }
+            )
+            continue
+        papers.append(
+            (
+                asset.id,
+                SimpleNamespace(title=src.title, year=src.year, abstract=abstract),
+            )
+        )
+        await store.set_scope(campaign_id, asset.id, "read_only")
+    return papers, excluded, checks
+
+
 async def literature_scout(ctx: ScientistContext, campaign_id: uuid.UUID) -> None:
     store = ctx.store
     campaign = await store.get_campaign(campaign_id)
@@ -599,64 +694,10 @@ async def literature_scout(ctx: ScientistContext, campaign_id: uuid.UUID) -> Non
                 continue
             found.setdefault(key, (query, src))
 
-    # 2) Citation and retraction checks: retracted papers, and papers whose identifier
-    # resolves to a different work, are kept out of the campaign.
-    keys = list(found)
-    checks = await ctx.citation_checker([found[k][1] for k in keys])
-    # Papers retrieved without an abstract get one from OpenAlex/arXiv where possible: a
-    # paper is citable only with an abstract to check the citing claim against.
-    filled = await ctx.abstract_fetcher([found[k][1] for k in keys])
-    papers: list[tuple[uuid.UUID, Any]] = []
-    excluded: list[dict[str, Any]] = []
-    for key, check, extra_abstract in zip(keys, checks, filled, strict=True):
-        query, src = found[key]
-        abstract = (extra_abstract or src.abstract or "")[:3000]
-        asset = await store.upsert_asset(
-            campaign["program_id"],
-            "paper",
-            key,
-            src.title[:500],
-            uri_or_commit=src.url
-            or (f"https://doi.org/{src.doi}" if src.doi else None),
-            parent_id=domain_asset.id,
-            metadata={
-                "title": src.title,
-                "authors": list(src.authors)[:20],
-                "year": src.year,
-                "venue": src.venue,
-                "doi": src.doi,
-                "arxiv_id": src.arxiv_id,
-                # Never overwrite an abstract another campaign stored with an empty one.
-                **({"abstract": abstract} if abstract.strip() else {}),
-                "abstract_source": "openalex_or_arxiv"
-                if extra_abstract
-                else "retrieval"
-                if abstract.strip()
-                else None,
-                "query": query,
-                "retrieved_via": getattr(src, "retrieved_via", None),
-                "citation_check": check,
-            },
-        )
-        reason = exclusion_reason(check)
-        if reason:
-            await store.set_scope(campaign_id, asset.id, "excluded")
-            excluded.append(
-                {
-                    "title": src.title[:300],
-                    "doi": src.doi,
-                    "arxiv_id": src.arxiv_id,
-                    "reason": reason,
-                }
-            )
-            continue
-        papers.append(
-            (
-                asset.id,
-                SimpleNamespace(title=src.title, year=src.year, abstract=abstract),
-            )
-        )
-        await store.set_scope(campaign_id, asset.id, "read_only")
+    # 2) Citation, retraction and abstract checks (shared with the deep research agent).
+    papers, excluded, checks = await store_checked_papers(
+        ctx, campaign_id, campaign["program_id"], domain_asset.id, found
+    )
     # The researcher's own references join the search results (citable like any paper).
     user_papers, user_docs = await user_materials(store, campaign_id)
     known = {pid for pid, _ in papers}
@@ -839,6 +880,15 @@ async def experiment_planner(
         "the standard error the protocol can resolve: a threshold below the sampling noise refutes "
         "true hypotheses. Mark claims of agreement with a reference value as 'equivalence' tests "
         "with a tolerance of at least 3 Monte Carlo standard errors."
+        + (
+            " When an experiment depends on facts you do not know precisely (published "
+            "parameter values, effect sizes, prevalences, data formats, protein properties), "
+            "list them as research_needs: a research assistant looks them up in the "
+            "literature and on the web before the experiment is written. Leave it empty when "
+            "the protocol is self-contained."
+            if ctx.research_available()
+            else " Leave research_needs empty."
+        )
     )
     await _guarded(ctx, campaign_id, framed + framed_docs)
     batch = await ctx.model.structured(
@@ -867,6 +917,17 @@ async def experiment_planner(
                     "primary_metric": metric_key(spec.primary_metric),
                     "test_kind": spec.test_kind,
                     "success_criterion": spec.success_criterion,
+                    **(
+                        {
+                            "research_needs": [
+                                n.strip()[:500]
+                                for n in spec.research_needs[:3]
+                                if n.strip()
+                            ]
+                        }
+                        if spec.research_needs and ctx.research_available()
+                        else {}
+                    ),
                 }
             ),
             dedup_key=spec_dedup_key(spec.hypothesis, spec.protocol),
@@ -1085,6 +1146,7 @@ async def _workspace_attempt(
     spec: dict[str, Any],
     datasets: dict[str, bytes],
     nonce: str,
+    research: str = "",
 ) -> tuple[str, str | None, SandboxResult | None, dict[str, Any] | None]:
     """The research engineer works in a live E2B workspace until a submission (a fresh,
     offline re-run of its recipe) prints the required metrics."""
@@ -1168,7 +1230,7 @@ async def _workspace_attempt(
             f"Test kind: {spec.get('test_kind', 'difference')}\n"
             f"Success criterion: {spec['success_criterion']}\n"
             f"Dataset files in the workspace root ({backend.workdir}): {sorted(datasets) or 'none'}\n\n"
-            f"{LAB_SUMMARY}\n\n{_WORKSPACE_RULES}\n\n"
+            f"{research}{LAB_SUMMARY}\n\n{_WORKSPACE_RULES}\n\n"
             "Work like a careful computational scientist: inspect the data, install and download "
             "what you need (install_packages and download_file record it in setup.sh), test pieces "
             "with bash, use start_job for anything long, then write experiment.py and call "
@@ -1223,6 +1285,203 @@ async def _workspace_attempt(
     return state["code"], state["setup"], state["result"], state["metrics"]
 
 
+async def intent_research(
+    ctx: ScientistContext,
+    campaign_id: uuid.UUID,
+    intent: dict[str, Any],
+    worker_id: str,
+    spec: dict[str, Any],
+    nonce: str,
+) -> str:
+    """Run the deep research sub-agent for an intent that lists research needs, once.
+
+    Returns the brief for the research engineer, framed as untrusted text (it is distilled
+    from web and literature content), or "" when there is nothing to add. The brief and its
+    sources are kept on the intent, so a resumed intent reuses them instead of paying
+    again. Papers the brief cites are checked like the scout's and anchored to the intent.
+    """
+    from .deep_research import render_brief
+
+    needs = [
+        n for n in spec.get("research_needs") or [] if isinstance(n, str) and n.strip()
+    ]
+    if not needs or not ctx.research_available():
+        return ""
+    stored = (intent.get("metrics") or {}).get("research")
+    if not isinstance(stored, dict):
+        stored = await _run_intent_research(
+            ctx, campaign_id, intent, worker_id, spec, needs, nonce
+        )
+    if not stored.get("brief"):
+        return ""
+    framed = frame_untrusted(render_brief(stored), source="research_brief", nonce=nonce)
+    return (
+        "Background research for this experiment (from papers and web sources; use the "
+        "values it reports where they apply and state any assumption you make instead):\n"
+        f"{framed.text}\n\n"
+    )
+
+
+async def _run_intent_research(
+    ctx: ScientistContext,
+    campaign_id: uuid.UUID,
+    intent: dict[str, Any],
+    worker_id: str,
+    spec: dict[str, Any],
+    needs: list[str],
+    nonce: str,
+) -> dict[str, Any]:
+    from plato.retrieval.sources.firecrawl_research import paper_to_source
+
+    from .deep_research import (
+        SYSTEM,
+        CreditMeter,
+        ResearchLimits,
+        ResearchTools,
+        credit_tokens,
+        run_research,
+    )
+
+    store = ctx.store
+    campaign = await store.get_campaign(campaign_id)
+    # The person's own Anthropic key is not metered by the allowance, so billed Firecrawl
+    # calls (paid from the deployment's key) are not offered there.
+    meter = (
+        None
+        if campaign.get("own_key")
+        else CreditMeter(
+            store,
+            campaign_id,
+            tokens_per_credit=credit_tokens(),
+            cap=ctx.config.research_max_credits,
+            keep_free=int(getattr(ctx.model, "writing_reserve", 0) or 0),
+        )
+    )
+    limits = ResearchLimits(max_credits=ctx.config.research_max_credits)
+    framed_spec = frame_untrusted(
+        f"Hypothesis: {spec['hypothesis']}\nProtocol: {spec['protocol']}",
+        source="experiment_plan",
+        nonce=nonce,
+    )
+    task = (
+        f"Research question of the project: {campaign['research_question'][:1500]}\n\n"
+        f"Planned experiment:\n{framed_spec.text}\n\n"
+        "Find what the research engineer needs to design it:\n"
+        + "\n".join(f"{i + 1}. {n}" for i, n in enumerate(needs))
+        + "\n\nStart with search_papers; read the passages that hold the numbers; finish with "
+        "a brief whose every finding cites its sources."
+        + (
+            ""
+            if meter is not None
+            else " Only the free Research Index tools are available for this thread."
+        )
+    )
+
+    async def on_turn(_turn: int) -> None:
+        await store.heartbeat(
+            intent["id"], worker_id, lease_seconds=ctx.config.lease_seconds
+        )
+
+    record: dict[str, Any] = {"needs": needs}
+    client = ctx.research_client()
+    try:
+        tools = ResearchTools(client, meter, limits)
+        try:
+            outcome = await run_research(
+                model=ctx.model,
+                campaign_id=campaign_id,
+                task=task,
+                tools=tools,
+                nonce=nonce,
+                system=_system("research assistant", nonce) + " " + SYSTEM,
+                limits=limits,
+                on_turn=on_turn,
+            )
+        except BudgetExceeded:
+            # Too little budget left for research: the experiment goes ahead without it (the
+            # next model call raises again if the budget is truly spent).
+            record.update(end="budget", credits=meter.spent if meter else 0.0)
+            outcome = None
+        except (ModelRefusal, ModelOutputError) as exc:
+            record.update(
+                end=f"model: {str(exc)[:200]}", credits=meter.spent if meter else 0.0
+            )
+            outcome = None
+    finally:
+        aclose = getattr(client, "aclose", None)
+        if aclose is not None:
+            await aclose()
+
+    if outcome is not None:
+        if outcome.signals:
+            await store.record_guard_event(
+                campaign_id,
+                "injection",
+                "allow",
+                {
+                    "signals": sorted(set(outcome.signals))[:20],
+                    "note": "deep research tool output",
+                },
+                node_id=intent["id"],
+            )
+        cited = outcome.cited()
+        record.update(
+            end=outcome.reason,
+            turns=outcome.turns,
+            credits=round(outcome.credits, 3),
+            brief=outcome.brief.model_dump() if outcome.brief else None,
+            sources=[
+                {"id": s.id, "kind": s.kind, "title": s.title, "url": s.url}
+                for s in cited.values()
+            ],
+        )
+        # Cited papers go through the scout's checks, then anchor to the intent so the paper
+        # may cite them (only with an abstract, like every retrieved paper).
+        found: dict[str, tuple[str, Any]] = {}
+        for rec in cited.values():
+            src = (
+                paper_to_source(rec.paper)
+                if rec.kind == "paper" and rec.paper
+                else None
+            )
+            if src is None:
+                continue
+            try:
+                key = paper_dedup_key(
+                    doi=src.doi, arxiv_id=src.arxiv_id, title=src.title, year=src.year
+                )
+            except ValueError:
+                continue
+            found.setdefault(key, ("deep research: " + needs[0][:200], src))
+        if found:
+            domain_asset = await store.upsert_asset(
+                campaign["program_id"],
+                "corpus_domain",
+                "domain:deep_research",
+                "deep_research",
+            )
+            papers, excluded, _ = await store_checked_papers(
+                ctx, campaign_id, campaign["program_id"], domain_asset.id, found
+            )
+            for asset_id, _paper in papers:
+                await store.link_anchor(intent["id"], asset_id, "cited_prior_work")
+            if excluded:
+                await store.record_guard_event(
+                    campaign_id,
+                    "scope",
+                    "deny",
+                    {
+                        "note": "deep research papers excluded by citation checks",
+                        "papers": excluded,
+                    },
+                    node_id=intent["id"],
+                )
+            record["papers_stored"] = len(papers)
+            record["papers_excluded"] = excluded
+    await store.merge_intent_metrics(intent["id"], worker_id, {"research": record})
+    return record
+
+
 async def execute_intent(
     ctx: ScientistContext,
     campaign_id: uuid.UUID,
@@ -1242,9 +1501,10 @@ async def execute_intent(
     code = ""
     metrics: dict[str, Any] | None = None
     setup: str | None = None
+    research = await intent_research(ctx, campaign_id, intent, worker_id, spec, nonce)
     if ctx.config.executor == "e2b":
         code, setup, result, metrics = await _workspace_attempt(
-            ctx, campaign_id, intent, worker_id, spec, datasets, nonce
+            ctx, campaign_id, intent, worker_id, spec, datasets, nonce, research
         )
     # The workspace session replaces the write-run-fix loop below (it has its own retries).
     for attempt in range(
@@ -1262,7 +1522,7 @@ async def execute_intent(
                 f"Hypothesis: {spec['hypothesis']}\nProtocol: {spec['protocol']}\n"
                 f"Primary metric key: {spec['primary_metric']}\nTest kind: {spec.get('test_kind', 'difference')}\n"
                 f"Success criterion: {spec['success_criterion']}\n"
-                f"Dataset files: {sorted(datasets) or 'none'}\n\n{rules}\n\n{feedback}"
+                f"Dataset files: {sorted(datasets) or 'none'}\n\n{research}{rules}\n\n{feedback}"
                 "Write the complete script."
             ),
         )

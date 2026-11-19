@@ -59,6 +59,8 @@ ROLE_PURPOSES: dict[str, tuple[str, ...]] = {
     "planner": ("plan", "hints", "plan_intents"),
     "experiment_writer": ("write_experiment",),
     "workspace_engineer": ("workspace_engineer",),
+    # Looks up the details an experiment needs (Firecrawl Research Index, web, Alexandria).
+    "deep_researcher": ("deep_research",),
     "observer": ("observe",),
     "figure_critic": ("figure_critique",),
     "skeptic": ("skeptic",),

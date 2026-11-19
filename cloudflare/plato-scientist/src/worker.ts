@@ -27,7 +27,7 @@ export type { Env } from "./lib";
 export class ScientistContainer extends Container<Env> {
   defaultPort = 8080;
   sleepAfter = "15m";
-  enableInternet = true; // Anthropic API, Supabase, literature APIs, Crossref/doi.org checks, Modal
+  enableInternet = true; // Anthropic API, Supabase, literature APIs, Crossref/doi.org checks, Modal, Firecrawl
   pingEndpoint = "localhost/healthz";
 
   constructor(ctx: ConstructorParameters<typeof Container<Env>>[0], env: Env) {
@@ -46,7 +46,15 @@ export class ScientistContainer extends Container<Env> {
         : {}),
     };
     // Optional secrets: set only when configured, so the container can tell "absent" apart.
-    for (const key of ["ADS_API_KEY", "NCBI_API_KEY", "SEMANTIC_SCHOLAR_KEY", "MODAL_TOKEN_ID", "MODAL_TOKEN_SECRET"] as const) {
+    for (const key of [
+      "ADS_API_KEY",
+      "NCBI_API_KEY",
+      "SEMANTIC_SCHOLAR_KEY",
+      "MODAL_TOKEN_ID",
+      "MODAL_TOKEN_SECRET",
+      "FIRECRAWL_API_KEY",
+      "PLATO_FIRECRAWL_CREDIT_TOKENS",
+    ] as const) {
       const value = env[key];
       if (value) this.envVars[key] = value;
     }

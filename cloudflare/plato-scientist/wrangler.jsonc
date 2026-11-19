@@ -71,6 +71,8 @@
   // ANTHROPIC_API_KEY, PLATO_DATABASE_URL
   // Optional secrets: E2B_API_KEY (E2B experiment sandboxes), ADS_API_KEY (NASA ADS search), NCBI_API_KEY and SEMANTIC_SCHOLAR_KEY
   // (higher rate limits), MODAL_TOKEN_ID + MODAL_TOKEN_SECRET (Modal and GPU experiment runs),
+  // FIRECRAWL_API_KEY (Research Index literature search and the deep research sub-agent; its credits
+  // are charged to thread budgets at PLATO_FIRECRAWL_CREDIT_TOKENS allowance tokens each, default 50000),
   // COMPOSIO_API_KEY and COMPOSIO_WEBHOOK_SECRET (connected services; set by scripts/deploy.sh and scripts/composio-setup.mjs)
   "observability": { "enabled": true }
 }

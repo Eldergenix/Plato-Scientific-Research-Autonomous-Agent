@@ -32,6 +32,7 @@ RetrievedVia = Literal[
     "datacite",
     "doaj",
     "opencitations",
+    "firecrawl_research",
 ]
 """Adapter that produced a ``Source``. Extend the literal as new adapters land."""
 

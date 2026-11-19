@@ -825,6 +825,24 @@ class DualGraphStore:
             raise _lease_lost(worker_id, node_id)
         return row["turns_used"]
 
+    async def merge_intent_metrics(
+        self, node_id: uuid.UUID, worker_id: str, metrics: dict[str, Any]
+    ) -> None:
+        """Merge ``metrics`` into an intent this worker still holds (fenced like
+        ``heartbeat``), so work done before the intent completes survives a restart."""
+        row = await self._pool.fetchrow(
+            f"""
+            UPDATE plato.exploration_nodes SET metrics = metrics || $3::jsonb
+             WHERE {_HELD}
+            RETURNING id
+            """,
+            node_id,
+            worker_id,
+            _jsonb(metrics),
+        )
+        if row is None:
+            raise _lease_lost(worker_id, node_id)
+
     async def complete_intent(
         self,
         node_id: uuid.UUID,

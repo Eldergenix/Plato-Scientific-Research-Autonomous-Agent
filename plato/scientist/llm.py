@@ -216,6 +216,11 @@ class AnthropicScientistModel:
         """Role -> model for every role this instance overrides from the default."""
         return dict(self._models)
 
+    @property
+    def writing_reserve(self) -> int:
+        """Tokens research calls must leave free for the manuscript."""
+        return self._writing_reserve
+
     def model_for(self, purpose: str) -> str:
         role = role_for(purpose)
         if role is None and self._models:

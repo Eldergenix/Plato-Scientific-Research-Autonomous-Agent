@@ -118,6 +118,33 @@ delivery id); the cron retries failed imports up to five times.
 Secrets: `COMPOSIO_API_KEY` (without it the feature is off) and `COMPOSIO_WEBHOOK_SECRET`, which
 `scripts/composio-setup.mjs` creates with the webhook subscription during the deploy.
 
+## Firecrawl: Research Index and deep research
+
+With `FIRECRAWL_API_KEY` set (Worker secret, passed to the container), research threads use
+[Firecrawl](https://docs.firecrawl.dev) in two places. Without it both are off.
+
+* **Literature.** The Research Index (`firecrawl_research`, ~43M PubMed, bioRxiv, medRxiv and
+  arXiv abstracts) joins every domain's literature sources. Its papers go through the same
+  citation, retraction and abstract checks as every other source.
+* **Deep research before an experiment.** The planner can list `research_needs` for an
+  experiment (published parameter values, effect sizes, data formats, protein properties). A
+  Claude Haiku 5.5 sub-agent (role `deep_researcher`) then searches papers, reads their
+  passages, follows the citation graph, looks up UniProt entries, and, when papers are not
+  enough, searches and scrapes the web, developer documentation and Alexandria data tools. It
+  hands the research engineer a brief in which every fact names its source. Papers it cites
+  are checked like the scout's and become citable only with an abstract; web pages never
+  become citations. Everything it reads is framed as untrusted text.
+
+Cost: the Research Index endpoints are free. Web search, scrape, developer search and
+Alexandria tool runs cost Firecrawl credits; each call reserves its worst case against the
+thread's token budget and settles to the credits Firecrawl reports, at
+`PLATO_FIRECRAWL_CREDIT_TOKENS` allowance tokens per credit (default 50,000, Firecrawl's
+highest per-credit price against Claude Haiku 5.5's input price; lower it to your plan's
+price). So research spend counts against the monthly allowance like model spend. One
+experiment's research is capped at 12 credits (`research_max_credits` in the thread config).
+Threads on the person's own Anthropic key get only the free Research Index tools, because
+their spend is not metered by the allowance. Check `/healthz` → `literature_keys.firecrawl`.
+
 ## Deploy
 
 Prerequisites: Node 22, Docker running, a Cloudflare account that owns the
