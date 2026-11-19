@@ -191,7 +191,11 @@ class AnthropicScientistModel:
         # ``models`` (the campaign's frozen role map), else the current configuration.
         self._model = resolve_model(model)
         self._models = (
-            {} if model else dict(models) if models is not None else role_models(os.environ)
+            {}
+            if model
+            else dict(models)
+            if models is not None
+            else role_models(os.environ)
         )
         # A campaign paid for with its owner's key gets that key; otherwise the SDK resolves
         # credentials itself (ANTHROPIC_API_KEY, ...). Retries 429/5xx.
@@ -231,16 +235,16 @@ class AnthropicScientistModel:
         images: list[bytes] | None = None,
         on_text: TextSink | None = None,
     ) -> T:
-        kwargs = dict(
-            campaign_id=campaign_id,
-            purpose=purpose,
-            system=system,
-            prompt=prompt,
-            schema=schema,
-            effort=effort,
-            images=images,
-            on_text=on_text,
-        )
+        kwargs = {
+            "campaign_id": campaign_id,
+            "purpose": purpose,
+            "system": system,
+            "prompt": prompt,
+            "schema": schema,
+            "effort": effort,
+            "images": images,
+            "on_text": on_text,
+        }
         try:
             return await self._structured_once(max_tokens=max_tokens, **kwargs)
         except OutputTruncated:

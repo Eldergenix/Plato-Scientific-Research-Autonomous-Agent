@@ -41,7 +41,14 @@ _PLAIN_FLAGS = {
     "--mathml",
     "--embed-resources",
 }
-_VALUE_FLAGS = {"--metadata", "-M", "--from", "-f", "--shift-heading-level-by", "--toc-depth"}
+_VALUE_FLAGS = {
+    "--metadata",
+    "-M",
+    "--from",
+    "-f",
+    "--shift-heading-level-by",
+    "--toc-depth",
+}
 _SAFE_VALUE = re.compile(r"^[A-Za-z0-9 _.,:=+/-]{1,200}$")
 
 
@@ -90,7 +97,10 @@ def check_pandoc_args(args: list[str]) -> list[str]:
 
 
 def compile_command(
-    main: str, target: Target, engine: str | None = None, pandoc_args: list[str] | None = None
+    main: str,
+    target: Target,
+    engine: str | None = None,
+    pandoc_args: list[str] | None = None,
 ) -> tuple[str, str]:
     """Return (shell command, output file name) for compiling ``main`` to ``target``."""
     main = _safe_name(main)
@@ -144,7 +154,9 @@ async def compile_document(
         from .runtime import default_backend_factory
 
         backend_factory = default_backend_factory()
-    backend = await backend_factory(timeout_seconds=timeout_seconds + 120, purpose="compile")
+    backend = await backend_factory(
+        timeout_seconds=timeout_seconds + 120, purpose="compile"
+    )
     started = time.monotonic()
     try:
         for name, data in files.items():
@@ -156,7 +168,7 @@ async def compile_document(
         if outcome.ok:
             try:
                 output = await backend.read_bytes(output_name)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - a missing output is reported
                 log += f"\noutput {output_name} missing: {exc}"
         return CompileResult(
             ok=outcome.ok and bool(output),

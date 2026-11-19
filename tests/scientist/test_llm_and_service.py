@@ -295,7 +295,9 @@ class _ScriptedMessages:
         return _FakeStream(self.responses.pop(0))
 
 
-async def test_plan_truncated_at_max_tokens_is_retried_with_a_larger_cap(store, campaign):
+async def test_plan_truncated_at_max_tokens_is_retried_with_a_larger_cap(
+    store, campaign
+):
     """Reproduces 'Halted. plan_intents: output truncated at max_tokens=8000': adaptive
     thinking plus the specs ran past the cap. The call now retries once with a larger cap
     instead of halting the campaign."""

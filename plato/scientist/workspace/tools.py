@@ -39,7 +39,9 @@ _PKG_PATTERNS = {
     "pip": re.compile(
         r"^[A-Za-z0-9][A-Za-z0-9._-]*(\[[A-Za-z0-9,._-]+\])?((==|>=|<=|~=|!=|>|<)[A-Za-z0-9.*+!_-]+)?$"
     ),
-    "conda": re.compile(r"^([a-z0-9_-]+::)?[A-Za-z0-9][A-Za-z0-9._-]*((==|=|>=|<=)[A-Za-z0-9.*_-]+)?$"),
+    "conda": re.compile(
+        r"^([a-z0-9_-]+::)?[A-Za-z0-9][A-Za-z0-9._-]*((==|=|>=|<=)[A-Za-z0-9.*_-]+)?$"
+    ),
     "apt": re.compile(r"^[a-z0-9][a-z0-9.+-]*(=[A-Za-z0-9.+:~-]+)?$"),
     "r": re.compile(r"^[A-Za-z][A-Za-z0-9.]*$"),
 }
@@ -121,7 +123,12 @@ TOOL_SPECS: list[dict[str, Any]] = [
             "instead and ignore pattern."
         ),
         "input_schema": _schema(
-            {"pattern": _STR, "path": _STR, "glob": _STR, "names_only": {"type": "boolean"}},
+            {
+                "pattern": _STR,
+                "path": _STR,
+                "glob": _STR,
+                "names_only": {"type": "boolean"},
+            },
             ["pattern"],
         ),
     },
@@ -275,12 +282,16 @@ class Workspace:
             result = await handler(**args)
         except TypeError as exc:
             result = ToolResult(f"bad arguments for {name}: {exc}", is_error=True)
-        except Exception as exc:  # sandbox transport errors surface to the model as errors
+        # Sandbox transport errors surface to the model as errors, never as crashes.
+        except Exception as exc:  # noqa: BLE001
             result = ToolResult(f"{type(exc).__name__}: {exc}", is_error=True)
         self.actions.append(
             {
                 "tool": name,
-                "args": {k: (v if len(str(v)) <= 300 else f"{str(v)[:300]}…") for k, v in args.items()},
+                "args": {
+                    k: (v if len(str(v)) <= 300 else f"{str(v)[:300]}…")
+                    for k, v in args.items()
+                },
                 "is_error": result.is_error,
                 "seconds": round(time.monotonic() - started, 2),
             }
@@ -292,7 +303,9 @@ class Workspace:
     async def _t_bash(
         self, command: str, timeout_seconds: int | None = None, cwd: str | None = None
     ) -> ToolResult:
-        seconds = min(max(1, timeout_seconds or DEFAULT_COMMAND_SECONDS), MAX_COMMAND_SECONDS)
+        seconds = min(
+            max(1, timeout_seconds or DEFAULT_COMMAND_SECONDS), MAX_COMMAND_SECONDS
+        )
         outcome = await self.backend.run(command, cwd=cwd, timeout=seconds)
         return ToolResult(_fmt(outcome))
 
@@ -316,9 +329,9 @@ class Workspace:
         cmd = (
             f"if [ ! -f {q} ]; then echo 'not a file: '{q} >&2; exit 2; fi; "
             f"if grep -Iq . {q} 2>/dev/null || [ ! -s {q} ]; then "
-            f"total=$(wc -l < {q}); echo \"# lines $(({start})) to $(({start}+{count}-1)) of $total\"; "
+            f'total=$(wc -l < {q}); echo "# lines $(({start})) to $(({start}+{count}-1)) of $total"; '
             f"tail -n +{start} {q} | head -n {count}; "
-            f"else echo \"binary file ($(stat -c %s {q}) bytes): $(file -b {q} 2>/dev/null)\"; fi"
+            f'else echo "binary file ($(stat -c %s {q}) bytes): $(file -b {q} 2>/dev/null)"; fi'
         )
         outcome = await self.backend.run(cmd, timeout=60)
         if not outcome.ok:
@@ -337,7 +350,9 @@ class Workspace:
                 f"old_text occurs {count} times in {path}; it must occur exactly once",
                 is_error=True,
             )
-        await self.backend.write_bytes(path, text.replace(old_text, new_text).encode("utf-8"))
+        await self.backend.write_bytes(
+            path, text.replace(old_text, new_text).encode("utf-8")
+        )
         return ToolResult(f"edited {path}")
 
     async def _t_search_files(
@@ -363,13 +378,17 @@ class Workspace:
         outcome = await self.backend.run(cmd, timeout=120)
         return ToolResult(clip(outcome.stdout or "(no matches)"))
 
-    async def _t_install_packages(self, manager: str, packages: list[str]) -> ToolResult:
+    async def _t_install_packages(
+        self, manager: str, packages: list[str]
+    ) -> ToolResult:
         pattern = _PKG_PATTERNS.get(manager)
         if pattern is None:
             return ToolResult(f"unknown manager {manager!r}", is_error=True)
         bad = [p for p in packages if not pattern.match(p)]
         if bad or not packages:
-            return ToolResult(f"invalid package names for {manager}: {bad or packages}", is_error=True)
+            return ToolResult(
+                f"invalid package names for {manager}: {bad or packages}", is_error=True
+            )
         pk = " ".join(shlex.quote(p) for p in packages)
         if manager == "pip":
             cmd = f"python -m pip install --no-input --progress-bar off -q {pk}"
@@ -398,20 +417,28 @@ class Workspace:
         return ToolResult(_fmt(outcome), is_error=not outcome.ok)
 
     async def _t_download_file(
-        self, url: str, dest: str, sha256: str | None = None, extract: bool | None = None
+        self,
+        url: str,
+        dest: str,
+        sha256: str | None = None,
+        extract: bool | None = None,
     ) -> ToolResult:
         if not _URL.match(url):
             return ToolResult("url must be a plain http(s) URL", is_error=True)
         if sha256 is not None and not _SHA256.match(sha256.lower()):
             return ToolResult("sha256 must be 64 hex characters", is_error=True)
         if dest.startswith("/") or ".." in dest.split("/"):
-            return ToolResult("dest must be a relative path inside the workspace", is_error=True)
+            return ToolResult(
+                "dest must be a relative path inside the workspace", is_error=True
+            )
         q_dest, q_url = shlex.quote(dest), shlex.quote(url)
         fetch = (
-            f"mkdir -p \"$(dirname {q_dest})\" && curl -fsSL --retry 3 --retry-delay 2 "
+            f'mkdir -p "$(dirname {q_dest})" && curl -fsSL --retry 3 --retry-delay 2 '
             f"--connect-timeout 30 --max-filesize {self.max_download_bytes} -o {q_dest} {q_url}"
         )
-        outcome = await self.backend.run(f"{fetch} && sha256sum {q_dest}", timeout=MAX_COMMAND_SECONDS)
+        outcome = await self.backend.run(
+            f"{fetch} && sha256sum {q_dest}", timeout=MAX_COMMAND_SECONDS
+        )
         if not outcome.ok:
             return ToolResult(_fmt(outcome), is_error=True)
         digest = outcome.stdout.split()[0] if outcome.stdout.split() else ""
@@ -427,24 +454,33 @@ class Workspace:
         if extract:
             unpack = _extract_command(dest)
             if unpack is None:
-                return ToolResult("\n".join(report) + "\ncannot extract: unknown archive type", is_error=True)
+                return ToolResult(
+                    "\n".join(report) + "\ncannot extract: unknown archive type",
+                    is_error=True,
+                )
             ex = await self.backend.run(unpack, timeout=MAX_COMMAND_SECONDS)
             if not ex.ok:
                 return ToolResult("\n".join(report) + "\n" + _fmt(ex), is_error=True)
             steps.append(unpack)
             report.append("extracted")
-        size = await self.backend.run(f"stat -c %s {q_dest} 2>/dev/null || echo 0", timeout=30)
+        size = await self.backend.run(
+            f"stat -c %s {q_dest} 2>/dev/null || echo 0", timeout=30
+        )
         report.append(f"bytes {size.stdout.strip()}")
         await self._record_setup(" && ".join(steps))
         return ToolResult("\n".join(report))
 
     async def _t_start_job(self, name: str, command: str) -> ToolResult:
         if not _JOB_NAME.match(name):
-            return ToolResult("job name: letters, digits, '_' or '-', at most 64", is_error=True)
+            return ToolResult(
+                "job name: letters, digits, '_' or '-', at most 64", is_error=True
+            )
         base = f"{JOBS_DIR}/{name}"
         exists = await self.backend.run(f"test -e {base}.pid", timeout=30)
         if exists.ok:
-            return ToolResult(f"job {name!r} already exists; pick another name", is_error=True)
+            return ToolResult(
+                f"job {name!r} already exists; pick another name", is_error=True
+            )
         await self.backend.write_bytes(f"{base}.sh", command.encode("utf-8"))
         # setsid detaches the job from the tool call's process group so it outlives it.
         launch = (
@@ -455,7 +491,9 @@ class Workspace:
         outcome = await self.backend.run(launch, timeout=30)
         if not outcome.ok:
             return ToolResult(_fmt(outcome), is_error=True)
-        return ToolResult(f"started job {name} (pid {outcome.stdout.strip()}); log at {base}.log")
+        return ToolResult(
+            f"started job {name} (pid {outcome.stdout.strip()}); log at {base}.log"
+        )
 
     async def _job_report(self, name: str, tail_lines: int = 40) -> ToolResult:
         if not _JOB_NAME.match(name):
@@ -465,18 +503,24 @@ class Workspace:
         cmd = (
             f"if [ ! -f {base}.pid ]; then echo 'no such job'; exit 3; fi; "
             f"el=$(( $(date +%s) - $(cat {base}.start) )); "
-            f"if [ -f {base}.exit ]; then echo \"state: exited with code $(cat {base}.exit) after ${{el}}s\"; "
-            f"elif kill -0 $(cat {base}.pid) 2>/dev/null; then echo \"state: running for ${{el}}s\"; "
+            f'if [ -f {base}.exit ]; then echo "state: exited with code $(cat {base}.exit) after ${{el}}s"; '
+            f'elif kill -0 $(cat {base}.pid) 2>/dev/null; then echo "state: running for ${{el}}s"; '
             f"else echo 'state: lost (process gone without an exit code)'; fi; "
             f"echo '--- log tail ---'; tail -n {n} {base}.log 2>/dev/null"
         )
         outcome = await self.backend.run(cmd, timeout=60)
-        return ToolResult(clip(outcome.stdout + outcome.stderr), is_error=outcome.exit_code == 3)
+        return ToolResult(
+            clip(outcome.stdout + outcome.stderr), is_error=outcome.exit_code == 3
+        )
 
-    async def _t_job_status(self, name: str, tail_lines: int | None = None) -> ToolResult:
+    async def _t_job_status(
+        self, name: str, tail_lines: int | None = None
+    ) -> ToolResult:
         return await self._job_report(name, tail_lines or 40)
 
-    async def _t_wait_job(self, name: str, max_wait_seconds: int | None = None) -> ToolResult:
+    async def _t_wait_job(
+        self, name: str, max_wait_seconds: int | None = None
+    ) -> ToolResult:
         if not _JOB_NAME.match(name):
             return ToolResult("invalid job name", is_error=True)
         wait = min(max(1, max_wait_seconds or 300), MAX_WAIT_SECONDS)
@@ -512,13 +556,17 @@ class Workspace:
         outcome = await self.backend.run(cmd, timeout=600)
         if not outcome.ok:
             return ToolResult(_fmt(outcome), is_error=True)
-        return ToolResult(f"compiled {main} -> {output}\n{clip(outcome.stdout[-3000:])}")
+        return ToolResult(
+            f"compiled {main} -> {output}\n{clip(outcome.stdout[-3000:])}"
+        )
 
     async def _t_submit_experiment(
         self, experiment_path: str, setup_path: str | None = None
     ) -> ToolResult:
         if self.on_submit is None:
-            return ToolResult("submission is not available in this session", is_error=True)
+            return ToolResult(
+                "submission is not available in this session", is_error=True
+            )
         code = (await self.backend.read_bytes(experiment_path)).decode("utf-8")
         setup = (
             (await self.backend.read_bytes(setup_path)).decode("utf-8")
@@ -526,14 +574,18 @@ class Workspace:
             else self.setup_script()
         )
         text, accepted, payload = await self.on_submit(code, setup)
-        return ToolResult(text, is_error=not accepted, submitted=payload if accepted else None)
+        return ToolResult(
+            text, is_error=not accepted, submitted=payload if accepted else None
+        )
 
 
 def _extract_command(dest: str) -> str | None:
     q = shlex.quote(dest)
-    parent = f"\"$(dirname {q})\""
+    parent = f'"$(dirname {q})"'
     lower = dest.lower()
-    if lower.endswith((".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".tar")):
+    if lower.endswith(
+        (".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".tar")
+    ):
         return f"tar -xf {q} -C {parent}"
     if lower.endswith(".zip"):
         return f"unzip -o -q {q} -d {parent}"

@@ -57,7 +57,11 @@ CONDA_TOOL_ENVS: dict[str, tuple[list[str], list[str], dict[str, str]]] = {
     "gatk": (["gatk4"], [], {"gatk": "gatk"}),
     "sniffles": (["python=3.12", "sniffles>=2"], [], {"sniffles": "sniffles"}),
     "cnvkit": (["python=3.12", "cnvkit>=0.9.14"], [], {"cnvkit.py": "cnvkit.py"}),
-    "expansionhunter": (["expansionhunter"], [], {"ExpansionHunter": "ExpansionHunter"}),
+    "expansionhunter": (
+        ["expansionhunter"],
+        [],
+        {"ExpansionHunter": "ExpansionHunter"},
+    ),
     "r": (
         [
             "r-base=4.4",
@@ -95,22 +99,30 @@ def _wrapper_commands() -> list[str]:
             # extensions) can otherwise bind the base image's older libstdc++ first.
             lib = f"/opt/conda/envs/{env}/lib"
             script = (
-                f'#!/bin/sh\nPATH={prefix}:$PATH LD_LIBRARY_PATH={lib}${{LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}} '
+                f"#!/bin/sh\nPATH={prefix}:$PATH LD_LIBRARY_PATH={lib}${{LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}} "
                 f'exec {prefix}/{exe} "$@"\n'
             )
             target = f"/opt/conda/bin/{exposed}"
-            cmds.append(f"printf %s {shlex.quote(script)} > {target} && chmod +x {target}")
+            cmds.append(
+                f"printf %s {shlex.quote(script)} > {target} && chmod +x {target}"
+            )
     return cmds
 
 
 BUILD_SMOKE_TESTS = [
-    "/opt/conda/bin/python -c 'import numpy, scipy, pandas, sklearn, statsmodels, matplotlib, "
-    "seaborn, networkx, pysam, Bio, requests, torch, pyopenms, SigProfilerExtractor, igv_reports'",
+    (
+        "/opt/conda/bin/python -c 'import numpy, scipy, pandas, sklearn, statsmodels, matplotlib, "
+        "seaborn, networkx, pysam, Bio, requests, torch, pyopenms, SigProfilerExtractor, igv_reports'"
+    ),
     "peptdeep-python -c 'import peptdeep, torch'",
-    "Rscript -e 'suppressMessages({library(clusterProfiler); library(org.Hs.eg.db); "
-    "library(DOSE); library(MSstats); library(PureCN)})'",
-    "samtools --version && bcftools --version && bwa-mem2 version && minimap2 --version "
-    "&& bedtools --version && plink2 --version && wgsim 2>&1 | grep -q Usage",
+    (
+        "Rscript -e 'suppressMessages({library(clusterProfiler); library(org.Hs.eg.db); "
+        "library(DOSE); library(MSstats); library(PureCN)})'"
+    ),
+    (
+        "samtools --version && bcftools --version && bwa-mem2 version && minimap2 --version "
+        "&& bedtools --version && plink2 --version && wgsim 2>&1 | grep -q Usage"
+    ),
     "gatk --version && sniffles --version && cnvkit.py version && ExpansionHunter --version",
     "pandoc --version && latexmk -v && xelatex --version && java -version",
 ]
@@ -166,20 +178,26 @@ def lab_template():
         )
         .run_cmd(
             [
-                "curl -fsSL https://micro.mamba.pm/api/micromamba/linux-64/latest "
-                "| tar -xj -C /usr/local bin/micromamba",
+                (
+                    "curl -fsSL https://micro.mamba.pm/api/micromamba/linux-64/latest "
+                    "| tar -xj -C /usr/local bin/micromamba"
+                ),
                 "mkdir -p /opt/conda/conda-meta && chown -R user:user /opt/conda",
             ],
             user="root",
         )
-        .set_envs({"MAMBA_ROOT_PREFIX": "/opt/conda", "PATH": _PATH, "MPLBACKEND": "Agg"})
+        .set_envs(
+            {"MAMBA_ROOT_PREFIX": "/opt/conda", "PATH": _PATH, "MPLBACKEND": "Agg"}
+        )
         .run_cmd(
-            f"{_MM} install -y -q -n base {_CHANNELS} " + " ".join(f"'{p}'" for p in CONDA_BASE),
+            f"{_MM} install -y -q -n base {_CHANNELS} "
+            + " ".join(f"'{p}'" for p in CONDA_BASE),
             user="user",
         )
         .run_cmd(
             [
-                f"{_MM} create -y -q -n {env} {_CHANNELS} " + " ".join(f"'{p}'" for p in specs)
+                f"{_MM} create -y -q -n {env} {_CHANNELS} "
+                + " ".join(f"'{p}'" for p in specs)
                 for env, (specs, _, _) in CONDA_TOOL_ENVS.items()
             ]
             + [
@@ -193,7 +211,8 @@ def lab_template():
         .run_cmd(_wrapper_commands(), user="user")
         .run_cmd(
             [
-                "/opt/conda/bin/python -m pip install --no-cache-dir -q " + " ".join(PIP_BASE),
+                "/opt/conda/bin/python -m pip install --no-cache-dir -q "
+                + " ".join(PIP_BASE),
                 f"{_MM} clean -y -a",
             ],
             user="user",
@@ -201,8 +220,10 @@ def lab_template():
         .run_cmd(
             [
                 # Login shells reset PATH from /etc/profile; re-add the conda envs after it.
-                f"printf 'export PATH=\"{_PATH}\"\\nexport MAMBA_ROOT_PREFIX=/opt/conda\\n"
-                "export MPLBACKEND=Agg\\n' > /etc/profile.d/plato-lab.sh",
+                (
+                    f'printf \'export PATH="{_PATH}"\\nexport MAMBA_ROOT_PREFIX=/opt/conda\\n'
+                    "export MPLBACKEND=Agg\\n' > /etc/profile.d/plato-lab.sh"
+                ),
                 "mkdir -p /home/user/work && chown user:user /home/user/work",
             ],
             user="root",

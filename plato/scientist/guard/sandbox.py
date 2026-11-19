@@ -69,6 +69,9 @@ class SandboxLimits:
     max_output_chars: int = 200_000
 
 
+DEFAULT_LIMITS = SandboxLimits()
+
+
 @dataclass
 class SandboxResult:
     exit_code: int | None
@@ -258,7 +261,7 @@ async def run_python(
     code: str,
     *,
     inputs: dict[str, bytes] | None = None,
-    limits: SandboxLimits = SandboxLimits(),
+    limits: SandboxLimits = DEFAULT_LIMITS,
     python_executable: str | None = None,
     require_network_isolation: bool = False,
 ) -> SandboxResult:

@@ -31,6 +31,9 @@ class SessionLimits:
     max_stalls: int = 2  # turns that end without a tool call before giving up
 
 
+DEFAULT_SESSION_LIMITS = SessionLimits()
+
+
 @dataclass
 class SessionOutcome:
     submitted: Any
@@ -47,7 +50,7 @@ async def run_session(
     task: str,
     workspace: Workspace,
     nonce: str,
-    limits: SessionLimits = SessionLimits(),
+    limits: SessionLimits = DEFAULT_SESSION_LIMITS,
     on_turn: TurnHook | None = None,
     purpose: str = "workspace_engineer",
 ) -> SessionOutcome:

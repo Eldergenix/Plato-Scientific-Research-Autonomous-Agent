@@ -113,13 +113,17 @@ def role_overrides(env: Mapping[str, str] | None = None) -> dict[str, str]:
     except json.JSONDecodeError as exc:
         raise ModelConfigError(f"PLATO_ROLE_MODELS is not valid JSON: {exc}") from None
     if not isinstance(data, dict):
-        raise ModelConfigError("PLATO_ROLE_MODELS must be a JSON object of role -> model")
+        raise ModelConfigError(
+            "PLATO_ROLE_MODELS must be a JSON object of role -> model"
+        )
     unknown = sorted(set(data) - set(WORKER_ROLES))
     if unknown:
         raise ModelConfigError(
             f"PLATO_ROLE_MODELS has unknown roles {unknown}; known: {list(WORKER_ROLES)}"
         )
-    return {role: _model_name(m, f"PLATO_ROLE_MODELS[{role!r}]") for role, m in data.items()}
+    return {
+        role: _model_name(m, f"PLATO_ROLE_MODELS[{role!r}]") for role, m in data.items()
+    }
 
 
 def worker_default(env: Mapping[str, str] | None = None) -> str:
@@ -140,7 +144,9 @@ def frozen_role_models(config: Mapping[str, object] | None) -> dict[str, str] | 
         return None
     if not isinstance(models, dict):
         raise ModelConfigError("campaign config 'models' must be an object")
-    return {str(role): _model_name(m, f"models[{role!r}]") for role, m in models.items()}
+    return {
+        str(role): _model_name(m, f"models[{role!r}]") for role, m in models.items()
+    }
 
 
 def catalogue() -> dict[str, object]:
@@ -152,4 +158,3 @@ def catalogue() -> dict[str, object]:
         "weights": dict(WEIGHTS),
         "unknown_weight": UNKNOWN_WEIGHT,
     }
-

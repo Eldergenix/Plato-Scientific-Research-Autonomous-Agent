@@ -1124,8 +1124,10 @@ async def _workspace_attempt(
         else:
             why = f"it did not print a valid {METRICS_MARKER} line"
         return (
-            f"Rejected ({submissions}/{cfg.max_code_attempts}): {why}.\n"
-            f"stdout (end):\n{result.stdout[-4000:]}\nstderr (end):\n{result.stderr[-4000:]}",
+            (
+                f"Rejected ({submissions}/{cfg.max_code_attempts}): {why}.\n"
+                f"stdout (end):\n{result.stdout[-4000:]}\nstderr (end):\n{result.stderr[-4000:]}"
+            ),
             False,
             None,
         )
@@ -1146,7 +1148,8 @@ async def _workspace_attempt(
                 await store.heartbeat(
                     intent["id"], worker_id, lease_seconds=cfg.lease_seconds
                 )
-            except BaseException as exc:  # LeaseLost: stop the session at the next turn
+            # LeaseLost (or any heartbeat failure): stop the session at the next turn.
+            except BaseException as exc:  # noqa: BLE001
                 lease_error.append(exc)
                 return
 
