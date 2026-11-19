@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -135,3 +136,26 @@ def test_worker_citation_styles_match_the_python_catalogue():
     assert json.loads(worker.read_text()) == styles_catalogue(), (
         "regenerate src/citation_styles.json from plato.publish.journals.styles_catalogue()"
     )
+
+
+@needs_pandoc
+async def test_document_import_cannot_read_other_files(tmp_path):
+    """An uploaded LaTeX file must not pull in files outside itself (pandoc --sandbox)."""
+    from plato.publish.materials import extract_text
+
+    # World-readable, like /etc/passwd: the tool's dropped privileges alone do not hide it.
+    shared = Path(tempfile.mkdtemp(prefix="plato-shared-"))
+    shared.chmod(0o755)
+    secret = shared / "secret.tex"
+    secret.write_text("SECRET-WALRUS-42\n")
+    secret.chmod(0o644)
+    work = tmp_path / "work"
+    work.mkdir()
+    tex = f"\\documentclass{{article}}\\begin{{document}}Visible text. \\input{{{secret}}}\\end{{document}}\n"
+    m = Material(kind="document", file_name="notes.tex", content=tex.encode())
+    text = await extract_text(m, work)
+    try:
+        assert "Visible text." in text
+        assert "SECRET-WALRUS-42" not in text
+    finally:
+        shutil.rmtree(shared)

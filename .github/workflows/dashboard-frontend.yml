@@ -23,7 +23,8 @@ jobs:
       - run: npx tsc --noEmit
 
   playwright:
-    runs-on: ubuntu-latest
+    # ubuntu-latest is now 26.04, which Playwright 1.59 can't install browser deps for.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4

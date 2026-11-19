@@ -120,7 +120,9 @@ async def parse_references(m: Material, workdir: Path) -> list[dict[str, Any]]:
     src = workdir / f"refs{ext}"
     src.write_bytes(m.content)
     hand_to_sandbox_user(workdir)
-    res = await run_tool(["pandoc", src.name, "-f", fmt, "-t", "csljson"], workdir)
+    res = await run_tool(
+        ["pandoc", "--sandbox", src.name, "-f", fmt, "-t", "csljson"], workdir
+    )
     data = json.loads(res.output[res.output.index("[") :])
     return [d for d in data if isinstance(d, dict)][:MAX_REFERENCES_PER_FILE]
 
@@ -156,6 +158,7 @@ async def extract_text(m: Material, workdir: Path) -> str:
         res = await run_tool(
             [
                 "pandoc",
+                "--sandbox",
                 src.name,
                 "-f",
                 DOCUMENT_FORMATS[ext],
