@@ -63,7 +63,7 @@ ROLE_PURPOSES: dict[str, tuple[str, ...]] = {
     "figure_critic": ("figure_critique",),
     "skeptic": ("skeptic",),
     "paper_writer": ("manuscript", "manuscript_revision"),
-    "peer_reviewer": ("peer_review",),
+    "peer_reviewer": ("peer_review", "peer_review_check"),
     "evidence_checker": ("evidence_matrix",),
     "review_panel": (
         "review_methodology",
