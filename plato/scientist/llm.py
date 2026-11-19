@@ -55,6 +55,7 @@ WRITING_PURPOSES = frozenset(
         "review_statistics",
         "review_novelty",
         "review_writing",
+        "publication_format",
     }
 )
 Effort = Literal["low", "medium", "high", "xhigh", "max"]

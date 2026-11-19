@@ -12,6 +12,8 @@
 #   PLATO_SECRETS_KEY_FILE  where the account secrets key is kept on this machine
 #                        (default ~/.config/plato/secrets-key). The key derives the password
 #                        pepper and encrypts saved API keys; it is set once and never replaced.
+#   COMPOSIO_API_KEY     enables connected services (Google Drive, Dropbox, OneDrive, Gmail, Outlook);
+#                        the webhook subscription for triggers is created by scripts/composio-setup.mjs
 #   E2B_API_KEY, ADS_API_KEY, NCBI_API_KEY, SEMANTIC_SCHOLAR_KEY, MODAL_TOKEN_ID, MODAL_TOKEN_SECRET
 #                        optional keys: E2B experiment sandboxes (built from the plato-lab template,
 #                        python scripts/e2b_lab_template.py; without it experiments run in the
@@ -59,6 +61,11 @@ if [[ -z "${PLATO_API_TOKEN:-}" ]]; then
 fi
 PLATO_INTERNAL_TOKEN="${PLATO_INTERNAL_TOKEN:-$(openssl rand -hex 32)}"
 
+echo "Ensuring R2 bucket 'plato-exports' (publication packages and library files)..."
+if ! npx wrangler r2 bucket info plato-exports >/dev/null 2>&1; then
+  npx wrangler r2 bucket create plato-exports
+fi
+
 echo "Deploying Worker + Container..."
 npm run deploy  # immediate container rollout; in-flight campaigns resume from Postgres
 
@@ -90,6 +97,7 @@ PLATO_API_TOKEN="$PLATO_API_TOKEN" PLATO_INTERNAL_TOKEN="$PLATO_INTERNAL_TOKEN" 
     PLATO_API_TOKEN: e.PLATO_API_TOKEN, PLATO_INTERNAL_TOKEN: e.PLATO_INTERNAL_TOKEN,
     ANTHROPIC_API_KEY: e.ANTHROPIC_API_KEY, PLATO_DATABASE_URL: e.PLATO_DATABASE_URL,
     ...(e.NEW_SECRETS_KEY ? { PLATO_SECRETS_KEY: e.NEW_SECRETS_KEY } : {}),
+    ...(e.COMPOSIO_API_KEY ? { COMPOSIO_API_KEY: e.COMPOSIO_API_KEY } : {}),
   }));' > "$SECRETS"
 npx wrangler secret bulk "$SECRETS"
 
@@ -107,6 +115,12 @@ if [[ "${#OPT_NAMES[@]}" -gt 0 ]]; then
     process.stdout.write(JSON.stringify(Object.fromEntries(e.OPT_NAMES.split(" ").map(n => [n, e[n]]))));' > "$OPTIONAL"
   npx wrangler secret bulk "$OPTIONAL"
   echo "Uploaded optional secrets: ${OPT_NAMES[*]}"
+fi
+
+if [[ -n "${COMPOSIO_API_KEY:-}" ]]; then
+  echo "Ensuring the Composio webhook subscription for triggers..."
+  HAS_HOOK="$(printf '%s' "$LISTED" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s.slice(s.indexOf("["),s.lastIndexOf("]")+1));process.stdout.write(j.some(x=>x.name==="COMPOSIO_WEBHOOK_SECRET")?"1":"0")})')"
+  HAS_WEBHOOK_SECRET="$HAS_HOOK" node scripts/composio-setup.mjs https://jarvisos.xyz/api/integrations/webhook
 fi
 
 echo "Smoke test..."

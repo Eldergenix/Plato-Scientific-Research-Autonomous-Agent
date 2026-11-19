@@ -45,6 +45,51 @@ Why this shape:
   The deploy script creates it once, keeps a copy in `~/.config/plato/secrets-key` (mode 600) and
   never replaces it on the Worker: a different key would invalidate every password and saved key.
 
+## Publication packages
+
+The **Publish** tab of a finished research thread builds a submission package for one venue:
+Nature, Nature Communications, Science, Cell, NEJM, The Lancet, JAMA, Genes (MDPI) or arXiv.
+The container builds it (`plato/publish`, pdfLaTeX and pandoc in a sandbox) and the Worker
+streams the zip into the `EXPORTS` R2 bucket (`exports/<campaign>/<export>.zip`). Each package has:
+
+* the manuscript as PDF, LaTeX (one self-contained `.tex`), Word and JATS XML (PubMed Central's
+  format), laid out to the journal's rules: title and abstract limits, structured abstracts,
+  section headings, line numbers, display-item limits, Key Points, Research in Context, keywords;
+* references as BibTeX, RIS and CSL JSON, formatted with the journal's official CSL style
+  (`plato/publish/csl`, CC BY-SA);
+* figures (PDF and 300-dpi PNG with their source data), the Supplementary Information PDF,
+  data as CSV and Excel, the experiments' code and logs, the review record, `PROVENANCE.json`,
+  `CITATION.cff`, an `arxiv/` folder ready to upload, and `SUBMISSION_CHECKLIST.md`.
+
+The journal rules and their sources are in `plato/publish/journals.py` (`src/journals.json` is
+generated from it; a test keeps them equal). The model writes only the front matter (title,
+abstract, key points) once per thread and journal, from the manuscript's own facts; a check flags
+any number that isn't in the manuscript. Without a model the package still builds. Builds are
+byte-reproducible.
+
+Packages download from the tab, preview single files (`/api/exports/:id/file?path=`), go to
+Google Drive, Dropbox or OneDrive, by email through Gmail or Outlook (with a signed download
+link valid for 7 days and the PDF attached), or into Files.
+
+## Files and connected services
+
+**Files** (Settings → Files) keeps a person's research files in R2 (`library/<account>/<id>`):
+uploads up to 25 MiB, imports, email attachments and saved packages. Data files (CSV, Excel, VCF,
+FASTA/FASTQ, BAM, Parquet, HDF5, …) become datasets of a new thread, reference files (`.bib`,
+`.ris`, `.nbib`, EndNote XML) become citable papers, and documents (PDF, Word, Markdown, LaTeX)
+become background the agents read, framed as untrusted text.
+
+**Connected services** (Settings → Connected services) uses [Composio](https://composio.dev):
+each person is one Composio user (`plato-<account id>`) and signs in on the service's own page,
+so Plato never holds their OAuth tokens. Google Drive, Dropbox and OneDrive can be browsed and
+imported from and sent to; Gmail and Outlook send packages. Automatic import: a Drive folder
+trigger and a Gmail trigger save new files to Files through a signed webhook
+(`/api/integrations/webhook`, Standard Webhooks HMAC, 5-minute replay window, stored once per
+delivery id); the cron retries failed imports up to five times.
+
+Secrets: `COMPOSIO_API_KEY` (without it the feature is off) and `COMPOSIO_WEBHOOK_SECRET`, which
+`scripts/composio-setup.mjs` creates with the webhook subscription during the deploy.
+
 ## Deploy
 
 Prerequisites: Node 22, Docker running, a Cloudflare account that owns the
@@ -95,5 +140,17 @@ node e2e/api.test.mjs /tmp/stub-requests.jsonl           # accounts, keys, allow
 node e2e/ui.test.cjs /tmp/plato-ui                        # browser run (Playwright); fails on console errors
 ```
 
-Both refuse to run against anything but a local URL: they sign up accounts and use the dev admin token.
+Files, connected services and packages run against a Composio stub. Start wrangler dev with
+`--var PLATO_DEV_COMPOSIO_BASE_URL:http://127.0.0.1:8791 --var COMPOSIO_API_KEY:ak_stub
+--var COMPOSIO_WEBHOOK_SECRET:<secret> --var PLATO_DEFAULT_MONTHLY_TOKENS:1500000`, and the
+Python service with the same database in `PLATO_DATABASE_URL`:
+
+```bash
+node e2e/unit.test.mjs                                    # webhook signatures, zip reader (no services)
+node e2e/stub-composio.mjs 8791 &                          # Composio API stand-in
+COMPOSIO_WEBHOOK_SECRET=<secret> PLATO_DATABASE_URL=... node e2e/integrations.test.mjs
+PLATO_DATABASE_URL=... node e2e/publish-ui.test.cjs /tmp/plato-ui
+```
+
+All of them refuse to run against anything but a local URL: they sign up accounts and use the dev admin token.
 Sign-up is throttled per IP, so repeated local runs within an hour need `DELETE FROM plato.auth_attempts`.

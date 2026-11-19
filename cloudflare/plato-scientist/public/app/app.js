@@ -81,7 +81,7 @@ async function health(){if(!S.me?.account)return;
    #/ (home: the agent or campaigns, per preference)  #/agent  #/campaigns  #/p/<project>
    #/c/<campaign>/<tab>  #/settings/<section>  #/login  #/signup */
 const dec=s=>{try{return decodeURIComponent(s)}catch{return ""}};
-function parseRoute(){const p=location.hash.replace(/^#\/?/,"").split("/").map(dec);
+function parseRoute(){const p=location.hash.replace(/^#\/?/,"").replace(/\?.*$/,"").split("/").map(dec);
   if(p[0]==="c"&&p[1])return {view:"campaign",id:p[1],tab:p[2]||"overview",node:p[3]||null};
   if(p[0]==="p"&&p[1])return {view:"project",pid:p[1]};
   if(p[0]==="settings")return {view:"settings",section:p[1]||"preferences"};
@@ -144,7 +144,7 @@ function renderHome(){
   Kit.hydrate(body);Kit.reveal($("#pane"),"home")}
 
 /* ---------- campaign view ---------- */
-const TABS=[["overview","Overview"],["results","Results"],["graph","Graph"],["findings","Findings"],["experiments","Experiments"],["manuscript","Manuscript"],["guardrails","Guardrails"]];
+const TABS=[["overview","Overview"],["results","Results"],["graph","Graph"],["findings","Findings"],["experiments","Experiments"],["manuscript","Manuscript"],["guardrails","Guardrails"],["publish","Publish"]];
 function resetCampaignState(){clearTimeout(S.draftTimer);cancelAnimationFrame(S.lpRaf);
   Object.assign(S,{summary:null,graph:null,manuscript:undefined,prov:{},draft:undefined,firstDraft:null,draftTimer:null,paperEl:null,lp:null,lpRaf:0,follow:pref("follow_live_writing"),rows:null,rowsFor:null,lastView:"",usage:undefined,usageKey:null,t0:0});
   S.res.page=0;S.panel.view="details";if(S.panel.mode==="focus")S.panel.mode="panel"}
@@ -178,7 +178,7 @@ function renderCampaign(){
   $("#tabs").innerHTML=TABS.map(([k,l])=>`<a class="tab${S.route.tab===k?" on":""}" href="#/c/${eid(c.id)}/${k}" style="text-decoration:none"${S.route.tab===k?' aria-current="page"':""}>${l}${n[k]!=null?`<span class="c">${n[k]}</span>`:""}</a>`).join("");
   renderTab();
 }
-function tabView(tab){return ({overview,results:resultsView,graph:graphView,findings:findingsView,experiments:experimentsView,manuscript:manuscriptView,guardrails:guardView}[tab]||overview)()}
+function tabView(tab){return ({overview,results:resultsView,graph:graphView,findings:findingsView,experiments:experimentsView,manuscript:manuscriptView,guardrails:guardView,publish:publishView}[tab]||overview)()}
 /* Re-rendering the same view (live polling) keeps focus, caret and scroll positions. */
 function keepUI(){const a=document.activeElement,o={id:a&&a.id&&$("#body").contains(a)?a.id:null,ss:null,se:null,sc:{}};
   try{o.ss=a.selectionStart;o.se=a.selectionEnd}catch{}
@@ -191,7 +191,7 @@ function renderTab(){
   if(tab==="manuscript"||S.panel.view==="paper")ensureManuscript();
   body.className="body "+(full?"full":"mode-"+S.panel.mode);
   body.innerHTML=`<div class="pane" id="pane">${tabView(tab)}</div>`+(full?"":`<aside class="props" id="props" aria-label="Details panel">${propsView()}</aside>`);
-  mountPaper();bindPane();bindProps();mountCharts();Kit.hydrate(body,S.route.id+":");Kit.paint(body);if(ui)restoreUI(ui);KB=-1;
+  mountPaper();bindPane();bindPublish();bindProps();mountCharts();Kit.hydrate(body,S.route.id+":");Kit.paint(body);if(ui)restoreUI(ui);KB=-1;
 }
 function refreshProps(keepScroll=true){const p=$("#props");if(!p||!S.summary)return;const st=p.scrollTop;
   if(S.panel.view==="paper")ensureManuscript();
@@ -745,20 +745,23 @@ function openNew(){
     <label class="pchip" title="Research domain">Domain <input class="dom" name="domain" value="general" maxlength="64"></label>
   </div>
   <div class="files"><label class="btn ghost" style="cursor:pointer">${evIcon("file")}<span id="trainLbl">Attach training data</span><input name="train" type="file" multiple hidden accept=".csv,.tsv,.json,.parquet,.txt"></label>
-  <label class="btn ghost" style="cursor:pointer" title="Held out from all experiments; only used for the final sealed evaluation">${evIcon("file")}<span id="sealLbl">Attach sealed holdout</span><input name="sealed" type="file" multiple hidden accept=".csv,.tsv,.json,.parquet,.txt"></label></div>
+  <label class="btn ghost" style="cursor:pointer" title="Held out from all experiments; only used for the final sealed evaluation">${evIcon("file")}<span id="sealLbl">Attach sealed holdout</span><input name="sealed" type="file" multiple hidden accept=".csv,.tsv,.json,.parquet,.txt"></label>
+  <button class="btn ghost" type="button" id="libBtn" title="Data, references and documents from Files">${evIcon("file")}<span id="libLbl">Add from Files</span></button></div>
+  <div class="libpick" id="libPick" hidden></div>
   </div><div class="m-f"><span class="t3" id="nmsg" style="font-size:12px" aria-live="polite">Runs on Claude Haiku 5.5</span><span style="margin-left:auto" class="kbd">⌘ ↵</span><button class="btn primary" id="createBtn"><span data-lbl>Create campaign</span></button></div></form>`);
-  const f=$("#newForm");f.question.focus();
+  const f=$("#newForm"),picked=new Set();f.question.focus();
+  $("#libBtn").onclick=()=>{const el=$("#libPick");if(el.hidden)libraryPicker(el,picked);else el.hidden=true};
   const lbl=(inp,el,def)=>inp.onchange=()=>{el.textContent=inp.files.length?[...inp.files].map(x=>x.name).join(", "):def};
   lbl(f.train,$("#trainLbl"),"Attach training data");lbl(f.sealed,$("#sealLbl"),"Attach sealed holdout");
   f.addEventListener("keydown",e=>{if((e.metaKey||e.ctrlKey)&&e.key==="Enter")f.requestSubmit()});
-  f.onsubmit=async e=>{e.preventDefault();const b=$("#createBtn"),l=b.querySelector("[data-lbl]"),msg=$("#nmsg"),files=[...f.train.files,...f.sealed.files];b.disabled=true;
+  f.onsubmit=async e=>{e.preventDefault();const b=$("#createBtn"),l=b.querySelector("[data-lbl]"),msg=$("#nmsg"),files=[...f.train.files,...f.sealed.files,...picked];b.disabled=true;
     Kit.morph(l,files.length?"Uploading…":"Creating…");Kit.morph(msg,files.length?`Uploading ${files.length} file${files.length>1?"s":""}`:"Starting the swarm");
     try{const datasets=[];for(const [k,sealed] of [["train",false],["sealed",true]])for(const file of f[k].files)
         datasets.push({file_name:file.name.replace(/[^A-Za-z0-9._-]/g,"_").replace(/^[^A-Za-z0-9]+/,"d").slice(0,128),content_base64:await b64(file),sealed});
       if(files.length){Kit.morph(l,"Creating…");Kit.morph(msg,"Starting the swarm")}
       const q=f.question.value.trim(),ctx=f.context.value.trim();
       const body={question:ctx?`${q}\n\nContext: ${ctx}`:q,domain:f.domain.value.trim()||"general",token_budget:+f.token_budget.value,workers:+f.workers.value,max_rounds:+f.max_rounds.value,datasets};
-      const r=await (await api("campaigns",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)})).json();
+      const r=await (await api("campaigns"+(picked.size?"?library="+[...picked].join(","):""),{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)})).json();
       Kit.morph(l,"Created");b.classList.add("done");await new Promise(res=>setTimeout(res,Kit.still()?0:560));
       closeOverlay();toast("Campaign started");await loadList();go(r.id)}
     catch(err){b.disabled=false;Kit.morph(l,"Create campaign");msg.innerHTML=`<span class="err">${esc(err.message)}</span>`;delete msg.dataset.mt}}}
@@ -855,7 +858,7 @@ addEventListener("keydown",e=>{
   else if(e.key==="k"||e.key==="ArrowUp"){if(kbRows().length&&!e.target.closest?.(".sl")){e.preventDefault();kbMove(-1)}}
   else if(e.key==="Enter"){const r=document.querySelector("#body .kb");if(r&&!e.target.closest?.("button,a,.sl")){e.preventDefault();r.click()}}
   else if(S.route.view==="campaign"&&S.summary){
-    if(/^[1-7]$/.test(e.key))go(S.route.id,TABS[+e.key-1][0]);
+    if(/^[1-8]$/.test(e.key))go(S.route.id,TABS[+e.key-1][0]);
     else if(e.key==="["||e.key==="]")stepPanel(e.key==="]"?1:-1);
     else if((e.key==="p"||e.key==="P")&&paperAvail()&&S.route.tab!=="manuscript"){if(S.panel.view==="paper")setPanel(S.panel.mode,"details");else setPanel(S.panel.mode==="panel"&&wide()?"split":S.panel.mode,"paper")}}});
 $("#menuBtn").onclick=()=>$("#side").classList.toggle("open");

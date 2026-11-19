@@ -1,0 +1,273 @@
+[
+  {
+    "key": "nature",
+    "name": "Nature",
+    "publisher": "Springer Nature",
+    "article_type": "Article",
+    "source": "https://www.nature.com/nature/for-authors/formatting-guide",
+    "verified": "2026-11-18",
+    "formats": [
+      "pdf",
+      "docx",
+      "tex"
+    ],
+    "limits": {
+      "title_chars": 75,
+      "title_words": null,
+      "abstract_words": 200,
+      "main_text_words": 4300,
+      "references": 50,
+      "display_items": 6
+    },
+    "template_note": "Nature accepts LaTeX (all text, references, tables and legends in one .tex file) and a single PDF up to 30 MB at first submission; it converts to Word after acceptance. There is no Nature-specific class to install.",
+    "notes": [
+      "Summary paragraph: ideally no more than 200 words, fully referenced.",
+      "Title: at most 75 characters including spaces.",
+      "About 2,500 words for a 6-page Article, 4,300 for 8 pages.",
+      "Methods typically no more than 3,000 words, with separate Data and Code availability statements.",
+      "Typically no more than 50 references (Methods references not counted).",
+      "Double-spaced, line-numbered, 12-point Times New Roman.",
+      "Life-science Articles also need a Reporting Summary."
+    ],
+    "style_required": true,
+    "citation_style": "Nature"
+  },
+  {
+    "key": "nature-communications",
+    "name": "Nature Communications",
+    "publisher": "Springer Nature",
+    "article_type": "Article",
+    "source": "https://www.nature.com/ncomms/submit/article",
+    "verified": "2026-11-18",
+    "formats": [
+      "pdf",
+      "docx",
+      "tex"
+    ],
+    "limits": {
+      "title_chars": null,
+      "title_words": 15,
+      "abstract_words": 200,
+      "main_text_words": 5000,
+      "references": 70,
+      "display_items": 10
+    },
+    "template_note": "Initial submissions are format-free; the editor sends formatting instructions at revision. Nature Portfolio reference style is used.",
+    "notes": [
+      "Abstract: no more than 200 words and no references.",
+      "Title: at most 15 words.",
+      "Main text ideally at most 5,000 words; Methods typically under 3,000.",
+      "At most 70 references and up to 10 display items.",
+      "Discussion has no subheadings."
+    ],
+    "style_required": true,
+    "citation_style": "Nature"
+  },
+  {
+    "key": "science",
+    "name": "Science",
+    "publisher": "AAAS",
+    "article_type": "Research Article",
+    "source": "https://www.science.org/content/page/instructions-preparing-initial-manuscript",
+    "verified": "2026-11-18",
+    "formats": [
+      "docx",
+      "pdf"
+    ],
+    "limits": {
+      "title_chars": 96,
+      "title_words": null,
+      "abstract_words": 125,
+      "main_text_words": 3000,
+      "references": 50,
+      "display_items": 5
+    },
+    "template_note": "Science prefers one .docx with figures and tables embedded. LaTeX users should convert to .docx, or use Science's own LaTeX template and upload a PDF. Materials and Methods go in the Supplementary Materials.",
+    "notes": [
+      "Research Article: main text at most 3,000 words, 3 to 5 display items, about 50 main-text references.",
+      "Abstract: 125 words or less, no citations or abbreviations.",
+      "Title: at most 96 characters including spaces.",
+      "Single-spaced, US letter, Times New Roman.",
+      "Citations are italic numbers in parentheses, e.g. (18, 19); reference lists give every author (no et al.).",
+      "Figure captions: bold one-line title, at most 200 words.",
+      "Data underlying figures as Data S1, a multi-sheet Excel workbook."
+    ],
+    "style_required": true,
+    "citation_style": "Science"
+  },
+  {
+    "key": "cell",
+    "name": "Cell",
+    "publisher": "Cell Press",
+    "article_type": "Research article",
+    "source": "https://www.cell.com/cell/information-for-authors/article-types",
+    "verified": "2026-11-18",
+    "formats": [
+      "docx",
+      "pdf"
+    ],
+    "limits": {
+      "title_chars": null,
+      "title_words": null,
+      "abstract_words": 150,
+      "main_text_words": 7000,
+      "references": null,
+      "display_items": 7
+    },
+    "template_note": "Cell takes a single PDF or Word file at first submission. Cell Press offers an optional template; LaTeX is converted to Word for copyediting. STAR Methods formatting is finalised with the editor at acceptance.",
+    "notes": [
+      "Under 7,000 words including main figure legends (STAR Methods, supplemental legends and references excluded); at most 7 figures and/or tables.",
+      "Summary of at most 150 words; 3-4 Highlights of at most 85 characters; eTOC blurb of at most 50 words.",
+      "Section order: Summary, Keywords, Introduction, Results, Limitations of the study, Discussion, Resource availability, then STAR Methods.",
+      "References are numbered (Cell style; up to 10 authors, then et al.)."
+    ],
+    "style_required": true,
+    "citation_style": "Cell"
+  },
+  {
+    "key": "nejm",
+    "name": "The New England Journal of Medicine",
+    "publisher": "Massachusetts Medical Society",
+    "article_type": "Original Article",
+    "source": "https://www.nejm.org/author-center/new-manuscripts",
+    "verified": "2026-11-18",
+    "formats": [
+      "docx",
+      "pdf"
+    ],
+    "limits": {
+      "title_chars": null,
+      "title_words": null,
+      "abstract_words": 250,
+      "main_text_words": 2700,
+      "references": 40,
+      "display_items": 5
+    },
+    "template_note": "NEJM wants one double-spaced file (preferably Word) with text, references, legends and tables. The Supplementary Appendix must be sent as both PDF and Word, paginated with a table of contents.",
+    "notes": [
+      "Original Article: at most 2,700 words (introduction to discussion), at most 5 tables and figures, up to 40 references.",
+      "Abstract: at most 250 words in four labelled paragraphs (Background, Methods, Results, Conclusions), plus a trial registration number if any.",
+      "References double-spaced; six or fewer authors listed in full, seven or more as the first three and et al.",
+      "Submit the protocol and statistical analysis plan when applicable."
+    ],
+    "style_required": true,
+    "citation_style": "The New England Journal of Medicine"
+  },
+  {
+    "key": "lancet",
+    "name": "The Lancet",
+    "publisher": "Elsevier",
+    "article_type": "Article",
+    "source": "https://www.thelancet.com/pb-assets/Lancet/authors/tl-info-for-authors-1787150940677.pdf",
+    "verified": "2026-11-18",
+    "formats": [
+      "docx",
+      "pdf"
+    ],
+    "limits": {
+      "title_chars": null,
+      "title_words": null,
+      "abstract_words": 300,
+      "main_text_words": 3500,
+      "references": 30,
+      "display_items": null
+    },
+    "template_note": "The Lancet has no LaTeX class; this follows its Information for Authors (Vancouver superscript citations after punctuation, mid-line decimal points, Research in context panel). Supplementary material goes in one PDF with a table of contents.",
+    "notes": [
+      "Article: up to 3,500 words (4,500 for randomised trials) and 30 references.",
+      "Summary: at most 300 words in five paragraphs (Background, Methods, Findings, Interpretation, Funding), no references.",
+      "Research in context panel (Evidence before this study, Added value of this study, Implications of all the available evidence), no references.",
+      "Data sharing statement required at the end of the manuscript.",
+      "Seven or more authors: first three, then et al."
+    ],
+    "style_required": true,
+    "citation_style": "The Lancet"
+  },
+  {
+    "key": "jama",
+    "name": "JAMA",
+    "publisher": "American Medical Association",
+    "article_type": "Original Investigation",
+    "source": "https://jamanetwork.com/journals/jama/pages/instructions-for-authors",
+    "verified": "2026-11-18",
+    "formats": [
+      "docx"
+    ],
+    "limits": {
+      "title_chars": null,
+      "title_words": null,
+      "abstract_words": 350,
+      "main_text_words": 3000,
+      "references": 75,
+      "display_items": 5
+    },
+    "template_note": "JAMA takes the manuscript as a Word document only (no PDF), double-spaced in 10-12 point type with a ragged right margin. The PDF here is for your own review.",
+    "notes": [
+      "Original Investigation: at most 3,000 words and 5 tables/figures.",
+      "Structured abstract of at most 350 words.",
+      "Key Points (Question, Findings, Meaning) of 75-100 words before the abstract.",
+      "AMA Manual of Style, 11th edition (references: first three authors and et al. when there are more than six).",
+      "Individual files ideally at most 1 MB; all files at most 5 MB."
+    ],
+    "style_required": true,
+    "citation_style": "AMA Manual of Style 11th edition"
+  },
+  {
+    "key": "genes",
+    "name": "Genes (MDPI)",
+    "publisher": "MDPI",
+    "article_type": "Article",
+    "source": "https://www.mdpi.com/journal/genes/instructions",
+    "verified": "2026-11-18",
+    "formats": [
+      "docx",
+      "pdf",
+      "tex"
+    ],
+    "limits": {
+      "title_chars": null,
+      "title_words": null,
+      "abstract_words": 250,
+      "main_text_words": null,
+      "references": null,
+      "display_items": null
+    },
+    "template_note": "MDPI publishes Word and LaTeX templates, but their terms forbid reposting them, so they are not bundled. MDPI accepts free-format first submissions that contain the required sections; LaTeX submissions are a ZIP of all sources and images.",
+    "notes": [
+      "Structured abstract of about 250 words (Background/Objectives, Methods, Results, Conclusions).",
+      "3 to 10 keywords.",
+      "Citations in square brackets before punctuation, e.g. [1], [1-3].",
+      "Total submission at most 120 MB."
+    ],
+    "style_required": true,
+    "citation_style": "Multidisciplinary Digital Publishing Institute"
+  },
+  {
+    "key": "arxiv",
+    "name": "arXiv",
+    "publisher": "Cornell University",
+    "article_type": "Preprint",
+    "source": "https://info.arxiv.org/help/submit_tex.html",
+    "verified": "2026-11-18",
+    "formats": [
+      "tex",
+      "pdf"
+    ],
+    "limits": {
+      "title_chars": null,
+      "title_words": null,
+      "abstract_words": null,
+      "main_text_words": null,
+      "references": null,
+      "display_items": null
+    },
+    "template_note": "Upload the arxiv/ folder as a .tar.gz or .zip: arXiv compiles main.tex itself with pdfLaTeX. The bibliography is inlined, so no .bbl or BibTeX run is needed. Data and code ride along as ancillary files in anc/.",
+    "notes": [
+      "Single-spaced (arXiv asks authors not to submit in referee mode).",
+      "Figures are PDF/PNG/JPEG for pdfLaTeX.",
+      "No hidden files, no build outputs (.aux, .log, .pdf) in the upload."
+    ],
+    "style_required": false,
+    "citation_style": "IEEE Reference Guide version 11.29.2023"
+  }
+]

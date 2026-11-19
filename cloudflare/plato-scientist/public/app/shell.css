@@ -265,3 +265,26 @@ a.tcard:hover{background:var(--card-hover)}
   .ask{inset:0;width:auto;border-radius:0;border:0}
   .ask-btn .kbd{display:none}
 }
+
+/* Publish tab, file browser and the library picker (publish.js) */
+.pub{max-width:880px;padding:20px 24px 40px;display:flex;flex-direction:column;gap:12px}
+.pub-build{border:1px solid var(--border);border-radius:10px;background:var(--panel);padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.pub-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.pub-row b{min-width:0}
+.pub-row .sel{max-width:100%;min-width:0;text-overflow:ellipsis}
+.pub-note{margin:0;font-size:12.5px;line-height:1.5}
+.pub-h{margin:12px 0 0;font-size:13px;font-weight:500}
+.pub-card{border:1px solid var(--border);border-radius:10px;background:var(--panel);padding:12px 16px;display:flex;flex-direction:column;gap:10px}
+.pub-checks{margin-left:auto;font-size:12px;color:var(--text-2)}
+.pub-acts a.btn{text-decoration:none}
+.pub-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:12.5px}
+.pub-list li{display:flex;gap:8px;align-items:flex-start;line-height:1.45}
+.pub-list li svg{flex:none;margin-top:2px}
+.br-row{display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:6px;cursor:default;min-width:0;font-size:13px}
+.br-row:hover{background:var(--hover)}
+.br-row.nav{cursor:pointer}
+.br-row input{flex:none;margin:0}
+.br-row .trunc{flex:1;min-width:0}
+.br-meta{flex:none;font-size:12px}
+.libpick{max-height:180px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:4px;margin-top:8px}
+@media (max-width:640px){.pub{padding:14px 16px 32px}.pub-checks{margin-left:0;width:100%}.br-meta{display:none}}
