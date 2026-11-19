@@ -72,6 +72,7 @@ from .schemas import (
     ResearchPlan,
     SkepticVerdict,
 )
+from .stats import SEALED_UNITS_FILE, UNITS_FILE, recompute, recompute_sealed
 
 logger = logging.getLogger(__name__)
 
@@ -418,9 +419,14 @@ def held_out_outcome(
         return False, "held-out test not reported (no sealed_p_value)"
     if p >= alpha:
         return False, f"held-out test not significant (p = {p:.3g})"
-    primary = fact_metrics.get("primary_metric")
-    trained = _number(fact_metrics.get(primary)) if primary else None
-    held = _number(sealed_metrics.get(f"sealed_{primary}")) if primary else None
+    # The direction compares the recomputed effects when both runs had unit data, else the
+    # primary metric as reported.
+    trained = _number(fact_metrics.get("stats_effect"))
+    held = _number(sealed_metrics.get("sealed_stats_effect"))
+    if trained is None or held is None:
+        primary = fact_metrics.get("primary_metric")
+        trained = _number(fact_metrics.get(primary)) if primary else None
+        held = _number(sealed_metrics.get(f"sealed_{primary}")) if primary else None
     if (
         fact_metrics.get("test_kind", "difference") == "difference"
         and trained
@@ -838,7 +844,10 @@ async def experiment_planner(
         "predicted value analytically before stating it, and set each success criterion relative to "
         "the standard error the protocol can resolve: a threshold below the sampling noise refutes "
         "true hypotheses. Mark claims of agreement with a reference value as 'equivalence' tests "
-        "with a tolerance of at least 3 Monte Carlo standard errors."
+        "with a tolerance of at least 3 Monte Carlo standard errors. The verifier recomputes "
+        "every test itself from the per-unit outcomes, so pre-register it: for a difference, the "
+        "predicted sign (expected_direction); when one sample is compared with a fixed value, "
+        "that value (reference_value); for an equivalence, the margin (tolerance)."
     )
     await _guarded(ctx, campaign_id, framed + framed_docs)
     batch = await ctx.model.structured(
@@ -866,6 +875,9 @@ async def experiment_planner(
                     "protocol": spec.protocol,
                     "primary_metric": metric_key(spec.primary_metric),
                     "test_kind": spec.test_kind,
+                    "expected_direction": spec.expected_direction,
+                    "reference_value": spec.reference_value,
+                    "tolerance": spec.tolerance,
                     "success_criterion": spec.success_criterion,
                 }
             ),
@@ -928,8 +940,32 @@ TEST_RULES = (
     "this is how the result is replicated, so never ignore the file. "
     f"If a file named '{SEALED_MANIFEST}' exists, it lists held-out evaluation files: repeat "
     "the same hypothesis test on them and report its metrics with the prefix 'sealed_', "
-    "including 'sealed_<primary key>' and 'sealed_p_value'."
+    "including 'sealed_<primary key>' and 'sealed_p_value'. "
+    f"Also write the outcome of every independent unit the test is computed on to "
+    f"'{UNITS_FILE}' (CSV, one row per unit: one simulation replicate, sample, patient or "
+    "cell, never a pre-aggregated statistic) with the header 'unit,group,value', group "
+    "'control' or 'treatment', plus a 'pair' column when units are matched; or the header "
+    "'unit,value' when one sample is compared with the reference value. The verifier "
+    "recomputes p_value from this file (two-sided Welch, paired or one-sample t-test; TOST "
+    "for equivalence), so value must be the per-unit outcome whose mean difference is the "
+    "effect. In the replication run write it from the resample; in the held-out run also "
+    f"write '{SEALED_UNITS_FILE}' from the held-out data in the same format."
 )
+
+
+def preregistered_test(spec: dict[str, Any]) -> str:
+    """The planned test settings the verifier will recompute the claim with."""
+    kind = spec.get("test_kind", "difference")
+    parts = [f"test kind {kind}"]
+    if kind == "difference":
+        parts.append(
+            f"predicted effect sign {spec.get('expected_direction') or 'nonzero'}"
+        )
+    if spec.get("reference_value") is not None:
+        parts.append(f"reference value {spec['reference_value']}")
+    if kind == "equivalence" and spec.get("tolerance") is not None:
+        parts.append(f"tolerance {spec['tolerance']}")
+    return "Pre-registered test: " + ", ".join(parts) + "."
 
 
 def code_rules(profile: ScientistProfile, config: ScientistConfig) -> str:
@@ -1166,6 +1202,7 @@ async def _workspace_attempt(
             f"Hypothesis: {spec['hypothesis']}\nProtocol: {spec['protocol']}\n"
             f"Primary metric key: {spec['primary_metric']}\n"
             f"Test kind: {spec.get('test_kind', 'difference')}\n"
+            f"{preregistered_test(spec)}\n"
             f"Success criterion: {spec['success_criterion']}\n"
             f"Dataset files in the workspace root ({backend.workdir}): {sorted(datasets) or 'none'}\n\n"
             f"{LAB_SUMMARY}\n\n{_WORKSPACE_RULES}\n\n"
@@ -1261,6 +1298,7 @@ async def execute_intent(
             prompt=(
                 f"Hypothesis: {spec['hypothesis']}\nProtocol: {spec['protocol']}\n"
                 f"Primary metric key: {spec['primary_metric']}\nTest kind: {spec.get('test_kind', 'difference')}\n"
+                f"{preregistered_test(spec)}\n"
                 f"Success criterion: {spec['success_criterion']}\n"
                 f"Dataset files: {sorted(datasets) or 'none'}\n\n{rules}\n\n{feedback}"
                 "Write the complete script."
@@ -1337,6 +1375,12 @@ async def execute_intent(
         )
         return
 
+    # The verifier's own test from the unit-level data replaces the script's p_value, and
+    # whether the result supports the hypothesis follows from it by rule.
+    stats_metrics, rule_support = recompute(
+        spec, metrics, result.files, ctx.config.alpha
+    )
+    measured = {**metrics, **stats_metrics}
     out = frame_untrusted(
         result.stdout[-8000:], source="experiment_stdout", nonce=nonce
     )
@@ -1348,16 +1392,20 @@ async def execute_intent(
         system=_system("experiment analyst", nonce),
         prompt=(
             f"Hypothesis: {spec['hypothesis']}\nSuccess criterion: {spec['success_criterion']}\n"
-            f"Measured metrics (authoritative): {json.dumps(metrics)}\n\nRun output:\n{out.text}\n\n"
+            "Measured metrics (authoritative; p_value is the verifier's own test when "
+            f"stats_source is unit_data): {json.dumps(measured)}\n\n"
+            f"Run output:\n{out.text}\n\n"
             "State what was observed. Use only the measured numbers."
         ),
     )
     fact_metrics = {
-        **metrics,
+        **measured,
         "seed": 1,
         "primary_metric": spec["primary_metric"],
         "test_kind": spec.get("test_kind", "difference"),
-        "supports_hypothesis": obs.supports_hypothesis,
+        "expected_direction": spec.get("expected_direction") or "nonzero",
+        "supports_hypothesis": rule_support or obs.supports_hypothesis,
+        "supports_source": "rule" if rule_support else "analyst",
         "runtime_seconds": round(result.duration_seconds, 3),
         "network_isolated": result.network_isolated,
         "code_sha256": sha256_hex(code),
@@ -1463,17 +1511,50 @@ async def rounds_completed(ctx: ScientistContext, campaign_id: uuid.UUID) -> int
     return int(root["metrics"].get("rounds_completed", 0))
 
 
+async def bounded_gather(
+    limit: int, items: list[Any], fn: Callable[[Any], Awaitable[Any]]
+) -> list[Any]:
+    """``fn`` over ``items`` with at most ``limit`` running at once, results in order.
+
+    Every item runs to completion (or failure) before the first error is re-raised, so a
+    failure in one never leaves another half-written while it is still running."""
+    sem = asyncio.Semaphore(max(1, limit))
+
+    async def one(item: Any) -> Any:
+        async with sem:
+            return await fn(item)
+
+    results = await asyncio.gather(*(one(i) for i in items), return_exceptions=True)
+    for r in results:
+        if isinstance(r, BaseException):
+            raise r
+    return results
+
+
+def stats_provenance(metrics: dict[str, Any]) -> str:
+    """One line on where the fact's p_value came from, for the reviewers."""
+    if metrics.get("stats_source") == "unit_data":
+        return (
+            f"p_value recomputed by the verifier from {metrics.get('stats_n')} units with a "
+            f"{metrics.get('stats_test')} test (the script reported "
+            f"{metrics.get('p_value_reported')}); effect {metrics.get('stats_effect')} "
+            f"(SE {metrics.get('stats_se')})."
+        )
+    note = metrics.get("stats_note") or "no unit data"
+    return f"p_value as reported by the script itself, not recomputed ({note})."
+
+
 async def verifier(ctx: ScientistContext, campaign_id: uuid.UUID) -> dict[str, int]:
     store = ctx.store
     await store.transition_campaign(
         campaign_id, "ablating", from_statuses=["investigating"]
     )
     datasets = await store.dataset_files(campaign_id)
-    stats = {"promoted": 0, "refuted": 0, "inconclusive": 0}
-    for fact in await store.nodes(campaign_id, node_type="fact", status="open"):
+
+    async def verify_one(fact: dict[str, Any]) -> str | None:
         patches = await store.evidence_contents(fact["id"], "git_patch")
         if not patches:
-            continue
+            return None
         code, setup = recipe_from_patch(patches[0].decode("utf-8"))
         primary = fact["metrics"].get("primary_metric")
         original = fact["metrics"].get(primary) if primary else None
@@ -1556,6 +1637,7 @@ async def verifier(ctx: ScientistContext, campaign_id: uuid.UUID) -> dict[str, i
                 f"Test kind: {test_kind} (p_value is "
                 f"{'a TOST equivalence p' if test_kind == 'equivalence' else 'a no-effect test p'}); "
                 f"statistical gate p < {ctx.config.alpha}: {stats_ok}\n"
+                f"{stats_provenance(fact['metrics'])}\n"
                 f"Figure scores: {figure_scores}\nRun log:\n{framed_log.text}\n\n"
                 "Decide whether this is a reliable finding worth reporting. Reject anything "
                 "that does not replicate, overstates the numbers, or could be an artefact."
@@ -1602,7 +1684,7 @@ async def verifier(ctx: ScientistContext, campaign_id: uuid.UUID) -> dict[str, i
                     "replication_note": replication_note,
                 },
             )
-            stats["promoted"] += 1
+            return "promoted"
         else:
             # refuted: replicated, significant and against the hypothesis. Everything else
             # that failed a gate is inconclusive and is never reported as a negative result.
@@ -1617,6 +1699,14 @@ async def verifier(ctx: ScientistContext, campaign_id: uuid.UUID) -> dict[str, i
                     "skeptic_rationale": verdict.rationale[:1000],
                 },
             )
+            return outcome
+
+    # Facts are independent (each its own replication run, critique and review), so they
+    # are verified concurrently, at most one per experiment worker at a time.
+    facts = await store.nodes(campaign_id, node_type="fact", status="open")
+    stats = {"promoted": 0, "refuted": 0, "inconclusive": 0}
+    for outcome in await bounded_gather(ctx.config.workers, facts, verify_one):
+        if outcome is not None:
             stats[outcome] += 1
     rounds = await rounds_completed(ctx, campaign_id) + 1
     await store.set_node_status(
@@ -1717,18 +1807,16 @@ async def sealed_evaluation(ctx: ScientistContext, campaign_id: uuid.UUID) -> in
     manifest = json.dumps(
         {"held_out_files": [a["metadata"].get("file_name") for a in sealed]}
     ).encode()
-    evaluated = 0
-    for finding in await store.nodes(
-        campaign_id, node_type="finding", status="verified"
-    ):
+
+    async def evaluate_one(finding: dict[str, Any]) -> bool:
         trace = await store.trace_provenance(finding["id"], max_depth=2)
         facts = [n for n in trace["nodes"] if n["node_type"] == "fact"]
         if not facts:
-            continue
+            return False
         fact = facts[0]
         patches = await store.evidence_contents(fact["id"], "git_patch")
         if not patches:
-            continue
+            return False
         code, setup = recipe_from_patch(patches[0].decode())
         run = await _run_code(
             ctx,
@@ -1744,6 +1832,16 @@ async def sealed_evaluation(ctx: ScientistContext, campaign_id: uuid.UUID) -> in
             for k, v in (parse_metrics(run.stdout) or {}).items()
             if k.startswith("sealed_")
         }
+        # The held-out test is recomputed from the held-out unit file, as in the verifier.
+        recomputed = (
+            recompute_sealed(fact["metrics"] or {}, run.files) if run.ok else {}
+        )
+        if recomputed:
+            sealed_metrics = {
+                **sealed_metrics,
+                "sealed_p_value_reported": sealed_metrics.get("sealed_p_value"),
+                **recomputed,
+            }
         confirmed, reason = held_out_outcome(
             fact["metrics"] or {}, run.ok, sealed_metrics, ctx.config.alpha
         )
@@ -1785,8 +1883,12 @@ async def sealed_evaluation(ctx: ScientistContext, campaign_id: uuid.UUID) -> in
                     "held_out_reason": reason,
                 },
             )
-        evaluated += 1
-    return evaluated
+        return True
+
+    # One held-out re-run per finding, independent of the others: run them concurrently.
+    findings = await store.nodes(campaign_id, node_type="finding", status="verified")
+    done = await bounded_gather(ctx.config.workers, findings, evaluate_one)
+    return sum(1 for d in done if d)
 
 
 _LATEX_ESCAPES = {
