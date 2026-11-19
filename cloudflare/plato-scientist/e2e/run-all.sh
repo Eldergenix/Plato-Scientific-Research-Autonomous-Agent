@@ -86,6 +86,7 @@ run integrations node e2e/integrations.test.mjs
 run publish-ui node e2e/publish-ui.test.cjs "$OUT"
 run review-ui node e2e/review-ui.test.cjs "$OUT"
 run data node e2e/data.test.cjs "$OUT"
+run graph-hover node e2e/graph-hover.test.cjs public "$OUT"
 
 if ((${#failed[@]})); then
   echo "Failed suites: ${failed[*]}" >&2

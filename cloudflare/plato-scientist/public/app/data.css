@@ -81,6 +81,9 @@
 .dv-focus .dv-edges line{opacity:.08}
 .dv-focus .dv-nodes g{opacity:.22}
 .dv-focus .dv-edges line.on{opacity:1;stroke-width:1.8}
+.dv-ehit line{stroke:transparent;stroke-width:8}
+.dv-edges line.edge-hot.k-act{marker-end:url(#dvAh)}
+.dv-edges line.edge-hot.k-inh{marker-end:url(#dvTh)}
 .dv-focus .dv-nodes g.on,.dv-focus .dv-nodes g.nb{opacity:1}
 .dv-focus .dv-nodes g.on text,.dv-focus .dv-nodes g.nb text{fill:var(--text-1)}
 

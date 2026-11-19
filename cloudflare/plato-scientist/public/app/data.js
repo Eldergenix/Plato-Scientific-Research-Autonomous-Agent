@@ -13,7 +13,7 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt
 const sig = v => { if (v == null || !Number.isFinite(v)) return "–"; const a = Math.abs(v); return a !== 0 && (a < 1e-3 || a >= 1e6) ? v.toExponential(2) : String(+v.toPrecision(4)); };
 const bytes = n => n == null ? "" : n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(n < 10240 ? 1 : 0) + " KB" : (n / 1048576).toFixed(1) + " MB";
 const cssv = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-const still = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+const still = () => matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.motion === "reduce";   // OS setting or the app's Reduce motion
 const ico = (d, w = 14) => `<svg width="${w}" height="${w}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
@@ -452,11 +452,12 @@ function network2D(host, g) {
   const rad = n => 3.5 + Math.min(6, Math.sqrt(n.deg) * 1.4);
   const edges = g.edges.map((e, k) => { const a = idx.get(e.s), b = idx.get(e.t), x1 = X(a), y1 = Y(a), x2 = X(b), y2 = Y(b), kind = EDGE_KIND(e.k), d = Math.hypot(x2 - x1, y2 - y1) || 1, r = rad(g.nodes[b]) + 2;
     const ex = x2 - (x2 - x1) / d * r, ey = y2 - (y2 - y1) / d * r;
-    return `<line data-e="${k}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${ex.toFixed(1)}" y2="${ey.toFixed(1)}" style="stroke:var(${EDGE_COLOR[kind]})"${kind === "act" ? ' marker-end="url(#dvA)"' : kind === "inh" ? ' marker-end="url(#dvT)"' : ""}${kind === "other" ? ' stroke-dasharray="3 2"' : ""}/>`; }).join("");
+    return `<line data-e="${k}" class="k-${kind}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${ex.toFixed(1)}" y2="${ey.toFixed(1)}" style="stroke:var(${EDGE_COLOR[kind]})"${kind === "act" ? ' marker-end="url(#dvA)"' : kind === "inh" ? ' marker-end="url(#dvT)"' : ""}${kind === "other" ? ' stroke-dasharray="3 2"' : ""}/>`; }).join("");
+  const hits = g.edges.map((e, k) => `<line data-h="${k}" x1="${X(idx.get(e.s)).toFixed(1)}" y1="${Y(idx.get(e.s)).toFixed(1)}" x2="${X(idx.get(e.t)).toFixed(1)}" y2="${Y(idx.get(e.t)).toFixed(1)}"/>`).join("");
   const nodes = g.nodes.map((n, i) => `<g data-n="${i}" transform="translate(${X(i).toFixed(1)} ${Y(i).toFixed(1)})"><circle class="hit" r="${Math.max(rad(n) + 4, 9).toFixed(1)}"/><circle r="${rad(n).toFixed(1)}" fill="${nodeColor(g, n)}"/>${showLab(n) ? `<text x="${(rad(n) + 3).toFixed(1)}" y="3.5">${esc(n.label.length > 22 ? n.label.slice(0, 21) + "…" : n.label)}</text>` : ""}</g>`).join("");
   host.innerHTML = netLegend(g) + `<div class="dv-plot dv-net"><svg class="dv-svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Network of ${g.nodes.length} nodes and ${g.edges.length} edges">
-    <defs><marker id="dvA" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 8 4 0 8z" style="fill:var(--green)"/></marker><marker id="dvT" viewBox="0 0 4 10" refX="3" refY="5" markerWidth="4" markerHeight="10" orient="auto"><path d="M2 0v10" style="stroke:var(--red)" stroke-width="2"/></marker></defs>
-    <g class="dv-zoom"><g class="dv-edges">${edges}</g><g class="dv-nodes">${nodes}</g></g></svg><div class="dv-tip" hidden></div><div class="dv-hint">Scroll to zoom · drag to pan</div></div>`;
+    <defs><marker id="dvA" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 8 4 0 8z" style="fill:var(--green)"/></marker><marker id="dvT" viewBox="0 0 4 10" refX="3" refY="5" markerWidth="4" markerHeight="10" orient="auto"><path d="M2 0v10" style="stroke:var(--red)" stroke-width="2"/></marker><marker id="dvAh" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 8 4 0 8z" style="fill:var(--accent)"/></marker><marker id="dvTh" viewBox="0 0 4 10" refX="3" refY="5" markerWidth="4" markerHeight="10" orient="auto"><path d="M2 0v10" style="stroke:var(--accent)" stroke-width="2"/></marker></defs>
+    <g class="dv-zoom"><g class="dv-edges">${edges}</g><g class="dv-ehit">${hits}</g><g class="dv-nodes">${nodes}</g></g></svg><div class="dv-tip" hidden></div><div class="dv-hint">Scroll to zoom · drag to pan</div></div>`;
   const svg = host.querySelector("svg.dv-svg"), zg = svg.querySelector(".dv-zoom"), tip = host.querySelector(".dv-tip"), plot = host.querySelector(".dv-plot");
   const adj = g.nodes.map(() => new Set()); g.edges.forEach((e, k) => { adj[idx.get(e.s)].add(k); adj[idx.get(e.t)].add(k); });
   let s = 1, tx = 0, ty = 0, drag = null; const apply = () => zg.setAttribute("transform", `translate(${tx} ${ty}) scale(${s})`);
@@ -465,19 +466,28 @@ function network2D(host, g) {
   svg.addEventListener("pointerdown", e => { drag = [e.clientX, e.clientY, tx, ty]; svg.setPointerCapture(e.pointerId); });
   svg.addEventListener("pointermove", e => { if (drag) { const b = svg.getBoundingClientRect(); tx = drag[2] + (e.clientX - drag[0]) * W / b.width; ty = drag[3] + (e.clientY - drag[1]) * H / b.height; apply(); } });
   svg.addEventListener("pointerup", () => { drag = null; });
-  svg.addEventListener("mouseover", e => { const el = e.target.closest("[data-n]"); if (!el) return; const i = +el.dataset.n, n = g.nodes[i];
-    svg.classList.add("dv-focus"); el.classList.add("on"); adj[i].forEach(k => { svg.querySelector(`[data-e="${k}"]`)?.classList.add("on"); const ed = g.edges[k]; svg.querySelector(`[data-n="${idx.get(ed.s === n.id ? ed.t : ed.s)}"]`)?.classList.add("nb"); });
-    tip.innerHTML = nodeTip(g, n); tip.hidden = false; const pb = plot.getBoundingClientRect(), r = el.getBoundingClientRect();
-    tip.style.left = Math.min(r.right - pb.left + 8, pb.width - tip.offsetWidth - 4) + "px"; tip.style.top = Math.max(0, r.top - pb.top - tip.offsetHeight - 4) + "px"; });
-  svg.addEventListener("mouseout", e => { if (!e.target.closest("[data-n]")) return; svg.classList.remove("dv-focus"); svg.querySelectorAll(".on,.nb").forEach(x => x.classList.remove("on", "nb")); tip.hidden = true; });
+  // Hovering a node marks its lines; hovering a line marks it and its two nodes. Marked lines turn accent blue, dashed and flowing (.edge-hot).
+  const hot = k => { const ln = svg.querySelector(`[data-e="${k}"]`); if (!ln) return; ln.classList.add("on", "edge-hot"); ln.parentNode.appendChild(ln); };
+  const place = (x, y) => { const pb = plot.getBoundingClientRect(); tip.style.left = Math.max(0, Math.min(x - pb.left + 8, pb.width - tip.offsetWidth - 4)) + "px"; tip.style.top = Math.max(0, y - pb.top - tip.offsetHeight - 4) + "px"; };
+  const clear = () => { svg.classList.remove("dv-focus"); svg.querySelectorAll(".on,.nb,.edge-hot").forEach(x => x.classList.remove("on", "nb", "edge-hot")); tip.hidden = true; };
+  const ARROW = { act: "→", inh: "⊣" };
+  svg.addEventListener("mouseover", e => { if (drag) return; const el = e.target.closest("[data-n],[data-h]"); if (!el) return; clear(); svg.classList.add("dv-focus");
+    if (el.dataset.h != null) { const k = +el.dataset.h, ed = g.edges[k], a = idx.get(ed.s), b = idx.get(ed.t); hot(k);
+      svg.querySelector(`[data-n="${a}"]`)?.classList.add("nb"); svg.querySelector(`[data-n="${b}"]`)?.classList.add("nb");
+      tip.innerHTML = `<b>${esc(g.nodes[a].label)}</b> ${ARROW[EDGE_KIND(ed.k)] || "–"} <b>${esc(g.nodes[b].label)}</b>${ed.k ? `<br>${esc(String(ed.k).slice(0, 60))}` : ""}`; tip.hidden = false; place(e.clientX, e.clientY); return; }
+    const i = +el.dataset.n, n = g.nodes[i]; el.classList.add("on");
+    adj[i].forEach(k => { hot(k); const ed = g.edges[k]; svg.querySelector(`[data-n="${idx.get(ed.s === n.id ? ed.t : ed.s)}"]`)?.classList.add("nb"); });
+    tip.innerHTML = nodeTip(g, n); tip.hidden = false; const r = el.getBoundingClientRect(); place(r.right, r.top); });
+  svg.addEventListener("mouseout", e => { if (!e.target.closest("[data-n],[data-h]") || e.relatedTarget && e.target.closest("[data-n],[data-h]").contains(e.relatedTarget)) return; clear(); });
 }
 /* 3D: perspective canvas with drag-to-orbit, wheel zoom, depth-sorted nodes and hover labels. */
 function network3D(host, g) {
   const P = g._p3 ||= layout(g, 3), W = Math.max(320, host.clientWidth || 640), H = clamp(Math.round(W * .62), 320, 560), dpr = devicePixelRatio || 1;
   host.innerHTML = netLegend(g) + `<div class="dv-plot dv-net"><canvas width="${W * dpr}" height="${H * dpr}" style="width:${W}px;height:${H}px" role="img" aria-label="3D network of ${g.nodes.length} nodes"></canvas><div class="dv-tip" hidden></div><div class="dv-hint">Drag to rotate · scroll to zoom</div></div>`;
   const cv = host.querySelector("canvas"), ctx = cv.getContext("2d"), tip = host.querySelector(".dv-tip"), idx = new Map(g.nodes.map((n, i) => [n.id, i]));
-  const st = { yaw: .6, pitch: -.35, zoom: 1, auto: !still(), hover: -1, raf: 0, drag: null, proj: [] };
-  const colors = () => ({ n: g.nodes.map(n => nodeColor(g, n)), e: Object.fromEntries(Object.entries(EDGE_COLOR).map(([k, v]) => [k, cssv(v)])), t: cssv("--text"), t3: cssv("--text-3") });
+  const st = { yaw: .6, pitch: -.35, zoom: 1, auto: !still(), hover: -1, hoverE: -1, raf: 0, drag: null, proj: [] };
+  const lit = () => st.hover >= 0 || st.hoverE >= 0;
+  const colors = () => ({ n: g.nodes.map(n => nodeColor(g, n)), e: Object.fromEntries(Object.entries(EDGE_COLOR).map(([k, v]) => [k, cssv(v)])), t: cssv("--text"), t3: cssv("--text-3"), hot: cssv("--accent") });
   let col = colors();
   const draw = () => {
     const cy = Math.cos(st.yaw), sy = Math.sin(st.yaw), cp = Math.cos(st.pitch), sp = Math.sin(st.pitch), R = Math.min(W, H) * .42 * st.zoom, cam = 3.2;
@@ -485,31 +495,43 @@ function network3D(host, g) {
       return { x: W / 2 + x1 * R * f, y: H / 2 + y1 * R * f, z: z2, f, i }; });
     st.proj = pr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H); ctx.lineWidth = 1;
-    const hov = st.hover, nb = new Set();
+    // A hovered node marks all its lines, a hovered line marks itself; marked lines are drawn last in the accent, dashed and flowing source → target.
+    const hov = st.hover, nb = new Set(), on = k => hov >= 0 ? idx.get(g.edges[k].s) === hov || idx.get(g.edges[k].t) === hov : k === st.hoverE;
     if (hov >= 0) g.edges.forEach(e => { const a = idx.get(e.s), b = idx.get(e.t); if (a === hov) nb.add(b); if (b === hov) nb.add(a); });
-    for (const e of g.edges) { const a = pr[idx.get(e.s)], b = pr[idx.get(e.t)], on = hov >= 0 && (a.i === hov || b.i === hov);
-      ctx.globalAlpha = hov >= 0 ? (on ? .95 : .08) : clamp(.25 + (a.z + b.z + 2) * .18, .15, .8); ctx.strokeStyle = col.e[EDGE_KIND(e.k)];
-      ctx.setLineDash(EDGE_KIND(e.k) === "other" ? [3, 2] : []); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
+    else if (st.hoverE >= 0) { const e = g.edges[st.hoverE]; nb.add(idx.get(e.s)); nb.add(idx.get(e.t)); }
+    const hotE = [];
+    g.edges.forEach((e, k) => { const a = pr[idx.get(e.s)], b = pr[idx.get(e.t)]; if (lit() && on(k)) { hotE.push([a, b]); return; }
+      ctx.globalAlpha = lit() ? .08 : clamp(.25 + (a.z + b.z + 2) * .18, .15, .8); ctx.strokeStyle = col.e[EDGE_KIND(e.k)];
+      ctx.setLineDash(EDGE_KIND(e.k) === "other" ? [3, 2] : []); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); });
+    if (hotE.length) { ctx.globalAlpha = 1; ctx.strokeStyle = col.hot; ctx.lineWidth = 1.8; ctx.setLineDash([5, 3]); ctx.lineDashOffset = still() ? 0 : -(performance.now() / 37.5 % 8);   // 16px per .6s, as the SVG flow
+      for (const [a, b] of hotE) { ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
+      ctx.lineWidth = 1; ctx.lineDashOffset = 0; }
     ctx.setLineDash([]);
     const order = [...pr].sort((a, b) => a.z - b.z);
-    for (const p of order) { const n = g.nodes[p.i], r = (2.5 + Math.min(5, Math.sqrt(n.deg) * 1.2)) * p.f; ctx.globalAlpha = hov >= 0 && p.i !== hov && !nb.has(p.i) ? .18 : clamp(.55 + (p.z + 1) * .25, .45, 1);
+    for (const p of order) { const n = g.nodes[p.i], r = (2.5 + Math.min(5, Math.sqrt(n.deg) * 1.2)) * p.f; ctx.globalAlpha = lit() && p.i !== hov && !nb.has(p.i) ? .18 : clamp(.55 + (p.z + 1) * .25, .45, 1);
       ctx.fillStyle = col.n[p.i]; ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill(); }
     ctx.globalAlpha = 1; ctx.font = "11px Inter, system-ui, sans-serif"; ctx.fillStyle = col.t;
-    const lab = hov >= 0 ? [hov, ...nb] : g.nodes.length <= 40 ? g.nodes.map((_, i) => i) : [...g.nodes.keys()].sort((a, b) => g.nodes[b].deg - g.nodes[a].deg).slice(0, 15);
+    const lab = hov >= 0 ? [hov, ...nb] : st.hoverE >= 0 ? [...nb] : g.nodes.length <= 40 ? g.nodes.map((_, i) => i) : [...g.nodes.keys()].sort((a, b) => g.nodes[b].deg - g.nodes[a].deg).slice(0, 15);
     for (const i of lab) { const p = pr[i]; ctx.fillText(g.nodes[i].label.slice(0, 22), p.x + 7, p.y + 3.5); }
   };
-  const loop = () => { st.raf = 0; if (!cv.isConnected) return; if (st.auto && !st.drag && st.hover < 0) { st.yaw += .0035; draw(); st.raf = requestAnimationFrame(loop); } };
+  // Spins while idle; while a line is marked the spin pauses and frames run only to move the dash (none with reduced motion).
+  const loop = () => { st.raf = 0; if (!cv.isConnected) return; const spin = st.auto && !st.drag && !lit(), flow = lit() && !still();
+    if (spin) st.yaw += .0035; if (spin || flow) { draw(); st.raf = requestAnimationFrame(loop); } };
   const kick = () => { if (!st.raf) st.raf = requestAnimationFrame(loop); };
   cv.addEventListener("pointerdown", e => { st.drag = [e.clientX, e.clientY, st.yaw, st.pitch]; st.auto = false; cv.setPointerCapture(e.pointerId); });
   cv.addEventListener("pointermove", e => {
     if (st.drag) { st.yaw = st.drag[2] + (e.clientX - st.drag[0]) * .01; st.pitch = clamp(st.drag[3] + (e.clientY - st.drag[1]) * .01, -1.5, 1.5); draw(); return; }
     const b = cv.getBoundingClientRect(), x = e.clientX - b.left, y = e.clientY - b.top; let best = -1, bd = 12 * 12;
     for (const p of st.proj) { const d = (p.x - x) ** 2 + (p.y - y) ** 2; if (d < bd) { bd = d; best = p.i; } }
-    if (best !== st.hover) { st.hover = best; draw(); kick(); }
-    if (best >= 0) { tip.innerHTML = nodeTip(g, g.nodes[best]); tip.hidden = false; tip.style.left = Math.min(x + 14, W - tip.offsetWidth - 4) + "px"; tip.style.top = Math.max(0, y - tip.offsetHeight - 10) + "px"; } else tip.hidden = true;
+    let bestE = -1;   // no node under the pointer: the nearest line within 5px
+    if (best < 0) { let be = 25; g.edges.forEach((e, k) => { const a = st.proj[idx.get(e.s)], b = st.proj[idx.get(e.t)], dx = b.x - a.x, dy = b.y - a.y, L = dx * dx + dy * dy || 1, u = clamp(((x - a.x) * dx + (y - a.y) * dy) / L, 0, 1), d = (a.x + u * dx - x) ** 2 + (a.y + u * dy - y) ** 2; if (d < be) { be = d; bestE = k; } }); }
+    if (best !== st.hover || bestE !== st.hoverE) { st.hover = best; st.hoverE = bestE; draw(); kick(); }
+    const ed = bestE >= 0 && g.edges[bestE];
+    if (best >= 0 || ed) { tip.innerHTML = ed ? `<b>${esc(g.nodes[idx.get(ed.s)].label)}</b> ${{ act: "→", inh: "⊣" }[EDGE_KIND(ed.k)] || "–"} <b>${esc(g.nodes[idx.get(ed.t)].label)}</b>${ed.k ? `<br>${esc(String(ed.k).slice(0, 60))}` : ""}` : nodeTip(g, g.nodes[best]);
+      tip.hidden = false; tip.style.left = Math.max(0, Math.min(x + 14, W - tip.offsetWidth - 4)) + "px"; tip.style.top = Math.max(0, y - tip.offsetHeight - 10) + "px"; } else tip.hidden = true;
   });
   cv.addEventListener("pointerup", () => { st.drag = null; });
-  cv.addEventListener("pointerleave", () => { st.hover = -1; tip.hidden = true; draw(); kick(); });
+  cv.addEventListener("pointerleave", () => { st.hover = -1; st.hoverE = -1; tip.hidden = true; draw(); kick(); });
   cv.addEventListener("wheel", e => { e.preventDefault(); st.zoom = clamp(st.zoom * Math.exp(-e.deltaY * .0015), .4, 5); draw(); }, { passive: false });
   draw(); kick();
   return { retheme() { col = colors(); draw(); }, dispose() { cancelAnimationFrame(st.raf); } };
