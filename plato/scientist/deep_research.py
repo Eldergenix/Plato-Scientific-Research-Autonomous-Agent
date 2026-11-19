@@ -65,9 +65,11 @@ CREDIT_TOKENS_ENV = "PLATO_FIRECRAWL_CREDIT_TOKENS"
 # 25,000) and the Hobby plan's top-ups most ($5 per 1,000 = 50,000): set
 # PLATO_FIRECRAWL_CREDIT_TOKENS when either applies.
 DEFAULT_CREDIT_TOKENS = 9_900
-# Firecrawl does not document a developer-search price; charge it as one credit until the
-# response reports one.
-DEVELOPER_SEARCH_CREDITS = 1.0
+# Firecrawl does not document a developer-search price and its response carries no
+# creditsUsed. A live check on 2026-11-19 (web search 2 + scrape 1 + Alexandria tool
+# discovery 0 + one developer search) drew 5 credits from the team balance, so charge the
+# 2 credits left unexplained; a reported creditsUsed still wins.
+DEVELOPER_SEARCH_CREDITS = 2.0
 MAX_TOOL_TEXT = 6_000
 WEB_RESULTS = 5
 

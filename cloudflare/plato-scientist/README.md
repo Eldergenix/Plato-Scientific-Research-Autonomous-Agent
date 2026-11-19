@@ -141,6 +141,9 @@ thread's token budget and settles to the credits Firecrawl reports, at
 `PLATO_FIRECRAWL_CREDIT_TOKENS` allowance tokens per credit (default 9,900: the Standard
 plan's $0.00099 per credit against Claude Haiku 5.5's input price; set 25,000 if usage runs
 past the plan's credits into $5-per-2,000 top-ups). So research spend counts against the monthly allowance like model spend. One
+Measured live on 2026-11-19: the Research Index (papers, paper, similar, proteins) left the
+balance unchanged; web search costs 2 credits per 10 results, a scrape 1, Alexandria tool
+discovery 0, and a developer search, which reports no price, is charged 2. One
 experiment's research is capped at 12 credits (`research_max_credits` in the thread config).
 Threads on the person's own Anthropic key get only the free Research Index tools, because
 their spend is not metered by the allowance. Check `/healthz` → `literature_keys.firecrawl`.

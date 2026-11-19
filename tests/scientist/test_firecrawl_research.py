@@ -592,9 +592,9 @@ async def test_research_session_runs_tools_and_returns_a_sourced_brief(store, ca
     assert [f.sources for f in brief.findings] == [["P1"], ["P2", "W1"]]
     assert set(outcome.cited()) == {"P1", "P2", "W1"}
     assert outcome.cited()["P1"].paper["paperId"] == "111"
-    # web 2 + scrape 1 + run_tool 2 + developer 1 (no stated price) = 6 credits.
-    assert outcome.credits == 6.0
-    assert (await store.get_campaign(cid))["tokens_used"] == 5 * 500 + 600
+    # web 2 + scrape 1 + run_tool 2 + developer 2 (no stated price) = 7 credits.
+    assert outcome.credits == 7.0
+    assert (await store.get_campaign(cid))["tokens_used"] == 5 * 500 + 700
     # Tool output reached the model framed, and the injection in the snippet was flagged.
     results = model.requests[3][-1]["content"]
     assert all(
