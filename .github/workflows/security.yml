@@ -6,7 +6,8 @@ name: security
 #
 # - bandit: static analysis of Plato's own Python (HIGH severity = block).
 # - safety: known-CVE report against the resolved dep tree.
-# - pip-audit: PyPA's own CVE check. This is the dependency hard gate.
+# - pip-audit: PyPA's own CVE check over the legacy package (pyproject.toml). The scientist
+#   container's dependencies are gated in scientist.yml.
 # - gitleaks: secret-leak scan over the git history.
 #
 # Note on injection safety: this workflow does not consume any
@@ -103,7 +104,10 @@ jobs:
           if-no-files-found: ignore
 
   pip-audit:
-    name: pip-audit (PyPA CVE scan)
+    # Audits the legacy package (pyproject.toml), which the old dashboard image installs with
+    # `pip install -e .`. The deployed scientist container's dependencies are audited by the
+    # `audit` job in scientist.yml (docker/requirements-scientist.txt).
+    name: pip-audit (legacy package / dashboard image)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
