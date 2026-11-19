@@ -28,7 +28,7 @@ from plato.publish import journals as journal_profiles
 from plato.publish.collect import NotPublishable
 from plato.publish.materials import Material
 from plato.publish.materials import ingest as ingest_materials
-from plato.publish.package import build_package
+from plato.publish.package import PreviewFailed, build_package, preview_pdf
 
 from .db.migrate import advisory_key
 from .db.store import TERMINAL_STATUSES, AllowanceExceeded, DualGraphStore
@@ -409,6 +409,35 @@ def create_app(dsn: str | None = None, internal_token: str | None = None) -> Fas
                 "x-plato-export-sha256": pkg.sha256,
                 "x-plato-export-name": pkg.name,
             },
+        )
+
+    @app.get(
+        "/internal/campaigns/{campaign_id}/manuscript.pdf",
+        dependencies=[Depends(require_token)],
+        response_class=Response,
+    )
+    async def manuscript_pdf(campaign_id: uuid.UUID) -> Response:
+        """The finished paper typeset with pdfLaTeX (preprint layout, no model call).
+        The Worker caches it in R2 per manuscript version."""
+        store: DualGraphStore = app.state.store
+        async with export_slots:
+            try:
+                pdf, pages = await preview_pdf(
+                    store, campaign_id, model_name=resolve_model()
+                )
+            except NotPublishable as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from None
+            except PreviewFailed as exc:
+                logger.warning("preview did not compile: %s", exc.log[-800:])
+                raise HTTPException(
+                    status_code=422,
+                    detail="The paper's LaTeX did not compile. The LaTeX view and the "
+                    "publication packages still work.",
+                ) from None
+        return Response(
+            content=pdf,
+            media_type="application/pdf",
+            headers={"x-plato-pdf-pages": str(pages or "")},
         )
 
     @app.get("/internal/campaigns/{campaign_id}", dependencies=[Depends(require_token)])

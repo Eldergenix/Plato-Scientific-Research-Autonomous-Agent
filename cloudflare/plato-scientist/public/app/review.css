@@ -1,0 +1,116 @@
+/* Manuscript tab: peer review side panel (open, close, resize), claims marked in the
+   paper, and the typeset PDF. Colours come from the theme tokens in index.html. */
+
+/* ---------- layout: the panel is a third grid track beside the paper ---------- */
+.body.full.has-rv{grid-template-columns:minmax(0,1fr)}
+.body.full.has-rv.rv-open{grid-template-columns:minmax(0,1fr) var(--rv-w,420px)}
+.vt #review{view-transition-name:review}
+.rv{position:relative;display:flex;flex-direction:column;min-width:0;min-height:0;border-left:1px solid var(--border);background:var(--bg)}
+.rv[hidden]{display:none}
+.rv-grip{position:absolute;left:-4px;top:0;bottom:0;width:8px;cursor:col-resize;z-index:5;touch-action:none;outline:none}
+.rv-grip::after{content:"";position:absolute;left:3.5px;top:0;bottom:0;width:1px;background:transparent;transition:background .15s}
+.rv-grip:hover::after,.rv-grip:focus-visible::after,.rv-drag .rv-grip::after{background:var(--accent);width:2px;left:3px}
+.rv-drag,.rv-drag *{cursor:col-resize!important;user-select:none}
+.rv-drag iframe{pointer-events:none}
+
+.rv-head{display:flex;align-items:center;gap:8px;height:44px;padding:0 8px 0 16px;border-bottom:1px solid var(--border);flex:none}
+.rv-head b{font-weight:500;font-size:13px;color:var(--text)}
+.rv-head .icon-btn{margin-left:auto}
+.rv-body{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:4px 16px 88px;font-size:12.5px;line-height:1.55}
+
+.rv-sec{padding:14px 0;border-bottom:1px solid var(--border)}
+.rv-sec:last-child{border-bottom:0}
+.rv-sec h4{display:flex;align-items:baseline;gap:6px;margin:0 0 10px;font-size:12px;font-weight:500;color:var(--text-2)}
+.rv-sec h4 .c{font-weight:400;color:var(--text-3)}
+.rv-note{display:flex;flex-wrap:wrap;gap:4px 12px;margin:8px 0 0;font-size:11.5px}
+.rv-note span{display:inline-flex;align-items:center;gap:5px}
+.rv-note i{width:7px;height:7px;border-radius:50%}
+
+/* decision */
+.dec{display:inline-flex;align-items:center;gap:6px;height:20px;padding:0 8px;border-radius:9999px;font-size:11.5px;font-weight:500;
+  color:var(--c);background:color-mix(in srgb,var(--c) 14%,transparent);white-space:nowrap}
+.dec i{width:7px;height:7px;border-radius:50%;background:var(--c)}
+.dec.big{height:26px;padding:0 11px;font-size:13px}
+.rv-dec{display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px}
+.rv-dec .t3{flex-basis:100%;font-size:11.5px}
+.rv-verdict .scores{display:grid;grid-template-columns:repeat(3,auto);justify-content:start;gap:6px 22px;margin:14px 0 12px}
+.rv-verdict .score{flex-direction:column;align-items:flex-start;gap:5px}
+.rv-sum{margin:0;color:var(--text)}
+.rv-more{margin-top:8px}.rv-more summary{cursor:pointer;color:var(--text-2);font-size:12px}.rv-more p{margin:6px 0 0;color:var(--text-2)}
+
+/* claims */
+.rv-tally{display:flex;gap:2px;height:6px;border-radius:3px;overflow:hidden}
+.rv-tally i{min-width:3px}
+.rv-filter{margin:12px 0 4px;display:flex;flex-wrap:wrap}
+.rv-filter button{display:inline-flex;align-items:center;gap:5px;font-size:12px}
+.rv-filter .c{color:var(--text-3);font-size:11px}
+.rv-list{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:8px}
+.rv-none{padding:10px 0}
+.rv-claim{position:relative;border:1px solid var(--border);border-radius:8px;padding:10px 12px 10px 14px;background:var(--panel);transition:border-color .2s,box-shadow .2s}
+.rv-claim::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:2px;border-radius:0 2px 2px 0;background:var(--c)}
+.rv-claim.on{border-color:color-mix(in srgb,var(--c) 55%,var(--border-2));box-shadow:0 0 0 1px color-mix(in srgb,var(--c) 35%,transparent)}
+.rv-top{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px}
+.rv-top .t3{font-size:11.5px}
+.rv-quote{display:block;width:100%;margin:8px 0 6px;padding:2px 0 2px 10px;border:0;border-left:2px solid var(--border-2);background:none;text-align:left;
+  font:inherit;font-size:12.5px;line-height:1.55;color:var(--text);cursor:pointer;border-radius:0}
+button.rv-quote:hover{border-left-color:var(--accent);color:var(--text-1)}
+button.rv-quote:focus-visible{outline:1px solid var(--focus);outline-offset:2px}
+.rv-quote.gone{color:var(--text-3);text-decoration:line-through;cursor:default}
+.rv-quote .katex{font-size:1em}
+.rv-dl{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;margin:0}
+.rv-dl dt{color:var(--text-3);font-size:11.5px;padding-top:1px}
+.rv-dl dd{margin:0;color:var(--text-2)}
+.rv-out{display:flex;gap:7px;align-items:baseline;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border-2);color:var(--text-2)}
+.rv-out i{flex:none;width:7px;height:7px;border-radius:50%;background:var(--c);transform:translateY(-1px)}
+.rv-out b{font-weight:500;color:var(--text)}
+
+/* lists, reviewers, citations */
+.rv-ul{margin:0;padding-left:18px;display:grid;gap:5px;color:var(--text)}
+.rv-ul .t3,.rv-ul .t2{font-size:12px}
+.rv-fold>summary{list-style:none;cursor:pointer}
+.rv-fold>summary::-webkit-details-marker{display:none}
+.rv-fold>summary h4{margin:0}
+.rv-fold>summary h4::before{content:"›";display:inline-block;width:10px;color:var(--text-3);transition:transform .15s}
+.rv-fold[open]>summary h4::before{transform:rotate(90deg)}
+.rv-fold[open]>summary{margin-bottom:10px}
+.rv-rev{padding:8px 0;border-top:1px solid var(--border)}
+.rv-rev:first-of-type{border-top:0;padding-top:0}
+.rv-rev b{font-weight:500}
+.rv-rev p{margin:6px 0}
+.rv-cites{list-style:none;margin:0 0 12px;padding:0;display:grid;gap:10px}
+.rv-cites blockquote{margin:2px 0 0;padding-left:10px;border-left:2px solid var(--border);color:var(--text-2);font-size:12px}
+
+/* the review line on the live paper card */
+.rv-strip{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;padding:10px 12px;margin-bottom:20px;border:1px solid var(--border);border-radius:8px;background:var(--panel);font-size:12.5px}
+.rv-strip b{font-weight:500}
+.rv-strip .btn{margin-left:auto}
+
+/* ---------- claims marked in the paper (CSS Custom Highlight API) ---------- */
+::highlight(rv-approved){background-color:color-mix(in srgb,var(--green) 12%,transparent);text-decoration:underline 1.5px color-mix(in srgb,var(--green) 70%,transparent);text-underline-offset:3px}
+::highlight(rv-needs_revision){background-color:color-mix(in srgb,var(--orange) 14%,transparent);text-decoration:underline 1.5px color-mix(in srgb,var(--orange) 80%,transparent);text-underline-offset:3px}
+::highlight(rv-rejected){background-color:color-mix(in srgb,var(--red) 15%,transparent);text-decoration:underline 1.5px color-mix(in srgb,var(--red) 85%,transparent);text-underline-offset:3px}
+::highlight(rv-focus){background-color:color-mix(in srgb,var(--accent) 32%,transparent);color:var(--text-1)}
+.rv-hit{outline:1px solid var(--accent);outline-offset:4px;border-radius:2px}
+
+/* ---------- manuscript bar, PDF ---------- */
+.ms-acts{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+a.btn{text-decoration:none}
+.btn.on{background:var(--pill-on)}
+.btn.ghost.on{background:var(--active);color:var(--text)}
+.paper.wide{max-width:none;padding:20px 24px 24px;display:flex;flex-direction:column;min-height:100%}
+.pdf-frame{display:block;width:100%;flex:1;min-height:max(520px,calc(100vh - 210px));border:1px solid var(--border);border-radius:8px;background:#525659}
+.ms-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;flex:1;min-height:0}
+.ms-split pre.src{max-height:calc(100vh - 210px);overflow:auto}
+.ms-split .pdf-frame{min-height:calc(100vh - 210px)}
+.pdf-msg{display:grid;justify-items:start;gap:6px;padding:28px;border:1px dashed var(--border-2);border-radius:8px;font-size:13px}
+.pdf-msg b{font-weight:500}.pdf-msg p{margin:0}
+.pdf-wait{grid-template-columns:auto 1fr;align-items:center;column-gap:10px}
+.pdf-wait p{grid-column:2}
+
+/* ---------- small screens: the panel slides over the paper ---------- */
+@media (max-width:1100px){
+  .body.full.has-rv.rv-open{grid-template-columns:minmax(0,1fr)}
+  .rv{position:fixed;top:0;right:0;bottom:0;width:min(440px,100vw);z-index:60;border-left:1px solid var(--border-2);box-shadow:var(--raise,0 8px 40px rgba(0,0,0,.45))}
+  .rv-grip{display:none}
+  .ms-split{grid-template-columns:minmax(0,1fr)}
+}

@@ -45,6 +45,25 @@ Why this shape:
   The deploy script creates it once, keeps a copy in `~/.config/plato/secrets-key` (mode 600) and
   never replaces it on the Worker: a different key would invalidate every password and saved key.
 
+## Manuscript tab: peer review and PDF
+
+The **Manuscript** tab shows the paper as text, as a typeset **PDF**, as LaTeX (optionally with
+the PDF beside it) and as BibTeX. The PDF is the preprint layout (arXiv profile) built by the
+container's pdfLaTeX without a model call (`GET /api/campaigns/:id/manuscript.pdf`); the Worker
+keeps it in R2 under `previews/<campaign>/<latex evidence id>.pdf`, so only the first view of a
+paper wakes the container.
+
+The **automated peer review** opens in a right panel that closes, reopens and resizes (drag the
+edge, arrow keys on it, double-click to reset; width and state are remembered). The handling
+editor judges the paper claim by claim: each assessment quotes the manuscript verbatim and gives
+a verdict (approved, needs revision, rejected), severity, the evidence with its numbers, the
+critique and the fix. When the paper is revised, a second pass re-reads every claim in the
+revision (resolved, partly resolved, unresolved, removed) and gives the decision on the paper as
+published. Claims are marked in the paper by their final state; clicking a quote jumps to the
+sentence and clicking a marked sentence opens its card. The reviewer panel, claim support and
+citation checks sit below. Reviews written before claim-by-claim verdicts show their required
+changes.
+
 ## Publication packages
 
 The **Publish** tab of a finished research thread builds a submission package for one venue:
@@ -150,6 +169,7 @@ node e2e/unit.test.mjs                                    # webhook signatures, 
 node e2e/stub-composio.mjs 8791 &                          # Composio API stand-in
 COMPOSIO_WEBHOOK_SECRET=<secret> PLATO_DATABASE_URL=... node e2e/integrations.test.mjs
 PLATO_DATABASE_URL=... node e2e/publish-ui.test.cjs /tmp/plato-ui
+PLATO_DATABASE_URL=... node e2e/review-ui.test.cjs /tmp/plato-ui   # review panel, PDF view (needs pdflatex)
 ```
 
 All of them refuse to run against anything but a local URL: they sign up accounts and use the dev admin token.

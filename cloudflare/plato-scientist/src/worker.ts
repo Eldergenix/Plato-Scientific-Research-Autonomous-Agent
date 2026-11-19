@@ -95,6 +95,7 @@ const ROUTES: [string, string, Access, Handler][] = [
   ["GET", "campaigns/:id/manuscript", "user", campaigns.campaignManuscript],
   ["GET", "campaigns/:id/usage", "user", campaigns.campaignUsage],
   ["GET", "campaigns/:id/draft", "user", campaigns.campaignDraft],
+  ["GET", "campaigns/:id/manuscript.pdf", "user", exportsApi.manuscriptPdf],
   ["GET", "campaigns/:id/exports", "user", exportsApi.listExports],
   ["POST", "campaigns/:id/exports", "user", exportsApi.createExport],
   ["GET", "publish/journals", "user", exportsApi.journals],

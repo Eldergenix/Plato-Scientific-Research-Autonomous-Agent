@@ -39,7 +39,13 @@ from plato.scientist.db.migrate import advisory_key
 from plato.scientist.db.store import DualGraphStore
 
 from . import convert
-from .adapt import JournalAdaptation, adapt, normalise, unsupported_numbers
+from .adapt import (
+    JournalAdaptation,
+    adapt,
+    fallback,
+    normalise,
+    unsupported_numbers,
+)
 from .collect import Materials, collect
 from .document import (
     Doc,
@@ -319,6 +325,116 @@ async def _pandoc_normalise(text: str, workdir: Path) -> str:
         sanitize(normalise_citations(res.output))
         if res.code == 0
         else sanitize(plain_text(text))
+    )
+
+
+@dataclass
+class Compiled:
+    tex: str
+    items: list[dict[str, Any]]
+    bibliography: str
+    scrub: Any  # Callable[[str], str]: drops citation keys the graph does not hold
+    pdf_ok: bool
+    error: str
+    pages: int | None
+    pdf_dir: Path
+    finish: Any = None  # async (str) -> str: scrub, then author-date citations as text
+
+
+async def _compile_manuscript(
+    store,
+    m: Materials,
+    j: Journal,
+    doc: Doc,
+    build: Path,
+    ms_dir: Path,
+    work: Path,
+    crossref: bool,
+) -> Compiled:
+    """References in the journal's CSL style, then pdfLaTeX (with a pandoc-normalised
+    retry when the model's LaTeX does not compile). ``ms_dir`` holds the figures."""
+    # Cited keys in order of first appearance across everything that is printed.
+    probe = latex_pdf(doc, "")
+    sup_methods = j.methods_in_supplement
+    keys = cited_keys_in_order(
+        probe, doc.sections.get("methods", "") if sup_methods else ""
+    )
+    drop = {k for k in keys if k not in m.papers}
+    keys = [k for k in keys if k not in drop]
+
+    def scrub(t: str) -> str:
+        """Remove citation keys the graph does not hold (never print "?")."""
+        if not drop:
+            return t
+
+        def repl(mm: re.Match[str]) -> str:
+            ok = [
+                k.strip()
+                for k in mm.group(1).split(",")
+                if k.strip() and k.strip() not in drop
+            ]
+            return "\\cite{" + ",".join(ok) + "}" if ok else ""
+
+        return re.sub(r"\\cite\{([^}]*)\}", repl, t)
+
+    if crossref and keys:
+        try:
+            await enrich(store.pool, m.papers, keys)
+        except Exception:  # never block an export on Crossref
+            logger.warning("crossref enrichment failed", exc_info=True)
+    items = csl_items(keys, m.papers)
+    (build / "refs.json").write_text(
+        json.dumps(items, ensure_ascii=False), encoding="utf-8"
+    )
+    st = doc.style
+    bib_entries, _ = await render_references(items, st.csl, build)
+    if st.numeric:
+        bibliography = thebibliography(bib_entries)  # natbib numbers the citations
+    else:
+        bibliography = author_date_bibliography(bib_entries)
+    convert.style_file(st.csl, build)
+    cluster_text: dict[tuple[str, ...], str] = {}
+
+    async def finish(t: str) -> str:
+        """Drop unknown keys; for author-date styles, write each citation as citeproc
+        formats it, e.g. (Smith & Jones, 2020; Lee, 2021)."""
+        t = scrub(t)
+        if st.numeric:
+            return t
+
+        def keys_of(mm: re.Match[str]) -> tuple[str, ...]:
+            return tuple(k.strip() for k in mm.group(1).split(",") if k.strip())
+
+        need = list(
+            dict.fromkeys(
+                c
+                for c in (keys_of(mm) for mm in _CITE_RE.finditer(t))
+                if c and c not in cluster_text
+            )
+        )
+        if need:
+            _, more = await render_references(items, st.csl, build, need)
+            cluster_text.update(more)
+        return _CITE_RE.sub(lambda mm: cluster_text.get(keys_of(mm), ""), t)
+
+    # ---- manuscript PDF (with a normalised retry if the model's LaTeX does not compile)
+    tex = await finish(latex_pdf(doc, bibliography))
+    pdf_dir = work / "pdf"
+    shutil.copytree(ms_dir, pdf_dir)
+    pdf_ok, err, pages = await _pdflatex(tex, "manuscript", pdf_dir)
+    if not pdf_ok:
+        logger.warning(
+            "manuscript did not compile, retrying normalised: %s", err[-500:]
+        )
+        doc.sections = {
+            k: await _pandoc_normalise(v, build) for k, v in doc.sections.items()
+        }
+        tex = await finish(latex_pdf(doc, bibliography))
+        shutil.rmtree(pdf_dir)
+        shutil.copytree(ms_dir, pdf_dir)
+        pdf_ok, err, pages = await _pdflatex(tex, "manuscript", pdf_dir)
+    return Compiled(
+        tex, items, bibliography, scrub, pdf_ok, err, pages, pdf_dir, finish
     )
 
 
@@ -748,85 +864,23 @@ async def _build(
         extended=extended,
     )
 
-    # Cited keys in order of first appearance across everything that is printed.
-    probe = latex_pdf(doc, "")
+    compiled = await _compile_manuscript(
+        store, m, j, doc, build, ms_dir, work, crossref
+    )
+    tex, items, bibliography, scrub, finish = (
+        compiled.tex,
+        compiled.items,
+        compiled.bibliography,
+        compiled.scrub,
+        compiled.finish,
+    )
+    pdf_ok, err, pages, pdf_dir = (
+        compiled.pdf_ok,
+        compiled.error,
+        compiled.pages,
+        compiled.pdf_dir,
+    )
     sup_methods = j.methods_in_supplement
-    keys = cited_keys_in_order(
-        probe, doc.sections.get("methods", "") if sup_methods else ""
-    )
-    drop = {k for k in keys if k not in m.papers}
-    keys = [k for k in keys if k not in drop]
-
-    def scrub(t: str) -> str:
-        """Remove citation keys the graph does not hold (never print "?")."""
-        if not drop:
-            return t
-
-        def repl(mm: re.Match[str]) -> str:
-            ok = [
-                k.strip()
-                for k in mm.group(1).split(",")
-                if k.strip() and k.strip() not in drop
-            ]
-            return "\\cite{" + ",".join(ok) + "}" if ok else ""
-
-        return re.sub(r"\\cite\{([^}]*)\}", repl, t)
-
-    if crossref and keys:
-        try:
-            await enrich(store.pool, m.papers, keys)
-        except Exception:  # never block an export on Crossref
-            logger.warning("crossref enrichment failed", exc_info=True)
-    items = csl_items(keys, m.papers)
-    (build / "refs.json").write_text(
-        json.dumps(items, ensure_ascii=False), encoding="utf-8"
-    )
-    bib_entries, _ = await render_references(items, st.csl, build)
-    if st.numeric:
-        bibliography = thebibliography(bib_entries)  # natbib numbers the citations
-    else:
-        bibliography = author_date_bibliography(bib_entries)
-    convert.style_file(st.csl, build)
-    cluster_text: dict[tuple[str, ...], str] = {}
-
-    async def finish(t: str) -> str:
-        """Drop unknown keys; for author-date styles, write each citation as citeproc
-        formats it, e.g. (Smith & Jones, 2020; Lee, 2021)."""
-        t = scrub(t)
-        if st.numeric:
-            return t
-
-        def keys_of(mm: re.Match[str]) -> tuple[str, ...]:
-            return tuple(k.strip() for k in mm.group(1).split(",") if k.strip())
-
-        need = list(
-            dict.fromkeys(
-                c
-                for c in (keys_of(mm) for mm in _CITE_RE.finditer(t))
-                if c and c not in cluster_text
-            )
-        )
-        if need:
-            _, more = await render_references(items, st.csl, build, need)
-            cluster_text.update(more)
-        return _CITE_RE.sub(lambda mm: cluster_text.get(keys_of(mm), ""), t)
-
-    # ---- manuscript PDF (with a normalised retry if the model's LaTeX does not compile)
-    tex = await finish(latex_pdf(doc, bibliography))
-    pdf_dir = work / "pdf"
-    shutil.copytree(ms_dir, pdf_dir)
-    pdf_ok, err, pages = await _pdflatex(tex, "manuscript", pdf_dir)
-    if not pdf_ok:
-        logger.warning(
-            "manuscript did not compile, retrying normalised: %s", err[-500:]
-        )
-        doc.sections = {
-            k: await _pandoc_normalise(v, build) for k, v in doc.sections.items()
-        }
-        tex = await finish(latex_pdf(doc, bibliography))
-        shutil.rmtree(pdf_dir)
-        shutil.copytree(ms_dir, pdf_dir)
-        pdf_ok, err, pages = await _pdflatex(tex, "manuscript", pdf_dir)
     (ms_dir / "manuscript.tex").write_text(tex, encoding="utf-8")
     if pdf_ok:
         shutil.copy(pdf_dir / "manuscript.pdf", ms_dir / "manuscript.pdf")
@@ -1060,3 +1114,67 @@ async def _build(
 
 
 __all__ = ["Package", "build_package", "safe_name"]
+
+
+# ----------------------------------------------------------------------------- preview
+PREVIEW_JOURNAL = "arxiv"
+
+
+class PreviewFailed(RuntimeError):
+    """pdfLaTeX could not compile the manuscript; ``log`` is the tail of its output."""
+
+    def __init__(self, log: str) -> None:
+        super().__init__("the manuscript did not compile")
+        self.log = log
+
+
+async def preview_pdf(
+    store: DualGraphStore, campaign_id: uuid.UUID, *, model_name: str = ""
+) -> tuple[bytes, int | None]:
+    """The paper typeset as a preprint (the arXiv profile): the campaign's own text,
+    figures and references, compiled with pdfLaTeX. No model call: the arXiv front
+    matter is reused when an export already wrote it, otherwise the deterministic
+    fallback is used. No Crossref lookups, so it compiles in seconds."""
+    j = get(PREVIEW_JOURNAL)
+    m = await collect(store, campaign_id)
+    work = Path(tempfile.mkdtemp(prefix="plato-preview-"))
+    try:
+        ms_dir = work / "manuscript"
+        fig_dir = ms_dir / "figures"
+        fig_dir.mkdir(parents=True)
+        build = work / "build"
+        build.mkdir()
+        plan = plan_figures(m, j, work)
+        for name, data in plan.files.items():
+            (fig_dir / name).write_bytes(data)
+        cached = await _cached_adaptation(store.pool, campaign_id, j.key)
+        adaptation = (
+            normalise(cached, m, j, len(plan.notes))
+            if cached is not None
+            else fallback(m, j, len(plan.notes))
+        )
+        for f, t in zip(plan.main, adaptation.figure_titles):
+            if t.strip():
+                f.title = t.strip().rstrip(".")
+        sections = {k: sanitize(v) for k, v in m.sections.items() if k != "abstract"}
+        doc = Doc(
+            j,
+            m.title,
+            adaptation,
+            sections,
+            plan.main,
+            plan.table,
+            model_name or "a large language model",
+            [
+                "Supplementary Information (supplementary_information.pdf)",
+                "Data S1 (data_S1.xlsx)",
+            ],
+        )
+        out = await _compile_manuscript(
+            store, m, j, doc, build, ms_dir, work, crossref=False
+        )
+        if not out.pdf_ok:
+            raise PreviewFailed(out.error[-3000:])
+        return (out.pdf_dir / "manuscript.pdf").read_bytes(), out.pages
+    finally:
+        shutil.rmtree(work, ignore_errors=True)

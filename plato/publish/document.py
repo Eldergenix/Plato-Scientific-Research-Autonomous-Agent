@@ -342,6 +342,18 @@ def _figure_legends(doc: Doc) -> str:
     return f"\\section*{{Figure legends}}\n{items}\n" if items else ""
 
 
+def _pdf_title(title: str) -> str:
+    """The title as plain text for the PDF's metadata (no commands, maths kept as text)."""
+    keep = "&%$#_"
+    t = re.sub(r"\\cite[pt]?\{[^}]*\}", "", title)
+    # Escaped symbols are parked on private-use characters while commands are removed.
+    t = re.sub(r"\\([&%$#_])", lambda m: chr(0xE000 + keep.index(m.group(1))), t)
+    t = re.sub(r"\\[a-zA-Z]+\*?\{([^}]*)\}", r"\1", t)
+    t = re.sub(r"\\[a-zA-Z]+\*?|[\\{}$]", " ", t)
+    t = "".join(keep[ord(c) - 0xE000] if 0xE000 <= ord(c) < 0xE005 else c for c in t)
+    return escape(re.sub(r"\s+", " ", t).strip())
+
+
 def latex_pdf(doc: Doc, bibliography: str) -> str:
     j = doc.journal
     style = doc.style
@@ -376,6 +388,8 @@ def latex_pdf(doc: Doc, bibliography: str) -> str:
         f"\\renewcommand{{\\bibnumfmt}}[1]{{{_bib_label(style)}}}",
         "\\usepackage[hidelinks]{hyperref}",
         "\\usepackage{xurl}",  # long DOIs and URLs break anywhere instead of overrunning
+        # The title PDF viewers show (in the tab, the window and document properties).
+        f"\\hypersetup{{pdftitle={{{_pdf_title(doc.adaptation.title)}}}}}",
     ]
     if j.line_numbers:
         pre += ["\\usepackage[switch]{lineno}", "\\linenumbers"]
