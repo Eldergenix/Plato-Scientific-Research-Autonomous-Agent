@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from plato.quality import QualityFilter, RetractionDB, VenueRanker
 from plato.state.models import Source
-
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -31,7 +30,7 @@ def _src(
         venue=venue,
         retracted=retracted,
         retrieved_via="arxiv",
-        fetched_at=datetime.now(timezone.utc),
+        fetched_at=datetime.now(UTC),
     )
 
 

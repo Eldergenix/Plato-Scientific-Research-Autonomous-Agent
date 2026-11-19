@@ -12,9 +12,9 @@ All network is mocked. Sleeps are mocked too so the suite stays fast.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
-from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Self
 
 import httpx
 import pytest
@@ -27,7 +27,6 @@ from plato.retrieval.middleware import (
     RateLimitBackoff,
     RetrievalClient,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -128,7 +127,7 @@ class TestRateLimitBackoff:
         self, no_sleep: list[float], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # Pin time.time so the HTTP-date arithmetic is deterministic.
-        fixed_now = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        fixed_now = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
         monkeypatch.setattr(mw.time, "time", lambda: fixed_now.timestamp())
 
         retry_at = fixed_now + timedelta(seconds=12)
@@ -363,10 +362,10 @@ class TestRetrievalClient:
             def __init__(self, **_: Any) -> None:
                 pass
 
-            async def __aenter__(self) -> "_FakeAsyncClient":
+            async def __aenter__(self) -> Self:
                 return self
 
-            async def __aexit__(self, *_: Any) -> None:
+            async def __aexit__(self, *_: object) -> None:
                 return None
 
             async def get(self, url: str, **_: Any) -> httpx.Response:
@@ -395,10 +394,10 @@ class TestRetrievalClient:
             def __init__(self, **_: Any) -> None:
                 pass
 
-            async def __aenter__(self) -> "_FakeAsyncClient":
+            async def __aenter__(self) -> Self:
                 return self
 
-            async def __aexit__(self, *_: Any) -> None:
+            async def __aexit__(self, *_: object) -> None:
                 return None
 
             async def get(self, url: str, **_: Any) -> httpx.Response:
@@ -426,10 +425,10 @@ class TestRetrievalClient:
             def __init__(self, **_: Any) -> None:
                 pass
 
-            async def __aenter__(self) -> "_FakeAsyncClient":
+            async def __aenter__(self) -> Self:
                 return self
 
-            async def __aexit__(self, *_: Any) -> None:
+            async def __aexit__(self, *_: object) -> None:
                 return None
 
             async def get(self, url: str, **_: Any) -> httpx.Response:
@@ -477,10 +476,10 @@ class TestRetrievalClient:
             def __init__(self, **_: Any) -> None:
                 pass
 
-            async def __aenter__(self) -> "_FakeAsyncClient":
+            async def __aenter__(self) -> Self:
                 return self
 
-            async def __aexit__(self, *_: Any) -> None:
+            async def __aexit__(self, *_: object) -> None:
                 return None
 
             async def get(self, url: str, **_: Any) -> httpx.Response:
@@ -533,10 +532,10 @@ class TestRetrievalClient:
             def __init__(self, **_: Any) -> None:
                 pass
 
-            async def __aenter__(self) -> "_FakeAsyncClient":
+            async def __aenter__(self) -> Self:
                 return self
 
-            async def __aexit__(self, *_: Any) -> None:
+            async def __aexit__(self, *_: object) -> None:
                 return None
 
             async def get(self, url: str, **_: Any) -> httpx.Response:
@@ -570,10 +569,10 @@ class TestRetrievalClient:
             def __init__(self, **_: Any) -> None:
                 pass
 
-            async def __aenter__(self) -> "_FakeAsyncClient":
+            async def __aenter__(self) -> Self:
                 return self
 
-            async def __aexit__(self, *_: Any) -> None:
+            async def __aexit__(self, *_: object) -> None:
                 return None
 
             async def get(self, url: str, **_: Any) -> httpx.Response:

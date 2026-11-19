@@ -14,8 +14,7 @@ vs. workshop) would land later.
 
 from __future__ import annotations
 
-from typing import Iterable
-
+from collections.abc import Iterable
 
 # Domain-keyed defaults shipped with Plato. Callers can pass their own
 # allowlist; ``domain`` selects one of these when ``allowlist`` is None.
@@ -97,4 +96,4 @@ class VenueRanker:
         return 1 if self.is_allowed(venue) else 0
 
 
-__all__ = ["VenueRanker", "DEFAULT_ALLOWLISTS"]
+__all__ = ["DEFAULT_ALLOWLISTS", "VenueRanker"]

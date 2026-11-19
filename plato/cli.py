@@ -1,5 +1,6 @@
-import sys
 import argparse
+import contextlib
+import sys
 from importlib.metadata import PackageNotFoundError, version
 
 
@@ -220,10 +221,9 @@ def _run_dashboard(args) -> None:
 
     if not args.no_browser:
         url = f"http://{args.host}:{args.port}"
-        try:
+        # Opening a browser is a convenience; headless hosts have none.
+        with contextlib.suppress(Exception):
             webbrowser.open_new_tab(url)
-        except Exception:  # noqa: BLE001
-            pass
         print(f"→ {url}")
 
     run_api()

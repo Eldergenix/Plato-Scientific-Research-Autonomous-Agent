@@ -9,7 +9,6 @@ import pytest
 from plato.retrieval import ADAPTER_REGISTRY
 from plato.retrieval.sources.arxiv import ArxivAdapter
 
-
 # A small but realistic arXiv Atom response (two entries). Whitespace and
 # multi-line summaries deliberately mirror the real feed so the parser is
 # exercised against the same shape it will see in production.

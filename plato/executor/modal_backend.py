@@ -26,13 +26,17 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import json
+import logging
 import textwrap
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from . import ExecutorResult, register_executor
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["ModalExecutor"]
 
@@ -176,7 +180,7 @@ def _parse_runner_envelope(stdout_text: str) -> dict[str, Any] | None:
     payload = stdout_text[start + len("===PLATO_RESULT_START===") : end].strip()
     try:
         return json.loads(payload)
-    except Exception:
+    except Exception:  # noqa: BLE001 - unparseable runner output means no result
         return None
 
 
@@ -201,7 +205,7 @@ def _coerce_text(stream_payload: Any) -> str:
             )
             for chunk in stream_payload
         )
-    except Exception:
+    except Exception:  # noqa: BLE001 - fall back to str() for odd stream payloads
         return str(stream_payload)
 
 
@@ -289,11 +293,10 @@ class ModalExecutor:
                     raw_stderr = _coerce_text(
                         getattr(sandbox.stderr, "read", lambda: "")()
                     )
-                    try:
+                    # Best-effort teardown; Modal reaps idle sandboxes itself.
+                    with contextlib.suppress(Exception):
                         sandbox.terminate()
-                    except Exception:
-                        pass
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 - sandbox errors are recorded on the cell
                     cell_record["error"] = {
                         "ename": "ModalSandboxError",
                         "evalue": str(exc),
@@ -321,14 +324,14 @@ class ModalExecutor:
                 for fig_idx, b64 in enumerate(envelope.get("figures") or []):
                     fname = (
                         f"cell{idx:02d}_fig{fig_idx:02d}_"
-                        f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%f')}.png"
+                        f"{datetime.now(UTC).strftime('%Y%m%dT%H%M%S%f')}.png"
                     )
                     fpath = plots_dir / fname
                     try:
                         fpath.write_bytes(base64.b64decode(b64))
                         local_plots.append(str(fpath))
                     except Exception:
-                        pass
+                        logger.debug("could not save plot %s", fpath, exc_info=True)
 
                 local_records.append(cell_record)
                 if cell_record["error"] is not None:

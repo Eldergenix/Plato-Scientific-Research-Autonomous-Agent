@@ -15,9 +15,10 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timezone
+from collections.abc import Iterable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 # Section-name aliases we accept in the input ``paper_state`` dict.
 _SECTION_KEYS = {
@@ -43,12 +44,12 @@ def _excerpt(text: Any, limit: int = _EXCERPT_CHARS) -> str:
 
 def _first(state: dict, names: Iterable[str]) -> Any:
     for n in names:
-        if n in state and state[n]:
+        if state.get(n):
             return state[n]
     paper = state.get("paper")
     if isinstance(paper, dict):
         for n in names:
-            if n in paper and paper[n]:
+            if paper.get(n):
                 return paper[n]
     return ""
 
@@ -154,7 +155,7 @@ def write_paper_metadata(
 
     payload: dict[str, Any] = {
         "schema_version": 1,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "sections": _section_excerpts(paper_state or {}),
         "figures": _figure_paths(paper_state or {}),
         "references": _normalize_references(references),

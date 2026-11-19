@@ -8,16 +8,16 @@ adapter registry on import.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import quote_plus
 
 import httpx  # noqa: F401  # kept so ``patch("httpx.AsyncClient.get", ...)`` still resolves.
 
-from .. import register_adapter
-from ..middleware import RetrievalClient
 from ...state.models import Source
+from .. import register_adapter
 from ..doi import normalize_doi
+from ..middleware import RetrievalClient
 
 __all__ = ["CrossrefAdapter"]
 
@@ -108,7 +108,7 @@ def _map_item_to_source(item: dict[str, Any]) -> Source | None:
         venue=_extract_venue(item),
         url=_extract_url(item, doi),
         retrieved_via="crossref",
-        fetched_at=datetime.now(timezone.utc),
+        fetched_at=datetime.now(UTC),
     )
 
 

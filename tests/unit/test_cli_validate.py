@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -33,7 +33,7 @@ def _vr(
         verdict="UNLIKELY" if passed else "UNCERTAIN",
         retracted=False,
         error=error,
-        checked_at=datetime.now(timezone.utc),
+        checked_at=datetime.now(UTC),
     )
 
 
@@ -324,16 +324,18 @@ def test_real_cli_main_validate_invocation(tmp_path):
     with patch.object(plato_cli, "sys") as mock_sys:
         mock_sys.argv = ["plato", "validate", str(tmp_path), "--threshold", "0.0"]
         # parser reads sys.argv via parse_args() default.
-        with patch(
-            "sys.argv", ["plato", "validate", str(tmp_path), "--threshold", "0.0"]
+        with (
+            patch(
+                "sys.argv", ["plato", "validate", str(tmp_path), "--threshold", "0.0"]
+            ),
+            patch("plato.cli_validate.main", return_value=0) as mock_main,
         ):
-            with patch("plato.cli_validate.main", return_value=0) as mock_main:
-                # sys.exit is patched on the module-bound `sys` reference.
-                mock_sys.exit.side_effect = SystemExit
-                with pytest.raises(SystemExit):
-                    plato_cli.main()
-                mock_main.assert_called_once()
-                argv = mock_main.call_args[0][0]
-                assert argv[0] == str(tmp_path)
-                assert "--threshold" in argv
-                assert "0.0" in argv
+            # sys.exit is patched on the module-bound `sys` reference.
+            mock_sys.exit.side_effect = SystemExit
+            with pytest.raises(SystemExit):
+                plato_cli.main()
+            mock_main.assert_called_once()
+            argv = mock_main.call_args[0][0]
+            assert argv[0] == str(tmp_path)
+            assert "--threshold" in argv
+            assert "0.0" in argv

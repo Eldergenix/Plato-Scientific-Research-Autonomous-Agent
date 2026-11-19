@@ -17,7 +17,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-
 CapabilityDecision = Literal[
     "integrate_core",
     "optional_adapter",

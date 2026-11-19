@@ -25,13 +25,17 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
+import logging
 import textwrap
 import traceback
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from . import ExecutorResult, register_executor
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["LocalJupyterExecutor"]
 
@@ -160,7 +164,7 @@ class LocalJupyterExecutor:
                     while True:
                         try:
                             msg = client.get_iopub_msg(timeout=execute_timeout)
-                        except Exception as exc:
+                        except Exception as exc:  # noqa: BLE001 - kernel timeouts are recorded on the cell
                             cell_error = {
                                 "ename": "JupyterTimeout",
                                 "evalue": str(exc),
@@ -186,7 +190,7 @@ class LocalJupyterExecutor:
                             if isinstance(png, str) and png:
                                 fname = (
                                     f"cell{idx:02d}_"
-                                    f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%f')}.png"
+                                    f"{datetime.now(UTC).strftime('%Y%m%dT%H%M%S%f')}.png"
                                 )
                                 fpath = plots_dir / fname
                                 try:
@@ -195,7 +199,9 @@ class LocalJupyterExecutor:
                                 except Exception:
                                     # Bad base64 — skip the figure rather
                                     # than abort the run.
-                                    pass
+                                    logger.debug(
+                                        "could not save plot %s", fpath, exc_info=True
+                                    )
                         elif msg_type == "error":
                             cell_error = {
                                 "ename": content.get("ename") or "Error",
@@ -230,12 +236,10 @@ class LocalJupyterExecutor:
                 # Best-effort kernel shutdown. ``shutdown_kernel`` blocks
                 # until the kernel exits or the timeout elapses; we keep
                 # it short so the executor never hangs the caller.
-                try:
+                with contextlib.suppress(Exception):
                     km.shutdown_kernel(now=True, restart=False)
-                except Exception:
-                    pass
 
-        cell_outputs, plot_files, cell_records = await asyncio.to_thread(_run_sync)
+        _cell_outputs, plot_files, cell_records = await asyncio.to_thread(_run_sync)
 
         # Build the markdown summary. Each cell becomes its own section so
         # the paper-drafting prompts can quote them individually.

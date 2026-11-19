@@ -6,7 +6,6 @@ from typing import Any
 
 from plato.state.models import Source, ValidationResult
 
-
 STRICT_ACCURACY_THRESHOLD = 0.9999
 
 

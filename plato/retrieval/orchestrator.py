@@ -23,11 +23,11 @@ import logging
 import re
 from typing import TYPE_CHECKING, Literal
 
+from ..state.models import Source
 from . import ADAPTER_REGISTRY, SourceAdapter, get_adapter
 from .citation_graph import ExpansionDirection, expand_citations
 from .dedup import _dedup_key, dedup_sources, title_key
 from .reranker import rerank
-from ..state.models import Source
 
 if TYPE_CHECKING:
     from ..domain import DomainProfile
@@ -52,7 +52,7 @@ def is_supplementary(source: Source) -> bool:
 def _resolve_adapter_names(
     *,
     adapter_names: list[str] | None,
-    profile: "DomainProfile | None",
+    profile: DomainProfile | None,
 ) -> list[str]:
     """Pick the adapter-name list the caller actually wants us to use."""
     if adapter_names is not None:
@@ -79,7 +79,7 @@ async def retrieve(
     query: str,
     limit: int,
     *,
-    profile: "DomainProfile | None" = None,
+    profile: DomainProfile | None = None,
     adapter_names: list[str] | None = None,
     rerank_fallback: Literal["passthrough", "bm25", "fused"] = "passthrough",
     adapter_timeout: float | None = None,
@@ -168,7 +168,7 @@ async def retrieve_with_expansion(
     query: str,
     *,
     limit: int = 20,
-    profile: "DomainProfile | None" = None,
+    profile: DomainProfile | None = None,
     adapter_names: list[str] | None = None,
     expand: bool = False,
     expansion_direction: ExpansionDirection = "referenced_works",

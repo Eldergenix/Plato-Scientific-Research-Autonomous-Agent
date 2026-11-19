@@ -19,7 +19,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-
 ScientificOperation = Literal[
     "formula_mass",
     "harmonic_oscillator",
@@ -442,7 +441,7 @@ def _linear_regression(payload: ScientificAnalysisInput) -> ScientificAnalysisRe
         markdown=markdown,
         latex=latex,
         tables=rows,
-        values={"r_squared": r_squared, "n_observations": int(len(y))},
+        values={"r_squared": r_squared, "n_observations": len(y)},
         artifacts=artifacts,
         reproducibility={
             **_base_reproducibility(payload),
@@ -755,7 +754,7 @@ def _publication_plot(payload: ScientificAnalysisInput) -> ScientificAnalysisRes
         operation=payload.operation,
         markdown=markdown,
         latex=latex,
-        values={"n_points": int(len(x)), "chart_type": chart_type},
+        values={"n_points": len(x), "chart_type": chart_type},
         artifacts=artifacts,
         reproducibility=_base_reproducibility(payload),
         checks=[

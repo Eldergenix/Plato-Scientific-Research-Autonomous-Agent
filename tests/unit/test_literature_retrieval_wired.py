@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import os
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -30,7 +31,7 @@ def _make_source(arxiv_id: str, title: str, abstract: str) -> Source:
         pdf_url=f"https://arxiv.org/pdf/{arxiv_id}",
         url=f"https://arxiv.org/abs/{arxiv_id}",
         retrieved_via="arxiv",
-        fetched_at=datetime.now(timezone.utc),
+        fetched_at=datetime.now(UTC),
     )
 
 
@@ -69,7 +70,7 @@ async def test_semantic_scholar_uses_orchestrator_and_wraps_abstracts():
         ),
     ]
 
-    async def fake_retrieve(query, limit, *, profile=None, adapter_names=None):  # noqa: ARG001
+    async def fake_retrieve(query, limit, *, profile=None, adapter_names=None):
         # Return canned, deduped Sources without doing any network I/O.
         assert limit == 20
         return list(sources)
@@ -102,17 +103,15 @@ async def test_semantic_scholar_uses_orchestrator_and_wraps_abstracts():
         assert "https://arxiv.org/pdf/2401.0001" in joined
 
         # Files were persisted exactly like the legacy code did.
-        with open(state["files"]["literature_log"]) as f:
-            log_contents = f.read()
+        log_contents = Path(state["files"]["literature_log"]).read_text()
         assert '<external kind="abstract">' in log_contents
-        with open(state["files"]["papers"]) as f:
-            papers_contents = f.read()
+        papers_contents = Path(state["files"]["papers"]).read_text()
         assert '<external kind="abstract">' in papers_contents
 
 
 @pytest.mark.asyncio
 async def test_semantic_scholar_handles_empty_search():
-    async def empty_search(query, limit, *, profile=None, adapter_names=None):  # noqa: ARG001
+    async def empty_search(query, limit, *, profile=None, adapter_names=None):
         return []
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -134,12 +133,12 @@ async def test_semantic_scholar_skips_sources_without_abstract():
             arxiv_id="2401.Y",
             title="No abstract",
             retrieved_via="arxiv",
-            fetched_at=datetime.now(timezone.utc),
+            fetched_at=datetime.now(UTC),
             abstract=None,
         ),
     ]
 
-    async def fake_search(query, limit, *, profile=None, adapter_names=None):  # noqa: ARG001
+    async def fake_search(query, limit, *, profile=None, adapter_names=None):
         return list(sources)
 
     with tempfile.TemporaryDirectory() as tmpdir:

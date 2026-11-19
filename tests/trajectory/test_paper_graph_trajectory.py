@@ -26,7 +26,6 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from plato.paper_agents.agents_graph import build_graph
 
-
 STABLE_NODES = {
     "preprocess_node",
     "keywords_node",

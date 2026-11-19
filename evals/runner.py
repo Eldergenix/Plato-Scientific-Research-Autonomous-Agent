@@ -33,7 +33,6 @@ from evals.judge import LLMJudge
 from evals.metrics import Metrics
 from evals.tasks import GoldenTask, discover_tasks
 
-
 # Default 3-model panel. Anti-self-judging is enforced inside LLMJudge,
 # so as long as the drafting model isn't in this list the judge runs.
 # Override per-instance via ``EvalRunner(..., judge_models=[...])``.
@@ -160,7 +159,7 @@ class EvalRunner:
 
         try:
             plato = plato_factory(task, project_dir)
-        except Exception:  # pragma: no cover - factory failures are rare
+        except Exception:  # noqa: BLE001  # pragma: no cover - factory failures are rare
             return _error_metrics()
 
         def _budget_blown() -> bool:
@@ -183,7 +182,7 @@ class EvalRunner:
             # require cmbagent + LaTeX and produce too much variance for
             # the harness today. Stream B/C wires them in once they're
             # stable.
-        except Exception:
+        except Exception:  # noqa: BLE001 - a crashed run is scored as a tool error
             # Aggregate whatever manifests/artifacts the run did write
             # before crashing, then mark the run as a tool error.
             # ``tool_call_error_rate=1.0`` is the sole failure signal;

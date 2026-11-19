@@ -1,13 +1,17 @@
 import hashlib
-import re
 import json
-import json5
+import logging
+import re
 from pathlib import Path
 from typing import Any
 
-from .prompts import fixer_prompt, LaTeX_prompt
+import json5
+
 from .journal import LatexPresets
 from .latex_presets import journal_dict
+from .prompts import LaTeX_prompt, fixer_prompt
+
+logger = logging.getLogger(__name__)
 
 
 def _record_prompt_hash(state, node_name: str | None = None) -> None:
@@ -29,7 +33,7 @@ def _record_prompt_hash(state, node_name: str | None = None) -> None:
         recorder.update(prompt_hashes={node_name: digest})
     except Exception:
         # Manifest failures must never abort an LLM call.
-        pass
+        logger.debug("could not record prompt hash for %s", node_name, exc_info=True)
 
 
 def LLM_call(prompt, state, *, node_name: str | None = None):
@@ -133,7 +137,7 @@ def temp_file(state, fin, action, text=None, json_file=False):
                     extracted_text = match.group(1).strip()
                     return extracted_text
                 else:
-                    raise Exception("Text not found on file!")
+                    raise ValueError("Text not found on file!")
 
     elif action == "write":
         with open(fin, "w", encoding="utf-8") as f:
@@ -158,7 +162,7 @@ def temp_file(state, fin, action, text=None, json_file=False):
                 """
                 f.write(latex_text)
     else:
-        raise Exception("wrong action chosen!")
+        raise ValueError("wrong action chosen!")
 
 
 def json_parser(text):
@@ -176,7 +180,7 @@ def json_parser(text):
             json_string = re.sub(r'\\(?!["\\/bfnrtu])', r"\\\\", json_string)
             json_string = json_string.replace("'", '"')
             parsed_json = json.loads(json_string)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - re-raised as ValueError
             raise ValueError(f"Failed to parse JSON: {e}")
     return parsed_json
 
@@ -318,7 +322,7 @@ def check_images_in_text(state, images):
     """
 
     # Check that the images are in the text
-    for key, value in images.items():
+    for value in images.values():
         if value["name"] not in state["paper"]["Results"]:
             return False
     return True

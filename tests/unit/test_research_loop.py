@@ -9,14 +9,13 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 import pytest
 
 from plato.loop import AcceptanceScore, ResearchLoop
 from plato.loop import research_loop as research_loop_mod
-
 
 # ---------------------------------------------------------------- AcceptanceScore
 

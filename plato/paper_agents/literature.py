@@ -1,7 +1,7 @@
 import re
+
 import requests
 from requests import RequestException
-from typing import List, Tuple
 
 from ..key_manager import KeyManager
 
@@ -80,14 +80,14 @@ Your answear should not have the formating marks <TEXT> and </TEXT>, just the te
     }
     perplexity_response = _execute_query(payload, keys)
     if not isinstance(perplexity_response, dict):
-        raise RuntimeError("Perplexity API returned an invalid response shape")
+        raise RuntimeError("Perplexity API returned an invalid response shape")  # noqa: TRY004 - malformed API payload
     choices = perplexity_response.get("choices")
     if not isinstance(choices, list) or not choices:
         raise RuntimeError("Perplexity API returned no choices")
     message = choices[0].get("message") if isinstance(choices[0], dict) else None
     content = message.get("content") if isinstance(message, dict) else None
     if not isinstance(content, str):
-        raise RuntimeError("Perplexity API response did not include message content")
+        raise RuntimeError("Perplexity API response did not include message content")  # noqa: TRY004 - malformed API payload
     citations_raw = perplexity_response.get("citations", [])
     citations = citations_raw if isinstance(citations_raw, list) else []
     cleaned_response = re.sub(r"<think>.*?</think>\s*", "", content, flags=re.DOTALL)
@@ -213,7 +213,7 @@ def _extract_paragraphs_from_tex_content(tex_content: str) -> dict:
     return paragraph_lines
 
 
-def _arxiv_url_to_bib(citations: List[str]) -> Tuple[List[str | None], List[str]]:
+def _arxiv_url_to_bib(citations: list[str]) -> tuple[list[str | None], list[str]]:
     """
     Given a list of arXiv URLs, returns BibTeX keys and entries.
 
@@ -271,7 +271,7 @@ def _arxiv_url_to_bib(citations: List[str]) -> Tuple[List[str | None], List[str]
     return bib_keys, bib_strs
 
 
-def _replace_grouped_citations(content: str, bib_keys: List[str | None]) -> str:
+def _replace_grouped_citations(content: str, bib_keys: list[str | None]) -> str:
     """
     Replaces runs like [1][2][3] with a single sorted `\\citep{key1,key2,key3}`, sorted by year.
     Works for single refs like [1] too.
@@ -312,8 +312,8 @@ def _replace_grouped_citations(content: str, bib_keys: List[str | None]) -> str:
 
 
 def _replace_references_with_cite(
-    content: str, citations: List[str], bibtex_file_str: str
-) -> Tuple[str, str]:
+    content: str, citations: list[str], bibtex_file_str: str
+) -> tuple[str, str]:
     """
     Replaces numeric reference markers like [1] in the content with LaTeX-style `\\citep{...}`,
     and appends corresponding BibTeX entries to the bibtex string.

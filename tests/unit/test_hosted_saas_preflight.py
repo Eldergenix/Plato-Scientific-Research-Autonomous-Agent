@@ -3,7 +3,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 CHECKER = ROOT / "dashboard" / "scripts" / "check_hosted_saas_preflight.py"
 WRAPPER = ROOT / "dashboard" / "scripts" / "check-hosted-saas-preflight.sh"
@@ -117,17 +116,11 @@ def test_env_examples_include_strict_hosted_readiness_contract() -> None:
     )
     for name in complete_hosted_values():
         assert f"{name}=" in root_env
-        if (
-            name.startswith("NEXT_PUBLIC_")
-            or name.startswith("CLERK_")
-            or name.startswith("PLATO_HOSTED_")
-            or name
-            in {
-                "PLATO_AUTH_PROVIDER",
-                "PLATO_BACKEND_PROXY_SECRET",
-                "PLATO_PUBLIC_ORIGIN",
-            }
-        ):
+        if name.startswith(("NEXT_PUBLIC_", "CLERK_", "PLATO_HOSTED_")) or name in {
+            "PLATO_AUTH_PROVIDER",
+            "PLATO_BACKEND_PROXY_SECRET",
+            "PLATO_PUBLIC_ORIGIN",
+        }:
             assert f"{name}=" in frontend_env
     assert "PLATO_HOSTED_USAGE_LEDGER_PATH=" in root_env
     assert "PLATO_HOSTED_USAGE_LEDGER_PATH=" in frontend_env
@@ -324,13 +317,7 @@ def test_wrapper_passes_service_and_environment_to_railway(tmp_path: Path) -> No
     railway = tmp_path / "railway"
     values_file.write_text(json.dumps(complete_hosted_values()), encoding="utf-8")
     railway.write_text(
-        "\n".join(
-            [
-                "#!/usr/bin/env bash",
-                'printf "%s\\n" "$@" > "$RAILWAY_ARGS_FILE"',
-                'cat "$RAILWAY_VALUES_FILE"',
-            ]
-        ),
+        '#!/usr/bin/env bash\nprintf "%s\\n" "$@" > "$RAILWAY_ARGS_FILE"\ncat "$RAILWAY_VALUES_FILE"',
         encoding="utf-8",
     )
     railway.chmod(0o755)
@@ -730,8 +717,12 @@ def test_production_readiness_omits_proxy_remediation_when_clerk_can_derive_it(
 
     assert result.returncode == 1
     assert "Next steps to clear production blockers" in result.stdout
-    assert 'PLATO_BACKEND_PROXY_SECRET="$(openssl rand -base64 32)"' not in result.stdout
-    assert "PLATO_BACKEND_PROXY_SECRET=${PLATO_BACKEND_PROXY_SECRET}" not in result.stdout
+    assert (
+        'PLATO_BACKEND_PROXY_SECRET="$(openssl rand -base64 32)"' not in result.stdout
+    )
+    assert (
+        "PLATO_BACKEND_PROXY_SECRET=${PLATO_BACKEND_PROXY_SECRET}" not in result.stdout
+    )
     assert "PLATO_PUBLIC_ORIGIN=https://discovering.app" in result.stdout
     assert "NEXT_PUBLIC_PLATO_HOSTED_BILLING=enabled" in result.stdout
     assert (

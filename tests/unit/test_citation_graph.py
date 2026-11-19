@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
@@ -29,7 +29,7 @@ def _seed(
         doi=doi,
         title=title,
         retrieved_via="openalex",
-        fetched_at=datetime.now(timezone.utc),
+        fetched_at=datetime.now(UTC),
     )
 
 
@@ -391,7 +391,7 @@ async def test_retrieve_with_expansion_enabled_calls_both() -> None:
             openalex_id="W2",
             title="Reference",
             retrieved_via="openalex",
-            fetched_at=datetime.now(timezone.utc),
+            fetched_at=datetime.now(UTC),
         )
     ]
 

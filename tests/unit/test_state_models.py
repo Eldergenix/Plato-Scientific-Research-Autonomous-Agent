@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -24,7 +24,7 @@ def test_source_round_trip():
         authors=["Alice", "Bob"],
         year=2025,
         retrieved_via="arxiv",
-        fetched_at=datetime.now(timezone.utc),
+        fetched_at=datetime.now(UTC),
     )
     payload = s.model_dump(mode="json")
     restored = Source.model_validate(payload)
@@ -38,7 +38,7 @@ def test_source_rejects_unknown_retrieved_via():
             id="x",
             title="t",
             retrieved_via="nasa-grants",
-            fetched_at=datetime.now(timezone.utc),
+            fetched_at=datetime.now(UTC),
         )
 
 
@@ -51,7 +51,7 @@ def test_source_accepts_no_key_retrieval_adapters(retrieved_via: str):
         id=f"{retrieved_via}:x",
         title="t",
         retrieved_via=retrieved_via,  # type: ignore[arg-type]
-        fetched_at=datetime.now(timezone.utc),
+        fetched_at=datetime.now(UTC),
     )
     assert s.retrieved_via == retrieved_via
 
@@ -80,6 +80,6 @@ def test_evidence_link_supports_label_validation():
 
 
 def test_validation_result_minimal():
-    v = ValidationResult(source_id="s1", checked_at=datetime.now(timezone.utc))
+    v = ValidationResult(source_id="s1", checked_at=datetime.now(UTC))
     assert v.doi_resolved is False
     assert v.retracted is False

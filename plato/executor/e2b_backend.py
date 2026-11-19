@@ -31,12 +31,16 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
+import logging
 import textwrap
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from . import ExecutorResult, register_executor
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["E2BExecutor"]
 
@@ -182,7 +186,7 @@ class E2BExecutor:
 
                     try:
                         execution = sandbox.run_code(cell_src, timeout=timeout_seconds)
-                    except Exception as exc:
+                    except Exception as exc:  # noqa: BLE001 - sandbox errors are recorded on the cell
                         cell_record["error"] = {
                             "ename": "E2BSandboxError",
                             "evalue": str(exc),
@@ -226,14 +230,14 @@ class E2BExecutor:
                             continue
                         fname = (
                             f"cell{idx:02d}_fig{fig_idx:02d}_"
-                            f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%f')}.png"
+                            f"{datetime.now(UTC).strftime('%Y%m%dT%H%M%S%f')}.png"
                         )
                         fpath = plots_dir / fname
                         try:
                             fpath.write_bytes(base64.b64decode(png_b64))
                             local_plots.append(str(fpath))
                         except Exception:
-                            pass
+                            logger.debug("could not save plot %s", fpath, exc_info=True)
 
                     local_records.append(cell_record)
                     if cell_record["error"] is not None:
@@ -244,10 +248,9 @@ class E2BExecutor:
                 # one. Try the modern method first then fall through.
                 kill = getattr(sandbox, "kill", None) or getattr(sandbox, "close", None)
                 if callable(kill):
-                    try:
+                    # Best-effort teardown; the sandbox also expires on its own.
+                    with contextlib.suppress(Exception):
                         kill()
-                    except Exception:
-                        pass
 
             return local_records, local_plots
 

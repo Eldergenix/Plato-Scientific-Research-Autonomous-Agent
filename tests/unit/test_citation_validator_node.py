@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -54,7 +54,7 @@ def _vr(
         verdict="UNLIKELY" if passed else "UNCERTAIN",
         retracted=False,
         error=error,
-        checked_at=datetime.now(timezone.utc),
+        checked_at=datetime.now(UTC),
     )
 
 
@@ -195,7 +195,7 @@ def test_source_objects_passed_directly(tmp_path):
         doi="10.1/x",
         title="Real",
         retrieved_via="crossref",
-        fetched_at=datetime.now(timezone.utc),
+        fetched_at=datetime.now(UTC),
     )
     state = _state(tmp_path, sources=[src])
     results = [_vr("s1", doi_resolved=True)]

@@ -2,7 +2,6 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from plato.safety import wrap_external
 
-
 # Cap the evidence pack at the top-N most-supported claims so the prompt
 # stays bounded — 20 rows is plenty to ground a section without burning
 # the LLM context budget.

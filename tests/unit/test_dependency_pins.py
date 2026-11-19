@@ -3,7 +3,6 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 AIOSQLITE_PIN = "aiosqlite>=0.22,<0.23"
 MISTRALAI_V1_PIN = "mistralai>=1.12.4,<1.13"

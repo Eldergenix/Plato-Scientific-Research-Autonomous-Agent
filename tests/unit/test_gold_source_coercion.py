@@ -11,6 +11,7 @@ future refactor can't regress.
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
 from evals.tasks import GoldenTask, GoldSource
 
@@ -109,7 +110,7 @@ def test_empty_gold_sources_default() -> None:
 
 def test_invalid_gold_source_type_raises() -> None:
     """Pydantic should reject an int / list / None inside gold_sources."""
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         GoldenTask.model_validate(
             {
                 "id": "bad",

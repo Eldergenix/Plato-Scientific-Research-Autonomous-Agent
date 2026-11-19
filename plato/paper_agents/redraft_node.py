@@ -16,7 +16,6 @@ from .parameters import GraphState
 from .prompts import redraft_prompt
 from .tools import LLM_call, json_parser3
 
-
 # Sections we allow the LLM to redraft. Title/Keywords/References are out of
 # scope (citations are added in a later node; titles rarely need rewriting at
 # this stage).
@@ -33,7 +32,7 @@ def _safe_parse_redraft(raw: str) -> dict:
     """Best-effort parse of the LLM redraft JSON; never raise."""
     try:
         parsed = json_parser3(raw)
-    except Exception:
+    except Exception:  # noqa: BLE001 - best-effort parse, never raises
         return {}
     return parsed if isinstance(parsed, dict) else {}
 

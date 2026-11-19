@@ -12,7 +12,6 @@ from plato.retrieval import list_adapters
 from plato.retrieval.sources.europe_pmc import EuropePMCAdapter
 from plato.state.models import Source
 
-
 SAMPLE_PAYLOAD: dict[str, Any] = {
     "version": "6.9",
     "hitCount": 1,

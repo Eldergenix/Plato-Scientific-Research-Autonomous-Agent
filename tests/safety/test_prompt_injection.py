@@ -18,14 +18,13 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
 
 from plato.langgraph_agents import literature as literature_mod
 from plato.state.models import Source
-
 
 MALICIOUS_ABSTRACT = (
     "We study halo formation. "
@@ -43,7 +42,7 @@ def _malicious_source() -> Source:
         abstract=MALICIOUS_ABSTRACT,
         url="https://arxiv.org/abs/9999.0001",
         retrieved_via="arxiv",
-        fetched_at=datetime.now(timezone.utc),
+        fetched_at=datetime.now(UTC),
     )
 
 
@@ -69,7 +68,7 @@ def _stub_state(tmpdir: str) -> dict:
     }
 
 
-async def _fake_retrieve(query, limit, *, profile=None, adapter_names=None):  # noqa: ARG001
+async def _fake_retrieve(query, limit, *, profile=None, adapter_names=None):
     return [_malicious_source()]
 
 
@@ -78,9 +77,11 @@ async def test_malicious_abstract_is_wrapped_and_signals_logged(caplog):
     with tempfile.TemporaryDirectory() as tmpdir:
         state = _stub_state(tmpdir)
 
-        with patch.object(literature_mod, "retrieve", _fake_retrieve):
-            with caplog.at_level(logging.WARNING, logger=literature_mod.logger.name):
-                out = await literature_mod.semantic_scholar(state, config={})
+        with (
+            patch.object(literature_mod, "retrieve", _fake_retrieve),
+            caplog.at_level(logging.WARNING, logger=literature_mod.logger.name),
+        ):
+            out = await literature_mod.semantic_scholar(state, config={})
 
         # The output retains the malicious source for downstream auditing.
         sources = out["literature"]["sources"]

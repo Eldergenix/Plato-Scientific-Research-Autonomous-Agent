@@ -29,17 +29,17 @@ import json
 import re
 import time
 import uuid
-from typing import Any, Optional, cast
-
-from langchain_core.runnables import RunnableConfig
+from typing import Any, cast
 
 import json5
+from langchain_core.runnables import RunnableConfig
 
+from ..paper_agents.tools import (
+    LLM_call_stream,
+)
+from ..state.models import Claim, Source
 from .parameters import GraphState
 from .prompts import claim_extraction_prompt
-from ..paper_agents.tools import LLM_call_stream  # noqa: F401  (re-export point for tests)
-from ..state.models import Claim, Source
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -76,7 +76,7 @@ def _parse_claims_json(text: str) -> list[dict[str, Any]]:
         data = json5.loads(payload)
 
     if not isinstance(data, list):
-        raise ValueError("Expected a JSON array of claim objects.")
+        raise ValueError("Expected a JSON array of claim objects.")  # noqa: TRY004 - malformed LLM output, not a caller type error
     return data
 
 
@@ -127,7 +127,7 @@ def _iter_inputs(state: GraphState) -> list[Source | str]:
 # ---------------------------------------------------------------------------
 
 
-def claim_extractor(state: GraphState, config: Optional[RunnableConfig] = None):
+def claim_extractor(state: GraphState, config: RunnableConfig | None = None):
     # Note: ``Optional[RunnableConfig]`` (not ``RunnableConfig | None``)
     # because LangGraph's annotation introspection only whitelists the
     # ``Optional[...]`` and bare-``RunnableConfig`` forms; the PEP-604
@@ -161,7 +161,7 @@ def claim_extractor(state: GraphState, config: Optional[RunnableConfig] = None):
             try:
                 parsed = _parse_claims_json(raw)
                 break
-            except Exception:
+            except Exception:  # noqa: BLE001 - retry on malformed LLM output
                 # brief backoff then retry; mirrors the literature.py pattern
                 time.sleep(0.1)
                 parsed = None

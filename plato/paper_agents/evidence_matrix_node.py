@@ -20,11 +20,12 @@ to gate redraft decisions.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from langchain_core.runnables import RunnableConfig
 
@@ -36,6 +37,7 @@ import json5
 from ..state.models import Claim, EvidenceLink
 from .tools import LLM_call
 
+logger = logging.getLogger(__name__)
 
 _RETRIES = 3
 _VALID_SUPPORT = {"supports", "refutes", "neutral", "unclear"}
@@ -136,8 +138,8 @@ def _write_matrix(path: Path, claims: list[Claim], links: list[EvidenceLink]) ->
 
 
 def evidence_matrix_node(
-    state: "GraphState",
-    config: Optional[RunnableConfig] = None,
+    state: GraphState,
+    config: RunnableConfig | None = None,
 ) -> dict:
     """LangGraph node: build the claim/evidence matrix.
 
@@ -186,13 +188,13 @@ def evidence_matrix_node(
             for _ in range(_RETRIES):
                 try:
                     _state, raw = LLM_call(prompt, state, node_name="evidence_matrix")
-                except Exception:
+                except Exception:  # noqa: BLE001 - retry on LLM call failure
                     time.sleep(0.05)
                     continue
                 try:
                     parsed = _parse_link_json(raw)
                     break
-                except Exception:
+                except Exception:  # noqa: BLE001 - retry on malformed LLM output
                     parsed = None
                     time.sleep(0.05)
 
@@ -222,7 +224,7 @@ def evidence_matrix_node(
                     store.add_evidence(link)
                 except Exception:
                     # Persistence is best-effort; never crash the graph.
-                    pass
+                    logger.debug("could not persist evidence link", exc_info=True)
 
     if run_dir is not None:
         _write_matrix(run_dir / "evidence_matrix.jsonl", drafted, new_links)

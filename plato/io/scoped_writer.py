@@ -15,7 +15,6 @@ from __future__ import annotations
 import fnmatch
 import os
 from pathlib import Path, PurePath, PurePosixPath
-from typing import Union
 
 from pydantic import BaseModel, Field
 
@@ -46,7 +45,7 @@ class FileScope(BaseModel):
     )
 
 
-PathLike = Union[str, Path]
+PathLike = str | Path
 
 
 class ScopedWriter:
@@ -69,7 +68,7 @@ class ScopedWriter:
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
-    def write(self, relpath: PathLike, content: Union[str, bytes]) -> Path:
+    def write(self, relpath: PathLike, content: str | bytes) -> Path:
         """Write ``content`` to ``relpath``; return the absolute path written.
 
         Raises :class:`ScopeError` if ``relpath`` is outside the scope or
@@ -235,4 +234,4 @@ def writer_for_node(
     return ScopedWriter(project_dir=project_dir, scope=scope)
 
 
-__all__ = ["FileScope", "ScopedWriter", "ScopeError", "writer_for_node"]
+__all__ = ["FileScope", "ScopeError", "ScopedWriter", "writer_for_node"]

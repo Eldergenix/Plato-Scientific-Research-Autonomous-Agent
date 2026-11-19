@@ -1,20 +1,20 @@
 import os
 from typing import Any, cast
 
+from langchain_anthropic import ChatAnthropic
 from langchain_core.runnables import RunnableConfig
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
 
-from .parameters import GraphState
 from ..config import (
-    INPUT_FILES,
     IDEA_FILE,
-    METHOD_FILE,
+    INPUT_FILES,
     LITERATURE_FILE,
-    REFEREE_FILE,
+    METHOD_FILE,
     PAPER_FOLDER,
+    REFEREE_FILE,
 )
+from .parameters import GraphState
 
 
 def preprocess_node(state: GraphState, config: RunnableConfig):
@@ -66,10 +66,10 @@ def preprocess_node(state: GraphState, config: RunnableConfig):
     try:
         with open(state["files"]["data_description"], "r", encoding="utf-8") as f:
             description = f.read()
-    except FileNotFoundError:
-        raise Exception("Data description file not found!")
-    except Exception:
-        raise Exception("Error reading the data description file!")
+    except FileNotFoundError as exc:
+        raise FileNotFoundError("Data description file not found!") from exc
+    except Exception as exc:
+        raise RuntimeError("Error reading the data description file!") from exc
     #########################################
 
     #########################################
@@ -78,10 +78,10 @@ def preprocess_node(state: GraphState, config: RunnableConfig):
         try:
             with open(state["files"]["idea"], "r", encoding="utf-8") as fh:
                 idea_text = fh.read()
-        except FileNotFoundError:
-            raise Exception("Idea file not found!")
-        except Exception:
-            raise Exception("Error reading the idea file!")
+        except FileNotFoundError as exc:
+            raise FileNotFoundError("Idea file not found!") from exc
+        except Exception as exc:
+            raise RuntimeError("Error reading the idea file!") from exc
     else:
         idea_text = ""
     #########################################

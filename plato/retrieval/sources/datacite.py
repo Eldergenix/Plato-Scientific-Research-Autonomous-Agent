@@ -8,16 +8,16 @@ that often do not show up cleanly in article-only indexes.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlencode
 
 import httpx  # noqa: F401  # kept so ``patch("httpx.AsyncClient.get", ...)`` resolves.
 
+from ...state.models import Source
 from .. import register_adapter
 from ..doi import normalize_doi
 from ..middleware import RetrievalClient
-from ...state.models import Source
 
 __all__ = ["DataCiteAdapter"]
 
@@ -160,7 +160,7 @@ def _map_record_to_source(record: dict[str, Any]) -> Source | None:
         pdf_url=_extract_pdf_url(attrs),
         url=url,
         retrieved_via="datacite",
-        fetched_at=datetime.now(timezone.utc),
+        fetched_at=datetime.now(UTC),
     )
 
 

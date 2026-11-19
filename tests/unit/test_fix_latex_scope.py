@@ -21,7 +21,7 @@ from typing import Any
 
 import pytest
 
-from plato.io import ScopeError, ScopedWriter
+from plato.io import ScopedWriter, ScopeError
 from plato.paper_agents import latex as latex_module
 from plato.paper_agents.journal import Journal as _Journal
 from plato.paper_agents.scopes import LATEX_FIX_SCOPE
@@ -115,7 +115,6 @@ def test_fix_latex_falls_back_to_temp_file_when_no_paper_folder(
         if action == "write":
             captured.append((str(fin), text))
             Path(fin).write_text(text or "")
-        return None
 
     monkeypatch.setattr(latex_module, "temp_file", _fake_temp_file)
     monkeypatch.setattr(

@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
-from unittest.mock import patch, AsyncMock
-
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, patch
 
 from plato.langgraph_agents import counter_evidence as ce
 from plato.state.models import Source
@@ -24,7 +23,7 @@ def _src(
         arxiv_id=arxiv,
         title=title or f"Paper {idx}",
         retrieved_via="arxiv",
-        fetched_at=datetime.now(timezone.utc),
+        fetched_at=datetime.now(UTC),
     )
 
 

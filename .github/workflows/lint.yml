@@ -33,9 +33,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[obs]" || pip install -e .
 
+      # Pinned: each ruff/mypy release can add default rules or checks, which
+      # turned this job red without a code change. Bump deliberately, together
+      # with scientist.yml's ruff pin, and fix what the new version reports.
       - name: Install lint tooling
         run: |
-          pip install ruff mypy
+          pip install ruff==0.16.9 mypy==2.4.1
 
       - name: Ruff check
         run: |

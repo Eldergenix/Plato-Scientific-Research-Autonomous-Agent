@@ -19,18 +19,21 @@ auto-imported below so simply doing ``from plato import executor`` (or
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
 
+logger = logging.getLogger(__name__)
+
 __all__ = [
-    "ExecutorResult",
-    "Executor",
     "EXECUTOR_REGISTRY",
-    "register_executor",
+    "Executor",
+    "ExecutorResult",
     "get_executor",
     "list_executors",
+    "register_executor",
 ]
 
 
@@ -140,4 +143,4 @@ def _ensure_builtins_registered() -> None:
             # An unavailable optional backend (e.g. modal SDK not
             # installed) shouldn't block the others. Each backend
             # module handles its own optional-dep behaviour.
-            pass
+            logger.debug("executor backend %r not loaded", name, exc_info=True)

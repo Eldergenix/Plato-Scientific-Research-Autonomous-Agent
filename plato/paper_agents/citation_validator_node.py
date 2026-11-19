@@ -22,11 +22,12 @@ A ``validation_report.json`` is always written to
 from __future__ import annotations
 
 import json
+import logging
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from langchain_core.runnables import RunnableConfig
 
@@ -34,6 +35,8 @@ from ..state.models import RetrievedVia, Source
 from ..tools.citation_matching import coerce_authors, coerce_year
 from ..tools.citation_reports import STRICT_ACCURACY_THRESHOLD
 from ..tools.citation_validator import CitationValidator, build_validation_report
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:  # pragma: no cover — annotation only
     from .parameters import GraphState
@@ -210,7 +213,7 @@ def _entry_to_source(entry: Any, idx: int) -> Source | None:
     - ``dict`` with optional ``id``/``doi``/``arxiv``/``arxiv_id``/``title``/``url``.
     - ``str`` BibTeX entry — parsed via :func:`_parse_bibtex_entries`.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     if isinstance(entry, Source):
         return entry
@@ -318,8 +321,8 @@ def _resolve_run_dir(state: Any) -> tuple[str, Path | None]:
 
 
 async def citation_validator_node(
-    state: "GraphState",
-    config: Optional[RunnableConfig] = None,
+    state: GraphState,
+    config: RunnableConfig | None = None,
 ) -> dict:
     """LangGraph node: validate references and emit ``validation_report.json``.
 
@@ -369,7 +372,7 @@ async def citation_validator_node(
                 store.add_validation(result)
             except Exception:
                 # Persistence is best-effort; never crash the graph on store error.
-                pass
+                logger.debug("could not persist citation validation", exc_info=True)
 
     report = build_validation_report(run_id, sources, results)
 

@@ -1,7 +1,7 @@
 import os
-from pydantic import BaseModel
-from dotenv import load_dotenv
 
+from dotenv import load_dotenv
+from pydantic import BaseModel
 
 # Whitelist of attribute names that may be read/written via [] subscripts.
 # Without this, ``keys["OPENAI_API_KEY"]`` would silently set/return None on

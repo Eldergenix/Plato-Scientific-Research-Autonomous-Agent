@@ -1,17 +1,15 @@
 import logging
 import time
-from typing import Optional
 
 from langchain_core.runnables import RunnableConfig
 from tqdm import tqdm
 
-from .parameters import GraphState
-from .prompts import novelty_prompt, summary_literature_prompt
-from ..paper_agents.tools import extract_latex_block, LLM_call_stream, json_parser3
 from ..domain import DomainProfile, get_domain
+from ..paper_agents.tools import LLM_call_stream, extract_latex_block, json_parser3
 from ..retrieval.orchestrator import retrieve
 from ..safety import detect_injection_signals, wrap_external
-
+from .parameters import GraphState
+from .prompts import novelty_prompt, summary_literature_prompt
 
 # Lazy adapter registration. Importing each source module fires its
 # ``register_adapter(...)`` call, but doing it at module-load time
@@ -42,7 +40,9 @@ def _ensure_adapters_registered() -> None:
         except Exception:
             # Optional adapter dependency missing — skip but keep
             # iterating so the others still register.
-            pass
+            logging.getLogger(__name__).debug(
+                "retrieval adapter %r not loaded", name, exc_info=True
+            )
 
 
 logger = logging.getLogger(__name__)
@@ -70,11 +70,11 @@ def novelty_decider(state: GraphState, config: RunnableConfig):
             messages = f"{state['literature']['messages']}\nIteration {state['literature']['iteration']}\ndecision:{decision}\nreason:{reason}\n"
             iteration = state["literature"]["iteration"] + 1
             break
-        except Exception:
+        except Exception:  # noqa: BLE001 - retry on malformed LLM output
             time.sleep(2)
 
     else:
-        raise Exception("Failed to extract json after 5 attempts")
+        raise RuntimeError("Failed to extract json after 5 attempts")
 
     # get the reason for the decision
     if "not novel" in decision.lower():
@@ -157,7 +157,7 @@ def _resolve_profile(state: GraphState) -> DomainProfile:
 # a sync wrapper would crash on any caller that already has a running loop
 # (notebooks, ``graph.ainvoke()``, dashboard worker threads with a loop).
 # LangGraph natively supports async nodes, so we just use ``await``.
-async def semantic_scholar(state: GraphState, config: Optional[RunnableConfig] = None):
+async def semantic_scholar(state: GraphState, config: RunnableConfig | None = None):
     """
     Search the configured retrieval adapters for the current literature query
     and return wrapped, sanitized paper info to the rest of the literature
@@ -221,12 +221,12 @@ async def semantic_scholar(state: GraphState, config: Optional[RunnableConfig] =
 
             literature_log = state["files"].get("literature_log")
             if literature_log:
-                with open(literature_log, "a", encoding="utf-8") as f:
+                with open(literature_log, "a", encoding="utf-8") as f:  # noqa: ASYNC230 - small append; sync keeps entries whole and ordered
                     f.write(paper_str)
 
             papers_log = state["files"].get("papers")
             if papers_log:
-                with open(papers_log, "a", encoding="utf-8") as f:
+                with open(papers_log, "a", encoding="utf-8") as f:  # noqa: ASYNC230 - small append; sync keeps entries whole and ordered
                     f.write(paper_str)
 
             papers_str.append(paper_str)

@@ -18,16 +18,15 @@ stricter limits).
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
 
-from .. import register_adapter
-from ..middleware import RetrievalClient
 from ...state.models import Source
+from .. import register_adapter
 from ..doi import normalize_doi
-
+from ..middleware import RetrievalClient
 
 __all__ = ["SemanticScholarAdapter"]
 
@@ -115,7 +114,7 @@ class SemanticScholarAdapter:
         if not isinstance(items, list):
             return []
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         out: list[Source] = []
         for item in items:
             if not isinstance(item, dict):

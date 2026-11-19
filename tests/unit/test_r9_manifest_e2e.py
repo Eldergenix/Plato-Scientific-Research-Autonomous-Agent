@@ -71,7 +71,7 @@ def _fake_llm_with_invoke(reply: str = "ok") -> Any:
     )
 
     class _FakeLLM:
-        def invoke(self, prompt: Any) -> SimpleNamespace:  # noqa: D401
+        def invoke(self, prompt: Any) -> SimpleNamespace:
             return fake_message
 
     return _FakeLLM()

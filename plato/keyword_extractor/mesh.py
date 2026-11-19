@@ -27,7 +27,6 @@ from typing import Any
 from . import register_keyword_extractor
 from .default import _tokenise
 
-
 __all__ = ["MeshKeywordExtractor"]
 
 

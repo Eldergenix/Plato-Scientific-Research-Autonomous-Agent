@@ -10,11 +10,11 @@ from __future__ import annotations
 import re
 
 __all__ = [
-    "parse_doi",
-    "parse_arxiv_id",
-    "normalize_doi",
-    "is_valid_doi",
     "is_valid_arxiv_id",
+    "is_valid_doi",
+    "normalize_doi",
+    "parse_arxiv_id",
+    "parse_doi",
 ]
 
 

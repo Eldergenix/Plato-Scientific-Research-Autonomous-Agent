@@ -22,7 +22,7 @@ from __future__ import annotations
 import os
 import re
 import warnings
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from .manifest_callback import ManifestCallbackHandler
 
@@ -40,7 +40,9 @@ _SECRET_PATTERNS = [
     re.compile(r"sk-ant-[A-Za-z0-9_-]{16,}"),  # Anthropic
     re.compile(r"AIza[0-9A-Za-z_-]{16,}"),  # Google API keys
     re.compile(r"pplx-[A-Za-z0-9_-]{16,}"),  # Perplexity
-    re.compile(r"Bearer\s+[A-Za-z0-9._\-]{16,}", re.I),  # generic bearer tokens
+    re.compile(
+        r"Bearer\s+[A-Za-z0-9._\-]{16,}", re.IGNORECASE
+    ),  # generic bearer tokens
 ]
 _REDACTED = "<REDACTED-SECRET>"
 
@@ -139,7 +141,7 @@ class _RedactingCallbackHandler:
     via __getattr__ so the upstream API surface is preserved.
     """
 
-    _INTERCEPTED_EVENTS = {
+    _INTERCEPTED_EVENTS: ClassVar[set[str]] = {
         "on_llm_start",
         "on_chat_model_start",
         "on_llm_new_token",
@@ -175,7 +177,7 @@ class _RedactingCallbackHandler:
 def callbacks_for(
     run_id: str,
     workflow: str,
-    recorder: "ManifestRecorder | None" = None,
+    recorder: ManifestRecorder | None = None,
 ) -> list[Any]:
     """Helper that returns callback handlers for use in LangGraph configs.
 
@@ -192,4 +194,4 @@ def callbacks_for(
     return handlers
 
 
-__all__ = ["get_langfuse_callback", "callbacks_for", "ManifestCallbackHandler"]
+__all__ = ["ManifestCallbackHandler", "callbacks_for", "get_langfuse_callback"]

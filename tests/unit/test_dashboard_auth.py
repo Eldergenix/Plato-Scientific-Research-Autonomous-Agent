@@ -20,9 +20,8 @@ _DASHBOARD_SRC = Path(__file__).resolve().parents[2] / "dashboard" / "backend" /
 if str(_DASHBOARD_SRC) not in sys.path:
     sys.path.insert(0, str(_DASHBOARD_SRC))
 
-from fastapi import HTTPException  # noqa: E402
-
-from plato_dashboard.auth import (  # noqa: E402
+from fastapi import HTTPException
+from plato_dashboard.auth import (
     AUTH_REQUIRED_ENV,
     USER_COOKIE,
     USER_HEADER,

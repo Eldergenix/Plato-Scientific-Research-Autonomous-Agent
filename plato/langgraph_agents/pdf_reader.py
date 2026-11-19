@@ -1,5 +1,5 @@
-import os
 import base64
+import os
 
 
 def pdf_to_images(
@@ -31,9 +31,8 @@ def pdf_to_images(
 
     # Open document (with password if needed)
     doc = fitz.open(pdf_path)
-    if doc.needs_pass:
-        if not password or not doc.authenticate(password):
-            raise RuntimeError("PDF is password-protected and authentication failed.")
+    if doc.needs_pass and (not password or not doc.authenticate(password)):
+        raise RuntimeError("PDF is password-protected and authentication failed.")
 
     # Scale by dpi/72 (PDF default is 72 dpi)
     zoom = dpi / 72.0

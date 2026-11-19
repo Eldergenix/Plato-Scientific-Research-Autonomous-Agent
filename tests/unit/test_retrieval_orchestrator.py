@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -28,7 +28,7 @@ def _make_source(
         doi=doi,
         title=title,
         retrieved_via=via,  # type: ignore[arg-type]
-        fetched_at=datetime.now(timezone.utc),
+        fetched_at=datetime.now(UTC),
     )
 
 
@@ -51,7 +51,7 @@ class _BoomAdapter:
     def __init__(self, name: str = "boom") -> None:
         self.name = name
 
-    async def search(self, query: str, limit: int) -> list[Source]:  # noqa: ARG002
+    async def search(self, query: str, limit: int) -> list[Source]:
         raise RuntimeError("simulated upstream failure")
 
 

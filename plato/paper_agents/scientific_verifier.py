@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any, Optional, cast
+from typing import Any, cast
 
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field
 
 from .parameters import GraphState
-
 
 _OPERATION_ALIASES = {
     "formula_mass": ("formula_mass", "formula mass"),
@@ -66,7 +65,7 @@ class ScientificVerificationReport(BaseModel):
 
 def scientific_verifier_node(
     state: GraphState,
-    config: Optional[RunnableConfig] = None,  # noqa: ARG001 - LangGraph node signature
+    config: RunnableConfig | None = None,
 ) -> dict[str, Any]:
     report = build_scientific_verification_report(state)
     _write_report(state, report)
@@ -97,7 +96,7 @@ def build_scientific_verification_report(
     artifact_inventory = _artifact_inventory(state)
     required_operations = _required_operations_from_artifacts(artifact_inventory)
     numeric_claim_count = len(_NUMERIC_PATTERN.findall(results))
-    validation_report = cast(Optional[dict[str, Any]], state.get("validation_report"))
+    validation_report = cast(dict[str, Any] | None, state.get("validation_report"))
     total_references, verified_references, validation_rate, gate_passed = (
         _reference_validation_stats(validation_report)
     )
@@ -218,7 +217,7 @@ def _required_operations_from_artifacts(artifact_inventory: list[str]) -> list[s
 
 
 def _reference_validation_stats(
-    validation_report: Optional[dict[str, Any]],
+    validation_report: dict[str, Any] | None,
 ) -> tuple[int, int, float, bool | None]:
     if not validation_report:
         return 0, 0, 0.0, None

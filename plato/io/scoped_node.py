@@ -17,13 +17,14 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from typing import Any, Awaitable, Callable, Optional, Union, cast
+from collections.abc import Awaitable, Callable
+from typing import Any, cast
 
 from langchain_core.runnables import RunnableConfig
 
 from .scoped_writer import FileScope, ScopedWriter
 
-NodeReturn = Union[dict, Awaitable[dict]]
+NodeReturn = dict | Awaitable[dict]
 NodeFn = Callable[..., NodeReturn]
 
 
@@ -41,7 +42,7 @@ def scoped_node(fn: NodeFn, scope: FileScope) -> NodeFn:
 
         async def _async_wrapper(
             state: dict[str, Any],
-            config: Optional[RunnableConfig] = None,
+            config: RunnableConfig | None = None,
         ) -> dict:
             folder = state["files"]["Folder"]
             writer = ScopedWriter(folder, scope)
@@ -59,7 +60,7 @@ def scoped_node(fn: NodeFn, scope: FileScope) -> NodeFn:
 
     def _sync_wrapper(
         state: dict[str, Any],
-        config: Optional[RunnableConfig] = None,
+        config: RunnableConfig | None = None,
     ) -> dict:
         folder = state["files"]["Folder"]
         writer = ScopedWriter(folder, scope)

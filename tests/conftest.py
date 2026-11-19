@@ -26,15 +26,15 @@ def _reset_global_registries():
     """
     # Late imports so this fixture loads even if a module has a side-effect
     # registration we wouldn't want to trigger at conftest-collection time.
-    from plato.retrieval import ADAPTER_REGISTRY
-    from plato.tools.registry import _REGISTRY as TOOL_REGISTRY
+    from plato.journal_preset import JOURNAL_PRESET_REGISTRY
 
     # Iter-16 additions: KeywordExtractor + JournalPreset registries follow
     # the same import-time side-effect pattern as the adapter / tool ones,
     # so they need the same snapshot-restore plumbing or any test that
     # exercises ``register_*`` will leak fakes into siblings.
     from plato.keyword_extractor import KEYWORD_EXTRACTOR_REGISTRY
-    from plato.journal_preset import JOURNAL_PRESET_REGISTRY
+    from plato.retrieval import ADAPTER_REGISTRY
+    from plato.tools.registry import _REGISTRY as TOOL_REGISTRY
 
     adapter_snapshot = dict(ADAPTER_REGISTRY)
     tool_snapshot = dict(TOOL_REGISTRY)

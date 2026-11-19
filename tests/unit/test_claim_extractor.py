@@ -9,12 +9,11 @@ retry behaviour, and state-merge semantics can be verified in isolation.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 from plato.langgraph_agents.claim_extractor import claim_extractor
 from plato.state.models import Claim, Source
-
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -33,7 +32,7 @@ def _make_source(idx: int = 0, abstract: str | None = ABSTRACT) -> Source:
         title=f"Test paper {idx}",
         abstract=abstract,
         retrieved_via="arxiv",
-        fetched_at=datetime.now(timezone.utc),
+        fetched_at=datetime.now(UTC),
     )
 
 

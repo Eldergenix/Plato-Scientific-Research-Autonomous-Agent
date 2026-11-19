@@ -15,7 +15,6 @@ from plato.retrieval.sources.pubmed import (
 )
 from plato.state.models import Source
 
-
 # ---------------------------------------------------------------------------
 # Sample esearch + esummary payloads (mirrors NCBI E-utilities JSON schema)
 # ---------------------------------------------------------------------------
@@ -362,12 +361,14 @@ async def test_search_raises_on_http_error(monkeypatch: pytest.MonkeyPatch) -> N
         request=httpx.Request("GET", "https://eutils.ncbi.nlm.nih.gov"),
     )
 
-    with patch(
-        "httpx.AsyncClient.get",
-        new=AsyncMock(return_value=error_response),
+    with (
+        patch(
+            "httpx.AsyncClient.get",
+            new=AsyncMock(return_value=error_response),
+        ),
+        pytest.raises(httpx.HTTPStatusError),
     ):
-        with pytest.raises(httpx.HTTPStatusError):
-            await adapter.search("q", limit=5)
+        await adapter.search("q", limit=5)
 
 
 # ---------------------------------------------------------------------------

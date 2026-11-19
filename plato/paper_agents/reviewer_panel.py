@@ -35,7 +35,6 @@ from .prompts import (
 )
 from .tools import LLM_call, json_parser3
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -76,7 +75,7 @@ def _parse_critique(raw: str) -> dict:
     """Best-effort parse of an LLM JSON critique into a sane dict."""
     try:
         parsed = json_parser3(raw)
-    except Exception:
+    except Exception:  # noqa: BLE001 - best-effort parse, never raises
         return {"severity": 0, "issues": []}
     if not isinstance(parsed, dict):
         return {"severity": 0, "issues": []}
@@ -132,7 +131,7 @@ def writing_reviewer(state: GraphState, config: RunnableConfig):
 
 __all__ = [
     "methodology_reviewer",
-    "statistics_reviewer",
     "novelty_reviewer",
+    "statistics_reviewer",
     "writing_reviewer",
 ]

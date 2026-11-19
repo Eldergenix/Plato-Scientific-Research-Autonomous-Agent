@@ -18,16 +18,13 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Optional
-
-from langchain_core.runnables import RunnableConfig
 
 import json5
+from langchain_core.runnables import RunnableConfig
 
+from ..paper_agents.tools import LLM_call_stream
 from .parameters import GraphState
 from .prompts import clarifier_prompt
-from ..paper_agents.tools import LLM_call_stream
-
 
 _CLARIFIER_RETRIES = 3
 
@@ -53,12 +50,12 @@ def _parse_questions(text: str) -> list[str]:
         data = json5.loads(payload)
 
     if not isinstance(data, list):
-        raise ValueError("Clarifier response is not a JSON array.")
+        raise ValueError("Clarifier response is not a JSON array.")  # noqa: TRY004 - malformed LLM output, not a caller type error
     return [str(q).strip() for q in data if str(q).strip()]
 
 
 def research_question_clarifier(
-    state: GraphState, config: Optional[RunnableConfig] = None
+    state: GraphState, config: RunnableConfig | None = None
 ):
     # Note: ``Optional[RunnableConfig]`` (not ``RunnableConfig | None``)
     # because LangGraph's annotation introspection only whitelists the
@@ -83,7 +80,7 @@ def research_question_clarifier(
         try:
             questions = _parse_questions(raw)
             break
-        except Exception:
+        except Exception:  # noqa: BLE001 - retry on malformed LLM output
             questions = []
             continue
 

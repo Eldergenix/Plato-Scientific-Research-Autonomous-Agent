@@ -44,19 +44,19 @@ from plato.novelty.temporal import (
 )
 
 __all__ = [
+    "CandidateStatus",
+    "CompositeNoveltyScore",
+    "CompositeNoveltyScorer",
     "EmbeddingBackend",
     "EmbeddingScorer",
+    "EvidencePath",
+    "FrozenLiteratureRecord",
     "NoveltyResult",
     "OpenAIEmbeddingBackend",
     "StubEmbeddingBackend",
-    "TfidfEmbeddingBackend",
-    "CompositeNoveltyScore",
-    "CompositeNoveltyScorer",
-    "CandidateStatus",
-    "EvidencePath",
-    "FrozenLiteratureRecord",
     "TemporalCandidate",
     "TemporalNoveltyTask",
+    "TfidfEmbeddingBackend",
     "extract_concepts",
     "score_temporal_task",
 ]

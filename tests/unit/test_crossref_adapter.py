@@ -12,7 +12,6 @@ from plato.retrieval import list_adapters
 from plato.retrieval.sources.crossref import CrossrefAdapter
 from plato.state.models import Source
 
-
 # ---------------------------------------------------------------------------
 # Sample Crossref payload
 # ---------------------------------------------------------------------------

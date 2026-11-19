@@ -45,7 +45,7 @@ if not os.getenv("E2B_API_KEY"):
     )
 
 
-from plato.executor.e2b_backend import E2BExecutor  # noqa: E402
+from plato.executor.e2b_backend import E2BExecutor
 
 
 @pytest.mark.asyncio

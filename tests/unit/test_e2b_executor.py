@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 
@@ -21,7 +21,6 @@ from plato.executor.e2b_backend import (
     _extract_code_cells,
     _extract_png,
 )
-
 
 # --- _extract_code_cells ---------------------------------------------------
 
@@ -72,7 +71,7 @@ def test_extract_png_reads_direct_attr() -> None:
 
 def test_extract_png_reads_raw_data() -> None:
     class _R:
-        raw_data = {"image/png": "xyz", "text/plain": "hi"}
+        raw_data: ClassVar[dict[str, str]] = {"image/png": "xyz", "text/plain": "hi"}
 
     assert _extract_png(_R()) == "xyz"
 
@@ -154,7 +153,7 @@ async def test_run_with_stub_sandbox_captures_logs_and_results(
     import types as _types
 
     fake = _types.ModuleType("e2b_code_interpreter")
-    setattr(fake, "Sandbox", _StubSandbox)
+    fake.Sandbox = _StubSandbox
     monkeypatch.setitem(sys.modules, "e2b_code_interpreter", fake)
 
     executor = E2BExecutor()
@@ -192,7 +191,7 @@ async def test_run_propagates_sandbox_error(
     import types as _types
 
     fake = _types.ModuleType("e2b_code_interpreter")
-    setattr(fake, "Sandbox", _StubSandbox)
+    fake.Sandbox = _StubSandbox
     monkeypatch.setitem(sys.modules, "e2b_code_interpreter", fake)
 
     executor = E2BExecutor()

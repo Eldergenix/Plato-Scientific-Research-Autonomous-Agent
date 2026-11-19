@@ -5,19 +5,18 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
 
 from evals import EvalRunner, GoldenTask, LLMJudge, Metrics
-from evals.runner import _default_plato_factory
 from evals.judge import JudgeResult
 from evals.metrics import citation_validation_rate, unsupported_claim_rate
+from evals.runner import _default_plato_factory
 from evals.tasks import discover_tasks, load_task
 from plato.state.models import Claim, EvidenceLink, ValidationResult
-
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GOLDEN_DIR = REPO_ROOT / "evals" / "golden"
@@ -68,7 +67,7 @@ def _vresult(
         doi_resolved=doi_resolved,
         arxiv_resolved=arxiv_resolved,
         retracted=retracted,
-        checked_at=datetime.now(timezone.utc),
+        checked_at=datetime.now(UTC),
     )
 
 
@@ -174,7 +173,7 @@ class _FakePlato:
         run_id = uuid.uuid4().hex[:12]
         run_dir = self.project_dir / "runs" / run_id
         run_dir.mkdir(parents=True, exist_ok=True)
-        started = datetime.now(timezone.utc)
+        started = datetime.now(UTC)
         ended = started + timedelta(seconds=self.latency_per_call)
         payload = {
             "run_id": run_id,
@@ -375,7 +374,7 @@ def test_aggregate_metrics_reads_validation_and_evidence_artifacts(tmp_path: Pat
     project = tmp_path / "task" / "project"
     runs_dir = project / "runs" / "abc123"
     runs_dir.mkdir(parents=True)
-    started = datetime.now(timezone.utc)
+    started = datetime.now(UTC)
     (runs_dir / "manifest.json").write_text(
         json.dumps(
             {

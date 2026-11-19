@@ -1,33 +1,32 @@
-from typing import TYPE_CHECKING, Any, List
 import asyncio
 import logging
-import time
 import os
 import shutil
+import time
 import warnings
 import zipfile
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from .config import (
     DEFAUL_PROJECT_NAME,
-    INPUT_FILES,
-    PLOTS_FOLDER,
     DESCRIPTION_FILE,
     IDEA_FILE,
-    METHOD_FILE,
-    RESULTS_FILE,
+    INPUT_FILES,
     LITERATURE_FILE,
+    METHOD_FILE,
+    PLOTS_FOLDER,
+    RESULTS_FILE,
 )
-from .research import Research
+from .domain import DomainProfile, get_domain
+from .executor import get_executor
 from .key_manager import KeyManager
 from .llm import LLM, models
-from .paper_agents.journal import Journal
-from .utils import llm_parser, input_check, check_file_paths, in_notebook
-from .domain import DomainProfile, get_domain
-from .state import ManifestRecorder
-from .state import make_async_checkpointer
 from .observability import callbacks_for
-from .executor import get_executor
+from .paper_agents.journal import Journal
+from .research import Research
+from .state import ManifestRecorder, make_async_checkpointer
+from .utils import check_file_paths, in_notebook, input_check, llm_parser
 
 # ``cmbagent`` and ``PIL`` previously fired on every ``from plato
 # import Plato`` — including ``plato --version`` and ``plato dashboard
@@ -272,7 +271,7 @@ class Plato:
         """Method to show the content depending on the execution environment, whether Jupyter notebook or Python script."""
 
         if self.run_in_notebook:
-            from IPython.display import display, Markdown
+            from IPython.display import Markdown, display
 
             display(Markdown(content))
         else:
@@ -632,11 +631,12 @@ class Plato:
         Check with the literature if an idea is original or not.
         """
 
+        import os
+
         from futurehouse_client import FutureHouseClient, JobNames
         from futurehouse_client.models import (
             TaskRequest,
         )
-        import os
 
         fhkey = os.getenv("FUTURE_HOUSE_API_KEY")
 
@@ -988,7 +988,7 @@ class Plato:
 
     def get_results(
         self,
-        involved_agents: List[str] = ["engineer", "researcher"],
+        involved_agents: list[str] | None = None,
         engineer_model: LLM | str = models["gpt-4.1"],
         researcher_model: LLM | str = models["o3-mini"],
         restart_at_step: int = -1,

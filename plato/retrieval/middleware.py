@@ -39,7 +39,8 @@ import time
 from collections.abc import Awaitable, Callable
 from email.utils import parsedate_to_datetime
 from pathlib import Path
-from typing import Any, Protocol
+from types import TracebackType
+from typing import Any, ClassVar, Protocol, Self
 from urllib.parse import urlparse
 
 import httpx
@@ -48,11 +49,11 @@ logger = logging.getLogger(__name__)
 
 
 __all__ = [
-    "RateLimitBackoff",
-    "ETagCache",
     "CircuitBreaker",
-    "RetrievalClient",
     "CircuitOpenError",
+    "ETagCache",
+    "RateLimitBackoff",
+    "RetrievalClient",
 ]
 
 
@@ -93,7 +94,7 @@ class RateLimitBackoff:
     capped at ``max_delay`` with a small jitter to avoid thundering-herd.
     """
 
-    _RETRYABLE_STATUS = {429, 503}
+    _RETRYABLE_STATUS: ClassVar[set[int]] = {429, 503}
 
     def __init__(
         self,
@@ -470,7 +471,7 @@ class RetrievalClient:
         else:
             self._backoff = None
 
-    async def __aenter__(self) -> "RetrievalClient":
+    async def __aenter__(self) -> Self:
         kwargs: dict[str, Any] = {"timeout": self._timeout}
         if self._init_headers:
             kwargs["headers"] = self._init_headers
@@ -484,7 +485,12 @@ class RetrievalClient:
         self._client = await self._cm.__aenter__()
         return self
 
-    async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
         cm = getattr(self, "_cm", None)
         if cm is not None:
             try:
@@ -540,7 +546,7 @@ class RetrievalClient:
                 response = await self._backoff.execute(do_request)
             else:
                 response = await do_request()
-        except (httpx.HTTPError, asyncio.TimeoutError):
+        except (TimeoutError, httpx.HTTPError):
             if breaker is not None:
                 breaker.record_failure()
             raise

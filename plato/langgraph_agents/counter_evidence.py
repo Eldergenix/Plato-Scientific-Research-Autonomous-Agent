@@ -25,14 +25,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Iterable, Optional, cast
+from collections.abc import Iterable
+from typing import Any, cast
 
 from langchain_core.runnables import RunnableConfig
 
-from .parameters import GraphState
 from ..domain import DomainProfile, get_domain
 from ..retrieval.orchestrator import retrieve
 from ..state.models import Source
+from .parameters import GraphState
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +118,7 @@ def _build_variants(seed: str) -> list[str]:
 
 
 async def counter_evidence_search(
-    state: GraphState, config: Optional[RunnableConfig] = None
+    state: GraphState, config: RunnableConfig | None = None
 ):
     """LangGraph node: retrieve counter-evidence sources for the literature query."""
 

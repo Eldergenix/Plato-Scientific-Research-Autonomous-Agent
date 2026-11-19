@@ -18,8 +18,8 @@ from .scoped_writer import FileScope, ScopedWriter, ScopeError, writer_for_node
 
 __all__ = [
     "FileScope",
-    "ScopedWriter",
     "ScopeError",
+    "ScopedWriter",
     "scoped_node",
     "writer_for_node",
 ]

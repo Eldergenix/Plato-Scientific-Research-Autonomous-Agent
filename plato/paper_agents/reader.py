@@ -1,25 +1,26 @@
-import os
-import time
 import hashlib
+import os
 import shutil
+import time
 from pathlib import Path
 from typing import Any, cast
+
+from langchain_anthropic import ChatAnthropic
 from langchain_core.runnables import RunnableConfig
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
 
-from .parameters import GraphState
-from .latex_presets import journal_dict
 from ..config import (
-    INPUT_FILES,
     IDEA_FILE,
+    INPUT_FILES,
     METHOD_FILE,
-    RESULTS_FILE,
     PAPER_FOLDER,
     PLOTS_FOLDER,
+    RESULTS_FILE,
     LaTeX_DIR,
 )
+from .latex_presets import journal_dict
+from .parameters import GraphState
 
 
 def preprocess_node(state: GraphState, config: RunnableConfig):

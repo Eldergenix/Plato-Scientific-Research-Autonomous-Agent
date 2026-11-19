@@ -20,7 +20,6 @@ from .builtin import (
 )
 from .registry import Permission, call, get, is_enabled, list_tools
 
-
 mcp = FastMCP(
     "Plato Tool Registry",
     instructions=(

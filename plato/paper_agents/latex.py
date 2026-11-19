@@ -1,18 +1,17 @@
-import subprocess
 import os
 import re
 import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
-from .parameters import GraphState
-from .prompts import fix_latex_bug_prompt
-from .tools import LLM_call, extract_latex_block, temp_file
+from ..io import ScopedWriter
 from .journal import LatexPresets
 from .latex_presets import journal_dict
+from .parameters import GraphState
+from .prompts import fix_latex_bug_prompt
 from .scopes import LATEX_FIX_SCOPE
-from ..io import ScopedWriter
-
+from .tools import LLM_call, extract_latex_block, temp_file
 
 # Characters that should be escaped in BibTeX (outside math mode)
 special_chars = {
@@ -116,12 +115,9 @@ def extract_latex_errors(state):
                 next_line = lines[i].strip()
 
                 if (
-                    next_line.startswith("! ")
-                    or next_line.startswith("(/")
-                    or next_line.startswith(")")
-                    or next_line.startswith("Package ")
-                    or next_line.startswith("Document Class")
-                    or next_line.startswith("(/usr")
+                    next_line.startswith(
+                        ("! ", "(/", ")", "Package ", "Document Class", "(/usr")
+                    )
                     or re.match(r"^\([^\)]+\.sty", next_line)
                     or re.match(r"^\(/", next_line)
                     or re.match(r"^.*\.tex$", next_line)  # new .tex file
@@ -140,8 +136,7 @@ def extract_latex_errors(state):
     with open(state["files"]["LaTeX_err"], "w") as f:
         if errors:
             f.write("LaTeX Compilation Errors Found:\n\n")
-            for error in errors:
-                f.write(error + "\n\n")
+            f.writelines(error + "\n\n" for error in errors)
         else:
             f.write("✅ No LaTeX errors found.\n")
 
@@ -202,6 +197,7 @@ def compile_tex_document(
         )
         result = subprocess.run(
             ["bibtex", doc_stem],
+            check=False,
             cwd=doc_folder_text,
             capture_output=True,
             text=True,
@@ -261,6 +257,7 @@ def compile_latex(state: GraphState, paper_name: str) -> None:
     def run_bibtex():
         subprocess.run(
             ["bibtex", paper_stem],
+            check=False,
             cwd=state["files"]["Paper_folder"],
             capture_output=True,
             text=True,
@@ -316,7 +313,7 @@ def compile_latex(state: GraphState, paper_name: str) -> None:
         if os.path.exists(f"{state['files']['Paper_folder']}/{fin}"):
             os.remove(f"{state['files']['Paper_folder']}/{fin}")
 
-    print("")
+    print()
 
 
 def save_paper(state: GraphState, paper_name: str):

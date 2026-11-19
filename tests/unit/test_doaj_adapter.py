@@ -12,7 +12,6 @@ from plato.retrieval import list_adapters
 from plato.retrieval.sources.doaj import DOAJAdapter
 from plato.state.models import Source
 
-
 SAMPLE_PAYLOAD: dict[str, Any] = {
     "total": 1,
     "results": [

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -39,7 +39,7 @@ class SklearnSyntheticExecutor:
         methodology: str,
         data_description: str,
         project_dir: str | Path,
-        keys: Any,  # noqa: ARG002 - protocol compatibility
+        keys: Any,
         **kwargs: Any,
     ) -> ExecutorResult:
         return await asyncio.to_thread(
@@ -225,7 +225,7 @@ class SklearnSyntheticExecutor:
             .sort_values(["roc_auc_mean", "brier_mean"], ascending=[False, True])
         )
 
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         csv_path = plots_dir / f"synthetic_benchmark_metrics_{timestamp}.csv"
         results_df.to_csv(csv_path, index=False)
         summary_path = plots_dir / f"synthetic_benchmark_summary_{timestamp}.csv"
@@ -560,8 +560,10 @@ def _build_markdown(
     if comparison.get("available"):
         lines.extend(
             [
-                "A paired Wilcoxon signed-rank comparison across folds between the best configuration and its clean baseline produced "
-                f"delta ROC-AUC {comparison['delta_auc']:.3f}, statistic {comparison['statistic']:.3f}, and p={comparison['p_value']:.4f}.",
+                (
+                    "A paired Wilcoxon signed-rank comparison across folds between the best configuration and its clean baseline produced "
+                    f"delta ROC-AUC {comparison['delta_auc']:.3f}, statistic {comparison['statistic']:.3f}, and p={comparison['p_value']:.4f}."
+                ),
                 "",
             ]
         )

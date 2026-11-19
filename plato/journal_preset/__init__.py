@@ -29,16 +29,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-
 if TYPE_CHECKING:
     from ..paper_agents.journal import LatexPresets
 
 
 __all__ = [
     "JOURNAL_PRESET_REGISTRY",
-    "register_journal_preset",
     "get_journal_preset",
     "list_journal_presets",
+    "register_journal_preset",
 ]
 
 
@@ -50,7 +49,7 @@ class _JournalPresetRegistry(dict[str, "LatexPresets"]):
         self._load()
         return dict.__contains__(self, key)
 
-    def __getitem__(self, key: str) -> "LatexPresets":
+    def __getitem__(self, key: str) -> LatexPresets:
         self._load()
         return dict.__getitem__(self, key)
 
@@ -79,12 +78,12 @@ class _JournalPresetRegistry(dict[str, "LatexPresets"]):
         return dict.__iter__(self)
 
 
-JOURNAL_PRESET_REGISTRY: dict[str, "LatexPresets"] = _JournalPresetRegistry()
+JOURNAL_PRESET_REGISTRY: dict[str, LatexPresets] = _JournalPresetRegistry()
 
 
 def register_journal_preset(
     name: str,
-    presets: "LatexPresets",
+    presets: LatexPresets,
     *,
     overwrite: bool = False,
 ) -> None:
@@ -105,7 +104,7 @@ def register_journal_preset(
     JOURNAL_PRESET_REGISTRY[key] = presets
 
 
-def get_journal_preset(name: str) -> "LatexPresets":
+def get_journal_preset(name: str) -> LatexPresets:
     """Look up a registered preset by name (lazy-loads the built-ins on first call)."""
     _ensure_builtins_registered()
     key = (name or "").upper()
@@ -141,7 +140,7 @@ def _ensure_builtins_registered() -> None:
 
     try:
         from ..paper_agents.latex_presets import journal_dict
-    except Exception:
+    except Exception:  # noqa: BLE001 - registry stays usable without legacy presets
         # If the legacy module fails to import we still want the registry
         # available — third parties can populate it manually.
         return

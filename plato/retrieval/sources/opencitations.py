@@ -11,16 +11,16 @@ touching the network.
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import quote
 
 import httpx  # noqa: F401  # kept so ``patch("httpx.AsyncClient.get", ...)`` resolves.
 
+from ...state.models import Source
 from .. import register_adapter
 from ..doi import parse_doi
 from ..middleware import RetrievalClient
-from ...state.models import Source
 
 __all__ = ["OpenCitationsAdapter"]
 
@@ -92,7 +92,7 @@ def _map_record_to_source(record: dict[str, Any], fallback_doi: str) -> Source |
         venue=venue or publisher or _text(record.get("type")),
         url=f"https://doi.org/{doi}",
         retrieved_via="opencitations",
-        fetched_at=datetime.now(timezone.utc),
+        fetched_at=datetime.now(UTC),
     )
 
 

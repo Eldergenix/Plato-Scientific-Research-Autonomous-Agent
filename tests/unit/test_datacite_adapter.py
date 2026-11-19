@@ -12,7 +12,6 @@ from plato.retrieval import list_adapters
 from plato.retrieval.sources.datacite import DataCiteAdapter
 from plato.state.models import Source
 
-
 SAMPLE_PAYLOAD: dict[str, Any] = {
     "data": [
         {

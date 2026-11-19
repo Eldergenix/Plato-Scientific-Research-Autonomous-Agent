@@ -14,6 +14,7 @@ from unittest.mock import patch
 
 import pytest
 from langchain_core.runnables import RunnableConfig
+
 from plato.paper_agents.parameters import GraphState
 
 

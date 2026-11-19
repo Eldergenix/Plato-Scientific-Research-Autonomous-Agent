@@ -19,7 +19,6 @@ from __future__ import annotations
 
 from plato.io import FileScope
 
-
 ABSTRACT_SCOPE = FileScope(
     write=[
         # Active paths (legacy compile/fix pipeline reads these).
@@ -151,13 +150,13 @@ LATEX_FIX_SCOPE = FileScope(
 
 __all__ = [
     "ABSTRACT_SCOPE",
-    "METHODS_SCOPE",
+    "CITATIONS_SCOPE",
     "CONCLUSIONS_SCOPE",
     "INTRODUCTION_SCOPE",
-    "RESULTS_SCOPE",
     "KEYWORDS_SCOPE",
+    "LATEX_FIX_SCOPE",
+    "METHODS_SCOPE",
     "PLOTS_SCOPE",
     "REFINE_SCOPE",
-    "CITATIONS_SCOPE",
-    "LATEX_FIX_SCOPE",
+    "RESULTS_SCOPE",
 ]

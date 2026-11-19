@@ -11,10 +11,10 @@ from pydantic import BaseModel
 import plato.tools as tools_pkg
 from plato.tools import builtin as tools_builtin
 from plato.tools.registry import (
+    _REGISTRY,
     Permission,
     Tool,
     ToolMetadata,
-    _REGISTRY,
     call,
     get,
     get_disabled_tools,

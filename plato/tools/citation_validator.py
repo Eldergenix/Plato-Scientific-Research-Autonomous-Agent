@@ -27,12 +27,13 @@ import asyncio
 import inspect
 import logging
 import re
-from datetime import datetime, timezone
-from typing import Any, Callable, Literal, cast
+from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import Any, Literal, Self, cast
 from urllib.parse import quote
 
-from defusedxml import ElementTree
 import httpx
+from defusedxml import ElementTree
 
 from plato.state.models import Source, ValidationResult
 from plato.tools.citation_matching import (
@@ -54,7 +55,6 @@ from plato.tools.citation_matching import (
     title_similarity,
 )
 from plato.tools.citation_reports import build_validation_report, result_passes
-
 
 _USER_AGENT = "Plato/1.0 citation-validator"
 _DEFAULT_TIMEOUT_S = 10.0
@@ -229,7 +229,7 @@ class CitationValidator:
             folder=folder,
             notes=notes,
             error="; ".join(transport_errors) if transport_errors else None,
-            checked_at=datetime.now(timezone.utc),
+            checked_at=datetime.now(UTC),
         )
 
     async def validate_batch(
@@ -258,7 +258,7 @@ class CitationValidator:
 
     # -- async context manager ---------------------------------------------
 
-    async def __aenter__(self) -> "CitationValidator":
+    async def __aenter__(self) -> Self:
         return self
 
     async def __aexit__(self, exc_type, exc, tb) -> None:

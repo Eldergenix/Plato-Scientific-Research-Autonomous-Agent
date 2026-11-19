@@ -77,10 +77,7 @@ class Idea:
 
         chat_history = results["chat_history"]
 
-        try:
-            task_result = get_task_result(chat_history, "idea_maker_nest")
-        except Exception as e:
-            raise e
+        task_result = get_task_result(chat_history, "idea_maker_nest")
         if task_result is None:
             raise ValueError("idea_maker_nest returned no task result")
 

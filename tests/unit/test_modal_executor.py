@@ -31,7 +31,6 @@ from plato.executor.modal_backend import (
     _parse_runner_envelope,
 )
 
-
 # --- _extract_code_cells ---------------------------------------------------
 
 
@@ -188,7 +187,7 @@ async def test_run_with_stub_modal_returns_envelope(
             return f"app::{name}"
 
     class _StubImage:
-        def pip_install(self, *deps: str) -> "_StubImage":
+        def pip_install(self, *deps: str) -> _StubImage:
             return self
 
     class _StubImageNamespace:
@@ -199,9 +198,9 @@ async def test_run_with_stub_modal_returns_envelope(
     import types as _types
 
     fake = _types.ModuleType("modal")
-    setattr(fake, "Sandbox", _StubSandboxFactory)
-    setattr(fake, "App", _StubAppNamespace)
-    setattr(fake, "Image", _StubImageNamespace)
+    fake.Sandbox = _StubSandboxFactory
+    fake.App = _StubAppNamespace
+    fake.Image = _StubImageNamespace
     monkeypatch.setitem(sys.modules, "modal", fake)
 
     executor = ModalExecutor()

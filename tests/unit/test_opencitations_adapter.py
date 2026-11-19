@@ -12,7 +12,6 @@ from plato.retrieval import list_adapters
 from plato.retrieval.sources.opencitations import OpenCitationsAdapter
 from plato.state.models import Source
 
-
 SAMPLE_PAYLOAD: list[dict[str, Any]] = [
     {
         "id": "doi:10.1038/s41586-021-03819-2 openalex:W3177828909 pmid:34265844",

@@ -24,14 +24,14 @@ from __future__ import annotations
 import logging
 import re
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from urllib.parse import quote_plus
 
 import httpx  # noqa: F401  # kept so test patches at ``arxiv.httpx.AsyncClient`` resolve.
 
+from ...state.models import Source
 from .. import register_adapter
 from ..middleware import RetrievalClient
-from ...state.models import Source
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +138,7 @@ def _parse_entry(entry: ET.Element) -> Source | None:
         pdf_url=pdf_url,
         url=alt_url or abs_url,
         retrieved_via="arxiv",
-        fetched_at=datetime.now(timezone.utc),
+        fetched_at=datetime.now(UTC),
     )
 
 
