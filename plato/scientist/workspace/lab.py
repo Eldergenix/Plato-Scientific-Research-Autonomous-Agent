@@ -25,6 +25,8 @@ Notes on the molecular tools, each found while verifying them:
   ``lib`` first, which Psi4 needs for its MKL build.
 * LAMMPS is pinned to a ``cpu_py312*nompi*`` build: the CUDA builds are four times the
   size for a sandbox with no GPU, and one sandbox is one machine, so MPI buys nothing.
+  The build number is pinned too, because the GCC 15 rebuilds need a newer glibc than the
+  base image has; see the comment on the ``md`` env.
 * RDKit lives in base, so nothing should ``pip install rdkit`` on top of it: the wheel
   shadows the conda package with a second, differently built copy.
 * ``mkdssp`` 4.x tries mmCIF first and prints a parse error to stderr before falling back
@@ -123,12 +125,21 @@ CONDA_TOOL_ENVS: dict[str, tuple[list[str], list[str], dict[str, str]]] = {
     # Molecular dynamics. The CPU, no-MPI LAMMPS build (E2B has no GPU and one sandbox is
     # one machine) is a quarter the size of the CUDA builds; PLUMED comes with it for
     # free-energy methods. OpenMM covers biomolecular force fields and explicit solvent.
+    #
+    # The build number is pinned, not just the variant. conda-forge rebuilt LAMMPS
+    # 2025.07.22 against GCC 15 from build 4 on (``libgcc >=15``), and GCC 15 emits the
+    # ISO C23 symbols (``__isoc23_strtol`` and friends) that glibc only exports from
+    # GLIBC_2.38. The E2B base image is Debian 12 with glibc 2.36, where those builds
+    # fail to load at all: ``lmp: /lib/x86_64-linux-gnu/libm.so.6: version 'GLIBC_2.38'
+    # not found``. Build 3 is the same LAMMPS version from the GCC 14 toolchain and needs
+    # no symbol above GLIBC_2.34. Only move this pin forward after checking the new build
+    # with ``readelf -V`` (or a sandbox), not because a newer one exists.
     "md": (
         [
             "python=3.12",
             "numpy",
             "scipy",
-            "lammps=*=cpu_py312*nompi*",
+            "lammps=2025.07.22=cpu_py312*nompi_3",
             "openmm",
             "mdanalysis",
             "parmed",
@@ -160,6 +171,32 @@ PIP_BASE = ["pyopenms", "SigProfilerExtractor", "igv-reports"]
 _PATH = "/opt/conda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 _MM = "micromamba"
 _CHANNELS = "-c conda-forge -c bioconda --channel-priority strict"
+# Emptying the package cache is what keeps the build on disk. micromamba keeps every
+# downloaded tarball and its extracted copy under ``/opt/conda/pkgs``; measured on the
+# ``dock`` env (236 MB of tarballs) the cache plus the env is 2,464 MB and the env alone
+# is 1,223 MB, so the cache is roughly half of each env's footprint and it accumulates.
+# Creating the nine envs in one step without clearing it needs about 3.6 GB of tarballs
+# and their extracted copies live at once, which overflowed the build disk.
+_CLEAN = f"{_MM} clean -y -a"
+
+
+def _env_commands(env: str) -> list[str]:
+    """Create one tool env, add its pip packages, then empty the package cache.
+
+    One step per env, each ending in a clean, holds peak disk to a single env's cache
+    instead of all nine, and lets a failed build resume from the last env that worked
+    rather than rebuilding every one of them.
+    """
+    specs, pips, _ = CONDA_TOOL_ENVS[env]
+    commands = [
+        f"{_MM} create -y -q -n {env} {_CHANNELS} " + " ".join(f"'{p}'" for p in specs)
+    ]
+    if pips:
+        commands.append(
+            f"/opt/conda/envs/{env}/bin/python -m pip install --no-cache-dir -q "
+            + " ".join(pips)
+        )
+    return [*commands, _CLEAN]
 
 
 def _wrapper_commands() -> list[str]:
@@ -254,7 +291,7 @@ def lab_template():
     """Return the E2B ``Template`` definition (requires the ``e2b`` SDK)."""
     from e2b import Template
 
-    return (
+    template = (
         Template()
         .from_base_image()
         .apt_install(
@@ -296,30 +333,24 @@ def lab_template():
             {"MAMBA_ROOT_PREFIX": "/opt/conda", "PATH": _PATH, "MPLBACKEND": "Agg"}
         )
         .run_cmd(
-            f"{_MM} install -y -q -n base {_CHANNELS} "
-            + " ".join(f"'{p}'" for p in CONDA_BASE),
-            user="user",
-        )
-        .run_cmd(
             [
-                f"{_MM} create -y -q -n {env} {_CHANNELS} "
-                + " ".join(f"'{p}'" for p in specs)
-                for env, (specs, _, _) in CONDA_TOOL_ENVS.items()
-            ]
-            + [
-                f"/opt/conda/envs/{env}/bin/python -m pip install --no-cache-dir -q "
-                + " ".join(pips)
-                for env, (_, pips, _) in CONDA_TOOL_ENVS.items()
-                if pips
+                f"{_MM} install -y -q -n base {_CHANNELS} "
+                + " ".join(f"'{p}'" for p in CONDA_BASE),
+                _CLEAN,
             ],
             user="user",
         )
-        .run_cmd(_wrapper_commands(), user="user")
+    )
+    # One build step per tool env, so the package cache is emptied between them.
+    for env in CONDA_TOOL_ENVS:
+        template = template.run_cmd(_env_commands(env), user="user")
+    return (
+        template.run_cmd(_wrapper_commands(), user="user")
         .run_cmd(
             [
                 "/opt/conda/bin/python -m pip install --no-cache-dir -q "
                 + " ".join(PIP_BASE),
-                f"{_MM} clean -y -a",
+                _CLEAN,
             ],
             user="user",
         )

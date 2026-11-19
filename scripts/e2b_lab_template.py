@@ -37,6 +37,13 @@ def main() -> int:
     ap.add_argument("--name", default=lab.TEMPLATE_NAME)
     ap.add_argument("--cpu", type=int, default=4, help="vCPUs of sandboxes from this template")
     ap.add_argument("--memory-mb", type=int, default=8192)
+    ap.add_argument(
+        "--min-free-disk-mb",
+        type=int,
+        default=None,
+        help="free space a sandbox from this template must start with, in MiB "
+        "(the E2B team default applies when unset); growth is best effort",
+    )
     ap.add_argument("--skip-cache", action="store_true", help="rebuild every layer")
     ap.add_argument("--dockerfile", action="store_true", help="print the Dockerfile and exit")
     args = ap.parse_args()
@@ -58,6 +65,7 @@ def main() -> int:
                 args.name,
                 cpu_count=args.cpu,
                 memory_mb=args.memory_mb,
+                min_free_disk_mb=args.min_free_disk_mb,
                 skip_cache=args.skip_cache,
             )
             break
