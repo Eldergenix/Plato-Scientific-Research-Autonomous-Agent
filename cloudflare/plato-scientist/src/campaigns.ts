@@ -4,6 +4,7 @@
  * the campaign: its owner, or an admin. Campaigns from before accounts existed have no
  * owner and are visible to admins only. A hidden campaign answers 404, like a missing one.
  */
+import { modelsInfo, workerModel } from "./models";
 import { getContainer } from "@cloudflare/containers";
 import { type Ctx, ownKey, type Principal } from "./auth";
 import { type Env, HttpError, json, type Sql, UUID_RE } from "./lib";
@@ -148,7 +149,7 @@ export async function runCampaign(c: Ctx, id: string): Promise<Response> {
 
 export async function health(c: Ctx): Promise<Response> {
   const [row] = await c.sql`SELECT count(*)::int AS campaigns FROM plato.research_campaigns`;
-  return json({ ok: true, model: c.env.PLATO_SCIENTIST_MODEL, campaigns: row.campaigns });
+  return json({ ok: true, model: workerModel(c.env), models: modelsInfo(c.env), campaigns: row.campaigns });
 }
 
 export async function listCampaigns(c: Ctx): Promise<Response> {

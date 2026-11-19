@@ -16,7 +16,7 @@ http.createServer((req, res) => {
     }
     if (req.url.startsWith("/v1/messages")) {
       const body = JSON.parse(data);
-      fs.appendFileSync(LOG, JSON.stringify({ key: key?.slice(-4), body }) + "\n");
+      fs.appendFileSync(LOG, JSON.stringify({ key: key?.slice(-4), url: req.url, beta: req.headers["anthropic-beta"] ?? null, body }) + "\n");
       const last = body.messages.at(-1);
       const blocks = Array.isArray(last.content) ? last.content : [{ type: "text", text: last.content }];
       const results = blocks.filter((b) => b.type === "tool_result");

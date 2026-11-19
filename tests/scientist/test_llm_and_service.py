@@ -278,8 +278,70 @@ async def test_truncated_or_invalid_output_is_output_error_and_settles_usage(
                 prompt="p",
                 schema=FigureCritique,
             )
-    # Both calls were billed (100 + 50 + 10 each) even though they failed.
+    # Every request was billed (100 + 50 + 10 each) even though they failed: the
+    # truncated call was sent twice (the retry with a larger cap was cut off too).
+    assert (await store.get_campaign(cid))["tokens_used"] == before + 480
+
+
+class _ScriptedMessages:
+    """Answers each stream with the next scripted response; records every request."""
+
+    def __init__(self, *responses):
+        self.responses = list(responses)
+        self.calls: list[dict] = []
+
+    def stream(self, **kwargs):
+        self.calls.append(kwargs)
+        return _FakeStream(self.responses.pop(0))
+
+
+async def test_plan_truncated_at_max_tokens_is_retried_with_a_larger_cap(store, campaign):
+    """Reproduces 'Halted. plan_intents: output truncated at max_tokens=8000': adaptive
+    thinking plus the specs ran past the cap. The call now retries once with a larger cap
+    instead of halting the campaign."""
+    _, cid = campaign
+    before = (await store.get_campaign(cid))["tokens_used"]
+    parsed = FigureCritique(quality_score=0.9, issues=[])
+    messages = _ScriptedMessages(_response("max_tokens"), _response(parsed=parsed))
+    model = AnthropicScientistModel(
+        store, client=SimpleNamespace(messages=messages), writing_reserve_tokens=0
+    )
+    out = await model.structured(
+        campaign_id=cid,
+        purpose="plan_intents",
+        system="s",
+        prompt="p",
+        schema=FigureCritique,
+        max_tokens=8000,
+    )
+    assert out == parsed
+    assert [c["max_tokens"] for c in messages.calls] == [8000, 32000]
+    # Both attempts are charged.
     assert (await store.get_campaign(cid))["tokens_used"] == before + 320
+
+
+async def test_retry_never_exceeds_the_output_ceiling(store, campaign):
+    _, cid = campaign
+    messages = _ScriptedMessages(_response("max_tokens"), _response("max_tokens"))
+    model = AnthropicScientistModel(
+        store, client=SimpleNamespace(messages=messages), writing_reserve_tokens=0
+    )
+    with pytest.raises(ModelOutputError, match="max_tokens=64000"):
+        await model.structured(
+            campaign_id=cid,
+            purpose="manuscript",
+            system="s",
+            prompt="p",
+            schema=FigureCritique,
+            max_tokens=48000,
+        )
+    assert [c["max_tokens"] for c in messages.calls] == [48000, 64000]
+
+
+def test_planner_asks_for_room_to_think():
+    from plato.scientist import nodes
+
+    assert nodes.PLAN_MAX_TOKENS >= 16_000
 
 
 async def test_on_text_receives_the_growing_output(store, campaign):

@@ -10,7 +10,12 @@ export interface Env {
   EXPORTS: R2Bucket;
   PLATO_SCIENTIST: DurableObjectNamespace<ScientistContainer>;
   PROJECT_AGENT: DurableObjectNamespace<ProjectAgent>;
+  /** The project agent's model (default claude-opus-5-5). See models.ts. */
+  PLATO_ORCHESTRATOR_MODEL?: string;
+  /** Every research-thread sub-agent's model unless overridden (default claude-haiku-5-5). */
   PLATO_SCIENTIST_MODEL: string;
+  /** Optional JSON object of per-role sub-agent overrides, e.g. {"skeptic":"claude-sonnet-5-5"}. */
+  PLATO_ROLE_MODELS?: string;
   /** Monthly default-key allowance per account, in tokens (accounts may override it). */
   PLATO_DEFAULT_MONTHLY_TOKENS: string;
   PLATO_API_TOKEN: string;

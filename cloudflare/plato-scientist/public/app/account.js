@@ -117,6 +117,9 @@ async function loadSessions(){const el=$("#sessions");if(!el)return;try{const {s
       (others?setRow("",`${others} other session${others>1?"s":""}`,'<button class="btn" type="button" data-act="revoke">Log out other sessions</button>'):"")}
   catch(e){if($("#sessions"))$("#sessions").innerHTML=setRow("Couldn't load sessions",esc(e.message),"")}}
 
+// Tokens are counted at Claude Haiku 5.5 prices; say so when the project agent's model costs more.
+function orchestratorNote(){const m=S.me.models,w=m?.weights?.[m?.orchestrator];
+  return w>1?` Tokens are counted at ${esc(m.workers)} prices, so each ${esc(m.orchestrator)} token the project agent uses counts as ${w}.`:""}
 function keyView(){const k=S.me.key,al=S.me.allowance||{};
   const keyRow=k?setRow("Your key",`sk-ant-…${esc(k.last4)} · added ${esc(when(k.created_at))}`,'<button class="btn" type="button" data-act="key-replace">Replace</button><button class="btn danger" type="button" data-act="key-remove">Remove</button>'):
     setRow("Add your key","Starts with sk-ant-. Create one in the Anthropic Console.",'<form id="keyForm" style="display:flex;gap:8px"><input class="field" type="password" name="key" autocomplete="off" spellcheck="false" placeholder="sk-ant-…" aria-label="Anthropic API key" style="width:200px"><button class="btn primary">Save key</button></form>');
@@ -126,7 +129,7 @@ function keyView(){const k=S.me.key,al=S.me.allowance||{};
   else{const f=al.cap?al.committed/al.cap:1,next=new Date();next.setUTCMonth(next.getUTCMonth()+1,1);
     usage=`<div class="set-row" style="display:block"><div style="display:flex;align-items:baseline;gap:8px"><span class="set-t">${short(al.committed)} of ${short(al.cap)} tokens</span><span class="t3" style="margin-left:auto;font-size:12px">Resets ${next.toLocaleDateString(undefined,{month:"short",day:"numeric"})}</span></div>
       <div class="meter${f>=1?" over":f>.8?" warn":""}"><span style="width:${Math.min(100,f*100).toFixed(1)}%"></span></div>
-      <div class="set-d" style="margin-top:8px">Spent this month plus what running research threads have reserved. New threads must fit in what's left.</div></div>`}
+      <div class="set-d" style="margin-top:8px">Spent this month plus what running research threads have reserved. New threads must fit in what's left.${orchestratorNote()}</div></div>`}
   return setGroup("Anthropic API key",[keyRow],"Plato uses the workspace's shared Anthropic key by default, up to a monthly allowance. Add your own key to run the agent and your research threads on your Anthropic account instead. It's encrypted at rest and never shown again.")+
     setGroup("Usage this month",[usage])}
 

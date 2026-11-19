@@ -5,8 +5,8 @@ browser ──▶ Worker (jarvisos.xyz)
              ├─ /                 static UI (Workers Static Assets)
              ├─ /api/auth, /api/me accounts and sessions (HttpOnly cookie) ──▶ Hyperdrive ──▶ Postgres
              ├─ GET /api/*        reads ──▶ Hyperdrive ──▶ Supabase Postgres (schema `plato`)
-             ├─ /api/projects/*   ──▶ Durable Object "ProjectAgent" (Claude orchestrator; its
-             │                        tools start research threads = campaigns)
+             ├─ /api/projects/*   ──▶ Durable Object "ProjectAgent" (Claude Opus 5.5 orchestrator;
+             │                        its tools start research threads = campaigns)
              ├─ POST /api/campaigns ──▶ Container "campaign-<id>" (Python: LangGraph swarm + sandbox)
              │                          └─▶ Supabase Postgres (session pooler) + Claude Haiku 5.5
              └─ cron */5          resumes unfinished campaigns, clears expired sessions, unsticks agents
@@ -39,6 +39,15 @@ Why this shape:
   admins can change each person's allowance in Settings → Members. People can add their own key
   in Settings → API key: it's validated, encrypted with AES-256-GCM, and only its last four
   characters are ever shown. Own-key work isn't counted against the allowance.
+* **Models per role.** The project agent runs on `PLATO_ORCHESTRATOR_MODEL` (Claude Opus 5.5);
+  every sub-agent in a research thread (planner, experiment writer, research engineer, observer,
+  figure critic, skeptic, paper writer, reviewers) runs on `PLATO_SCIENTIST_MODEL` (Claude Haiku
+  5.5). `PLATO_ROLE_MODELS`, a JSON string such as `{"skeptic": "claude-sonnet-5-5"}`, overrides
+  single roles (names in `src/models.json`). A thread keeps the role models it was created with.
+  Budgets and the allowance count **allowance tokens**: tokens times the model's price relative
+  to Haiku 5.5 (`plato/scientist/models.py`), so an Opus 5.5 token counts 40. This applies to own-key
+  work too, so a thread's token budget means the same spend on any model. The project agent
+  retries a policy refusal on Anthropic's default fallback model (`fallbacks: "default"`).
 * **Admins.** Paste the deploy's `PLATO_API_TOKEN` in Settings → Security & access once to make
   your account an admin. The bearer token also still works for scripts.
 * **`PLATO_SECRETS_KEY`** derives the password pepper and the key that encrypts saved API keys.

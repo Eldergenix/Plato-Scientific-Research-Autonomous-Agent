@@ -1,0 +1,33 @@
+{
+  "orchestrator_default": "claude-opus-5-5",
+  "worker_default": "claude-haiku-5-5",
+  "roles": [
+    "planner",
+    "experiment_writer",
+    "workspace_engineer",
+    "observer",
+    "figure_critic",
+    "skeptic",
+    "paper_writer",
+    "peer_reviewer",
+    "evidence_checker",
+    "review_panel",
+    "publication_formatter"
+  ],
+  "weights": {
+    "claude-haiku-5-5": 1,
+    "claude-haiku-4-5": 10,
+    "claude-sonnet-5-5": 20,
+    "claude-sonnet-5": 20,
+    "claude-sonnet-4-6": 30,
+    "claude-opus-5-5": 40,
+    "claude-opus-5": 50,
+    "claude-opus-4-8": 50,
+    "claude-opus-4-7": 50,
+    "claude-opus-4-6": 50,
+    "claude-fable-5-2": 80,
+    "claude-fable-5-1": 100,
+    "claude-fable-5": 100
+  },
+  "unknown_weight": 100
+}
