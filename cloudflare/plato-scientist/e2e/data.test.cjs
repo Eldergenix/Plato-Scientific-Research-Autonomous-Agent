@@ -189,7 +189,7 @@ const ok = (v, m) => { if (!v) fail(m); };
   steps = await wf(X.structures);
   eq(steps[6][1], "fail", "structures: statistics check failed"); ok(steps[7][2].includes("Claim refuted"), "structures refuted");
   await page.goto(`${BASE}/#/c/${C}/experiments`); await page.waitForSelector("a.row.xrow");
-  eq(await page.locator("a.row.xrow").count(), 6, "experiments listed");
+  eq(await page.locator("a.row.xrow").count(), 7, "experiments listed");
   const running = await page.getAttribute('a.row.xrow:has-text("chain length")', "href");
   steps = await wf(running.split("/").pop());
   eq(steps[2][1], "run", "running experiment shows the run in progress");
@@ -198,6 +198,23 @@ const ok = (v, m) => { if (!v) fail(m); };
   steps = await wf((await page.getAttribute('a.row.xrow:has-text("adenosine")', "href")).split("/").pop());
   eq(steps[2][1], "fail", "exhausted experiment"); ok(steps[2][2].includes("after 3 attempts"), "attempts shown");
   step("experiment pages: done, refuted, running and exhausted workflows");
+
+  // 9b. a design is shown as labelled fields, never as its stored JSON, on the experiment page
+  // and in the node panel
+  const design = JSON.parse(require("fs").readFileSync(path.join(__dirname, "../../../tests/scientist/fixtures/intent_design.json"), "utf8"));
+  const want = [["Hypothesis", design.hypothesis], ["Protocol", design.protocol], ["Success criterion", design.success_criterion],
+    ["Primary metric", design.primary_metric], ["Test", design.test_kind]];
+  const specOn = (sel) => page.$$eval(`${sel} .xp-spec dt`, dts => dts.map(dt => [dt.textContent, dt.nextElementSibling.textContent]));
+  const noJson = async (sel) => { const t = await page.textContent(sel); ok(!t.includes('"hypothesis"') && !t.includes('{"'), `raw JSON shown in ${sel}`); };
+  await page.goto(`${BASE}/#/c/${C}/experiments/${X.design}`); await page.waitForSelector(".xp .xp-spec");
+  eq(JSON.stringify(await specOn(".xp")), JSON.stringify(want), "experiment page design fields");
+  await noJson(".xp");
+  await page.goto(`${BASE}/#/c/${C}/graph`); await page.click(`.gn[data-node="${X.design}"]`);
+  await page.waitForSelector("#props .pp .xp-spec");
+  eq(JSON.stringify(await specOn("#props .pp")), JSON.stringify(want), "node panel design fields");
+  await noJson("#props .pp");
+  await shot("design-panel-dark");
+  step("a stored design renders as labelled fields on the experiment page and in the node panel");
 
   // 10. light theme and a narrow window
   await page.emulateMedia({ colorScheme: "light" });

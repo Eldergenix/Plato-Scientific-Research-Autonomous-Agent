@@ -71,6 +71,8 @@ from .schemas import (
     PeerReview,
     ResearchPlan,
     SkepticVerdict,
+    decode_intent_spec,
+    encode_intent_spec,
 )
 
 logger = logging.getLogger(__name__)
@@ -860,15 +862,7 @@ async def experiment_planner(
             campaign_id,
             "intent",
             spec.title,
-            json.dumps(
-                {
-                    "hypothesis": spec.hypothesis,
-                    "protocol": spec.protocol,
-                    "primary_metric": metric_key(spec.primary_metric),
-                    "test_kind": spec.test_kind,
-                    "success_criterion": spec.success_criterion,
-                }
-            ),
+            encode_intent_spec(spec, metric_key(spec.primary_metric)),
             dedup_key=spec_dedup_key(spec.hypothesis, spec.protocol),
             priority=priority,
             turn_budget_max=ctx.config.max_code_attempts * 2,
@@ -1230,7 +1224,7 @@ async def execute_intent(
     worker_id: str,
 ) -> None:
     store = ctx.store
-    spec = json.loads(intent["hypothesis_or_spec"])
+    spec = decode_intent_spec(intent["hypothesis_or_spec"])
     await store.heartbeat(
         intent["id"], worker_id, lease_seconds=ctx.config.lease_seconds
     )
