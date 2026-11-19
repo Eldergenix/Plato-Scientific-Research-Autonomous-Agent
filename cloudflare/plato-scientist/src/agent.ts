@@ -10,15 +10,23 @@
  * turn resumes where it stopped, and a tool call is never run twice (agent_actions caches
  * each result by tool_use_id, and a thread's id is derived from it).
  *
- * The conversation is replayed exactly as stored, and the model, system prompt and tools are
- * frozen per project, because editing any of them would invalidate the thinking blocks the
- * model gets back on later turns.
+ * The conversation is replayed exactly as stored, and the system prompt and tools are frozen
+ * per project, because editing either would invalidate the thinking blocks the model gets
+ * back on later turns. The model is not frozen: it is the configured orchestrator model
+ * (Claude Opus 5.5 by default, see models.ts). Changing the model edits nothing in the
+ * history; the API drops, unbilled, any thinking block the new model cannot read, and
+ * Claude Opus 5.5 reads Claude Haiku 5.5's, so projects started on Haiku keep their
+ * reasoning when they move to Opus.
+ *
+ * Usage counts against the monthly allowance in allowance tokens (models.ts): an Opus 5.5
+ * call counts 40 times its token count, matching its price relative to Haiku 5.5.
  */
 import Anthropic from "@anthropic-ai/sdk";
 import { DurableObject } from "cloudflare:workers";
 import { ownKey } from "./auth";
 import { containerError, createPath, manuscriptParts, toContainer } from "./campaigns";
 import { db, type Env, monthlyCap, nameUuid, type Sql, TERMINAL_STATUSES, toJson, UUID_RE } from "./lib";
+import { allowanceTokens, orchestratorModel, weight } from "./models";
 
 /** Model calls per person message; the last one must answer in text. */
 const MAX_MODEL_CALLS = 8;
@@ -102,14 +110,15 @@ const TOOLS: Anthropic.Tool[] = [
 ];
 
 export interface AgentConfig {
-  model: string;
+  /** The model the project started on (informational: turns use the configured orchestrator). */
+  model?: string;
   system: string;
   tools: Anthropic.Tool[];
 }
 
 /** The configuration a new project is frozen with. */
 export function agentConfig(env: Env): AgentConfig {
-  return { model: env.PLATO_SCIENTIST_MODEL || "claude-haiku-5-5", system: SYSTEM, tools: TOOLS };
+  return { model: orchestratorModel(env), system: SYSTEM, tools: TOOLS };
 }
 
 /** A failure the person can act on; its message is shown in the project. */
@@ -157,7 +166,7 @@ export async function runTurn(env: Env, sql: Sql, projectId: string): Promise<vo
   let usingOwnKey = false;
   try {
     let cfg = p.agent_config as AgentConfig;
-    if (!cfg?.model) {
+    if (!cfg?.system || !cfg.tools) {
       cfg = agentConfig(env);
       await sql`UPDATE plato.projects SET agent_config = ${sql.json(cfg as never)} WHERE id = ${projectId}`;
     }
@@ -240,28 +249,68 @@ async function loop(a: Actor, client: Anthropic, cfg: AgentConfig): Promise<void
         );
       }
     }
-    const res = await client.messages.create({
-      model: cfg.model,
+    const model = orchestratorModel(a.env);
+    // A policy decline is retried server-side on Anthropic's default fallback model for its
+    // category (a model without fallbacks runs alone), so a refusal does not end the turn
+    // with no answer. The fallback's blocks (including a "fallback" marker) are stored and
+    // replayed like any other content.
+    const res = await client.beta.messages.create({
+      model,
       max_tokens: MAX_TOKENS,
       system: [{ type: "text", text: cfg.system, cache_control: { type: "ephemeral" } }],
-      tools: cfg.tools,
+      tools: cfg.tools as Anthropic.Beta.BetaTool[],
       tool_choice: calls >= MAX_MODEL_CALLS ? { type: "none" } : { type: "auto" },
-      messages: rows.map((r) => ({ role: r.role, content: r.content }) as Anthropic.MessageParam),
+      messages: rows.map((r) => ({ role: r.role, content: r.content }) as Anthropic.Beta.BetaMessageParam),
       output_config: { effort: "medium" },
       cache_control: { type: "ephemeral" },
+      fallbacks: "default",
+      betas: ["server-side-fallback-2026-07-01"],
     });
-    const u = res.usage;
-    const tokens =
-      u.input_tokens + u.output_tokens + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
+    const { raw, tokens } = usageTokens(model, res);
     await a.sql.begin(async (tx) => {
       await tx`INSERT INTO plato.project_messages (project_id, role, content, stop_reason)
                VALUES (${a.projectId}, 'assistant', ${tx.json(res.content as never)}, ${res.stop_reason ?? null})`;
       if (tokens > 0) {
-        await tx`INSERT INTO plato.agent_usage (account_id, project_id, tokens, own_key)
-                 VALUES (${a.accountId}, ${a.projectId}, ${tokens}, ${a.key !== null})`;
+        await tx`INSERT INTO plato.agent_usage (account_id, project_id, tokens, own_key, model, raw_tokens)
+                 VALUES (${a.accountId}, ${a.projectId}, ${tokens}, ${a.key !== null}, ${res.model || model}, ${raw})`;
       }
     });
   }
+}
+
+type Usage = {
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens?: number | null;
+  cache_read_input_tokens?: number | null;
+};
+const sumTokens = (u: Usage) =>
+  u.input_tokens + u.output_tokens + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
+
+/**
+ * A call's tokens (`raw`) and what it charges the allowance (`tokens`: allowance tokens).
+ * With a server-side fallback, `usage.iterations` splits the call by model, and each part
+ * is charged at its own model's weight; otherwise the whole call is charged at the model
+ * that answered (or the requested one, if that is the more expensive).
+ */
+export function usageTokens(
+  requested: string,
+  res: { model?: string | null; usage: Usage & { iterations?: ({ model?: string | null } & Usage)[] | null } },
+): { raw: number; tokens: number } {
+  const its = res.usage.iterations;
+  if (its?.length) {
+    let raw = 0;
+    let tokens = 0;
+    for (const it of its) {
+      const n = sumTokens(it);
+      raw += n;
+      tokens += allowanceTokens(it.model || requested, n);
+    }
+    return { raw, tokens };
+  }
+  const raw = sumTokens(res.usage);
+  const served = res.model || requested;
+  return { raw, tokens: allowanceTokens(weight(served) > weight(requested) ? served : requested, raw) };
 }
 
 async function runTool(a: Actor, use: Block, cutOff: boolean): Promise<Block> {

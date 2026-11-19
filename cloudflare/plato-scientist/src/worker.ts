@@ -33,6 +33,7 @@ export class ScientistContainer extends Container<Env> {
       PLATO_INTERNAL_TOKEN: env.PLATO_INTERNAL_TOKEN,
       ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY,
       PLATO_SCIENTIST_MODEL: env.PLATO_SCIENTIST_MODEL,
+      ...(env.PLATO_ROLE_MODELS ? { PLATO_ROLE_MODELS: env.PLATO_ROLE_MODELS } : {}),
       PLATO_DB_POOL_SIZE: "8",
       // Experiments run in E2B sandboxes when a key is configured, on the container otherwise.
       PLATO_DEFAULT_EXECUTOR: env.E2B_API_KEY ? env.PLATO_DEFAULT_EXECUTOR || "e2b" : "local",

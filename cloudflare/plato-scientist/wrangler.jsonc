@@ -50,6 +50,11 @@
   // runs resume from Postgres.
   "triggers": { "crons": ["*/5 * * * *"] },
   "vars": {
+    // The project agent (orchestrator) and the research threads' sub-agents. Optional
+    // PLATO_ROLE_MODELS (a string holding a JSON object) overrides single sub-agent roles, e.g.
+    // {"skeptic": "claude-sonnet-5-5"}; roles are listed in src/models.json. Usage counts
+    // against budgets and the allowance at each model's price relative to Haiku 5.5.
+    "PLATO_ORCHESTRATOR_MODEL": "claude-opus-5-5",
     "PLATO_SCIENTIST_MODEL": "claude-haiku-5-5",
     // Tokens each account may spend per calendar month on the default Anthropic key
     // (admins and accounts with their own key are not capped; admins can set per-account caps).

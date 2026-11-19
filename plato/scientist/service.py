@@ -30,6 +30,7 @@ from .graph import run_campaign
 from .guard import network_isolation_prefix
 from .guard.modal_runner import GPU_TYPES, modal_configured
 from .llm import AnthropicScientistModel, resolve_model
+from .models import frozen_role_models, role_models
 from .nodes import ScientistContext
 
 logger = logging.getLogger(__name__)
@@ -92,9 +93,16 @@ class Runner:
                 logger.info("campaign %s is running elsewhere", campaign_id)
                 return
             try:
+                campaign = await self.store.get_campaign(campaign_id)
                 ctx = ScientistContext(
                     store=self.store,
-                    model=AnthropicScientistModel(self.store, api_key=api_key),
+                    # The role map frozen at creation; threads created before role
+                    # models existed use the current configuration.
+                    model=AnthropicScientistModel(
+                        self.store,
+                        models=frozen_role_models((campaign or {}).get("config")),
+                        api_key=api_key,
+                    ),
                 )
                 summary = await run_campaign(ctx, campaign_id)
                 logger.info(
@@ -127,6 +135,7 @@ def create_app(dsn: str | None = None, internal_token: str | None = None) -> Fas
     )
     if not token:
         raise RuntimeError("PLATO_INTERNAL_TOKEN must be set")
+    role_models()  # fail at startup, not at the first campaign, on a bad PLATO_ROLE_MODELS
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -160,6 +169,7 @@ def create_app(dsn: str | None = None, internal_token: str | None = None) -> Fas
             "ok": True,
             "network_isolation": bool(network_isolation_prefix()),
             "model": resolve_model(),
+            "models": role_models(),
             "executors": {
                 "local": True,
                 "modal": modal_configured(),
@@ -236,6 +246,9 @@ def create_app(dsn: str | None = None, internal_token: str | None = None) -> Fas
             "gpu": body.gpu,
             # Per campaign: the program's domain is fixed when the program is first created.
             "domain": body.domain,
+            # Frozen here, so a deploy that changes role models never switches them under
+            # a running thread (and its budget is charged at the models it started with).
+            "models": role_models(),
         }
         try:
             campaign_id = await store.create_campaign(

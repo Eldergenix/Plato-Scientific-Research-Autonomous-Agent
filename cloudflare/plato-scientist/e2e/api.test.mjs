@@ -48,6 +48,10 @@ assert.equal(me.account.email, `a-${uniq}@example.org`);
 assert.equal(me.account.name, "Ada");
 assert.equal(me.account.is_admin, false);
 assert.deepEqual(me.allowance, { cap: 1500000, committed: 0, own_key: false });
+// Models: Opus 5.5 orchestrates, Haiku 5.5 sub-agents; Opus tokens count 40x against the allowance.
+assert.equal(me.models.orchestrator, "claude-opus-5-5");
+assert.equal(me.models.workers, "claude-haiku-5-5");
+assert.deepEqual(me.models.weights, { "claude-opus-5-5": 40, "claude-haiku-5-5": 1 });
 assert.equal(me.key, null);
 assert.equal((await b.req("POST", "auth/signup", { email: `a-${uniq}@example.org`, password: "another password" })).status, 409);
 // Preferences
@@ -102,6 +106,9 @@ assert.ok(reqs[1].body.messages[1].content[0].signature.startsWith("sig-"));
 assert.equal(reqs[0].body.system[0].text, reqs[1].body.system[0].text);
 assert.equal(reqs[0].body.output_config.effort, "medium");
 assert.equal(reqs[0].key, "0000", "default key used");
+assert.equal(reqs[0].body.model, "claude-opus-5-5");
+assert.equal(reqs[0].body.fallbacks, "default");
+assert.match(reqs[0].beta, /server-side-fallback-2026-07-01/);
 assert.ok(!("temperature" in reqs[0].body) && !("thinking" in reqs[0].body));
 // Thread visible to A (campaign routes), not to B
 ok(await a.req("GET", `campaigns/${tid}`));
@@ -116,7 +123,8 @@ assert.ok(listA.includes(tid) && !listB.includes(tid));
 assert.equal(listB.length, 0, "B sees none of the legacy (unowned) campaigns");
 // Allowance: committed includes the running thread's reserved budget
 me = ok(await a.req("GET", "me"));
-assert.ok(me.allowance.committed >= 400000, JSON.stringify(me.allowance));
+// plus the agent's two Opus calls: 2 x (1200 + 300) tokens x 40.
+assert.ok(me.allowance.committed >= 400000 + 120000, JSON.stringify(me.allowance));
 // A direct campaign over the remaining allowance is refused with 402
 const big = await a.req("POST", "campaigns", { question: "Does y exceed 2?", token_budget: 2000000, start: false });
 assert.equal(big.status, 402, JSON.stringify(big.data));

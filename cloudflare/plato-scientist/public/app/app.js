@@ -75,7 +75,7 @@ $("#themeLbl").textContent=themeText();
 /* ---------- health ---------- */
 function setHealth(ok,text){$("#health").innerHTML=`<span class="dot ${ok?"ok":"bad"}"></span><span class="trunc">${esc(text)}</span>`}
 async function health(){if(!S.me?.account)return;
-  try{const h=await getJSON("health");setHealth(true,`Connected · ${h.model}`)}catch(e){if(e.status!==401)setHealth(false,"API unreachable")}}
+  try{const h=await getJSON("health");setHealth(true,`Connected · ${h.models?.orchestrator?h.models.orchestrator+" / ":""}${h.model}`)}catch(e){if(e.status!==401)setHealth(false,"API unreachable")}}
 
 /* ---------- routing ----------
    #/ (home: the agent or campaigns, per preference)  #/agent  #/campaigns  #/p/<project>
@@ -225,7 +225,7 @@ function campaignProps(){
   const c=S.summary.campaign,cfg=c.config||{};
   return `<div class="pp"><h4>Properties</h4>
   <div class="prop"><span>Status</span><span>${campaignIcon(c.status)}<span data-mk="pstatus">${PHASE_LABEL[c.status]||esc(c.status)}</span></span></div>
-  <div class="prop"><span>Model</span><span class="trunc">${esc(cfg.model||"claude-haiku-5-5")}</span></div>
+  <div class="prop"><span>Model</span><span class="trunc">${esc(cfg.models?[...new Set(Object.values(cfg.models))].join(" · "):cfg.model||"claude-haiku-5-5")}</span></div>
   <div class="prop"><span>Workers</span><span>${esc(cfg.workers??"–")}</span></div>
   <div class="prop"><span>Rounds</span><span>${esc(cfg.max_rounds??"–")}</span></div>
   <div class="prop"><span>Domain</span><span class="trunc">${esc(c.program_domain||"general")}</span></div>
