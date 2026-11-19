@@ -17,6 +17,11 @@ export interface Env {
   PLATO_SECRETS_KEY: string;
   ANTHROPIC_API_KEY: string;
   PLATO_DATABASE_URL: string;
+  /** Optional secret. When set, experiments run in E2B sandboxes built from PLATO_E2B_TEMPLATE. */
+  E2B_API_KEY?: string;
+  PLATO_E2B_TEMPLATE?: string;
+  /** "e2b" or "local"; campaigns that name an executor override it. */
+  PLATO_DEFAULT_EXECUTOR?: string;
   /** Optional literature-source keys: ADS needs a token; NCBI and Semantic Scholar raise rate limits. */
   ADS_API_KEY?: string;
   NCBI_API_KEY?: string;

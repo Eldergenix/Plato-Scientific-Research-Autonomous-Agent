@@ -34,6 +34,11 @@ export class ScientistContainer extends Container<Env> {
       ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY,
       PLATO_SCIENTIST_MODEL: env.PLATO_SCIENTIST_MODEL,
       PLATO_DB_POOL_SIZE: "8",
+      // Experiments run in E2B sandboxes when a key is configured, on the container otherwise.
+      PLATO_DEFAULT_EXECUTOR: env.E2B_API_KEY ? env.PLATO_DEFAULT_EXECUTOR || "e2b" : "local",
+      ...(env.E2B_API_KEY
+        ? { E2B_API_KEY: env.E2B_API_KEY, PLATO_E2B_TEMPLATE: env.PLATO_E2B_TEMPLATE || "plato-lab" }
+        : {}),
     };
     // Optional secrets: set only when configured, so the container can tell "absent" apart.
     for (const key of ["ADS_API_KEY", "NCBI_API_KEY", "SEMANTIC_SCHOLAR_KEY", "MODAL_TOKEN_ID", "MODAL_TOKEN_SECRET"] as const) {

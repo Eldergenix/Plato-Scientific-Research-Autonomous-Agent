@@ -58,7 +58,8 @@ class CampaignIn(BaseModel):
     max_rounds: int = Field(default=2, ge=1, le=10)
     datasets: list[DatasetIn] = Field(default_factory=list, max_length=8)
     # Where experiments run. "modal" needs MODAL_TOKEN_ID/MODAL_TOKEN_SECRET on the server.
-    executor: Literal["local", "modal", "e2b"] = "local"
+    # Omitted: the deployment default (PLATO_DEFAULT_EXECUTOR; e2b when E2B is configured).
+    executor: Literal["local", "modal", "e2b"] | None = None
     # Modal GPU type (e.g. "T4", "A100"); implies executor "modal".
     gpu: str = Field(default="", max_length=16)
     start: bool = True
@@ -159,7 +160,11 @@ def create_app(dsn: str | None = None, internal_token: str | None = None) -> Fas
             "ok": True,
             "network_isolation": bool(network_isolation_prefix()),
             "model": resolve_model(),
-            "executors": {"local": True, "modal": modal_configured()},
+            "executors": {
+                "local": True,
+                "modal": modal_configured(),
+                "e2b": bool(os.environ.get("E2B_API_KEY")),
+            },
             "literature_keys": {
                 "ads": bool(
                     os.environ.get("ADS_API_KEY") or os.environ.get("ADS_DEV_KEY")
@@ -218,10 +223,16 @@ def create_app(dsn: str | None = None, internal_token: str | None = None) -> Fas
                 status_code=422,
                 detail="GPU and Modal runs are not configured on this server yet",
             )
+        if executor == "e2b" and not os.environ.get("E2B_API_KEY"):
+            raise HTTPException(
+                status_code=422,
+                detail="E2B sandboxes are not configured on this server yet",
+            )
         config = {
             "workers": body.workers,
             "max_rounds": body.max_rounds,
-            "executor": executor,
+            # Left out when not chosen, so ScientistConfig applies the deployment default.
+            **({"executor": executor} if executor else {}),
             "gpu": body.gpu,
             # Per campaign: the program's domain is fixed when the program is first created.
             "domain": body.domain,

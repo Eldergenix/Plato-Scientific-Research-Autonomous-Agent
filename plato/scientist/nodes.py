@@ -14,7 +14,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
+import time
 import socket
 import uuid
 from collections.abc import Awaitable, Callable
@@ -102,21 +104,35 @@ class ScientistConfig:
     min_promote_confidence: float = 0.6
     min_figure_score: float = 0.5
     require_network_isolation: bool = False
-    # Where experiment scripts run: "local" (this container's sandbox), "modal"
-    # (Modal Labs sandbox, optionally with a GPU) or "e2b".
     # Requested research domain (selects the literature sources and packages).
     domain: str = "general"
+    # Where experiments run: "local" (this container's sandbox), "modal" (Modal Labs
+    # sandbox, optionally with a GPU) or "e2b" (the research engineer gets a full E2B
+    # workspace: shell, packages, dataset downloads, bio tools; each result is recorded by
+    # re-running its recipe in a fresh sandbox).
     executor: str = "local"
     # Modal GPU type such as "T4", "L4" or "A100"; empty means CPU only.
     gpu: str = ""
     sandbox: SandboxLimits = field(default_factory=SandboxLimits)
+    workspace_session_seconds: int = 2400
+    workspace_max_turns: int = 40
+    workspace_setup_seconds: int = 1200
+    workspace_run_seconds: int = 1200
 
     @classmethod
     def from_campaign(cls, config: dict[str, Any] | None) -> ScientistConfig:
         cfg = cls()
-        for key, value in (config or {}).items():
+        config = config or {}
+        for key, value in config.items():
             if key != "sandbox" and hasattr(cfg, key):
                 setattr(cfg, key, type(getattr(cfg, key))(value))
+        if "executor" not in config:
+            from .workspace.runtime import e2b_configured
+
+            default = os.environ.get("PLATO_DEFAULT_EXECUTOR", cfg.executor)
+            # A deployment default of e2b without a key falls back to the container sandbox;
+            # a campaign that names e2b explicitly fails loudly instead.
+            cfg.executor = "local" if default == "e2b" and not e2b_configured() else default
         if cfg.executor == "modal" and cfg.gpu:
             # GPU experiments (training) get ten minutes on a larger machine.
             cfg.sandbox = SandboxLimits(
@@ -138,6 +154,15 @@ class ScientistContext:
     worker_prefix: str = field(
         default_factory=lambda: f"{socket.gethostname()}-{uuid.uuid4().hex[:6]}"
     )
+    # Creates workspace sandboxes for executor "e2b" (None: E2B from the environment).
+    backend_factory: Any = None
+
+    def workspace_backends(self):
+        if self.backend_factory is None:
+            from .workspace import default_backend_factory
+
+            self.backend_factory = default_backend_factory()
+        return self.backend_factory
 
 
 # ---------------------------------------------------------------------------
@@ -194,7 +219,44 @@ def code_as_patch(code: str) -> str:
     return f"--- /dev/null\n+++ b/experiment.py\n@@ -0,0 +1,{len(lines)} @@\n{body}\n"
 
 
+def recipe_as_patch(code: str, setup: str | None) -> str:
+    """Experiment plus (optionally) its environment recipe as one new-files patch."""
+    patch = code_as_patch(code)
+    if not setup:
+        return patch
+    lines = setup.splitlines()
+    body = "\n".join(f"+{line}" for line in lines)
+    return f"--- /dev/null\n+++ b/setup.sh\n@@ -0,0 +1,{len(lines)} @@\n{body}\n{patch}"
+
+
+def files_from_patch(patch: str) -> dict[str, str]:
+    """Parse a new-files patch by its hunk line counts (bodies may contain diff-like text)."""
+    lines = patch.splitlines()
+    files: dict[str, str] = {}
+    i = 0
+    while i + 2 < len(lines):
+        m = re.match(r"^@@ -0,0 \+1,(\d+) @@$", lines[i + 2])
+        if lines[i] == "--- /dev/null" and lines[i + 1].startswith("+++ b/") and m:
+            n = int(m.group(1))
+            body = lines[i + 3 : i + 3 + n]
+            files[lines[i + 1][6:]] = "\n".join(b[1:] for b in body)
+            i += 3 + n
+        else:
+            i += 1
+    return files
+
+
+def recipe_from_patch(patch: str) -> tuple[str, str | None]:
+    files = files_from_patch(patch)
+    if "experiment.py" not in files:  # legacy or hand-made patch: every added line
+        return code_from_patch(patch), None
+    return files["experiment.py"], files.get("setup.sh")
+
+
 def code_from_patch(patch: str) -> str:
+    files = files_from_patch(patch)
+    if "experiment.py" in files:
+        return files["experiment.py"]
     return "\n".join(
         line[1:] for line in patch.splitlines()[3:] if line.startswith("+")
     )
@@ -633,7 +695,10 @@ async def _run_code(
     seed: int,
     datasets: dict[str, bytes],
     extra: dict[str, bytes] | None = None,
+    setup: str | None = None,
 ) -> SandboxResult:
+    if ctx.config.executor == "e2b":
+        return await _run_recipe(ctx, campaign_id, code, seed, datasets, extra, setup)
     seconds = int(ctx.config.sandbox.wall_seconds)
     await ctx.store.reserve_gpu_seconds(campaign_id, seconds)
     result = None
@@ -647,6 +712,188 @@ async def _run_code(
     finally:
         used = round(result.duration_seconds) if result else 0
         await ctx.store.settle_gpu_seconds(campaign_id, seconds, used)
+
+
+async def _run_recipe(
+    ctx: ScientistContext,
+    campaign_id: uuid.UUID,
+    code: str,
+    seed: int,
+    datasets: dict[str, bytes],
+    extra: dict[str, bytes] | None,
+    setup: str | None,
+) -> SandboxResult:
+    """Record-grade run in a fresh E2B sandbox: setup (online), then experiment (offline)."""
+    from .workspace import run_recipe
+
+    cfg = ctx.config
+    reserved = cfg.workspace_setup_seconds + cfg.workspace_run_seconds
+    await ctx.store.reserve_gpu_seconds(campaign_id, reserved)
+    started = time.monotonic()
+    try:
+        return await run_recipe(
+            ctx.workspace_backends(),
+            code=code,
+            setup=setup,
+            inputs={**datasets, **(extra or {}), SEED_FILE: str(seed).encode()},
+            setup_seconds=cfg.workspace_setup_seconds,
+            run_seconds=cfg.workspace_run_seconds,
+            metadata={"campaign": str(campaign_id), "seed": str(seed)},
+        )
+    finally:
+        await ctx.store.settle_gpu_seconds(
+            campaign_id, reserved, round(time.monotonic() - started)
+        )
+
+
+_WORKSPACE_RULES = (
+    "The recorded experiment is one Python script run as 'python experiment.py' in a fresh "
+    "sandbox with the network cut off, after setup.sh (your recorded installs and downloads) "
+    "has rebuilt the environment with network access. It may call command-line tools through "
+    f"subprocess and read the provided dataset files and downloaded data; it must read an "
+    f"integer seed from '{SEED_FILE}' and seed every RNG (and any tool that takes a seed) with it; "
+    "it may save figures as PNG and tables as CSV/TSV/JSON in the working directory; its last "
+    f"line of output must be '{METRICS_MARKER} ' followed by a JSON object of numeric metrics "
+    "that includes the primary metric under exactly its given key, and its standard error under "
+    "'<key>_se' when the metric is a Monte Carlo or sample estimate. For a 'difference' test, "
+    "report p_value from a test of the null of no effect when one is performed. For an "
+    "'equivalence' test, p_value is required and must come from a TOST equivalence test "
+    "(H0: |estimate - reference| >= tolerance). "
+    f"If a file named '{SEALED_MANIFEST}' exists, it lists held-out evaluation files: evaluate "
+    "the final method on them and report those metrics with the prefix 'sealed_'."
+)
+
+
+async def _workspace_attempt(
+    ctx: ScientistContext,
+    campaign_id: uuid.UUID,
+    intent: dict[str, Any],
+    worker_id: str,
+    spec: dict[str, Any],
+    datasets: dict[str, bytes],
+    nonce: str,
+) -> tuple[str, str | None, SandboxResult | None, dict[str, Any] | None]:
+    """The research engineer works in a live E2B workspace until a submission (a fresh,
+    offline re-run of its recipe) prints the required metrics."""
+    from .workspace import SessionLimits, Workspace, run_session
+    from .workspace.lab import LAB_SUMMARY
+
+    store, cfg = ctx.store, ctx.config
+    state: dict[str, Any] = {"code": "", "setup": None, "result": None, "metrics": None}
+    submissions = 0
+    workspace: Workspace | None = None
+
+    async def on_submit(code: str, setup: str) -> tuple[str, bool, Any]:
+        nonlocal submissions
+        if submissions >= cfg.max_code_attempts:
+            return ("submission limit reached; no further runs will be recorded", False, None)
+        submissions += 1
+        await store.use_turn(intent["id"], worker_id)
+        result = await _run_code(ctx, campaign_id, code, 1, datasets, setup=setup)
+        state.update(code=code, setup=setup, result=result)
+        metrics = parse_metrics(result.stdout) if result.ok else None
+        missing = missing_required_metrics(metrics, spec) if metrics is not None else []
+        if metrics is not None and not missing:
+            state["metrics"] = metrics
+            return (f"Accepted. Recorded metrics: {json.dumps(metrics)}", True, True)
+        if submissions >= cfg.max_code_attempts and workspace is not None:
+            workspace.exhausted = True
+        if missing:
+            why = f"the {METRICS_MARKER} line lacks the required keys {missing}"
+        elif result.timed_out:
+            why = "it timed out"
+        elif not result.ok:
+            why = f"it exited with code {result.exit_code}"
+        else:
+            why = f"it did not print a valid {METRICS_MARKER} line"
+        return (
+            f"Rejected ({submissions}/{cfg.max_code_attempts}): {why}.\n"
+            f"stdout (end):\n{result.stdout[-4000:]}\nstderr (end):\n{result.stderr[-4000:]}",
+            False,
+            None,
+        )
+
+    await store.reserve_gpu_seconds(campaign_id, 60)  # fails fast when compute is spent
+    started = time.monotonic()
+    backend = await ctx.workspace_backends()(
+        timeout_seconds=cfg.workspace_session_seconds,
+        purpose="workspace",
+        metadata={"campaign": str(campaign_id), "intent": str(intent["id"])},
+    )
+    lease_error: list[BaseException] = []
+
+    async def keep_lease() -> None:
+        while True:
+            await asyncio.sleep(max(30, cfg.lease_seconds // 3))
+            try:
+                await store.heartbeat(intent["id"], worker_id, lease_seconds=cfg.lease_seconds)
+            except BaseException as exc:  # LeaseLost: stop the session at the next turn
+                lease_error.append(exc)
+                return
+
+    async def on_turn(_turn: int) -> None:
+        if lease_error:
+            raise lease_error[0]
+
+    heartbeat = asyncio.create_task(keep_lease())
+    try:
+        for name, data in {**datasets, SEED_FILE: b"1"}.items():
+            await backend.write_bytes(name, data)
+        workspace = Workspace(backend, on_submit=on_submit)
+        task = (
+            f"Hypothesis: {spec['hypothesis']}\nProtocol: {spec['protocol']}\n"
+            f"Primary metric key: {spec['primary_metric']}\n"
+            f"Test kind: {spec.get('test_kind', 'difference')}\n"
+            f"Success criterion: {spec['success_criterion']}\n"
+            f"Dataset files in the workspace root ({backend.workdir}): {sorted(datasets) or 'none'}\n\n"
+            f"{LAB_SUMMARY}\n\n{_WORKSPACE_RULES}\n\n"
+            "Work like a careful computational scientist: inspect the data, install and download "
+            "what you need (install_packages and download_file record it in setup.sh), test pieces "
+            "with bash, use start_job for anything long, then write experiment.py and call "
+            f"submit_experiment. You have at most {cfg.max_code_attempts} submissions and "
+            f"{cfg.workspace_max_turns} turns."
+        )
+        outcome = await run_session(
+            model=ctx.model,
+            campaign_id=campaign_id,
+            system=_system("research engineer", nonce),
+            task=task,
+            workspace=workspace,
+            nonce=nonce,
+            limits=SessionLimits(max_turns=cfg.workspace_max_turns),
+            on_turn=on_turn,
+        )
+        if outcome.signals:
+            await store.record_guard_event(
+                campaign_id,
+                "injection",
+                "allow",
+                {"signals": sorted(set(outcome.signals))[:20], "note": "workspace tool output"},
+                node_id=intent["id"],
+            )
+        await store.add_evidence(
+            intent["id"],
+            "stdout_log",
+            "WORKSPACE SESSION "
+            + json.dumps(
+                {
+                    "sandbox": backend.sandbox_id,
+                    "turns": outcome.turns,
+                    "end": outcome.reason,
+                    "submissions": submissions,
+                    "actions": workspace.actions[-200:],
+                },
+                default=str,
+            ),
+            approval_actor="system",
+        )
+    finally:
+        heartbeat.cancel()
+        await backend.close()
+        await store.settle_gpu_seconds(campaign_id, 60, round(time.monotonic() - started))
+    if lease_error:
+        raise lease_error[0]
+    return state["code"], state["setup"], state["result"], state["metrics"]
 
 
 async def execute_intent(
@@ -667,7 +914,13 @@ async def execute_intent(
     result: SandboxResult | None = None
     code = ""
     metrics: dict[str, Any] | None = None
-    for attempt in range(ctx.config.max_code_attempts):
+    setup: str | None = None
+    if ctx.config.executor == "e2b":
+        code, setup, result, metrics = await _workspace_attempt(
+            ctx, campaign_id, intent, worker_id, spec, datasets, nonce
+        )
+    # The workspace session replaces the write-run-fix loop below (it has its own retries).
+    for attempt in range(0 if ctx.config.executor == "e2b" else ctx.config.max_code_attempts):
         await store.use_turn(intent["id"], worker_id)
         draft = await ctx.model.structured(
             campaign_id=campaign_id,
@@ -779,6 +1032,7 @@ async def execute_intent(
         "runtime_seconds": round(result.duration_seconds, 3),
         "network_isolated": result.network_isolated,
         "code_sha256": sha256_hex(code),
+        "executor": ctx.config.executor,
     }
     fact_id = await store.record_fact(
         campaign_id,
@@ -790,7 +1044,7 @@ async def execute_intent(
         anchors=[(d["id"], "dataset_input") for d in dataset_assets],
     )
     await store.add_evidence(
-        fact_id, "git_patch", code_as_patch(code), approval_actor="model"
+        fact_id, "git_patch", recipe_as_patch(code, setup), approval_actor="model"
     )
     await store.add_evidence(
         fact_id, "stdout_log", result.stdout, approval_actor="system"
@@ -893,12 +1147,14 @@ async def verifier(ctx: ScientistContext, campaign_id: uuid.UUID) -> dict[str, i
         patches = await store.evidence_contents(fact["id"], "git_patch")
         if not patches:
             continue
-        code = code_from_patch(patches[0].decode("utf-8"))
+        code, setup = recipe_from_patch(patches[0].decode("utf-8"))
         primary = fact["metrics"].get("primary_metric")
         original = fact["metrics"].get(primary) if primary else None
 
         # Replication with a different seed (ablation of randomness).
-        rep = await _run_code(ctx, campaign_id, code, seed=2, datasets=datasets)
+        rep = await _run_code(
+            ctx, campaign_id, code, seed=2, datasets=datasets, setup=setup
+        )
         rep_metrics = parse_metrics(rep.stdout) if rep.ok else None
         replicated = bool(primary) and replicates(
             primary, fact["metrics"], rep_metrics, ctx.config.replication_rel_tolerance
@@ -1055,13 +1311,15 @@ async def sealed_evaluation(ctx: ScientistContext, campaign_id: uuid.UUID) -> in
         patches = await store.evidence_contents(facts[0]["id"], "git_patch")
         if not patches:
             continue
+        code, setup = recipe_from_patch(patches[0].decode())
         run = await _run_code(
             ctx,
             campaign_id,
-            code_from_patch(patches[0].decode()),
+            code,
             seed=1,
             datasets=datasets,
             extra={SEALED_MANIFEST: manifest},
+            setup=setup,
         )
         sealed_metrics = {
             k: v

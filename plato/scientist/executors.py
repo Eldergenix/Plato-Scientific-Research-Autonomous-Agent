@@ -3,8 +3,8 @@
 ``local`` is the container's own sandbox (network namespace, unprivileged user,
 rlimits). ``modal`` runs the same script in a Modal Labs sandbox, optionally with a GPU,
 when Modal credentials are configured; otherwise the run stays local and says why.
-``e2b`` is owned by the E2B workspace integration; until it is present here it also
-falls back to the local sandbox.
+``e2b`` never reaches this function: the pipeline sends it to the E2B workspace
+(``nodes._run_recipe``), which rebuilds each recorded recipe in a fresh sandbox.
 """
 
 from __future__ import annotations
