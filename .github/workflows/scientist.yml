@@ -1,0 +1,62 @@
+name: scientist
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "plato/scientist/**"
+      - "tests/scientist/**"
+      - "cloudflare/plato-scientist/**"
+      - "docker/*scientist*"
+      - "pyproject.toml"
+      - ".github/workflows/scientist.yml"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: plato
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      PLATO_POSTGRES_DSN: postgresql://postgres:plato@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          # Exactly the container image's dependency set (docker/requirements-scientist.txt),
+          # not the package's own deps, which pin an older langgraph.
+          pip install -r docker/requirements-scientist.txt pytest==9.2.0 pytest-asyncio==1.5.0
+      - name: Dual-graph store, guardrails, end-to-end campaign
+        # The repo-wide tests/conftest.py imports modules the container does not ship.
+        run: PYTHONPATH=. pytest tests/scientist -q --tb=short --confcutdir=tests/scientist
+
+  worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: cloudflare/plato-scientist
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci --no-audit --no-fund
+      - run: npm run check

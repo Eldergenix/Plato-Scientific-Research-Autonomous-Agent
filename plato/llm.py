@@ -52,21 +52,32 @@ gpt55 = LLM(name="gpt-5.5-2026-04-23", max_output_tokens=128000, temperature=Non
 gpt55pro = LLM(name="gpt-5.5-pro", max_output_tokens=128000, temperature=None)
 """`gpt-5.5-pro` model."""
 
-claude37sonnet = LLM(
-    name="claude-3-7-sonnet-20250219", max_output_tokens=64000, temperature=0
-)
-"""`claude-3-7-sonnet` model."""
-
-claude4opus = LLM(name="claude-opus-4-20250514", max_output_tokens=32000, temperature=0)
-"""`claude-4-Opus` model."""
-
-claude41opus = LLM(
-    name="claude-opus-4-1-20250805", max_output_tokens=32000, temperature=0
-)
-"""`claude-4.1-Opus` model."""
-
 claude47opus = LLM(name="claude-opus-4-7", max_output_tokens=32000, temperature=None)
 """`claude-4.7-Opus` model."""
+
+# Current Claude models. They reject non-default sampling parameters, so temperature
+# stays None. max_output_tokens stays at 32K so non-streaming calls stay within the
+# SDK's request-duration guard (the models allow up to 128K when streaming).
+claude55opus = LLM(name="claude-opus-5-5", max_output_tokens=32000, temperature=None)
+"""`claude-opus-5-5` model."""
+
+claude55sonnet = LLM(
+    name="claude-sonnet-5-5", max_output_tokens=32000, temperature=None
+)
+"""`claude-sonnet-5-5` model."""
+
+claude55haiku = LLM(name="claude-haiku-5-5", max_output_tokens=32000, temperature=None)
+"""`claude-haiku-5-5` model: the default for the autonomous scientist swarm."""
+
+# Registry keys whose models were retired by Anthropic (the API now rejects them):
+# claude-3-7-sonnet-20250219 (2026-02-19), claude-opus-4-20250514 (2026-06-15) and
+# claude-opus-4-1-20250805 (2026-08-05). They resolve to the documented successor so
+# existing configs keep running; ``plato.utils.llm_parser`` warns when one is used.
+RETIRED_ALIASES: dict[str, str] = {
+    "claude-3.7-sonnet": "claude-sonnet-5.5",
+    "claude-4-opus": "claude-opus-5.5",
+    "claude-4.1-opus": "claude-opus-5.5",
+}
 
 deepseekv4 = LLM(
     name="deepseek-ai/DeepSeek-V4-Flash", max_output_tokens=65536, temperature=0.7
@@ -114,10 +125,13 @@ models: Dict[str, LLM] = {
     "gpt-5.5": gpt55,
     "gpt-5.5-2026-04-23": gpt55,
     "gpt-5.5-pro": gpt55pro,
-    "claude-3.7-sonnet": claude37sonnet,
-    "claude-4-opus": claude4opus,
-    "claude-4.1-opus": claude41opus,
     "claude-4.7-opus": claude47opus,
+    "claude-opus-5.5": claude55opus,
+    "claude-opus-5-5": claude55opus,
+    "claude-sonnet-5.5": claude55sonnet,
+    "claude-sonnet-5-5": claude55sonnet,
+    "claude-haiku-5.5": claude55haiku,
+    "claude-haiku-5-5": claude55haiku,
     "deepseek-v4": deepseekv4,
     "deepseek-v4-pro": deepseekv4pro,
     "Qwen/Qwen3.6-27B": qwen36_27b,
@@ -131,3 +145,5 @@ models: Dict[str, LLM] = {
     "gemini-3.1-pro": gemini31pro,
 }
 """Dictionary with the available models."""
+
+models.update({old: models[new] for old, new in RETIRED_ALIASES.items()})
