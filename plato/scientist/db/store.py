@@ -63,6 +63,7 @@ ArtifactType = Literal[
     "citation_report",
     "evidence_matrix",
     "review_panel",
+    "data_file",
 ]
 CampaignStatus = Literal[
     "ideation",
@@ -132,6 +133,15 @@ def paper_dedup_key(
         ).hexdigest()
         return f"title:{digest[:32]}"
     raise ValueError("paper_dedup_key needs a doi, arxiv_id, or title")
+
+
+_FILE_NAME_BAD = re.compile(r"[/\\\x00-\x1f\x7f]")
+
+
+def valid_file_name(name: str) -> bool:
+    """A bare output file name: 1-255 chars, no directories, no control characters, not
+    hidden. The same rule is a CHECK constraint on ``evidence_artifacts.file_name``."""
+    return 0 < len(name) <= 255 and not name.startswith(".") and not _FILE_NAME_BAD.search(name)
 
 
 def sha256_hex(content: bytes | str) -> str:
@@ -935,9 +945,13 @@ class DualGraphStore:
         approval_actor: Literal["human", "rule", "model", "system"] = "system",
         storage_uri: str | None = None,
         vlm_quality_score: float | None = None,
+        file_name: str | None = None,
     ) -> uuid.UUID:
         """Store an immutable receipt. Content up to 1 MiB is kept inline; larger content
-        must already live at ``storage_uri`` and only its checksum is recorded."""
+        must already live at ``storage_uri`` and only its checksum is recorded.
+        ``file_name`` is the name an experiment gave an output file (no directories)."""
+        if file_name is not None and not valid_file_name(file_name):
+            raise ValueError(f"invalid evidence file name {file_name!r}")
         data = content.encode("utf-8") if isinstance(content, str) else content
         checksum = sha256_hex(data)
         inline = data if len(data) <= _INLINE_LIMIT else None
@@ -947,8 +961,9 @@ class DualGraphStore:
         row = await self._pool.fetchrow(
             """
             INSERT INTO plato.evidence_artifacts
-                (node_id, artifact_type, storage_uri, sha256_checksum, content, vlm_quality_score, approval_actor)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+                (node_id, artifact_type, storage_uri, sha256_checksum, content, vlm_quality_score,
+                 approval_actor, file_name)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT (node_id, artifact_type, sha256_checksum) DO NOTHING
             RETURNING id
             """,
@@ -959,6 +974,7 @@ class DualGraphStore:
             inline,
             vlm_quality_score,
             approval_actor,
+            file_name,
         )
         if row is not None:
             return row["id"]
@@ -976,7 +992,7 @@ class DualGraphStore:
         rows = await self._pool.fetch(
             """
             SELECT id, node_id, artifact_type, storage_uri, sha256_checksum, vlm_quality_score,
-                   approval_actor, octet_length(content) AS size_bytes, created_at
+                   approval_actor, file_name, octet_length(content) AS size_bytes, created_at
               FROM plato.evidence_artifacts WHERE node_id = ANY($1::uuid[]) ORDER BY created_at
             """,
             list(node_ids),

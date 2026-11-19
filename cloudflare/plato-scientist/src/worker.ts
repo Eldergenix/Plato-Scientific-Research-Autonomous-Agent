@@ -92,6 +92,7 @@ const ROUTES: [string, string, Access, Handler][] = [
   ["GET", "campaigns/:id/manuscript", "user", campaigns.campaignManuscript],
   ["GET", "campaigns/:id/usage", "user", campaigns.campaignUsage],
   ["GET", "campaigns/:id/draft", "user", campaigns.campaignDraft],
+  ["GET", "campaigns/:id/files", "user", campaigns.campaignFiles],
   ["GET", "nodes/:id/provenance", "user", campaigns.nodeProvenance],
   ["GET", "evidence/:id", "user", campaigns.evidence],
   ["GET", "projects", "account", projects.listProjects],

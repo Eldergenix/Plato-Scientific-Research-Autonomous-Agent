@@ -136,7 +136,7 @@ async def run_python_modal(
                 entry.is_file()
                 and entry.name != _SCRIPT
                 and entry.name not in inputs
-                and os.path.splitext(entry.name)[1] in _COLLECT_SUFFIXES
+                and os.path.splitext(entry.name)[1].lower() in _COLLECT_SUFFIXES
                 and entry.size <= _COLLECT_MAX_BYTES
             ):
                 files[entry.name] = await sb.filesystem.read_bytes.aio(

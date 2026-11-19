@@ -15,14 +15,12 @@ import os
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from ..guard.sandbox import SandboxResult
+from ..guard.sandbox import _COLLECT_MAX_BYTES, _COLLECT_SUFFIXES, SandboxResult
 from .backend import E2BBackend, LocalBackend, SandboxBackend
 
 DEFAULT_TEMPLATE = "plato-lab"
 EXPERIMENT_SCRIPT = "experiment.py"
 SETUP_SCRIPT = "setup.sh"
-_COLLECT_SUFFIXES = (".png", ".json", ".csv", ".tsv", ".txt", ".tex", ".pdf")
-_COLLECT_MAX_BYTES = 1_048_576
 _MAX_OUTPUT_CHARS = 200_000
 
 BackendFactory = Callable[..., Awaitable[SandboxBackend]]
@@ -132,7 +130,7 @@ async def run_recipe(
         skip = {EXPERIMENT_SCRIPT, SETUP_SCRIPT, *inputs}
         for name, (mtime, size) in sorted(after.items()):
             if (
-                name.endswith(_COLLECT_SUFFIXES)
+                name.lower().endswith(_COLLECT_SUFFIXES)
                 and name not in skip
                 and size <= _COLLECT_MAX_BYTES
                 and before.get(name, (None, None))[0] != mtime
