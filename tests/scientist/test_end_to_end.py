@@ -15,6 +15,7 @@ from plato.scientist.llm import WRITING_PURPOSES
 from plato.scientist.nodes import ScientistContext, _bib_key
 from plato.scientist.schemas import (
     CitationSupport,
+    ClaimAssessment,
     EvidenceMatrix,
     ExperimentCode,
     FigureCritique,
@@ -29,6 +30,8 @@ from plato.scientist.schemas import (
     PeerReview,
     ResearchPlan,
     ReviewIssue,
+    RevisionCheck,
+    RevisionOutcome,
     SkepticVerdict,
 )
 from plato.state.models import Source
@@ -210,12 +213,54 @@ class FakeModel:
             )
         if schema is PeerReview:
             return PeerReview(
+                summary="ok",
+                strengths=["pre-registered metric"],
+                assessments=[
+                    ClaimAssessment(
+                        section="results",
+                        quote="mean_y = 3.0",
+                        category="result",
+                        verdict="approved",
+                        severity="minor",
+                        evidence="mean_y 3.0 replicated",
+                        critique="matches the evidence",
+                        fix="",
+                    ),
+                    ClaimAssessment(
+                        section="abstract",
+                        quote="We measure y with great precision.",
+                        category="statistics",
+                        verdict="rejected",
+                        severity="major",
+                        evidence="no interval reported",
+                        critique="not in the manuscript",
+                        fix="report the interval",
+                    ),
+                ],
                 soundness=3,
                 presentation=3,
                 contribution=2,
                 decision="major_revision",
-                summary="ok",
                 required_changes=["state the sample size"],
+            )
+        if schema is RevisionCheck:
+            return RevisionCheck(
+                outcomes=[
+                    RevisionOutcome(
+                        assessment=0,
+                        status="resolved",
+                        final_quote="mean_y = 3.0",
+                        note="unchanged",
+                    ),
+                    RevisionOutcome(
+                        assessment=1,
+                        status="removed",
+                        final_quote="",
+                        note="claim dropped",
+                    ),
+                ],
+                final_summary="fixed",
+                final_decision="minor_revision",
             )
         raise AssertionError(f"unexpected schema {schema}")
 
@@ -388,6 +433,23 @@ async def test_campaign_runs_end_to_end_with_full_provenance(store):
     assert link["support"] == "supports" and link["quote_span"] is not None
     panel = json.loads(await store.evidence_content(receipts["review_panel"]["id"]))
     assert panel["completed"] == 4 and panel["max_severity"] == 2
+    # The editor's per-claim verdicts: quotes located in the draft, then re-checked in
+    # the revision (which gives the decision on the paper as published).
+    review = json.loads(await store.evidence_content(receipts["peer_review"]["id"]))
+    first, second = review["assessments"]
+    assert first["id"] == 0 and first["quote_found"] is True
+    assert second["quote_found"] is False  # not verbatim in the draft
+    assert review["counts"] == {"approved": 1, "needs_revision": 0, "rejected": 1}
+    assert first["outcome"] == {
+        "status": "resolved",
+        "note": "unchanged",
+        "final_quote": "mean_y = 3.0",
+        "quote_found": True,
+    }
+    assert second["outcome"]["status"] == "removed"
+    assert second["outcome"]["final_quote"] == ""
+    assert review["revision"]["decision"] == "minor_revision"
+    assert "peer_review_check" in model.calls
     report = json.loads(await store.evidence_content(receipts["citation_report"]["id"]))
     assert [x["doi"] for x in report["excluded"]] == ["10.1000/retracted"]
     assert report["retrieved_by_status"] == {"verified": 2, "error": 1}

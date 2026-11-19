@@ -4,11 +4,13 @@
  * the campaign: its owner, or an admin. Campaigns from before accounts existed have no
  * owner and are visible to admins only. A hidden campaign answers 404, like a missing one.
  */
+import { modelsInfo, workerModel } from "./models";
 import { getContainer } from "@cloudflare/containers";
 import { type Ctx, ownKey, type Principal } from "./auth";
-import { type Env, HttpError, json, type Sql } from "./lib";
+import { type Env, HttpError, json, type Sql, UUID_RE } from "./lib";
+import { campaignInputs } from "./library";
 
-const MAX_CREATE_BYTES = 12 * 1024 * 1024; // 8 datasets of ~1 MiB, base64-encoded, plus slack
+const MAX_CREATE_BYTES = 24 * 1024 * 1024; // datasets and materials, base64-encoded, plus slack
 
 /** Who pays for a new campaign: the owner's own key if they saved one, else the default
  * key within their monthly allowance (``cap``; null when uncapped). */
@@ -50,10 +52,13 @@ export async function toContainer(
     : await getContainer(env.PLATO_SCIENTIST, `campaign-${campaignId}`).fetch(
         new Request(`http://container${path}`, { ...init, headers }),
       );
-  return new Response(res.body, {
-    status: res.status,
-    headers: { "content-type": res.headers.get("content-type") ?? "application/json" },
-  });
+  const out = new Headers({ "content-type": res.headers.get("content-type") ?? "application/json" });
+  // Package builds describe the zip in x-plato-export-* headers; its length lets the
+  // Worker stream it into R2 without buffering.
+  if (res.headers.has("x-plato-export-id")) {
+    for (const [k, v] of res.headers) if (k.startsWith("x-plato-export-") || k === "content-length") out.set(k, v);
+  }
+  return new Response(res.body, { status: res.status, headers: out });
 }
 
 /** Turn a container error (FastAPI ``{"detail": ...}``) into the API's ``{"error": ...}``. */
@@ -99,14 +104,35 @@ export async function createCampaign(c: Ctx): Promise<Response> {
   // checks the monthly allowance atomically with the insert.
   const campaignId = crypto.randomUUID();
   const p = await payer(c.env, c.sql, c.who!, projectId);
+  // Files picked from the library (``?library=<id>,<id>``) are added to the request:
+  // data files as datasets, reference files and documents as materials.
+  const picked = (c.url.searchParams.get("library") ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+  let body: BodyInit | null = c.req.body;
+  let bodyLength = length;
+  if (picked.length) {
+    if (!c.who!.accountId) throw new HttpError(403, "This needs an account. Sign in with email.");
+    if (!picked.every((x) => UUID_RE.test(x))) throw new HttpError(400, "invalid library file id");
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(await c.req.text()) as Record<string, unknown>;
+    } catch {
+      throw new HttpError(400, "invalid JSON");
+    }
+    const inputs = await campaignInputs(c.env, c.sql, c.who!.accountId, [...new Set(picked)]);
+    const datasets = [...((parsed.datasets as unknown[]) ?? []), ...inputs.datasets];
+    if (datasets.length > 8) throw new HttpError(400, "a thread takes at most 8 data files");
+    const text = JSON.stringify({ ...parsed, datasets, materials: [...((parsed.materials as unknown[]) ?? []), ...inputs.materials] });
+    body = text;
+    bodyLength = new TextEncoder().encode(text).byteLength;
+  }
   const res = await toContainer(
     c.env,
     campaignId,
     createPath(campaignId, p),
     {
       method: "POST",
-      headers: { "content-type": "application/json", "content-length": String(length) },
-      body: c.req.body,
+      headers: { "content-type": "application/json", "content-length": String(bodyLength) },
+      body,
     },
     p.key,
   );
@@ -123,7 +149,7 @@ export async function runCampaign(c: Ctx, id: string): Promise<Response> {
 
 export async function health(c: Ctx): Promise<Response> {
   const [row] = await c.sql`SELECT count(*)::int AS campaigns FROM plato.research_campaigns`;
-  return json({ ok: true, model: c.env.PLATO_SCIENTIST_MODEL, campaigns: row.campaigns });
+  return json({ ok: true, model: workerModel(c.env), models: modelsInfo(c.env), campaigns: row.campaigns });
 }
 
 export async function listCampaigns(c: Ctx): Promise<Response> {

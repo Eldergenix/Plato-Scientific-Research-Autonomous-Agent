@@ -6,9 +6,16 @@ import type { ScientistContainer } from "./worker";
 export interface Env {
   ASSETS: Fetcher;
   HYPERDRIVE: Hyperdrive;
+  /** R2: publication packages (exports/) and people's library files (library/). */
+  EXPORTS: R2Bucket;
   PLATO_SCIENTIST: DurableObjectNamespace<ScientistContainer>;
   PROJECT_AGENT: DurableObjectNamespace<ProjectAgent>;
+  /** The project agent's model (default claude-opus-5-5). See models.ts. */
+  PLATO_ORCHESTRATOR_MODEL?: string;
+  /** Every research-thread sub-agent's model unless overridden (default claude-haiku-5-5). */
   PLATO_SCIENTIST_MODEL: string;
+  /** Optional JSON object of per-role sub-agent overrides, e.g. {"skeptic":"claude-sonnet-5-5"}. */
+  PLATO_ROLE_MODELS?: string;
   /** Monthly default-key allowance per account, in tokens (accounts may override it). */
   PLATO_DEFAULT_MONTHLY_TOKENS: string;
   PLATO_API_TOKEN: string;
@@ -17,6 +24,10 @@ export interface Env {
   PLATO_SECRETS_KEY: string;
   ANTHROPIC_API_KEY: string;
   PLATO_DATABASE_URL: string;
+  /** Composio (connected services). Optional: without it the integrations are switched off. */
+  COMPOSIO_API_KEY?: string;
+  /** Secret of the Composio webhook subscription (set by scripts/composio-setup.mjs). */
+  COMPOSIO_WEBHOOK_SECRET?: string;
   /** Optional secret. When set, experiments run in E2B sandboxes built from PLATO_E2B_TEMPLATE. */
   E2B_API_KEY?: string;
   PLATO_E2B_TEMPLATE?: string;
@@ -33,6 +44,8 @@ export interface Env {
   PLATO_DEV_SERVICE_URL?: string;
   /** Local development only: Anthropic API base URL (a stub server in tests). */
   PLATO_DEV_ANTHROPIC_BASE_URL?: string;
+  /** Local development only: Composio API host (a stub server in tests). */
+  PLATO_DEV_COMPOSIO_BASE_URL?: string;
 }
 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;

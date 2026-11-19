@@ -22,7 +22,13 @@ import uuid
 from typing import Any
 
 from .guard import frame_untrusted, framing_instructions
-from .schemas import EvidenceMatrix, Manuscript, PanelCritique
+from .schemas import (
+    EvidenceMatrix,
+    Manuscript,
+    PanelCritique,
+    PeerReview,
+    RevisionCheck,
+)
 
 MAX_PAIRS = 40
 _SECTIONS = (
@@ -335,3 +341,95 @@ def matrix_digest(matrix: dict[str, Any]) -> str:
             if c["verdict"] != "supported"
         )
     )
+
+
+# ----------------------------------------------------------------------------- editor
+def _section_text(ms: Manuscript, section: str) -> str:
+    return getattr(ms, section, "") or ""
+
+
+def _locate(ms: Manuscript, section: str, quote: str) -> bool:
+    """Is the quote verbatim in the manuscript (whitespace and case insensitive)? The
+    named section is tried first; a revision may have moved the claim."""
+    order = [section, *(s for s in ("title", *_SECTIONS) if s != section)]
+    return any(quote_span(_section_text(ms, s), quote) is not None for s in order)
+
+
+def review_record(review: PeerReview, ms: Manuscript) -> dict[str, Any]:
+    """The stored review: each claim assessment numbered and marked with whether its
+    quote is verbatim in the manuscript it judged (so the UI can point at it)."""
+    data = review.model_dump()
+    data["assessments"] = [
+        {**a, "id": i, "quote_found": _locate(ms, a["section"], a["quote"])}
+        for i, a in enumerate(data["assessments"])
+    ]
+    data["counts"] = {
+        v: sum(1 for a in data["assessments"] if a["verdict"] == v)
+        for v in ("approved", "needs_revision", "rejected")
+    }
+    return data
+
+
+async def check_revision(
+    model: Any,
+    campaign_id: uuid.UUID,
+    record: dict[str, Any],
+    revised: Manuscript,
+    evidence_text: str,
+) -> RevisionCheck:
+    """Re-read every assessed claim in the revised paper: was each problem fixed, and
+    where does the claim now stand? Gives the decision on the paper as published."""
+    nonce = uuid.uuid4().hex[:12]
+    items = "\n".join(
+        f'[{a["id"]}] {a["verdict"]} ({a["severity"]}, {a["section"]}): "{a["quote"]}" '
+        f"Critique: {a['critique']} Fix: {a['fix'] or '-'}"
+        for a in record["assessments"]
+    )
+    paper = frame_untrusted(
+        revised.model_dump_json(), source="revised manuscript", nonce=nonce
+    ).text
+    return await model.structured(
+        campaign_id=campaign_id,
+        purpose="peer_review_check",
+        schema=RevisionCheck,
+        effort="medium",
+        max_tokens=8000,
+        system=_system("handling editor checking a revision", nonce),
+        prompt=(
+            "The manuscript was revised after your review. For every assessment below, "
+            "give one outcome (same index), quoting where the claim now appears verbatim. "
+            "Then give your decision on the revised paper. The evidence is authoritative.\n\n"
+            f"Evidence:\n{evidence_text}\n\nAssessments:\n{items}\n\n"
+            f"Revised manuscript:\n{paper}"
+        ),
+    )
+
+
+def apply_revision(
+    record: dict[str, Any], check: RevisionCheck | None, final: Manuscript
+) -> dict[str, Any]:
+    """Attach each claim's outcome in the final paper. Without a revision check (no
+    revision, or the check failed) only the quote's presence in the final text is known."""
+    by_id = {o.assessment: o for o in (check.outcomes if check else [])}
+    for a in record["assessments"]:
+        o = by_id.get(a["id"])
+        if o is not None:
+            quote = o.final_quote if o.status != "removed" else ""
+            a["outcome"] = {
+                "status": o.status,
+                "note": o.note,
+                "final_quote": quote,
+                "quote_found": bool(quote) and _locate(final, a["section"], quote),
+            }
+        else:
+            a["final_quote_found"] = _locate(final, a["section"], a["quote"])
+    if check is not None:
+        record["revision"] = {
+            "decision": check.final_decision,
+            "summary": check.final_summary,
+            "counts": {
+                s: sum(1 for o in by_id.values() if o.status == s)
+                for s in ("resolved", "partially_resolved", "unresolved", "removed")
+            },
+        }
+    return record

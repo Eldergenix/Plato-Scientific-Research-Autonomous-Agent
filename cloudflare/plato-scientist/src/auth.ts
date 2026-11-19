@@ -30,6 +30,7 @@ import {
   unhex,
   UUID_RE,
 } from "./lib";
+import { modelsInfo, workerModel } from "./models";
 
 export interface Principal {
   /** null for the deploy's bearer token (scripts and the smoke test): an admin, no account. */
@@ -342,7 +343,7 @@ export async function me(c: Ctx): Promise<Response> {
   const who = (c.who = await authenticate(c));
   if (!who) return json({ account: null });
   if (!who.accountId) {
-    return json({ account: null, admin_token: true, model: c.env.PLATO_SCIENTIST_MODEL });
+    return json({ account: null, admin_token: true, model: workerModel(c.env), models: modelsInfo(c.env) });
   }
   const [[acct], [key], [usage]] = await Promise.all([
     c.sql`SELECT id, email, name, is_admin, preferences, created_at FROM plato.accounts WHERE id = ${who.accountId}`,
@@ -353,7 +354,8 @@ export async function me(c: Ctx): Promise<Response> {
     account: acct,
     key: key ?? null,
     allowance: { cap: who.cap, committed: Number(usage.committed), own_key: Boolean(key) },
-    model: c.env.PLATO_SCIENTIST_MODEL,
+    model: workerModel(c.env),
+    models: modelsInfo(c.env),
   });
 }
 

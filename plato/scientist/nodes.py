@@ -21,6 +21,7 @@ import socket
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import Any
 
 from .citations import check_sources, exclusion_reason
@@ -44,10 +45,13 @@ from .guard import (
 from .llm import ModelOutputError, ModelRefusal, ScientistModel
 from .profiles import ScientistProfile, get_profile, resolve_profile
 from .review import (
+    apply_revision,
     build_evidence_matrix,
+    check_revision,
     matrix_digest,
     matrix_required_changes,
     panel_digest,
+    review_record,
     run_review_panel,
 )
 from .schemas import (
@@ -67,6 +71,7 @@ logger = logging.getLogger(__name__)
 METRICS_MARKER = "PLATO_METRICS"
 # Thinking plus the LaTeX body of one manuscript call (Haiku 5.5 allows 128k output).
 MANUSCRIPT_MAX_TOKENS = 48_000
+PLAN_MAX_TOKENS = 16_000
 SEED_FILE = "plato_seed.txt"
 SEALED_MANIFEST = "plato_sealed.json"
 ROOT_GOAL_KEY = "root-goal"
@@ -133,7 +138,9 @@ class ScientistConfig:
             default = os.environ.get("PLATO_DEFAULT_EXECUTOR", cfg.executor)
             # A deployment default of e2b without a key falls back to the container sandbox;
             # a campaign that names e2b explicitly fails loudly instead.
-            cfg.executor = "local" if default == "e2b" and not e2b_configured() else default
+            cfg.executor = (
+                "local" if default == "e2b" and not e2b_configured() else default
+            )
         if cfg.executor == "modal" and cfg.gpu:
             # GPU experiments (training) get ten minutes on a larger machine.
             cfg.sandbox = SandboxLimits(
@@ -357,6 +364,35 @@ async def _root_goal(ctx: ScientistContext, campaign_id: uuid.UUID) -> uuid.UUID
 # ---------------------------------------------------------------------------
 
 
+async def user_materials(
+    store: DualGraphStore, campaign_id: uuid.UUID
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Reference papers and documents the researcher supplied with the campaign (imported
+    from their library: .bib/.ris files, PDFs, Word documents, notes)."""
+    papers = [
+        a
+        for a in await store.visible_assets(campaign_id, asset_types=["paper"])
+        if (a["metadata"] or {}).get("user_supplied")
+    ]
+    docs = [
+        a
+        for a in await store.visible_assets(campaign_id, asset_types=["corpus_domain"])
+        if (a["metadata"] or {}).get("user_document")
+    ]
+    return papers, docs
+
+
+def _frame_documents(docs: list[dict[str, Any]], nonce: str, chars: int) -> list:
+    return [
+        frame_untrusted(
+            f"{d['canonical_name']}\n{((d['metadata'] or {}).get('excerpt') or '')[:chars]}",
+            source=f"document_{i}",
+            nonce=nonce,
+        )
+        for i, d in enumerate(docs)
+    ]
+
+
 async def literature_scout(ctx: ScientistContext, campaign_id: uuid.UUID) -> None:
     store = ctx.store
     campaign = await store.get_campaign(campaign_id)
@@ -478,6 +514,23 @@ async def literature_scout(ctx: ScientistContext, campaign_id: uuid.UUID) -> Non
             continue
         papers.append((asset.id, src))
         await store.set_scope(campaign_id, asset.id, "read_only")
+    # The researcher's own references join the search results (citable like any paper).
+    user_papers, user_docs = await user_materials(store, campaign_id)
+    known = {pid for pid, _ in papers}
+    for a in user_papers:
+        if a["id"] not in known:
+            known.add(a["id"])
+            meta = a["metadata"] or {}
+            papers.append(
+                (
+                    a["id"],
+                    SimpleNamespace(
+                        title=meta.get("title") or a["canonical_name"],
+                        year=meta.get("year"),
+                        abstract=meta.get("abstract") or "",
+                    ),
+                )
+            )
     if excluded:
         await store.record_guard_event(
             campaign_id,
@@ -506,10 +559,15 @@ async def literature_scout(ctx: ScientistContext, campaign_id: uuid.UUID) -> Non
         )
         for i, (_, src) in enumerate(papers)
     ]
-    await _guarded(ctx, campaign_id, framed_papers)
+    framed_docs = _frame_documents(user_docs, nonce, 4000)
+    await _guarded(ctx, campaign_id, framed_papers + framed_docs)
     literature = (
         "\n".join(f.text for f in framed_papers) or "(no literature could be retrieved)"
     )
+    if framed_docs:
+        literature += "\n\nDocuments provided by the researcher:\n" + "\n".join(
+            f.text for f in framed_docs
+        )
     hints = await ctx.model.structured(
         campaign_id=campaign_id,
         purpose="hints",
@@ -561,6 +619,8 @@ async def experiment_planner(
     existing = await store.nodes(campaign_id, node_type="intent")
     datasets = await store.visible_assets(campaign_id, asset_types=["dataset"])
     uncovered = await store.query_uncovered_scope(campaign_id)
+    _, user_docs = await user_materials(store, campaign_id)
+    framed_docs = _frame_documents(user_docs, nonce, 800)
     profile = await campaign_profile(ctx, campaign_id)
 
     framed = [
@@ -599,8 +659,15 @@ async def experiment_planner(
             )
             or "(none: design simulations or analyses that generate their own data)"
         )
+        + (
+            "\n\nDocuments provided by the researcher (excerpts):\n"
+            + "\n".join(f.text for f in framed_docs)
+            if framed_docs
+            else ""
+        )
         + f"\n\nPapers not yet used by any experiment: {len(uncovered)}\n\n"
-        f"Propose up to {ctx.config.intents_per_round} new, independent computational experiments. "
+        f"Propose up to {ctx.config.intents_per_round} new, independent computational experiments "
+        "(never more). Keep each protocol under 150 words: the research engineer designs the code. "
         "Prefer experiments that resolve open hints or follow up surprising facts. Each must run "
         f"offline {experiment_limits_text(ctx.config)} with {'/'.join(profile.packages)}. "
         + (f"{profile.guidance} " if profile.guidance else "")
@@ -610,12 +677,14 @@ async def experiment_planner(
         "true hypotheses. Mark claims of agreement with a reference value as 'equivalence' tests "
         "with a tolerance of at least 3 Monte Carlo standard errors."
     )
-    await _guarded(ctx, campaign_id, framed)
+    await _guarded(ctx, campaign_id, framed + framed_docs)
     batch = await ctx.model.structured(
         campaign_id=campaign_id,
         purpose="plan_intents",
         schema=IntentBatch,
         effort="medium",
+        # Thinking and up to intents_per_round full specs share this cap.
+        max_tokens=PLAN_MAX_TOKENS,
         system=_system("experiment planner", nonce),
         prompt=prompt,
     )
@@ -851,7 +920,11 @@ async def _workspace_attempt(
     async def on_submit(code: str, setup: str) -> tuple[str, bool, Any]:
         nonlocal submissions
         if submissions >= cfg.max_code_attempts:
-            return ("submission limit reached; no further runs will be recorded", False, None)
+            return (
+                "submission limit reached; no further runs will be recorded",
+                False,
+                None,
+            )
         submissions += 1
         await store.use_turn(intent["id"], worker_id)
         result = await _run_code(ctx, campaign_id, code, 1, datasets, setup=setup)
@@ -891,7 +964,9 @@ async def _workspace_attempt(
         while True:
             await asyncio.sleep(max(30, cfg.lease_seconds // 3))
             try:
-                await store.heartbeat(intent["id"], worker_id, lease_seconds=cfg.lease_seconds)
+                await store.heartbeat(
+                    intent["id"], worker_id, lease_seconds=cfg.lease_seconds
+                )
             except BaseException as exc:  # LeaseLost: stop the session at the next turn
                 lease_error.append(exc)
                 return
@@ -933,7 +1008,10 @@ async def _workspace_attempt(
                 campaign_id,
                 "injection",
                 "allow",
-                {"signals": sorted(set(outcome.signals))[:20], "note": "workspace tool output"},
+                {
+                    "signals": sorted(set(outcome.signals))[:20],
+                    "note": "workspace tool output",
+                },
                 node_id=intent["id"],
             )
         await store.add_evidence(
@@ -955,7 +1033,9 @@ async def _workspace_attempt(
     finally:
         heartbeat.cancel()
         await backend.close()
-        await store.settle_gpu_seconds(campaign_id, 60, round(time.monotonic() - started))
+        await store.settle_gpu_seconds(
+            campaign_id, 60, round(time.monotonic() - started)
+        )
     if lease_error:
         raise lease_error[0]
     return state["code"], state["setup"], state["result"], state["metrics"]
@@ -985,7 +1065,9 @@ async def execute_intent(
             ctx, campaign_id, intent, worker_id, spec, datasets, nonce
         )
     # The workspace session replaces the write-run-fix loop below (it has its own retries).
-    for attempt in range(0 if ctx.config.executor == "e2b" else ctx.config.max_code_attempts):
+    for attempt in range(
+        0 if ctx.config.executor == "e2b" else ctx.config.max_code_attempts
+    ):
         await store.use_turn(intent["id"], worker_id)
         draft = await ctx.model.structured(
             campaign_id=campaign_id,
@@ -1607,9 +1689,12 @@ async def write_manuscript(
     anchored = await store.anchored_asset_ids(
         [f["id"] for f in findings]
     ) | await store.anchored_asset_ids([h["id"] for h in hints], max_depth=0)
-    citable = [p for i, p in papers.items() if i in anchored] or list(papers.values())[
-        :10
-    ]
+    # References the researcher supplied are always citable.
+    citable = [
+        p
+        for i, p in papers.items()
+        if i in anchored or (p["metadata"] or {}).get("user_supplied")
+    ] or list(papers.values())[:10]
     keys = {_bib_key(p): p for p in citable}
     bib = build_bibtex(citable)
 
@@ -1700,10 +1785,15 @@ async def write_manuscript(
             schema=PeerReview,
             effort="high",
             system=_system("handling editor for a top venue", nonce),
+            max_tokens=16000,
             prompt=(
                 "Write the consolidated review of this manuscript. Weigh the four reviewer "
-                "reports and the citation audit against the evidence; required changes must "
-                "be concrete edits.\n\n"
+                "reports and the citation audit against the evidence. Judge the paper claim "
+                "by claim: quote each claim exactly as written, check it against the "
+                "evidence (numbers, uncertainty, replication, test kind), and approve, ask "
+                "to revise, or reject it. Approve only what the evidence establishes as "
+                "stated; a number that is not in the evidence is rejected. Required "
+                "changes must be concrete edits.\n\n"
                 f"Evidence:\n{evidence_text}\n\n"
                 f"Reviewer reports:\n{panel_digest(panel or {})}\n\n"
                 f"Citation audit (claims whose cited abstract does not support them):\n"
@@ -1712,6 +1802,7 @@ async def write_manuscript(
             ),
         ),
     )
+    record = review_record(review, ms) if review is not None else None
     changes = (
         list(review.required_changes)
         if review and review.decision in ("major_revision", "reject")
@@ -1740,6 +1831,14 @@ async def write_manuscript(
         )
         if new_ms is not None:
             ms, revised = new_ms, True
+            # The review judged the first draft; re-check each claim in the revision so
+            # the verdicts shown describe the paper as published.
+            if record is not None:
+                check = await best_effort(
+                    "peer_review_check",
+                    check_revision(ctx.model, campaign_id, record, ms, evidence_text),
+                )
+                record = apply_revision(record, check, ms)
             # The stored matrix must describe the paper as published.
             matrix = (
                 await best_effort(
@@ -1779,9 +1878,14 @@ async def write_manuscript(
     tex = assemble_latex(ms, findings)
     await store.add_evidence(root_id, "latex_section", tex, approval_actor="model")
     await store.add_evidence(root_id, "bibtex", bib, approval_actor="system")
-    if review is not None:
+    if record is not None:
+        if not revised:
+            record = apply_revision(record, None, ms)
         await store.add_evidence(
-            root_id, "peer_review", review.model_dump_json(), approval_actor="model"
+            root_id,
+            "peer_review",
+            json.dumps(record, sort_keys=True),
+            approval_actor="model",
         )
     if matrix is not None:
         await store.add_evidence(

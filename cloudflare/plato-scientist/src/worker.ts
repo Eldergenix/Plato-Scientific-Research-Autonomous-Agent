@@ -13,6 +13,9 @@ import { Container } from "@cloudflare/containers";
 import * as auth from "./auth";
 import type { Ctx } from "./auth";
 import * as campaigns from "./campaigns";
+import * as exportsApi from "./exports";
+import * as integrations from "./integrations";
+import * as library from "./library";
 import { db, type Env, HttpError, json, TERMINAL_STATUSES, UUID_RE } from "./lib";
 import * as projects from "./projects";
 
@@ -33,6 +36,7 @@ export class ScientistContainer extends Container<Env> {
       PLATO_INTERNAL_TOKEN: env.PLATO_INTERNAL_TOKEN,
       ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY,
       PLATO_SCIENTIST_MODEL: env.PLATO_SCIENTIST_MODEL,
+      ...(env.PLATO_ROLE_MODELS ? { PLATO_ROLE_MODELS: env.PLATO_ROLE_MODELS } : {}),
       PLATO_DB_POOL_SIZE: "8",
       // Experiments run in E2B sandboxes when a key is configured, on the container otherwise.
       PLATO_DEFAULT_EXECUTOR: env.E2B_API_KEY ? env.PLATO_DEFAULT_EXECUTOR || "e2b" : "local",
@@ -92,6 +96,29 @@ const ROUTES: [string, string, Access, Handler][] = [
   ["GET", "campaigns/:id/manuscript", "user", campaigns.campaignManuscript],
   ["GET", "campaigns/:id/usage", "user", campaigns.campaignUsage],
   ["GET", "campaigns/:id/draft", "user", campaigns.campaignDraft],
+  ["GET", "campaigns/:id/manuscript.pdf", "user", exportsApi.manuscriptPdf],
+  ["GET", "campaigns/:id/exports", "user", exportsApi.listExports],
+  ["POST", "campaigns/:id/exports", "user", exportsApi.createExport],
+  ["GET", "publish/journals", "user", exportsApi.journals],
+  // Signed-in, or a signed link from an email: the handler checks which.
+  ["GET", "exports/:id/download", "public", exportsApi.download],
+  ["GET", "exports/:id/file", "user", exportsApi.exportFile],
+  ["POST", "exports/:id/send", "account", exportsApi.sendExport],
+  ["POST", "exports/:id/email", "account", exportsApi.emailExport],
+  ["POST", "exports/:id/library", "account", exportsApi.saveToLibrary],
+  ["GET", "library", "account", library.listFiles],
+  ["POST", "library", "account", library.uploadFile],
+  ["GET", "library/:id", "account", library.downloadFile],
+  ["DELETE", "library/:id", "account", library.deleteFile],
+  ["GET", "integrations", "account", integrations.listIntegrations],
+  ["POST", "integrations/connect", "account", integrations.connect],
+  ["POST", "integrations/disconnect", "account", integrations.disconnect],
+  ["GET", "integrations/files", "account", integrations.browse],
+  ["POST", "integrations/import", "account", integrations.importFiles],
+  ["POST", "integrations/triggers", "account", integrations.createTrigger],
+  ["DELETE", "integrations/triggers/:id", "account", integrations.deleteTrigger],
+  // Composio deliveries: verified by signature, not by session.
+  ["POST", "integrations/webhook", "public", integrations.webhook],
   ["GET", "campaigns/:id/files", "user", campaigns.campaignFiles],
   ["GET", "nodes/:id/provenance", "user", campaigns.nodeProvenance],
   ["GET", "evidence/:id", "user", campaigns.evidence],
@@ -145,7 +172,7 @@ export default {
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(req);
     // Browsers send Origin on cross-origin writes: refuse them (with the SameSite=Lax cookie
     // and JSON-only bodies, this closes cross-site request forgery).
-    if (req.method !== "GET" && req.method !== "HEAD") {
+    if (req.method !== "GET" && req.method !== "HEAD" && url.pathname !== "/api/integrations/webhook") {
       const origin = req.headers.get("origin");
       if (origin && origin !== url.origin) return json({ error: "cross-origin request refused" }, 403);
     }
@@ -192,6 +219,8 @@ export default {
         }),
       );
       const failed = results.filter((r) => r.status === "rejected").length;
+      // Trigger deliveries that could not be imported when they arrived.
+      const importFailures = env.COMPOSIO_API_KEY ? await integrations.retryPending(env, sql).catch(() => -1) : 0;
       const [sessions, attempts, stuck] = await Promise.all([
         sql`DELETE FROM plato.sessions WHERE expires_at < now() RETURNING 1`,
         sql`DELETE FROM plato.auth_attempts WHERE created_at < now() - interval '1 day' RETURNING 1`,
@@ -205,6 +234,7 @@ export default {
           active: active.length,
           waiting_for_key: active.length - runnable.length,
           failed,
+          import_failures: importFailures,
           expired_sessions: sessions.length,
           old_attempts: attempts.length,
           stuck_agents: stuck.length,

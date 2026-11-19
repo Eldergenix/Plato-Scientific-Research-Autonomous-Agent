@@ -75,13 +75,13 @@ $("#themeLbl").textContent=themeText();
 /* ---------- health ---------- */
 function setHealth(ok,text){$("#health").innerHTML=`<span class="dot ${ok?"ok":"bad"}"></span><span class="trunc">${esc(text)}</span>`}
 async function health(){if(!S.me?.account)return;
-  try{const h=await getJSON("health");setHealth(true,`Connected · ${h.model}`)}catch(e){if(e.status!==401)setHealth(false,"API unreachable")}}
+  try{const h=await getJSON("health");setHealth(true,`Connected · ${h.models?.orchestrator?h.models.orchestrator+" / ":""}${h.model}`)}catch(e){if(e.status!==401)setHealth(false,"API unreachable")}}
 
 /* ---------- routing ----------
    #/ (home: the agent or campaigns, per preference)  #/agent  #/campaigns  #/p/<project>
    #/c/<campaign>/<tab>  #/settings/<section>  #/login  #/signup */
 const dec=s=>{try{return decodeURIComponent(s)}catch{return ""}};
-function parseRoute(){const p=location.hash.replace(/^#\/?/,"").split("/").map(dec);
+function parseRoute(){const p=location.hash.replace(/^#\/?/,"").replace(/\?.*$/,"").split("/").map(dec);
   if(p[0]==="c"&&p[1])return {view:"campaign",id:p[1],tab:p[2]||"overview",node:p[3]||null};
   if(p[0]==="p"&&p[1])return {view:"project",pid:p[1]};
   if(p[0]==="settings")return {view:"settings",section:p[1]||"preferences"};
@@ -144,8 +144,8 @@ function renderHome(){
   Kit.hydrate(body);Kit.reveal($("#pane"),"home")}
 
 /* ---------- campaign view ---------- */
-const TABS=[["overview","Overview"],["results","Results"],["graph","Graph"],["findings","Findings"],["experiments","Experiments"],["data","Data"],["manuscript","Manuscript"],["guardrails","Guardrails"]];
-function resetCampaignState(){clearTimeout(S.draftTimer);cancelAnimationFrame(S.lpRaf);
+const TABS=[["overview","Overview"],["results","Results"],["graph","Graph"],["findings","Findings"],["experiments","Experiments"],["data","Data"],["manuscript","Manuscript"],["guardrails","Guardrails"],["publish","Publish"]];
+function resetCampaignState(){clearTimeout(S.draftTimer);cancelAnimationFrame(S.lpRaf);resetPdf();RV.filter="all";
   Object.assign(S,{summary:null,graph:null,manuscript:undefined,prov:{},files:undefined,filesKey:null,recipes:{},draft:undefined,firstDraft:null,draftTimer:null,paperEl:null,lp:null,lpRaf:0,follow:pref("follow_live_writing"),rows:null,rowsFor:null,lastView:"",usage:undefined,usageKey:null,t0:0});
   S.res.page=0;S.panel.view="details";if(S.panel.mode==="focus")S.panel.mode="panel"}
 async function openCampaign(id){
@@ -178,20 +178,21 @@ function renderCampaign(){
   $("#tabs").innerHTML=TABS.map(([k,l])=>`<a class="tab${S.route.tab===k?" on":""}" href="#/c/${eid(c.id)}/${k}" style="text-decoration:none"${S.route.tab===k?' aria-current="page"':""}>${l}${n[k]!=null?`<span class="c">${n[k]}</span>`:""}</a>`).join("");
   renderTab();
 }
-function tabView(tab){return ({overview,results:resultsView,graph:graphView,findings:findingsView,experiments:experimentsView,data:dataView,manuscript:manuscriptView,guardrails:guardView}[tab]||overview)()}
+function tabView(tab){return ({overview,results:resultsView,graph:graphView,findings:findingsView,experiments:experimentsView,data:dataView,manuscript:manuscriptView,guardrails:guardView,publish:publishView}[tab]||overview)()}
 /* Re-rendering the same view (live polling) keeps focus, caret and scroll positions. */
 function keepUI(){const a=document.activeElement,o={id:a&&a.id&&$("#body").contains(a)?a.id:null,ss:null,se:null,sc:{}};
   try{o.ss=a.selectionStart;o.se=a.selectionEnd}catch{}
-  ["pane","props","gwrap"].forEach(id=>{const e=document.getElementById(id);if(e)o.sc[id]=[e.scrollTop,e.scrollLeft]});return o}
+  ["pane","props","gwrap","rvBody"].forEach(id=>{const e=document.getElementById(id);if(e)o.sc[id]=[e.scrollTop,e.scrollLeft]});return o}
 function restoreUI(o){for(const [id,[t,l]] of Object.entries(o.sc)){const e=document.getElementById(id);if(e){e.scrollTop=t;e.scrollLeft=l}}
   if(o.id){const e=document.getElementById(o.id);if(e){e.focus({preventScroll:true});try{if(o.ss!=null)e.setSelectionRange(o.ss,o.se)}catch{}}}}
 function renderTab(){
   const tab=S.route.tab,body=$("#body"),key=S.route.id+"/"+tab,ui=S.lastView===key?keepUI():null;S.lastView=key;
   const full=tab==="manuscript";autoPanel();
   if(tab==="manuscript"||S.panel.view==="paper")ensureManuscript();
-  body.className="body "+(full?"full":"mode-"+S.panel.mode);
-  body.innerHTML=`<div class="pane" id="pane">${tabView(tab)}</div>`+(full?"":`<aside class="props" id="props" aria-label="Details panel">${propsView()}</aside>`);
-  mountPaper();bindPane();bindProps();mountCharts();mountData();Kit.hydrate(body,S.route.id+":");Kit.paint(body);if(ui)restoreUI(ui);KB=-1;
+  const rv=full&&S.manuscript&&typeof S.manuscript==="object"?reviewData(S.manuscript):null;
+  body.className="body "+(full?"full":"mode-"+S.panel.mode)+(rv?" has-rv"+(RV.open?" rv-open":""):"");
+  body.innerHTML=`<div class="pane" id="pane">${tabView(tab)}</div>`+(full?(rv?reviewPanel(rv):""):`<aside class="props" id="props" aria-label="Details panel">${propsView()}</aside>`);
+  clearMarks();mountPaper();bindPane();bindPublish();bindProps();bindReview();mountCharts();mountData();Kit.hydrate(body,S.route.id+":");Kit.paint(body);if(ui)restoreUI(ui);KB=-1;
 }
 function refreshProps(keepScroll=true){const p=$("#props");if(!p||!S.summary)return;const st=p.scrollTop;
   if(S.panel.view==="paper")ensureManuscript();
@@ -225,7 +226,7 @@ function campaignProps(){
   const c=S.summary.campaign,cfg=c.config||{};
   return `<div class="pp"><h4>Properties</h4>
   <div class="prop"><span>Status</span><span>${campaignIcon(c.status)}<span data-mk="pstatus">${PHASE_LABEL[c.status]||esc(c.status)}</span></span></div>
-  <div class="prop"><span>Model</span><span class="trunc">${esc(cfg.model||"claude-haiku-5-5")}</span></div>
+  <div class="prop"><span>Model</span><span class="trunc">${esc(cfg.models?[...new Set(Object.values(cfg.models))].join(" · "):cfg.model||"claude-haiku-5-5")}</span></div>
   <div class="prop"><span>Workers</span><span>${esc(cfg.workers??"–")}</span></div>
   <div class="prop"><span>Rounds</span><span>${esc(cfg.max_rounds??"–")}</span></div>
   <div class="prop"><span>Domain</span><span class="trunc">${esc(c.program_domain||"general")}</span></div>
@@ -277,7 +278,7 @@ function bindProps(){const p=$("#props");if(!p)return;
     else if(t.dataset.ev)openEvidence(t.dataset.ev,t.dataset.type);
     else if(t.dataset.copy)copyPaper(t);
     else if(t.dataset.follow!=null)follow(true);
-    else if(t.dataset.openMs!=null)go(S.route.id,"manuscript");
+    else if(t.dataset.openMs!=null){if(t.dataset.rvOpen!=null){RV.open=true;ls.set("plato_review_open","1")}go(S.route.id,"manuscript")}
     else if(t.dataset.node)selectNode(t.dataset.node)};
   p.onkeydown=e=>{if((e.key==="Enter"||e.key===" ")&&e.target.matches(".lin[role=button]")){e.preventDefault();e.target.click()}}}
 
@@ -638,25 +639,6 @@ function latexToHtml(src){
 const plainTex=t=>t.replace(/\\([&%_#$])/g,"$1").replace(/\\&amp;/g,"&amp;").replace(/\\[a-zA-Z]+\*?\{([^}]*)\}/g,"$1").replace(/\\[a-zA-Z]+\*?/g,"");
 const pj=t=>{try{return t?JSON.parse(t):null}catch{return null}};
 const sevColor=v=>v==null?"var(--gray)":v>=4?"var(--red)":v>=3?"var(--orange)":v>=2?"var(--yellow)":"var(--green)";
-// Reviewer panel, claim support and citation checks: the receipts of the paper's audit.
-function auditHtml(m){const panel=pj(m.review_panel),mx=pj(m.evidence_matrix),cr=pj(m.citation_report);if(!panel&&!mx&&!cr)return"";
-  const parts=[];
-  if(panel){const rows=Object.entries(panel.reviewers||{});
-    parts.push(`<div class="audit-row"><b>Reviewer panel</b><span class="audit-chips">${rows.map(([a,r])=>`<span class="chip" title="${esc(r.error?"Review unavailable":r.summary||"")}"><i style="background:${sevColor(r.error?null:r.severity)}"></i>${esc(a[0].toUpperCase()+a.slice(1))} ${r.error?"n/a":`${Number(r.severity)}/5`}</span>`).join("")}</span></div>`
-      +`<details class="t2"><summary>Reviewer comments</summary>${rows.filter(([,r])=>!r.error).map(([a,r])=>`<p><b style="font-weight:500">${esc(a[0].toUpperCase()+a.slice(1))}</b>: ${esc(r.summary||"")}</p>${r.issues?.length?`<ul>${r.issues.map(i=>`<li>[${esc(i.section)}] ${esc(i.issue)} <span class="t3">Fix: ${esc(i.fix)}</span></li>`).join("")}</ul>`:""}`).join("")}</details>`)}
-  if(mx){const cl=mx.claims||[],n=v=>cl.filter(c=>c.verdict===v).length;
-    parts.push(`<div class="audit-row"><b>Claim support</b><span class="t2">${cl.length?`${n("supported")} of ${cl.length} cited claims supported by the cited abstract${n("refuted")?` · ${n("refuted")} contradicted`:""}`:"No cited claims"}</span></div>`
-      +(cl.length?`<details class="t2"><summary>Claims and quotes</summary><ul>${cl.map(c=>`<li><span class="chip"><i style="background:${c.verdict==="supported"?"var(--green)":c.verdict==="refuted"?"var(--red)":"var(--orange)"}"></i>${esc(c.verdict)}</span> ${esc(c.text)}${c.citations.filter(x=>x.quote).map(x=>`<blockquote>“${esc(x.quote)}” <span class="t3">${esc(x.title)}</span></blockquote>`).join("")}</li>`).join("")}</ul></details>`:""))}
-  if(cr){const cs=cr.cited||[],ok=cs.filter(c=>c.status==="verified").length,ex=cr.excluded||[];
-    parts.push(`<div class="audit-row"><b>Citation checks</b><span class="t2">${ok} of ${cs.length} cited papers verified${ex.length?` · ${ex.length} retrieved paper${ex.length>1?"s":""} excluded`:""} · searched ${esc((cr.sources_searched||[]).join(", "))}</span></div>`
-      +(ex.length||cs.length?`<details class="t2"><summary>Details</summary><ul>${cs.map(c=>`<li>${esc(c.key||"")} ${esc(c.title)}: ${esc(c.status)}${c.retracted?" (retracted)":""}${c.issues?.length?` <span class="t3">${esc(c.issues.join(", "))}</span>`:""}</li>`).join("")}${ex.map(x=>`<li>Excluded: ${esc(x.title)} <span class="t3">${esc(x.reason)}</span></li>`).join("")}</ul></details>`:""))}
-  return `<div class="review audit">${parts.join("")}</div>`}
-function reviewHtml(m){try{const r=m.peer_review?JSON.parse(m.peer_review):null;if(!r)return"";
-  const pips=v=>{v=Number(v);v=Number.isFinite(v)?v:0;return `<span class="pips" title="${v} of 4">${[1,2,3,4].map(i=>`<i class="${i<=v?"on":""}"></i>`).join("")}</span>`};
-  const dc={accept:"var(--green)",minor_revision:"var(--yellow)",major_revision:"var(--orange)",reject:"var(--red)"}[r.decision]||"var(--gray)";
-  return `<div class="review"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-weight:500">Automated peer review</b><span class="chip"><i style="background:${dc}"></i>${esc(String(r.decision).replace("_"," "))}</span></div>
-    <div class="scores"><span class="score">Soundness ${pips(r.soundness)}</span><span class="score">Presentation ${pips(r.presentation)}</span><span class="score">Contribution ${pips(r.contribution)}</span></div>
-    <div class="t2">${esc(r.summary)}</div>${r.required_changes?.length?`<ul class="t2" style="margin:8px 0 0;padding-left:18px">${r.required_changes.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>`:""}</div>`}catch{return""}}
 function manuscriptView(){
   // undefined: not requested yet, null: loading, false: none yet, string: load error, object: loaded
   const c=S.summary.campaign;
@@ -664,11 +646,17 @@ function manuscriptView(){
   if(typeof S.manuscript==="string")return emptyPane("Could not load the manuscript",S.manuscript);
   if(S.manuscript===false){if(c.status==="writing"||S.draft?.stage)return `<div id="msSlot"></div>`;
     return emptyPane("No manuscript yet",c.status==="halted"?"This campaign halted before writing.":"The paper is written after the experiments and the sealed evaluation finish. It streams in live once writing starts.")}
-  const m=S.manuscript;if(!window.katex)loadKatex().then(()=>{if(S.route.tab==="manuscript")renderTab()}).catch(()=>{});
+  const m=S.manuscript,v=S.msView;if(!window.katex)loadKatex().then(()=>{if(S.route.tab==="manuscript")renderTab()}).catch(()=>{});
   const dl=ico('<path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10"/>'),cp=ico('<rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5v-2a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2"/>');
-  return `<div class="paper"><div class="ms-bar"><div class="seg" role="tablist" aria-label="Manuscript view"><button type="button" role="tab" data-ms="paper" aria-selected="${S.msView==="paper"}" class="${S.msView==="paper"?"on":""}">Paper</button><button type="button" role="tab" data-ms="src" aria-selected="${S.msView==="src"}" class="${S.msView==="src"?"on":""}">LaTeX</button><button type="button" role="tab" data-ms="bib" aria-selected="${S.msView==="bib"}" class="${S.msView==="bib"?"on":""}">BibTeX</button></div>
-    <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap"><button class="btn" type="button" data-copy="${S.msView==="bib"?"bib":"tex"}">${cp}<span data-lbl>${S.msView==="bib"?"Copy BibTeX":"Copy LaTeX"}</span></button><button class="btn" type="button" data-dl="tex">${dl}.tex</button>${m.bibtex?`<button class="btn" type="button" data-dl="bib">${dl}.bib</button>`:""}</span></div>
-    ${reviewHtml(m)}${auditHtml(m)}${S.msView==="paper"?latexToHtml(m.latex_section||""):`<pre class="src">${esc(S.msView==="bib"?m.bibtex||"":m.latex_section||"")}</pre>`}</div>`}
+  const rv=reviewData(m),split=v==="src"&&PDFV.split,wideView=v==="pdf"||split;
+  const tabs=[["paper","Paper"],["pdf","PDF"],["src","LaTeX"],["bib","BibTeX"]];
+  const acts=v==="pdf"?pdfActions():`<button class="btn" type="button" data-copy="${v==="bib"?"bib":"tex"}">${cp}<span data-lbl>${v==="bib"?"Copy BibTeX":"Copy LaTeX"}</span></button><button class="btn" type="button" data-dl="tex">${dl}.tex</button>${m.bibtex?`<button class="btn" type="button" data-dl="bib">${dl}.bib</button>`:""}`;
+  const body=v==="paper"?`<div class="ms-paper">${latexToHtml(m.latex_section||"")}</div>`:v==="pdf"?pdfFrame()
+    :split?`<div class="ms-split"><pre class="src">${esc(m.latex_section||"")}</pre>${pdfFrame()}</div>`:`<pre class="src">${esc(v==="bib"?m.bibtex||"":m.latex_section||"")}</pre>`;
+  return `<div class="paper${wideView?" wide":""}"><div class="ms-bar"><div class="seg" role="tablist" aria-label="Manuscript view">${tabs.map(([k,l])=>`<button type="button" role="tab" data-ms="${k}" aria-selected="${v===k}" class="${v===k?"on":""}">${l}</button>`).join("")}</div>
+    ${v==="src"?`<button class="btn ghost${split?" on":""}" type="button" data-ms-split aria-pressed="${split}" title="Show the typeset PDF beside the LaTeX">${ico('<rect x="2" y="3" width="12" height="10" rx="2"/><path d="M8 3v10"/>')}PDF beside</button>`:""}
+    <span class="ms-acts">${acts}${rv?`<button class="btn${RV.open?" on":""}" type="button" data-rv-toggle aria-controls="review" aria-expanded="${RV.open}" title="Show or hide the peer review">${ico('<rect x="2" y="3" width="12" height="10" rx="2"/><path d="M10 3v10"/>')}Review</button>`:""}</span></div>
+    ${body}</div>`}
 function download(kind){const m=S.manuscript;if(!m)return;Kit.download(`${cid(S.route.id).toLowerCase()}.${kind}`,(kind==="bib"?m.bibtex:m.latex_section)||"")}
 async function copyPaper(btn){const m=S.manuscript,kind=btn.dataset.copy;
   const text=kind==="bib"?m?.bibtex:kind==="draft"?draftLatex():m?.latex_section;
@@ -732,7 +720,7 @@ function paperShell(mode){const c=S.summary.campaign;
   if(mode==="final"){const m=S.manuscript,words=(m.latex_section||"").replace(/\\[a-zA-Z]+|[{}$\\]/g," ").split(/\s+/).filter(Boolean).length;
     return `<div class="lp-head">${check("var(--green)")}<b data-stage>Final</b><span class="t3">·</span><span>${fmt(words)} words</span>
       <span class="lp-act"><button class="btn ghost sm" type="button" data-copy="tex"><span data-lbl>Copy LaTeX</span></button><button class="btn ghost sm" type="button" data-open-ms>Open in Manuscript</button></span></div>
-      <div class="paper">${reviewHtml(m)}${latexToHtml(m.latex_section||"")}</div>`}
+      <div class="paper">${reviewStrip(m)}${latexToHtml(m.latex_section||"")}</div>`}
   if(mode==="loading")return `<div class="paper">${Kit.skel(paperSample())}</div>`;
   if(mode==="empty"){const before=ACTIVE(c)&&c.status!=="writing";
     return `<div class="lp-empty">${before?`<b>The paper streams in here once writing starts.</b><p class="t2">Writing begins after the experiments and the sealed evaluation. You will see each section appear as the writer produces it, then the peer review and the revision.</p>`
@@ -823,20 +811,23 @@ function openNew(){
     <label class="pchip" title="Research domain">Domain <input class="dom" name="domain" value="general" maxlength="64"></label>
   </div>
   <div class="files"><label class="btn ghost" style="cursor:pointer">${evIcon("file")}<span id="trainLbl">Attach training data</span><input name="train" type="file" multiple hidden accept=".csv,.tsv,.json,.parquet,.txt"></label>
-  <label class="btn ghost" style="cursor:pointer" title="Held out from all experiments; only used for the final sealed evaluation">${evIcon("file")}<span id="sealLbl">Attach sealed holdout</span><input name="sealed" type="file" multiple hidden accept=".csv,.tsv,.json,.parquet,.txt"></label></div>
+  <label class="btn ghost" style="cursor:pointer" title="Held out from all experiments; only used for the final sealed evaluation">${evIcon("file")}<span id="sealLbl">Attach sealed holdout</span><input name="sealed" type="file" multiple hidden accept=".csv,.tsv,.json,.parquet,.txt"></label>
+  <button class="btn ghost" type="button" id="libBtn" title="Data, references and documents from Files">${evIcon("file")}<span id="libLbl">Add from Files</span></button></div>
+  <div class="libpick" id="libPick" hidden></div>
   </div><div class="m-f"><span class="t3" id="nmsg" style="font-size:12px" aria-live="polite">Runs on Claude Haiku 5.5</span><span style="margin-left:auto" class="kbd">⌘ ↵</span><button class="btn primary" id="createBtn"><span data-lbl>Create campaign</span></button></div></form>`);
-  const f=$("#newForm");f.question.focus();
+  const f=$("#newForm"),picked=new Set();f.question.focus();
+  $("#libBtn").onclick=()=>{const el=$("#libPick");if(el.hidden)libraryPicker(el,picked);else el.hidden=true};
   const lbl=(inp,el,def)=>inp.onchange=()=>{el.textContent=inp.files.length?[...inp.files].map(x=>x.name).join(", "):def};
   lbl(f.train,$("#trainLbl"),"Attach training data");lbl(f.sealed,$("#sealLbl"),"Attach sealed holdout");
   f.addEventListener("keydown",e=>{if((e.metaKey||e.ctrlKey)&&e.key==="Enter")f.requestSubmit()});
-  f.onsubmit=async e=>{e.preventDefault();const b=$("#createBtn"),l=b.querySelector("[data-lbl]"),msg=$("#nmsg"),files=[...f.train.files,...f.sealed.files];b.disabled=true;
+  f.onsubmit=async e=>{e.preventDefault();const b=$("#createBtn"),l=b.querySelector("[data-lbl]"),msg=$("#nmsg"),files=[...f.train.files,...f.sealed.files,...picked];b.disabled=true;
     Kit.morph(l,files.length?"Uploading…":"Creating…");Kit.morph(msg,files.length?`Uploading ${files.length} file${files.length>1?"s":""}`:"Starting the swarm");
     try{const datasets=[];for(const [k,sealed] of [["train",false],["sealed",true]])for(const file of f[k].files)
         datasets.push({file_name:file.name.replace(/[^A-Za-z0-9._-]/g,"_").replace(/^[^A-Za-z0-9]+/,"d").slice(0,128),content_base64:await b64(file),sealed});
       if(files.length){Kit.morph(l,"Creating…");Kit.morph(msg,"Starting the swarm")}
       const q=f.question.value.trim(),ctx=f.context.value.trim();
       const body={question:ctx?`${q}\n\nContext: ${ctx}`:q,domain:f.domain.value.trim()||"general",token_budget:+f.token_budget.value,workers:+f.workers.value,max_rounds:+f.max_rounds.value,datasets};
-      const r=await (await api("campaigns",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)})).json();
+      const r=await (await api("campaigns"+(picked.size?"?library="+[...picked].join(","):""),{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)})).json();
       Kit.morph(l,"Created");b.classList.add("done");await new Promise(res=>setTimeout(res,Kit.still()?0:560));
       closeOverlay();toast("Campaign started");await loadList();go(r.id)}
     catch(err){b.disabled=false;Kit.morph(l,"Create campaign");msg.innerHTML=`<span class="err">${esc(err.message)}</span>`;delete msg.dataset.mt}}}
@@ -846,7 +837,7 @@ $("#newBtn").onclick=openNew;
 /* ---------- pane events (delegated: views re-render with innerHTML) ---------- */
 function bindPane(){const pane=$("#pane");if(!pane)return;
   pane.onclick=e=>{if(e.target.closest(".dv"))return;   // the data viewer handles its own controls
-    const t=e.target.closest("[data-node],[data-ms],[data-dl],[data-gev],[data-filter],[data-sort],[data-page],[data-dense],[data-csv],[data-copy],[data-clear],[data-pv],[data-dfilter],[data-ev],#colBtn");if(!t||!pane.contains(t))return;
+    const t=e.target.closest("[data-node],[data-ms],[data-dl],[data-gev],[data-filter],[data-sort],[data-page],[data-dense],[data-csv],[data-copy],[data-clear],[data-pv],[data-rv-toggle],[data-ms-split],[data-pdf-retry],[data-dfilter],[data-ev],#colBtn");if(!t||!pane.contains(t))return;
     const d=t.dataset,R=S.res;
     if(t.id==="colBtn"){const m=$("#colMenu");m.hidden=!m.hidden;t.setAttribute("aria-expanded",String(!m.hidden));if(!m.hidden)m.querySelector("input")?.focus()}
     else if(d.filter){R.filter=R.filter===d.filter&&d.filter!=="all"?"all":d.filter;R.page=0;renderGrid()}
@@ -856,7 +847,10 @@ function bindPane(){const pane=$("#pane");if(!pane)return;
     else if(d.csv)exportCsv(t);
     else if(d.clear!=null){R.q="";R.filter="all";R.page=0;const q=$("#gq");if(q)q.value="";renderGrid()}
     else if(d.pv)setPanel(S.panel.mode==="panel"?"split":S.panel.mode,d.pv);
-    else if(d.ms){S.msView=d.ms;renderTab()}
+    else if(d.ms){if(S.msView!==d.ms){S.msView=d.ms;renderTab();$(`[data-ms="${d.ms}"]`)?.focus({preventScroll:true})}}
+    else if(d.rvToggle!=null)setRvOpen(!RV.open);
+    else if(d.msSplit!=null){PDFV.split=!PDFV.split;ls.set("plato_ms_split",PDFV.split?"1":"0");renderTab()}
+    else if(d.pdfRetry!=null){resetPdf();renderTab()}
     else if(d.dl)download(d.dl);
     else if(d.copy)copyPaper(t);
     else if(d.gev!=null)t.nextElementSibling.hidden=!t.nextElementSibling.hidden;

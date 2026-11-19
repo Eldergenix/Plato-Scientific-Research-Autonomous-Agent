@@ -25,6 +25,8 @@
       "localConnectionString": "postgresql://postgres:postgres@127.0.0.1:5432/postgres"
     }
   ],
+  // Publication packages (exports/) and people's research files (library/).
+  "r2_buckets": [{ "binding": "EXPORTS", "bucket_name": "plato-exports" }],
   "durable_objects": {
     "bindings": [
       { "name": "PLATO_SCIENTIST", "class_name": "ScientistContainer" },
@@ -50,6 +52,11 @@
   // runs resume from Postgres.
   "triggers": { "crons": ["*/5 * * * *"] },
   "vars": {
+    // The project agent (orchestrator) and the research threads' sub-agents. Optional
+    // PLATO_ROLE_MODELS (a string holding a JSON object) overrides single sub-agent roles, e.g.
+    // {"skeptic": "claude-sonnet-5-5"}; roles are listed in src/models.json. Usage counts
+    // against budgets and the allowance at each model's price relative to Haiku 5.5.
+    "PLATO_ORCHESTRATOR_MODEL": "claude-opus-5-5",
     "PLATO_SCIENTIST_MODEL": "claude-haiku-5-5",
     // Tokens each account may spend per calendar month on the default Anthropic key
     // (admins and accounts with their own key are not capped; admins can set per-account caps).
@@ -63,6 +70,7 @@
   // (32 random bytes, base64: password pepper and API-key encryption; never rotate it casually),
   // ANTHROPIC_API_KEY, PLATO_DATABASE_URL
   // Optional secrets: E2B_API_KEY (E2B experiment sandboxes), ADS_API_KEY (NASA ADS search), NCBI_API_KEY and SEMANTIC_SCHOLAR_KEY
-  // (higher rate limits), MODAL_TOKEN_ID + MODAL_TOKEN_SECRET (Modal and GPU experiment runs)
+  // (higher rate limits), MODAL_TOKEN_ID + MODAL_TOKEN_SECRET (Modal and GPU experiment runs),
+  // COMPOSIO_API_KEY and COMPOSIO_WEBHOOK_SECRET (connected services; set by scripts/deploy.sh and scripts/composio-setup.mjs)
   "observability": { "enabled": true }
 }

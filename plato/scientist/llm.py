@@ -1,15 +1,19 @@
-"""Model access for the scientist swarm (Claude Haiku 5.5 via the official Anthropic SDK).
+"""Model access for the scientist swarm's sub-agents (official Anthropic SDK).
 
-Every call:
+Each call runs on the model of its role (``models.py``: Claude Haiku 5.5 by default,
+configurable per role). Every call:
 
-* reserves its worst-case token cost against the campaign budget *before* the request
-  (``BudgetExceeded`` stops the call) and settles to the real usage afterwards;
+* reserves its worst-case cost against the campaign budget *before* the request
+  (``BudgetExceeded`` stops the call) and settles to the real usage afterwards, both in
+  allowance tokens (the model's tokens times its price weight, see ``models.py``);
 * uses structured outputs (``messages.parse`` + a Pydantic schema), so node code never
   parses free text;
-* sends no ``temperature`` (non-default sampling parameters are rejected by Haiku 5.5)
+* sends no ``temperature`` (non-default sampling parameters are rejected by current models)
   and no assistant prefill; depth is controlled with ``output_config.effort``;
-* treats ``stop_reason == "refusal"`` and truncated output as errors instead of
-  silently continuing with an empty result.
+* treats ``stop_reason == "refusal"`` as an error, and retries a structured call cut off at
+  ``max_tokens`` once with a larger cap (``max_tokens`` covers the model's adaptive thinking
+  as well as the JSON, so a hard prompt can spend most of a fixed cap thinking); output
+  still truncated after that is an error, never an empty or partial result.
 
 The :class:`ScientistModel` protocol lets tests inject a deterministic model.
 """
@@ -29,18 +33,23 @@ from typing import Any, Literal, Protocol, TypeVar
 import pydantic
 from pydantic import BaseModel
 
-from plato.llm import claude55haiku
-
 from .db.store import DualGraphStore
+from .models import (
+    WORKER_DEFAULT,
+    allowance_tokens,
+    role_for,
+    role_models,
+    worker_default,
+)
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = claude55haiku.name
+DEFAULT_MODEL = WORKER_DEFAULT
 
 
 def resolve_model(model: str | None = None) -> str:
     """Explicit model, else ``PLATO_SCIENTIST_MODEL``, else Claude Haiku 5.5."""
-    return model or os.environ.get("PLATO_SCIENTIST_MODEL", DEFAULT_MODEL)
+    return model or worker_default(os.environ)
 
 
 # Calls that may use the writing reserve: the paper and its review must still happen when
@@ -49,12 +58,14 @@ WRITING_PURPOSES = frozenset(
     {
         "manuscript",
         "peer_review",
+        "peer_review_check",
         "manuscript_revision",
         "evidence_matrix",
         "review_methodology",
         "review_statistics",
         "review_novelty",
         "review_writing",
+        "publication_format",
     }
 )
 Effort = Literal["low", "medium", "high", "xhigh", "max"]
@@ -69,6 +80,16 @@ class ModelRefusal(RuntimeError):
 
 class ModelOutputError(RuntimeError):
     """The model's output was truncated or failed schema validation."""
+
+
+class OutputTruncated(ModelOutputError):
+    """The response stopped at ``max_tokens`` before the structured output was complete."""
+
+
+# A structured call cut off at max_tokens is retried once with this cap (or 4x the first,
+# whichever is larger), up to the ceiling. Streaming keeps a large cap within timeouts.
+RETRY_MAX_TOKENS = 32_000
+MAX_OUTPUT_TOKENS = 64_000
 
 
 @dataclass
@@ -99,7 +120,11 @@ def _estimate_messages_chars(messages: list[dict[str, Any]]) -> int:
             for key in ("text", "thinking", "content", "input"):
                 value = _block_get(block, key)
                 if value is not None:
-                    total += len(value if isinstance(value, str) else json.dumps(value, default=str))
+                    total += len(
+                        value
+                        if isinstance(value, str)
+                        else json.dumps(value, default=str)
+                    )
     return total
 
 
@@ -151,6 +176,7 @@ class AnthropicScientistModel:
         store: DualGraphStore,
         *,
         model: str | None = None,
+        models: dict[str, str] | None = None,
         client: object | None = None,
         api_key: str | None = None,
         max_concurrency: int = 8,
@@ -161,7 +187,12 @@ class AnthropicScientistModel:
         import anthropic
 
         self._store = store
+        # ``model`` pins every role to one model (tests, scripts). Otherwise each role uses
+        # ``models`` (the campaign's frozen role map), else the current configuration.
         self._model = resolve_model(model)
+        self._models = (
+            {} if model else dict(models) if models is not None else role_models(os.environ)
+        )
         # A campaign paid for with its owner's key gets that key; otherwise the SDK resolves
         # credentials itself (ANTHROPIC_API_KEY, ...). Retries 429/5xx.
         self._client = client or anthropic.AsyncAnthropic(
@@ -173,7 +204,19 @@ class AnthropicScientistModel:
 
     @property
     def model(self) -> str:
+        """The default sub-agent model."""
         return self._model
+
+    @property
+    def models(self) -> dict[str, str]:
+        """Role -> model for every role this instance overrides from the default."""
+        return dict(self._models)
+
+    def model_for(self, purpose: str) -> str:
+        role = role_for(purpose)
+        if role is None and self._models:
+            logger.warning("llm purpose %r has no role; using %s", purpose, self._model)
+        return self._models.get(role, self._model) if role else self._model
 
     async def structured(
         self,
@@ -187,6 +230,45 @@ class AnthropicScientistModel:
         effort: Effort = "medium",
         images: list[bytes] | None = None,
         on_text: TextSink | None = None,
+    ) -> T:
+        kwargs = dict(
+            campaign_id=campaign_id,
+            purpose=purpose,
+            system=system,
+            prompt=prompt,
+            schema=schema,
+            effort=effort,
+            images=images,
+            on_text=on_text,
+        )
+        try:
+            return await self._structured_once(max_tokens=max_tokens, **kwargs)
+        except OutputTruncated:
+            retry = min(max(RETRY_MAX_TOKENS, max_tokens * 4), MAX_OUTPUT_TOKENS)
+            if retry <= max_tokens:
+                raise
+            # Each attempt is reserved and settled on its own, so the cut-off attempt's
+            # tokens are charged too.
+            logger.warning(
+                "llm %s: output truncated at max_tokens=%s; retrying with %s",
+                purpose,
+                max_tokens,
+                retry,
+            )
+            return await self._structured_once(max_tokens=retry, **kwargs)
+
+    async def _structured_once(
+        self,
+        *,
+        campaign_id: uuid.UUID,
+        purpose: str,
+        system: str,
+        prompt: str,
+        schema: type[T],
+        max_tokens: int,
+        effort: Effort,
+        images: list[bytes] | None,
+        on_text: TextSink | None,
     ) -> T:
         content: list[dict] = []
         for png in images or []:
@@ -202,9 +284,11 @@ class AnthropicScientistModel:
             )
         content.append({"type": "text", "text": prompt})
 
-        reserved = (
+        model = self.model_for(purpose)
+        reserved = allowance_tokens(
+            model,
             _estimate_input_tokens(system, prompt, images=len(images or []))
-            + max_tokens
+            + max_tokens,
         )
         keep_free = 0 if purpose in WRITING_PURPOSES else self._writing_reserve
         await self._store.reserve_tokens(campaign_id, reserved, keep_free=keep_free)
@@ -217,7 +301,7 @@ class AnthropicScientistModel:
             async with (
                 self._sem,
                 self._client.messages.stream(
-                    model=self._model,
+                    model=model,
                     max_tokens=max_tokens,
                     system=[
                         {
@@ -252,16 +336,17 @@ class AnthropicScientistModel:
                             )
                 response = await stream.get_final_message()
             usage = response.usage
-            actual = (
+            actual = allowance_tokens(
+                model,
                 usage.input_tokens
                 + usage.output_tokens
                 + (usage.cache_creation_input_tokens or 0)
-                + (usage.cache_read_input_tokens or 0)
+                + (usage.cache_read_input_tokens or 0),
             )
             logger.info(
                 "llm %s: model=%s in=%s out=%s stop=%s request_id=%s",
                 purpose,
-                self._model,
+                model,
                 usage.input_tokens,
                 usage.output_tokens,
                 response.stop_reason,
@@ -273,7 +358,7 @@ class AnthropicScientistModel:
                     f"{purpose}: model refused ({getattr(details, 'category', None)})"
                 )
             if response.stop_reason == "max_tokens":
-                raise ModelOutputError(
+                raise OutputTruncated(
                     f"{purpose}: output truncated at max_tokens={max_tokens}"
                 )
             text = "".join(
@@ -306,11 +391,13 @@ class AnthropicScientistModel:
         The conversation only grows, so top-level ``cache_control`` caches the whole prefix
         and each turn pays full price only for what is new. Cache reads are charged to
         the campaign budget at a tenth of their count, matching their price; everything
-        else counts in full."""
-        reserved = (
+        else counts in full (then times the model's weight)."""
+        model = self.model_for(purpose)
+        reserved = allowance_tokens(
+            model,
             _estimate_input_tokens(system, json.dumps(tools))
             + _estimate_messages_chars(messages) // 3
-            + max_tokens
+            + max_tokens,
         )
         await self._store.reserve_tokens(
             campaign_id, reserved, keep_free=self._writing_reserve
@@ -319,7 +406,7 @@ class AnthropicScientistModel:
         try:
             async with self._sem:
                 response = await self._client.messages.create(
-                    model=self._model,
+                    model=model,
                     max_tokens=max_tokens,
                     system=system,
                     messages=messages,
@@ -330,16 +417,17 @@ class AnthropicScientistModel:
                     metadata={"user_id": f"campaign-{campaign_id}"},
                 )
             usage = response.usage
-            actual = (
+            actual = allowance_tokens(
+                model,
                 usage.input_tokens
                 + usage.output_tokens
                 + (usage.cache_creation_input_tokens or 0)
-                + -(-(usage.cache_read_input_tokens or 0) // 10)
+                + -(-(usage.cache_read_input_tokens or 0) // 10),
             )
             logger.info(
                 "llm %s: model=%s in=%s out=%s cache_read=%s stop=%s request_id=%s",
                 purpose,
-                self._model,
+                model,
                 usage.input_tokens,
                 usage.output_tokens,
                 usage.cache_read_input_tokens,
@@ -359,6 +447,8 @@ class AnthropicScientistModel:
             text = "".join(
                 b.text for b in response.content if getattr(b, "type", None) == "text"
             )
-            return ToolTurn(list(response.content), response.stop_reason, tool_uses, text)
+            return ToolTurn(
+                list(response.content), response.stop_reason, tool_uses, text
+            )
         finally:
             await self._store.settle_tokens(campaign_id, reserved, actual)
