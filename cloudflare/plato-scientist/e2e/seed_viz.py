@@ -24,14 +24,16 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT))
 
-from plato.scientist.db.store import DualGraphStore  # noqa: E402
-from plato.scientist.nodes import recipe_as_patch, store_outputs  # noqa: E402
+from plato.scientist.db.store import DualGraphStore
+from plato.scientist.nodes import recipe_as_patch, store_outputs
 
 FIXTURES = HERE / "fixtures" / "viz"
 
 
 def _recipes() -> dict[str, dict[str, str]]:
-    spec = importlib.util.spec_from_file_location("viz_samples", ROOT / "scripts" / "e2b_viz_samples.py")
+    spec = importlib.util.spec_from_file_location(
+        "viz_samples", ROOT / "scripts" / "e2b_viz_samples.py"
+    )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod.RECIPES
@@ -101,12 +103,18 @@ PLAN = {
 async def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dsn", required=True)
-    ap.add_argument("--email", required=True, help="the account that owns the campaign (sign up first)")
+    ap.add_argument(
+        "--email",
+        required=True,
+        help="the account that owns the campaign (sign up first)",
+    )
     args = ap.parse_args()
     store = await DualGraphStore.connect(args.dsn, max_size=4)
     recipes = _recipes()
     try:
-        account = await store._pool.fetchval("SELECT id FROM plato.accounts WHERE lower(email) = lower($1)", args.email)
+        account = await store._pool.fetchval(
+            "SELECT id FROM plato.accounts WHERE lower(email) = lower($1)", args.email
+        )
         if account is None:
             raise SystemExit(f"no account {args.email}: sign up first")
         program = await store.ensure_program("default", "Plato", "biology")
@@ -114,18 +122,35 @@ async def main() -> None:
             program,
             "What do real proteomics, pathway, structure and ligand analyses show when run in the lab sandbox?",
             token_budget_max=2_000_000,
-            config={"model": "claude-haiku-5-5", "workers": 4, "max_rounds": 1, "executor": "e2b", "domain": "biology"},
+            config={
+                "model": "claude-haiku-5-5",
+                "workers": 4,
+                "max_rounds": 1,
+                "executor": "e2b",
+                "domain": "biology",
+            },
             account_id=account,
         )
-        root = await store.create_node(cid, "goal", "Research question", "", dedup_key="root-goal")
+        root = await store.create_node(
+            cid, "goal", "Research question", "", dedup_key="root-goal"
+        )
         out = {"campaign": str(cid), "experiments": {}, "files": {}}
         for name, (title, spec, claim, pk, gates, finding_title) in PLAN.items():
             manifest = json.loads((FIXTURES / name / "manifest.json").read_text())
-            intent = await store.create_node(cid, "intent", title, json.dumps(spec), dedup_key=f"viz-{name}", priority=1.0)
+            intent = await store.create_node(
+                cid,
+                "intent",
+                title,
+                json.dumps(spec),
+                dedup_key=f"viz-{name}",
+                priority=1.0,
+            )
             await store.add_edge(cid, root.id, intent.id, "spawns", "planned")
             worker = f"seed-{uuid.uuid4().hex[:6]}"
             claimed = await store.claim_next_intent(cid, worker)
-            assert claimed and claimed["id"] == intent.id, "seed expects to claim the intent it just made"
+            assert claimed and claimed["id"] == intent.id, (
+                "seed expects to claim the intent it just made"
+            )
             metrics = {
                 **manifest["metrics"],
                 "seed": 1,
@@ -138,31 +163,95 @@ async def main() -> None:
             if gates is not None:
                 metrics["gates"] = gates
                 metrics["replication"] = {pk: manifest["metrics"][pk]}
-            fact = await store.record_fact(cid, intent.id, worker, title=claim, observation=manifest["stdout_tail"].strip().splitlines()[0], metrics=metrics, confidence_score=0.9 if gates and all(gates.values()) else 0.6)
+            fact = await store.record_fact(
+                cid,
+                intent.id,
+                worker,
+                title=claim,
+                observation=manifest["stdout_tail"].strip().splitlines()[0],
+                metrics=metrics,
+                confidence_score=0.9 if gates and all(gates.values()) else 0.6,
+            )
             r = recipes[name]
-            await store.add_evidence(fact, "git_patch", recipe_as_patch(r["code"], r["setup"]), approval_actor="model")
-            await store.add_evidence(fact, "stdout_log", manifest["stdout_tail"], approval_actor="system")
-            files = {p.name: p.read_bytes() for p in sorted((FIXTURES / name).iterdir()) if p.name != "manifest.json"}
+            await store.add_evidence(
+                fact,
+                "git_patch",
+                recipe_as_patch(r["code"], r["setup"]),
+                approval_actor="model",
+            )
+            await store.add_evidence(
+                fact, "stdout_log", manifest["stdout_tail"], approval_actor="system"
+            )
+            files = {
+                p.name: p.read_bytes()
+                for p in sorted((FIXTURES / name).iterdir())
+                if p.name != "manifest.json"
+            }
             await store_outputs(store, fact, files)
-            await store.complete_intent(intent.id, worker, "verified", metrics={"fact_id": str(fact)})
+            await store.complete_intent(
+                intent.id, worker, "verified", metrics={"fact_id": str(fact)}
+            )
             if gates is not None:
                 ok = all(gates.values())
                 await store.set_node_status(fact, "verified" if ok else "refuted")
                 if ok and finding_title:
-                    f = await store.create_node(cid, "finding", finding_title, claim, metrics={**gates, "primary_metric": pk}, confidence_score=0.9, status="verified")
+                    f = await store.create_node(
+                        cid,
+                        "finding",
+                        finding_title,
+                        claim,
+                        metrics={**gates, "primary_metric": pk},
+                        confidence_score=0.9,
+                        status="verified",
+                    )
                     await store.add_edge(cid, fact, f.id, "proves", "all checks passed")
             out["experiments"][name] = str(intent.id)
         # one experiment still running and one that ran out of attempts, for the workflow states
-        run = await store.create_node(cid, "intent", "Does SQSTM1 binding depend on chain length?", json.dumps({"hypothesis": "Longer linear chains bind SQSTM1 more strongly.", "primary_metric": "log2fc_slope", "test_kind": "difference"}), dedup_key="viz-running", priority=0.5)
+        run = await store.create_node(
+            cid,
+            "intent",
+            "Does SQSTM1 binding depend on chain length?",
+            json.dumps(
+                {
+                    "hypothesis": "Longer linear chains bind SQSTM1 more strongly.",
+                    "primary_metric": "log2fc_slope",
+                    "test_kind": "difference",
+                }
+            ),
+            dedup_key="viz-running",
+            priority=0.5,
+        )
         await store.add_edge(cid, root.id, run.id, "spawns", "planned")
         await store.claim_next_intent(cid, "seed-running")
-        dead = await store.create_node(cid, "intent", "Dock caffeine into the adenosine A2A receptor", json.dumps({"hypothesis": "Caffeine docks into A2A with a score below -7 kcal/mol.", "primary_metric": "dock_score", "test_kind": "difference"}), dedup_key="viz-dead", status="exhausted", metrics={"error": "no successful run", "attempts": 3})
+        dead = await store.create_node(
+            cid,
+            "intent",
+            "Dock caffeine into the adenosine A2A receptor",
+            json.dumps(
+                {
+                    "hypothesis": "Caffeine docks into A2A with a score below -7 kcal/mol.",
+                    "primary_metric": "dock_score",
+                    "test_kind": "difference",
+                }
+            ),
+            dedup_key="viz-dead",
+            status="exhausted",
+            metrics={"error": "no successful run", "attempts": 3},
+        )
         await store.add_edge(cid, root.id, dead.id, "spawns", "planned")
-        for status in ("investigating", "ablating", "sealed_eval", "writing", "completed"):
+        for status in (
+            "investigating",
+            "ablating",
+            "sealed_eval",
+            "writing",
+            "completed",
+        ):
             await store.transition_campaign(cid, status)
         rows = await store._pool.fetch(
             "SELECT e.id, e.file_name, e.artifact_type FROM plato.evidence_artifacts e JOIN plato.exploration_nodes n ON n.id = e.node_id"
-            " WHERE n.campaign_id = $1 AND e.artifact_type IN ('plot_png', 'data_file') ORDER BY e.file_name", cid)
+            " WHERE n.campaign_id = $1 AND e.artifact_type IN ('plot_png', 'data_file') ORDER BY e.file_name",
+            cid,
+        )
         out["files"] = {r["file_name"]: str(r["id"]) for r in rows}
         print(json.dumps(out))
     finally:

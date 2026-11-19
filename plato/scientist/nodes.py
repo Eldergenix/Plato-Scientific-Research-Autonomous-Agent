@@ -723,7 +723,9 @@ MAX_DATA_BYTES = 6 * 1_048_576
 MAX_PLOTS = 12
 
 
-async def store_outputs(store: Any, node_id: uuid.UUID, files: dict[str, bytes]) -> None:
+async def store_outputs(
+    store: Any, node_id: uuid.UUID, files: dict[str, bytes]
+) -> None:
     """Record a run's figures as ``plot_png`` and its data outputs as ``data_file``.
 
     Figures come first (they feed the figure critique), then data files smallest first

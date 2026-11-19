@@ -141,7 +141,11 @@ _FILE_NAME_BAD = re.compile(r"[/\\\x00-\x1f\x7f]")
 def valid_file_name(name: str) -> bool:
     """A bare output file name: 1-255 chars, no directories, no control characters, not
     hidden. The same rule is a CHECK constraint on ``evidence_artifacts.file_name``."""
-    return 0 < len(name) <= 255 and not name.startswith(".") and not _FILE_NAME_BAD.search(name)
+    return (
+        0 < len(name) <= 255
+        and not name.startswith(".")
+        and not _FILE_NAME_BAD.search(name)
+    )
 
 
 def sha256_hex(content: bytes | str) -> str:

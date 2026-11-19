@@ -72,7 +72,7 @@ for id in 1UBQ 4HHB; do
 done
 grep -c '^ATOM' src_1UBQ.pdb
 """,
-    r'''import csv, json, math
+    r"""import csv, json, math
 from Bio.PDB import PDBParser, PDBIO, MMCIFIO, Select
 
 class Protein(Select):
@@ -100,7 +100,7 @@ with open("ubiquitin_contacts.csv", "w", newline="") as f:
     w = csv.writer(f); w.writerow(["residue_i", "residue_j", "distance_A"]); w.writerows(rows)
 print(f"1UBQ: {len(ca)} residues, Rg {rg:.2f} A, {n} Calpha contacts under 8 A")
 print("PLATO_METRICS " + json.dumps({"radius_of_gyration": round(rg, 4), "contacts": n}))
-''',
+""",
 )
 
 recipe(
@@ -109,7 +109,7 @@ recipe(
 python -m pip install -q rdkit==2025.3.6
 python -c 'import rdkit; print(rdkit.__version__)'
 """,
-    r'''import csv, json
+    r"""import csv, json
 from rdkit import Chem
 from rdkit.Chem import AllChem, Descriptors, Crippen, rdMolDescriptors
 
@@ -137,7 +137,7 @@ w.close()
 with open("ligand_descriptors.csv", "w", newline="") as f:
     c = csv.writer(f); c.writerow(["name", "smiles", "mol_weight", "logP", "tpsa", "hbd", "hba", "rotatable_bonds"]); c.writerows(rows)
 print("PLATO_METRICS " + json.dumps({"mean_mol_weight": round(sum(r[2] for r in rows) / len(rows), 3)}))
-''',
+""",
 )
 
 recipe(
@@ -146,7 +146,7 @@ recipe(
 curl -fsSL --retry 5 --retry-all-errors https://raw.githubusercontent.com/arnesmits/DEP/master/data/UbiLength.rda -o UbiLength.rda
 Rscript -e 'load("UbiLength.rda"); write.csv(UbiLength, "ubilength_raw.csv", row.names = FALSE); cat(nrow(UbiLength), "proteins\n")'
 """,
-    r'''import json
+    r"""import json
 import numpy as np, pandas as pd
 from scipy import stats
 from statsmodels.stats.multitest import multipletests
@@ -174,7 +174,7 @@ ax.set_xlabel("log2 fold change (Ubi4 / Ctrl)"); ax.set_ylabel("-log10 p"); ax.s
 fig.tight_layout(); fig.savefig("volcano.png")
 print(f"{len(out)} proteins tested, {int(sig.sum())} significant (FDR 5%, |log2FC| > 1)")
 print("PLATO_METRICS " + json.dumps({"n_significant": int(sig.sum()), "n_tested": int(len(out))}))
-''',
+""",
 )
 
 recipe(
@@ -245,17 +245,23 @@ print("PLATO_METRICS " + json.dumps({"go_terms": terms, "pathway_edges": len(edg
 
 
 async def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--out", default="viz-samples")
     ap.add_argument("--only", default="", help="comma-separated recipe names")
-    ap.add_argument("--local", action="store_true", help="run on this host (no isolation)")
+    ap.add_argument(
+        "--local", action="store_true", help="run on this host (no isolation)"
+    )
     args = ap.parse_args()
     if args.local:
         os.environ["PLATO_WORKSPACE_BACKEND"] = "local"
     elif not os.environ.get("E2B_API_KEY"):
         raise SystemExit("set E2B_API_KEY (or pass --local)")
     rt = _runtime()
-    names = [n for n in (args.only.split(",") if args.only else RECIPES) if n in RECIPES]
+    names = [
+        n for n in (args.only.split(",") if args.only else RECIPES) if n in RECIPES
+    ]
     out = Path(args.out)
 
     async def one(name: str) -> dict:
@@ -274,7 +280,14 @@ async def main() -> int:
         d.mkdir(parents=True, exist_ok=True)
         for fname, data in res.files.items():
             (d / fname).write_bytes(data)
-        metrics = next((l[len(METRICS) + 1:] for l in res.stdout.splitlines()[::-1] if l.startswith(METRICS)), None)
+        metrics = next(
+            (
+                l[len(METRICS) + 1 :]
+                for l in res.stdout.splitlines()[::-1]
+                if l.startswith(METRICS)
+            ),
+            None,
+        )
         info = {
             "recipe": name,
             "ok": res.ok and metrics is not None,
@@ -287,7 +300,10 @@ async def main() -> int:
             "stderr_tail": res.stderr[-1500:],
         }
         (d / "manifest.json").write_text(json.dumps(info, indent=2))
-        print(f"{'PASS' if info['ok'] else 'FAIL'} {name} in {info['seconds']}s: {info['files']}", flush=True)
+        print(
+            f"{'PASS' if info['ok'] else 'FAIL'} {name} in {info['seconds']}s: {info['files']}",
+            flush=True,
+        )
         return info
 
     results = await asyncio.gather(*(one(n) for n in names), return_exceptions=True)

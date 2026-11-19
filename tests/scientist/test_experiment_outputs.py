@@ -7,7 +7,12 @@ import pytest
 
 from plato.scientist.db.store import valid_file_name
 from plato.scientist.guard import run_python
-from plato.scientist.nodes import MAX_DATA_BYTES, MAX_DATA_FILES, MAX_PLOTS, store_outputs
+from plato.scientist.nodes import (
+    MAX_DATA_BYTES,
+    MAX_DATA_FILES,
+    MAX_PLOTS,
+    store_outputs,
+)
 
 
 @pytest.mark.parametrize(
@@ -38,7 +43,14 @@ async def test_sandbox_collects_structures_tables_and_networks():
     )
     res = await run_python(code, inputs={"plato_seed.txt": b"1"})
     assert res.ok, res.stderr
-    assert set(res.files) == {"m.pdb", "lig.SDF", "t.tsv", "net.sif", "g.graphml", "x.cif"}
+    assert set(res.files) == {
+        "m.pdb",
+        "lig.SDF",
+        "t.tsv",
+        "net.sif",
+        "g.graphml",
+        "x.cif",
+    }
 
 
 async def _fact(store, campaign):
@@ -86,12 +98,16 @@ async def test_store_outputs_is_bounded(store, campaign):
 
     fact2 = await _fact(store, campaign)
     big = 1_000_000  # under the 1 MiB inline limit each; seven exceed the 6 MiB budget
-    files = {f"s{i}.pdb": bytes([65 + i]) * big for i in range(8)} | {"small.csv": b"a\n1\n"}
+    files = {f"s{i}.pdb": bytes([65 + i]) * big for i in range(8)} | {
+        "small.csv": b"a\n1\n"
+    }
     await store_outputs(store, fact2, files)
     rows = await store.evidence_for([fact2])
     kept = sum(r["size_bytes"] for r in rows)
     assert kept <= MAX_DATA_BYTES
-    assert "small.csv" in {r["file_name"] for r in rows}  # smallest first, so it always fits
+    assert "small.csv" in {
+        r["file_name"] for r in rows
+    }  # smallest first, so it always fits
 
 
 async def test_schema_rejects_paths_in_file_names(store, campaign):
