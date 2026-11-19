@@ -1,0 +1,18 @@
+{
+  "recipe": "pathways",
+  "ok": true,
+  "exit_code": 0,
+  "network_isolated": true,
+  "seconds": 51.6,
+  "metrics": {
+    "go_terms": 40,
+    "pathway_edges": 37
+  },
+  "files": {
+    "go_enrichment.csv": 11819,
+    "kegg_cell_cycle.json": 7299,
+    "kegg_cell_cycle.sif": 871
+  },
+  "stdout_tail": "147 terms \nKEGG Cell cycle: 39 nodes, 37 edges; 40 GO terms kept\nPLATO_METRICS {\"go_terms\": 40, \"pathway_edges\": 37}\n",
+  "stderr_tail": ""
+}

@@ -1,0 +1,17 @@
+{
+  "recipe": "proteomics",
+  "ok": true,
+  "exit_code": 0,
+  "network_isolated": true,
+  "seconds": 18.9,
+  "metrics": {
+    "n_significant": 4,
+    "n_tested": 1356
+  },
+  "files": {
+    "ubi4_vs_ctrl_differential.csv": 109787,
+    "volcano.png": 52253
+  },
+  "stdout_tail": "1356 proteins tested, 4 significant (FDR 5%, |log2FC| > 1)\nPLATO_METRICS {\"n_significant\": 4, \"n_tested\": 1356}\n",
+  "stderr_tail": ""
+}
