@@ -5,6 +5,24 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Plato Scientist</title>
 <meta name="color-scheme" content="dark light">
+<meta name="description" content="Plato runs autonomous scientific research campaigns, from literature review to experiments and papers.">
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" type="image/png" sizes="32x32" href="/brand/plato-mark-light-32.png" media="(prefers-color-scheme: light)">
+<link rel="icon" type="image/png" sizes="32x32" href="/brand/plato-mark-dark-32.png" media="(prefers-color-scheme: dark)">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#101010" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Plato">
+<meta property="og:title" content="Plato Scientist">
+<meta property="og:description" content="Autonomous scientific research.">
+<meta property="og:url" content="https://jarvisos.xyz/">
+<meta property="og:image" content="https://jarvisos.xyz/brand/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://jarvisos.xyz/brand/og.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400..700&family=JetBrains+Mono:wght@400;500&display=swap">
@@ -67,7 +85,11 @@ svg{flex:none}
 .ws{display:flex;align-items:center;gap:8px;height:52px;padding:0 10px 0 20px;flex:none}
 .ws-n{display:flex;align-items:center;gap:8px;min-width:0;font-weight:550;letter-spacing:-.1px;color:var(--text)}
 .ws-a{margin-left:auto;display:flex;gap:2px}
-.logo{width:20px;height:20px;border-radius:5px;background:linear-gradient(135deg,var(--accent),var(--purple));display:grid;place-items:center;color:#fff;font-size:11px;font-weight:700;flex:none}
+/* Brand mark: the glass letter P from Icon Composer, light or dark to match the theme. */
+.logo{width:20px;height:20px;flex:none;display:inline-block;background:url(/brand/plato-mark-light-64.png) center/contain no-repeat}
+[data-theme="dark"] .logo{background-image:url(/brand/plato-mark-dark-64.png)}
+/* The light plate is near-white like the light chrome, so give it the icon's edge back. */
+[data-theme="light"] .logo{border-radius:23%;box-shadow:0 0 0 .5px rgba(0,0,0,.12),0 1px 2px rgba(0,0,0,.08)}
 .kbd{margin-left:auto;font-size:11px;color:var(--text-3);border:1px solid var(--border-2);border-radius:4px;padding:0 5px;line-height:16px}
 .nav{padding:2px 12px 8px;overflow:auto;flex:1;min-height:0}
 .nav-h{display:flex;align-items:center;gap:4px;width:100%;height:26px;margin-top:14px;padding:0 9px;border:0;border-radius:8px;background:none;color:var(--text-2);font-size:12px;font-weight:500;cursor:pointer;text-align:left}
@@ -405,7 +427,7 @@ pre.src{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.6 "JetBr
 <div id="auth"></div>
 <div class="app">
   <aside class="side" id="side" aria-label="Sidebar">
-    <div class="ws"><span class="ws-n"><span class="logo" aria-hidden="true">P</span><span>Plato</span><span class="t3" style="font-weight:400">scientist</span></span>
+    <div class="ws"><span class="ws-n"><span class="logo" aria-hidden="true"></span><span>Plato</span><span class="t3" style="font-weight:400">scientist</span></span>
       <span class="ws-a">
         <button class="icon-btn" id="cmdBtn" type="button" aria-label="Search" title="Search (⌘K)"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg></button>
         <button class="icon-btn" id="newBtn" type="button" aria-label="New campaign" title="New campaign (C)"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 9v3.5a1.5 1.5 0 0 1-1.5 1.5H3.5A1.5 1.5 0 0 1 2 12.5V4a1.5 1.5 0 0 1 1.5-1.5H7"/><path d="m11.3 1.9 2.8 2.8-5.6 5.6H5.7V7.5z"/></svg></button>
