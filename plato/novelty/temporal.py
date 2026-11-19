@@ -14,6 +14,7 @@ import re
 from collections import defaultdict
 from datetime import date
 from enum import StrEnum
+from typing import TypedDict
 
 import numpy as np
 from pydantic import BaseModel, Field
@@ -164,10 +165,24 @@ def _minmax(values: list[float]) -> list[float]:
     return [(value - low) / (high - low) for value in values]
 
 
+class _CandidateFeatures(TypedDict):
+    """Per-candidate evidence features computed by ``_candidate_features``."""
+
+    concept: str
+    direct_ids: tuple[str, ...]
+    paths: tuple[EvidencePath, ...]
+    bridge_pairs: int
+    bridge_count: int
+    tfidf: float
+    source_diversity: int
+    provenance: float
+    frequency: int
+
+
 def _candidate_features(
     task: TemporalNoveltyTask,
     records: list[FrozenLiteratureRecord],
-) -> list[dict[str, object]]:
+) -> list[_CandidateFeatures]:
     edges = _edge_index(records)
     records_by_id = {record.record_id: record for record in records}
     corpus_text = [record.text for record in records]
@@ -179,7 +194,7 @@ def _candidate_features(
     )
     corpus_matrix = vectorizer.fit_transform(corpus_text)
 
-    features: list[dict[str, object]] = []
+    features: list[_CandidateFeatures] = []
     all_concepts = set(
         itertools.chain.from_iterable(record.concepts for record in records)
     )
