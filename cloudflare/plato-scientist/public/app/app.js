@@ -52,7 +52,7 @@ const S={me:null,projects:null,proj:null,projTimer:0,next:"",campaigns:null,rout
   panel:{mode:ls.get("plato_panel")==="split"?"split":"panel",view:"details",auto:new Set()},
   draft:undefined,firstDraft:null,draftTimer:null,draftBusy:false,paperEl:null,lp:null,lpRaf:0,follow:true,
   res:{q:"",filter:"all",sort:null,page:0,size:[10,25,50].includes(+ls.get("plato_grid_size"))?+ls.get("plato_grid_size"):10,dense:ls.get("plato_grid_dense")==="1",hidden:new Set(jsonLS("plato_grid_hidden",[]))},
-  rows:null,rowsFor:null,usage:undefined,usageKey:null,t0:0};
+  rows:null,rowsFor:null,usage:undefined,usageKey:null,t0:0,files:undefined,filesKey:null,recipes:{},dataFilter:"all"};
 
 /* ---------- API ---------- */
 class ApiError extends Error{constructor(m,status){super(m);this.status=status}}
@@ -144,9 +144,9 @@ function renderHome(){
   Kit.hydrate(body);Kit.reveal($("#pane"),"home")}
 
 /* ---------- campaign view ---------- */
-const TABS=[["overview","Overview"],["results","Results"],["graph","Graph"],["findings","Findings"],["experiments","Experiments"],["manuscript","Manuscript"],["guardrails","Guardrails"]];
+const TABS=[["overview","Overview"],["results","Results"],["graph","Graph"],["findings","Findings"],["experiments","Experiments"],["data","Data"],["manuscript","Manuscript"],["guardrails","Guardrails"]];
 function resetCampaignState(){clearTimeout(S.draftTimer);cancelAnimationFrame(S.lpRaf);
-  Object.assign(S,{summary:null,graph:null,manuscript:undefined,prov:{},draft:undefined,firstDraft:null,draftTimer:null,paperEl:null,lp:null,lpRaf:0,follow:pref("follow_live_writing"),rows:null,rowsFor:null,lastView:"",usage:undefined,usageKey:null,t0:0});
+  Object.assign(S,{summary:null,graph:null,manuscript:undefined,prov:{},files:undefined,filesKey:null,recipes:{},draft:undefined,firstDraft:null,draftTimer:null,paperEl:null,lp:null,lpRaf:0,follow:pref("follow_live_writing"),rows:null,rowsFor:null,lastView:"",usage:undefined,usageKey:null,t0:0});
   S.res.page=0;S.panel.view="details";if(S.panel.mode==="focus")S.panel.mode="panel"}
 async function openCampaign(id){
   const fresh=S.summary?.campaign?.id!==id;
@@ -161,7 +161,7 @@ async function openCampaign(id){
   catch(e){if(S.route.id!==id)return;$("#crumb").innerHTML=`<b>Campaign</b>`;$("#body").className="body full";
     $("#body").innerHTML=`<div class="pane" id="pane"><div class="empty"><div>${cross("var(--red)")}<h3>${e.status===404?"Campaign not found":"Could not load campaign"}</h3><p>${esc(e.message)}</p></div></div></div>`;
     ["crumb","pane","props"].forEach(k=>Kit.reveal(document.getElementById(k),k));return}
-  renderCampaign();["crumb","pane","props"].forEach(k=>Kit.reveal($("#"+k),k));schedulePoll();loadUsage();renderAskCtx();
+  renderCampaign();["crumb","pane","props"].forEach(k=>Kit.reveal($("#"+k),k));schedulePoll();loadUsage();loadFiles();renderAskCtx();
   if(S.summary.campaign.status==="writing")pollDraft();
 }
 function counts(){const out={};(S.summary?.node_counts||[]).forEach(r=>{(out[r.node_type]??={})[r.status]=r.n});return out}
@@ -173,12 +173,12 @@ function renderCampaign(){
   if(ACTIVE(c)){if(!$("#resume")){act.innerHTML=`<button class="btn" id="resume" type="button" title="Ask the runner to resume now"><span data-lbl>Resume</span></button>`;
       $("#resume").onclick=async e=>{const b=e.currentTarget;b.disabled=true;try{await api(`campaigns/${c.id}/run`,{method:"POST"});Kit.flash(b,"Requested",2200)}catch(err){toast(err.message,true)}finally{b.disabled=false}}}}
   else act.innerHTML="";
-  const n={findings:nodes.filter(x=>x.node_type==="finding"||x.node_type==="fact").length,experiments:sum(cnt.intent),guardrails:S.summary.guard_events.length};
+  const n={findings:nodes.filter(x=>x.node_type==="finding"||x.node_type==="fact").length,experiments:sum(cnt.intent),data:Array.isArray(S.files)?S.files.length:null,guardrails:S.summary.guard_events.length};
   $("#tabs").className="tabs";
   $("#tabs").innerHTML=TABS.map(([k,l])=>`<a class="tab${S.route.tab===k?" on":""}" href="#/c/${eid(c.id)}/${k}" style="text-decoration:none"${S.route.tab===k?' aria-current="page"':""}>${l}${n[k]!=null?`<span class="c">${n[k]}</span>`:""}</a>`).join("");
   renderTab();
 }
-function tabView(tab){return ({overview,results:resultsView,graph:graphView,findings:findingsView,experiments:experimentsView,manuscript:manuscriptView,guardrails:guardView}[tab]||overview)()}
+function tabView(tab){return ({overview,results:resultsView,graph:graphView,findings:findingsView,experiments:experimentsView,data:dataView,manuscript:manuscriptView,guardrails:guardView}[tab]||overview)()}
 /* Re-rendering the same view (live polling) keeps focus, caret and scroll positions. */
 function keepUI(){const a=document.activeElement,o={id:a&&a.id&&$("#body").contains(a)?a.id:null,ss:null,se:null,sc:{}};
   try{o.ss=a.selectionStart;o.se=a.selectionEnd}catch{}
@@ -191,7 +191,7 @@ function renderTab(){
   if(tab==="manuscript"||S.panel.view==="paper")ensureManuscript();
   body.className="body "+(full?"full":"mode-"+S.panel.mode);
   body.innerHTML=`<div class="pane" id="pane">${tabView(tab)}</div>`+(full?"":`<aside class="props" id="props" aria-label="Details panel">${propsView()}</aside>`);
-  mountPaper();bindPane();bindProps();mountCharts();Kit.hydrate(body,S.route.id+":");Kit.paint(body);if(ui)restoreUI(ui);KB=-1;
+  mountPaper();bindPane();bindProps();mountCharts();mountData();Kit.hydrate(body,S.route.id+":");Kit.paint(body);if(ui)restoreUI(ui);KB=-1;
 }
 function refreshProps(keepScroll=true){const p=$("#props");if(!p||!S.summary)return;const st=p.scrollTop;
   if(S.panel.view==="paper")ensureManuscript();
@@ -463,8 +463,86 @@ function findingsView(){const nodes=S.graph.nodes,f=nodes.filter(n=>n.node_type=
   return (f.length?grouped(f,["verified","open","running","claimed","refuted","exhausted"],s=>s==="verified"?"Verified findings":"Findings · "+STATUS_LABEL[s]):"")+
     grouped(facts,["verified","refuted","open","running","claimed","exhausted"],s=>"Claims · "+STATUS_LABEL[s])}
 function experimentsView(){const xs=S.graph.nodes.filter(n=>n.node_type==="intent");
+  if(S.route.node){const it=xs.find(n=>n.id===S.route.node);if(it)return experimentPage(it)}
   if(!xs.length)return emptyPane("No experiments yet","The planner proposes experiments after the literature scout finishes.");
-  return grouped(xs,["running","claimed","open","verified","refuted","exhausted"],s=>({verified:"Succeeded",refuted:"Failed",exhausted:"Out of attempts"}[s]||STATUS_LABEL[s]))}
+  const {runsOf}=expIndex(),g={};xs.forEach(n=>(g[n.status]??=[]).push(n));
+  const label=s=>({verified:"Succeeded",refuted:"Failed",exhausted:"Out of attempts"}[s]||STATUS_LABEL[s]);
+  return ["running","claimed","open","verified","refuted","exhausted"].filter(s=>g[s]?.length).map(s=>`<div class="group">${nodeIcon(s)}${label(s)}<span class="n">${g[s].length}</span></div>`+
+    g[s].map(n=>{const runs=runsOf(n.id),files=runs.flatMap(r=>filesOf(r.id)),kinds=countKinds(files);
+      return `<a class="row xrow${S.selected===n.id?" on":""}" href="#/c/${eid(S.route.id)}/experiments/${eid(n.id)}" data-node="${esc(n.id)}">${nodeIcon(n.status)}<span class="title trunc">${esc(n.title)}</span><span class="meta">${Object.entries(kinds).map(([k,c])=>`<span class="chip hide-sm" title="${c} ${esc(F.KIND[k].l.toLowerCase())}${c>1?"s":""}">${F.kindIcon(k)}${c}</span>`).join("")}${runs.map(r=>gateDots(r)).join("")}<span class="hide-sm">${ago(n.created_at)}</span></span></a>`}).join("")).join("")}
+/* ---------- experiment page: spec, workflow, measurements and outputs ---------- */
+function expIndex(){const byId=new Map(S.graph.nodes.map(n=>[n.id,n])),runs=new Map(),intentOf=new Map(),finding=new Map();
+  S.graph.edges.forEach(e=>{const a=byId.get(e.source_node_id),b=byId.get(e.target_node_id);if(!a||!b)return;
+    if(e.edge_type==="yields"&&a.node_type==="intent"&&b.node_type==="fact"){(runs.get(a.id)||runs.set(a.id,[]).get(a.id)).push(b);intentOf.set(b.id,a)}
+    if(e.edge_type==="proves"&&a.node_type==="fact"&&b.node_type==="finding")finding.set(a.id,b)});
+  return {byId,runsOf:id=>runs.get(id)||[],intentOf:id=>intentOf.get(id),findingOf:id=>finding.get(id)}}
+const filesOf=nodeId=>Array.isArray(S.files)?S.files.filter(f=>f.node_id===nodeId):[];
+function countKinds(files){const c={};files.forEach(f=>{const k=F.kindOf(f);c[k]=(c[k]||0)+1});return c}
+const kindsText=c=>Object.entries(c).map(([k,n])=>`${n} ${F.KIND[k].l.toLowerCase()}${n>1?"s":""}`).join(" · ");
+function specOf(it){try{const j=JSON.parse(it.hypothesis_or_spec||"");return j&&typeof j==="object"?j:{}}catch{return it.hypothesis_or_spec?{hypothesis:it.hypothesis_or_spec}:{}}}
+/* The recipe (setup.sh + experiment.py) is recorded as a patch on the run; read it for the workflow. */
+async function loadRecipe(fact){if(S.recipes[fact.id]!==undefined)return;S.recipes[fact.id]=null;
+  try{if(!S.prov[fact.id])S.prov[fact.id]=await getJSON("nodes/"+fact.id+"/provenance");
+    const ev=S.prov[fact.id].evidence.filter(e=>e.node_id===fact.id),patch=ev.find(e=>e.artifact_type==="git_patch");
+    const files={};if(patch){const lines=(await F.fetchFile({id:patch.id})).split("\n");
+      for(let i=0;i+2<lines.length;i++){const m=lines[i+2].match(/^@@ -0,0 \+1,(\d+) @@$/);if(lines[i]==="--- /dev/null"&&lines[i+1].startsWith("+++ b/")&&m){const n=+m[1];files[lines[i+1].slice(6)]=lines.slice(i+3,i+3+n).map(l=>l.slice(1));i+=2+n}}}
+    S.recipes[fact.id]={files,log:ev.find(e=>e.artifact_type==="stdout_log")?.id||null,patch:patch?.id||null}}
+  catch{S.recipes[fact.id]={files:{},log:null,patch:null}}
+  if(S.route.tab==="experiments"&&S.route.node)renderTab()}
+function workflowSteps(it,fact,finding){const spec=specOf(it),m=obj(fact?.metrics),pk=spec.primary_metric||m.primary_metric,g=Object.fromEntries(gatesOf(fact||{})),rec=fact?S.recipes[fact.id]:null;
+  const files=fact?filesOf(fact.id):[],kinds=countKinds(files),busy=["claimed","running"].includes(it.status),exhausted=it.status==="exhausted";
+  const setup=(rec?.files?.["setup.sh"]||[]).map(l=>l.trim()).filter(l=>l&&!l.startsWith("#")&&!/^set -/.test(l)),code=rec?.files?.["experiment.py"];
+  const mono=t=>`<span class="mono" title="${esc(t)}">${esc(t)}</span>`,st=(ok,bad)=>ok?"done":bad?"fail":fact?"todo":busy?"run":"todo";
+  const steps=[{title:"Designed",state:"done",lines:[pk?`Measures ${mono(pk)}`:"Hypothesis and protocol",spec.test_kind?`${esc(spec.test_kind)} test`:""].filter(Boolean)},
+    {title:"Environment",state:fact?(rec?"done":"run"):busy?"run":exhausted?"fail":"todo",lines:fact?(rec?[setup.length?`${setup.length} setup command${setup.length>1?"s":""}`:"No extra setup",setup[0]?mono(setup[0]):"",code?`experiment.py · ${code.length} lines`:""].filter(Boolean):["Reading the recipe…"]):[busy?"Being prepared":"Not started"]},
+    {title:"Run",state:fact?"done":exhausted?"fail":busy?"run":"todo",lines:fact?[`${esc(m.executor==="e2b"?"E2B sandbox":m.executor==="modal"?"Modal sandbox":m.executor||"Sandbox")}${num(m.runtime_seconds)!=null?` · ${sig(m.runtime_seconds)} s`:""}`,m.network_isolated===true?"Network off during the run":m.network_isolated===false?"Network isolation unavailable":""].filter(Boolean)
+      :exhausted?[`No successful run after ${esc(obj(it.metrics).attempts??"all")} attempts`]:[busy?"Running":"Queued"]},
+    {title:"Outputs",state:files.length?"done":fact?"skip":"todo",lines:files.length?[esc(kindsText(kinds))]:[fact?"Only metrics":"–"]},
+    {title:"Measured",state:fact&&pk&&num(m[pk])!=null?"done":fact?"skip":"todo",lines:fact&&pk?[`${mono(pk)} ${esc(sig(num(m[pk])))}${num(m[pk+"_se"])!=null?` ± ${esc(sig(m[pk+"_se"]))}`:""}`,num(m.p_value)!=null?`p ${esc(m.p_value<0.001?"<0.001":sig(m.p_value))}`:""].filter(Boolean):["–"]},
+    {title:"Replicated",state:"replicated" in g?(g.replicated?"done":"fail"):fact&&fact.status==="open"?"run":"todo",lines:"replicated" in g?[`Seed 2 ${pk&&num(obj(m.replication)[pk])!=null?`${mono(pk)} ${esc(sig(obj(m.replication)[pk]))}`:g.replicated?"agrees":"disagrees"}`]:["Awaiting the seed-2 rerun"]},
+    {title:"Checked",state:["stats_ok","figures_ok","skeptic"].some(k=>k in g)?(["stats_ok","figures_ok","skeptic"].every(k=>g[k]!==false)?"done":"fail"):"todo",lines:["stats_ok","figures_ok","skeptic"].filter(k=>k in g).map(k=>`${g[k]?"✓":"✕"} ${GATE_LABEL[k]}`).concat(["stats_ok","figures_ok","skeptic"].some(k=>k in g)?[]:["Statistics, figures, skeptic"])},
+    {title:"Outcome",state:finding&&finding.status==="verified"?"done":fact&&fact.status==="refuted"||exhausted?"fail":"todo",lines:[finding&&finding.status==="verified"?"Verified finding":fact?.status==="refuted"?"Claim refuted":exhausted?"No result":"Awaiting judgement"]}];
+  return steps}
+function experimentPage(it){
+  const {runsOf,findingOf}=expIndex(),runs=runsOf(it.id),spec=specOf(it),c=S.summary.campaign;
+  runs.forEach(f=>{if(S.recipes[f.id]===undefined)loadRecipe(f)});
+  const dl=[["Hypothesis",spec.hypothesis],["Protocol",spec.protocol],["Success criterion",spec.success_criterion],["Primary metric",spec.primary_metric],["Test",spec.test_kind]].filter(([,v])=>v);
+  const run=(fact,i)=>{const finding=findingOf(fact.id),m=obj(fact.metrics),files=filesOf(fact.id),rec=S.recipes[fact.id];
+    const metrics=Object.entries(m).filter(([k,v])=>!["gates","replication","primary_metric","test_kind","supports_hypothesis","code_sha256","executor","network_isolated","seed","runtime_seconds"].includes(k)&&(typeof v==="number"||typeof v==="string"));
+    return `<section class="card"><div class="card-h"><b>${runs.length>1?`Run ${i+1}: `:""}${esc(fact.title)}</b><span class="chip">${nodeIcon(fact.status)}${esc(STATUS_LABEL[fact.status]||fact.status)}</span>${finding?`<span class="chip">${nodeIcon(finding.status)}Finding ${esc(STATUS_LABEL[finding.status]||finding.status)}</span>`:""}
+      <span class="act" style="display:flex;gap:6px">${rec?.patch?`<button class="btn sm" type="button" data-ev="${esc(rec.patch)}" data-type="git_patch">Code</button>`:""}${rec?.log?`<button class="btn sm" type="button" data-ev="${esc(rec.log)}" data-type="stdout_log">Run log</button>`:""}<button class="btn ghost sm" type="button" data-node="${esc(fact.id)}">Details</button></span></div>
+      ${F.workflowHtml(workflowSteps(it,fact,finding))}
+      ${fact.hypothesis_or_spec?`<p class="t2" style="margin:12px 0 0;font-size:13px">${esc(fact.hypothesis_or_spec)}</p>`:""}
+      ${metrics.length?`<div class="sec-h" style="margin-top:14px">Metrics</div><div class="kv mono">${metrics.slice(0,30).map(([k,v])=>`<span title="${esc(k)}">${esc(k)}</span><span>${esc(typeof v==="number"?sig(v):v)}</span>`).join("")}</div>`:""}
+      ${files.length?`<div class="sec-h" style="margin-top:14px">Outputs</div><div class="xp-outs">${files.map(f=>`<a class="xp-out" href="#/c/${eid(c.id)}/data/${eid(f.id)}">${F.kindIcon(F.kindOf(f))}${esc(f.file_name||F.KIND[F.kindOf(f)].l)}</a>`).join("")}</div>`:""}</section>
+      ${files.filter(f=>F.kindOf(f)!=="pdf").slice(0,4).map(f=>`<div data-dv="${esc(f.id)}"></div>`).join("")}`};
+  return `<div class="xp"><a class="xp-back" href="#/c/${eid(c.id)}/experiments">${ico('<path d="M10 3 5 8l5 5"/>',13)}Experiments</a>
+    <div><div class="sub" style="margin-bottom:8px">${typeChip("intent")}<span class="chip">${nodeIcon(it.status)}${esc(STATUS_LABEL[it.status]||it.status)}</span><span class="t3">${ago(it.created_at)}</span></div><h1>${esc(it.title)}</h1></div>
+    ${dl.length?`<dl class="xp-spec">${dl.map(([k,v])=>`<dt>${k}</dt><dd>${esc(v)}</dd>`).join("")}</dl>`:""}
+    ${runs.length?`<div class="xp-runs">${runs.map(run).join("")}</div>`:`<section class="card"><div class="card-h"><b>Workflow</b></div>${F.workflowHtml(workflowSteps(it,null,null))}</section>`}</div>`}
+/* ---------- data tab: every figure, table, structure and network the experiments wrote ---------- */
+const F=window.PlatoData;
+function filesSig(){const c=S.summary.campaign;return c.id+":"+S.graph.nodes.filter(n=>n.node_type==="fact").length+":"+c.updated_at}
+async function loadFiles(){if(!S.summary||!S.graph)return;const id=S.summary.campaign.id,key=filesSig();if(S.filesKey===key)return;S.filesKey=key;
+  let files;try{files=(await getJSON(`campaigns/${id}/files`)).files||[]}catch(e){if(S.summary?.campaign?.id!==id)return;S.filesKey=null;if(S.files!==undefined)return;files=[]}
+  if(S.summary?.campaign?.id!==id)return;
+  const same=Array.isArray(S.files)&&S.files.length===files.length&&S.files.every((f,i)=>f.id===files[i].id);S.files=files;
+  if(!same)renderCampaign()}
+document.addEventListener("platodata:kind",()=>{if(S.route.view==="campaign"&&S.route.tab==="data"&&S.summary)renderTab()});
+function dataCtx(){const {intentOf,byId}=expIndex(),ctx={};(S.files||[]).forEach(f=>{const it=intentOf(f.node_id);ctx[f.id]={from:it?.title||byId.get(f.node_id)?.title||""}});return ctx}
+function mountData(){const p=$("#pane");if(p&&Array.isArray(S.files))F.mount(p,S.files,dataCtx());F.sweep()}
+const DATA_SAMPLE=`<div class="dl"><nav class="dl-list">${Array.from({length:7},(_,i)=>`<div class="dv-row"><span class="trunc">${"sample_output_file".slice(0,10+i)}.csv</span></div>`).join("")}</nav><div class="dl-main"><div class="card" style="height:420px"></div></div></div>`;
+function dataView(){
+  if(!Array.isArray(S.files))return Kit.skel(DATA_SAMPLE,"data");
+  if(!S.files.length)return emptyPane("No data files yet","Figures, tables, molecular structures and networks that experiments write appear here as each experiment finishes.");
+  const {intentOf,byId}=expIndex(),flt=S.dataFilter,list=S.files.filter(f=>F.inFilter(F.kindOf(f),flt));
+  const sel=S.files.find(f=>f.id===S.route.node)||list[0]||S.files[0],groups=new Map();
+  list.forEach(f=>{const it=intentOf(f.node_id),k=it?.id||f.node_id;if(!groups.has(k))groups.set(k,{it,node:byId.get(f.node_id),files:[]});groups.get(k).files.push(f)});
+  const href=f=>`#/c/${eid(S.route.id)}/data/${eid(f.id)}`;
+  return `<div class="dl"><nav class="dl-list" aria-label="Data files"><div class="dl-fs" role="group" aria-label="Filter files">${F.FILTERS.map(([k,l])=>{const n=S.files.filter(f=>F.inFilter(F.kindOf(f),k)).length;
+      return n||k==="all"?`<button type="button" data-dfilter="${k}" aria-pressed="${flt===k}">${l}<span class="n">${n}</span></button>`:""}).join("")}</div>
+    ${[...groups.values()].map(g=>`<div class="dl-g">${g.it?`<a href="#/c/${eid(S.route.id)}/experiments/${eid(g.it.id)}" title="${esc(g.it.title)}">${esc(g.it.title)}</a>`:`<span class="trunc">${esc(g.node?.title||"Other outputs")}</span>`}</div>`+g.files.map(f=>F.fileRow(f,f.id===sel.id,{href})).join("")).join("")||'<p class="t3" style="padding:8px">No files of this kind.</p>'}</nav>
+    <div class="dl-main"><div data-dv="${esc(sel.id)}"></div></div></div>`}
 function guardView(){const ev=S.summary.guard_events;if(!ev.length)return emptyPane("No guardrail events","Sandbox, budget and data-scope checks log here when they fire.");
   return `<div class="group">Latest ${ev.length} events</div>`+ev.map(e=>`<div class="row" data-gev>${e.decision==="deny"?cross("var(--red)"):e.decision==="allow"?check("var(--green)"):minus("var(--yellow)")}
     <span class="chip">${esc(e.kind)}</span><span class="title trunc">${esc(guardSummary(e))}</span><span class="meta">${ago(e.created_at)}</span></div>
@@ -767,7 +845,8 @@ $("#newBtn").onclick=openNew;
 
 /* ---------- pane events (delegated: views re-render with innerHTML) ---------- */
 function bindPane(){const pane=$("#pane");if(!pane)return;
-  pane.onclick=e=>{const t=e.target.closest("[data-node],[data-ms],[data-dl],[data-gev],[data-filter],[data-sort],[data-page],[data-dense],[data-csv],[data-copy],[data-clear],[data-pv],#colBtn");if(!t||!pane.contains(t))return;
+  pane.onclick=e=>{if(e.target.closest(".dv"))return;   // the data viewer handles its own controls
+    const t=e.target.closest("[data-node],[data-ms],[data-dl],[data-gev],[data-filter],[data-sort],[data-page],[data-dense],[data-csv],[data-copy],[data-clear],[data-pv],[data-dfilter],[data-ev],#colBtn");if(!t||!pane.contains(t))return;
     const d=t.dataset,R=S.res;
     if(t.id==="colBtn"){const m=$("#colMenu");m.hidden=!m.hidden;t.setAttribute("aria-expanded",String(!m.hidden));if(!m.hidden)m.querySelector("input")?.focus()}
     else if(d.filter){R.filter=R.filter===d.filter&&d.filter!=="all"?"all":d.filter;R.page=0;renderGrid()}
@@ -781,6 +860,8 @@ function bindPane(){const pane=$("#pane");if(!pane)return;
     else if(d.dl)download(d.dl);
     else if(d.copy)copyPaper(t);
     else if(d.gev!=null)t.nextElementSibling.hidden=!t.nextElementSibling.hidden;
+    else if(d.dfilter){S.dataFilter=d.dfilter;renderTab()}
+    else if(d.ev)openEvidence(d.ev,d.type);
     else if(d.node)selectNode(d.node)};
   pane.oninput=e=>{if(e.target.id==="gq"){S.res.q=e.target.value;S.res.page=0;renderGrid()}};
   pane.onchange=e=>{const t=e.target;
@@ -798,7 +879,7 @@ function schedulePoll(){clearTimeout(S.timer);const c=S.summary?.campaign;if(!c|
         const g=await getJSON(`campaigns/${c.id}/graph`);if(S.route.id!==c.id)return;
         const was=S.summary.campaign.status;S.summary=s;S.graph=g;
         if(!ACTIVE(s.campaign)){S.manuscript=undefined;loadList()}
-        (was!=="writing"&&s.campaign.status==="writing"&&wide()?Kit.transition:fn=>fn())(renderCampaign);loadUsage();
+        (was!=="writing"&&s.campaign.status==="writing"&&wide()?Kit.transition:fn=>fn())(renderCampaign);loadUsage();loadFiles();
         if(s.campaign.status==="writing"&&!S.draftTimer&&!S.draftBusy)pollDraft()}}catch{}
     schedulePoll()},5000)}
 document.addEventListener("visibilitychange",()=>{if(!document.hidden&&S.summary?.campaign?.status==="writing"&&!S.draftBusy)pollDraft()});
@@ -855,7 +936,7 @@ addEventListener("keydown",e=>{
   else if(e.key==="k"||e.key==="ArrowUp"){if(kbRows().length&&!e.target.closest?.(".sl")){e.preventDefault();kbMove(-1)}}
   else if(e.key==="Enter"){const r=document.querySelector("#body .kb");if(r&&!e.target.closest?.("button,a,.sl")){e.preventDefault();r.click()}}
   else if(S.route.view==="campaign"&&S.summary){
-    if(/^[1-7]$/.test(e.key))go(S.route.id,TABS[+e.key-1][0]);
+    if(/^[1-8]$/.test(e.key))go(S.route.id,TABS[+e.key-1][0]);
     else if(e.key==="["||e.key==="]")stepPanel(e.key==="]"?1:-1);
     else if((e.key==="p"||e.key==="P")&&paperAvail()&&S.route.tab!=="manuscript"){if(S.panel.view==="paper")setPanel(S.panel.mode,"details");else setPanel(S.panel.mode==="panel"&&wide()?"split":S.panel.mode,"paper")}}});
 $("#menuBtn").onclick=()=>$("#side").classList.toggle("open");
@@ -880,4 +961,4 @@ function route(){const prev=S.route,r=S.route=parseRoute(),v=r.view;
   else if(v==="settings")renderSettings();
   else if(v==="campaigns")renderHome();
   else renderAgentHome();
-  Kit.sweepCharts()}
+  Kit.sweepCharts();F.sweep()}
