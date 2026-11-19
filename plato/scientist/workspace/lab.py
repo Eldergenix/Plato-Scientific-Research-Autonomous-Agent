@@ -8,12 +8,28 @@ the research-engineer agent is told the template contains; keep it in step with
 Layout:
 
 * ``/opt/conda`` (conda-forge + bioconda, owned by ``user``): Python 3.12 scientific
-  stack and the bioinformatics command-line tools. Agents add packages with
-  ``micromamba install`` without sudo.
+  stack, cheminformatics (RDKit, Open Babel), the bioinformatics and structure
+  command-line tools (HMMER, Foldseek, MMseqs2, DSSP) and pathway analysis
+  (gseapy, igraph). Agents add packages with ``micromamba install`` without sudo.
 * ``/opt/conda/envs/<tool>``: tools whose dependencies conflict (GATK, Sniffles2, CNVkit,
-  ExpansionHunter, and R 4.4 with Bioconductor), each exposed by a wrapper in
+  ExpansionHunter, R 4.4 with Bioconductor, AutoDock Vina docking, LAMMPS/OpenMM
+  molecular dynamics, and xtb/Psi4 quantum chemistry), each exposed by a wrapper in
   ``/opt/conda/bin``.
 * System: TeX Live (pdflatex, xelatex, biber, latexmk), ripgrep, unzip, pigz.
+
+Notes on the molecular tools, each found while verifying them:
+
+* The wrapper pythons (``dock-python``, ``md-python``, ``qm-python``) are the only way to
+  reach OpenMM, Psi4, Meeko and the Vina bindings: the recorded ``experiment.py`` runs
+  under the base interpreter, which cannot import them. The wrapper sets the env's own
+  ``lib`` first, which Psi4 needs for its MKL build.
+* LAMMPS is pinned to a ``cpu_py312*nompi*`` build: the CUDA builds are four times the
+  size for a sandbox with no GPU, and one sandbox is one machine, so MPI buys nothing.
+* RDKit lives in base, so nothing should ``pip install rdkit`` on top of it: the wheel
+  shadows the conda package with a second, differently built copy.
+* ``mkdssp`` 4.x tries mmCIF first and prints a parse error to stderr before falling back
+  to PDB. It still exits 0 and writes the classic DSSP output; do not treat that line as
+  a failure.
 """
 
 from __future__ import annotations
@@ -51,6 +67,21 @@ CONDA_BASE = [
     "nextflow",
     # CPU build of PyTorch from conda-forge (E2B has no GPU); SigProfilerExtractor needs it.
     "pytorch=*=cpu*",
+    # Cheminformatics: compound parsing, descriptors, scaffolds, conformers, format
+    # conversion. RDKit is in base so every experiment can import it without a setup step.
+    "rdkit",
+    "openbabel",
+    # Structure files (mmCIF/PDB) without the Biopython PDB parser's gaps.
+    "gemmi",
+    # Sequence and structure search: profile HMMs, fast sequence search, structural
+    # alignment, and secondary structure (mkdssp).
+    "hmmer",
+    "mmseqs2",
+    "foldseek",
+    "dssp",
+    # Pathways: over-representation and permutation-based GSEA, plus graph topology.
+    "gseapy",
+    "python-igraph",
 ]
 # env name -> (conda specs, pip packages, {name exposed on PATH: executable in the env})
 CONDA_TOOL_ENVS: dict[str, tuple[list[str], list[str], dict[str, str]]] = {
@@ -74,6 +105,48 @@ CONDA_TOOL_ENVS: dict[str, tuple[list[str], list[str], dict[str, str]]] = {
         ],
         [],
         {"R": "R", "Rscript": "Rscript"},
+    ),
+    # Docking. Vina's Boost build pins an older librdkit than base carries, and Meeko
+    # follows Vina's RDKit, so ligand preparation lives beside it in this env.
+    "dock": (
+        ["python=3.12", "numpy", "rdkit", "vina", "meeko", "openbabel"],
+        [],
+        {
+            "vina": "vina",
+            "vina_split": "vina_split",
+            "mk_prepare_ligand.py": "mk_prepare_ligand.py",
+            "mk_prepare_receptor.py": "mk_prepare_receptor.py",
+            "mk_export.py": "mk_export.py",
+            "dock-python": "python",
+        },
+    ),
+    # Molecular dynamics. The CPU, no-MPI LAMMPS build (E2B has no GPU and one sandbox is
+    # one machine) is a quarter the size of the CUDA builds; PLUMED comes with it for
+    # free-energy methods. OpenMM covers biomolecular force fields and explicit solvent.
+    "md": (
+        [
+            "python=3.12",
+            "numpy",
+            "scipy",
+            "lammps=*=cpu_py312*nompi*",
+            "openmm",
+            "mdanalysis",
+            "parmed",
+            "pdbfixer",
+        ],
+        [],
+        {
+            "lmp": "lmp",
+            "plumed": "plumed",
+            "md-python": "python",
+        },
+    ),
+    # Quantum chemistry: GFN2-xTB for semi-empirical energies, geometries and implicit
+    # solvation; Psi4 for ab initio energies and SAPT interaction-energy decomposition.
+    "qm": (
+        ["python=3.12", "numpy", "xtb", "psi4"],
+        [],
+        {"xtb": "xtb", "qm-python": "python"},
     ),
     # AlphaPeptDeep pins numpy<2 and pandas<3, which the base stack has outgrown.
     "peptdeep": (
@@ -112,8 +185,24 @@ def _wrapper_commands() -> list[str]:
 BUILD_SMOKE_TESTS = [
     (
         "/opt/conda/bin/python -c 'import numpy, scipy, pandas, sklearn, statsmodels, matplotlib, "
-        "seaborn, networkx, pysam, Bio, requests, torch, pyopenms, SigProfilerExtractor, igv_reports'"
+        "seaborn, networkx, pysam, Bio, requests, torch, pyopenms, SigProfilerExtractor, igv_reports, "
+        "rdkit, gemmi, gseapy, igraph'"
     ),
+    (
+        "obabel -:'CC(=O)Oc1ccccc1C(=O)O' -osmi 2>/dev/null | grep -q . "
+        "&& hmmbuild -h > /dev/null && mmseqs version && foldseek version && mkdssp --version"
+    ),
+    # Each extra env runs its own entry point: docking, MD and quantum chemistry.
+    (
+        "vina --version && vina_split --help > /dev/null && "
+        "dock-python -c 'import meeko, rdkit, vina; print(vina.__file__)'"
+    ),
+    (
+        "lmp -h > /dev/null && plumed info --version > /dev/null && "
+        "md-python -c 'import openmm, MDAnalysis, pdbfixer, parmed; "
+        'openmm.Platform.getPlatformByName("CPU")\''
+    ),
+    "xtb --version && qm-python -c 'import psi4; print(psi4.__version__)'",
     "peptdeep-python -c 'import peptdeep, torch'",
     (
         "Rscript -e 'suppressMessages({library(clusterProfiler); library(org.Hs.eg.db); "
@@ -135,12 +224,29 @@ LAB_SUMMARY = (
     "Java 17), sniffles (Sniffles2), cnvkit.py, ExpansionHunter, wgsim, nextflow, pandoc; R 4.4 "
     "(Rscript) with Bioconductor clusterProfiler, org.Hs.eg.db, DOSE, MSstats, PureCN; Python "
     "pyopenms, SigProfilerExtractor, igv-reports; AlphaPeptDeep in its own Python (run its scripts "
-    "with peptdeep-python, or the peptdeep CLI); TeX Live "
+    "with peptdeep-python, or the peptdeep CLI); "
+    "chemistry and structure: rdkit, gemmi, obabel (Open Babel), hmmer (hmmbuild/hmmsearch/"
+    "phmmer/jackhmmer), mmseqs, foldseek, mkdssp, and gseapy + igraph for enrichment and "
+    "network topology; docking: vina (AutoDock Vina 1.2), vina_split and Meeko's "
+    "mk_prepare_ligand.py / mk_prepare_receptor.py / mk_export.py, with dock-python for the "
+    "Vina and Meeko "
+    "Python APIs; molecular dynamics: lmp (LAMMPS, CPU, no MPI), plumed, and md-python for "
+    "OpenMM, MDAnalysis, ParmEd and PDBFixer (explicit solvent, ions at a chosen ionic "
+    "strength, thermostats and barostats); quantum chemistry: xtb (GFN2-xTB energies, "
+    "geometry optimisation, ALPB/GBSA implicit solvents) and qm-python for Psi4 1.11 "
+    "(SCF/DFT/MP2 and SAPT interaction-energy decomposition into electrostatics, exchange, "
+    "induction and dispersion). TeX Live "
     "with latexmk, xelatex and biber. Install anything else with install_packages (bioconda first "
-    "for bioinformatics). Code that uses multiprocessing must live in a file with an "
-    "if __name__ == '__main__' guard (spawned workers re-import it). There is no GPU. Public APIs such as Ensembl REST (VEP), Reactome "
-    "AnalysisService, cBioPortal and NCBI E-utilities are reachable while you work, but not "
-    "during the recorded run, so download what the experiment needs in setup."
+    "for bioinformatics). experiment.py runs under the base Python, which has rdkit, gemmi, "
+    "gseapy and igraph but not openmm, psi4, meeko or the Vina bindings: reach those through "
+    "the command-line names above (subprocess, e.g. ['md-python', 'run_md.py']), writing the "
+    "helper script beside experiment.py. Code that uses multiprocessing must live in a file "
+    "with an if __name__ == '__main__' guard (spawned workers re-import it). There is no GPU, "
+    "so keep simulations small: a few thousand atoms, picoseconds not nanoseconds, semi-empirical "
+    "or small-basis quantum chemistry. Public APIs such as Ensembl REST (VEP), Reactome "
+    "AnalysisService, cBioPortal, NCBI E-utilities, RCSB PDB (files.rcsb.org), UniProt, the "
+    "AlphaFold DB, PubChem PUG-REST, ChEMBL, KEGG REST, STRING and InterPro are reachable while "
+    "you work, but not during the recorded run, so download what the experiment needs in setup."
 )
 
 

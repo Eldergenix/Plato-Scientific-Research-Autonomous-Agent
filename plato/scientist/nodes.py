@@ -834,8 +834,15 @@ async def experiment_planner(
         f"Propose up to {ctx.config.intents_per_round} new, independent computational experiments "
         "(never more). Keep each protocol under 150 words: the research engineer designs the code. "
         "Prefer experiments that resolve open hints or follow up surprising facts. Each must run "
-        f"offline {experiment_limits_text(ctx.config)} with {'/'.join(profile.packages)}. "
+        f"offline {experiment_limits_text(ctx.config)} with {profile_tools(profile, ctx.config)}. "
         + (f"{profile.guidance} " if profile.guidance else "")
+        # In a live sandbox the engineer installs tools and downloads public data before the
+        # recorded run, so a protocol may call for the lab's own tools and for public data.
+        + (
+            f"{profile.workspace_guidance} "
+            if profile.workspace_guidance and ctx.config.executor == "e2b"
+            else ""
+        )
         + "Derive any "
         "predicted value analytically before stating it, and set each success criterion relative to "
         "the standard error the protocol can resolve: a threshold below the sampling noise refutes "
@@ -924,6 +931,24 @@ TEST_RULES = (
     "the same hypothesis test on them and report its metrics with the prefix 'sealed_', "
     "including 'sealed_<primary key>' and 'sealed_p_value'."
 )
+
+
+def profile_tools(profile: ScientistProfile, config: ScientistConfig) -> str:
+    """What the planner may assume an experiment can use.
+
+    The offline executors have exactly the profile's packages. An E2B session runs in the
+    plato-lab template, where the engineer also has its command-line tools and may install
+    more and download public data before the recorded (offline) run."""
+    packages = "/".join(profile.packages)
+    if config.executor != "e2b":
+        return packages
+    return (
+        f"{packages} and the plato-lab sandbox toolset (samtools/bcftools/GATK and the "
+        "sequencing tools, RDKit and Open Babel, HMMER, MMseqs2, Foldseek and DSSP, gseapy "
+        "and igraph, AutoDock Vina, OpenMM, LAMMPS, xtb and Psi4, R with Bioconductor), "
+        "plus anything the engineer installs or downloads from a public database before "
+        "the recorded run"
+    )
 
 
 def code_rules(profile: ScientistProfile, config: ScientistConfig) -> str:
@@ -1086,6 +1111,7 @@ async def _workspace_attempt(
     from .workspace.lab import LAB_SUMMARY
 
     store, cfg = ctx.store, ctx.config
+    profile = await campaign_profile(ctx, campaign_id)
     state: dict[str, Any] = {"code": "", "setup": None, "result": None, "metrics": None}
     submissions = 0
     workspace: Workspace | None = None
@@ -1163,7 +1189,12 @@ async def _workspace_attempt(
             f"Success criterion: {spec['success_criterion']}\n"
             f"Dataset files in the workspace root ({backend.workdir}): {sorted(datasets) or 'none'}\n\n"
             f"{LAB_SUMMARY}\n\n{_WORKSPACE_RULES}\n\n"
-            "Work like a careful computational scientist: inspect the data, install and download "
+            + (
+                f"{profile.workspace_guidance}\n\n"
+                if profile.workspace_guidance
+                else ""
+            )
+            + "Work like a careful computational scientist: inspect the data, install and download "
             "what you need (install_packages and download_file record it in setup.sh), test pieces "
             "with bash, use start_job for anything long, then write experiment.py and call "
             f"submit_experiment. You have at most {cfg.max_code_attempts} submissions and "

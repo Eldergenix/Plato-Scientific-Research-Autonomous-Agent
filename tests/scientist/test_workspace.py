@@ -467,6 +467,84 @@ def test_lab_template_definition_is_consistent():
     )  # no secrets baked in
 
 
+def test_lab_template_carries_the_molecular_toolchain():
+    """Compounds, protein structures, pathways and interaction physics each need a tool,
+    and a tool nobody is told about is a tool no experiment will use."""
+    pytest.importorskip("e2b")
+    from e2b import Template
+
+    from plato.scientist.workspace import lab
+
+    dockerfile = Template.to_dockerfile(lab.lab_template())
+    # In base, so experiment.py can import them directly.
+    for package in ("rdkit", "openbabel", "gemmi", "gseapy", "python-igraph"):
+        assert f"'{package}'" in dockerfile
+    # Command-line tools in base: sequence, structure and secondary-structure search.
+    for tool in ("hmmer", "mmseqs2", "foldseek", "dssp"):
+        assert f"'{tool}'" in dockerfile
+    # Docking, dynamics and quantum chemistry each get an env, because their pins conflict.
+    assert {"dock", "md", "qm"} <= set(lab.CONDA_TOOL_ENVS)
+    specs = {env: " ".join(s) for env, (s, _, _) in lab.CONDA_TOOL_ENVS.items()}
+    assert "vina" in specs["dock"] and "meeko" in specs["dock"]
+    assert "openmm" in specs["md"] and "lammps" in specs["md"]
+    assert "cpu_py312" in specs["md"] and "nompi" in specs["md"]  # no GPU, one machine
+    assert "xtb" in specs["qm"] and "psi4" in specs["qm"]
+    # experiment.py runs under the base Python, so the summary must say how to reach the
+    # envs it cannot import from.
+    for name in ("dock-python", "md-python", "qm-python"):
+        assert name in lab.LAB_SUMMARY
+    assert "subprocess" in lab.LAB_SUMMARY
+
+
+def test_every_molecular_tool_has_a_verification_check():
+    """``scripts/e2b_lab_verify.py`` is the only thing that proves a template tool works,
+    so a tool added to the template must arrive with a check that runs it."""
+    import importlib.util
+    import sys
+
+    path = Path(__file__).resolve().parents[2] / "scripts" / "e2b_lab_verify.py"
+    spec = importlib.util.spec_from_file_location("plato_lab_verify", path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    argv, sys.argv = sys.argv, ["e2b_lab_verify.py"]
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.argv = argv
+    checks = module.CHECKS
+    assert {
+        "cheminformatics",
+        "sequence_search",
+        "protein_structure",
+        "docking",
+        "pathways",
+        "quantum_chemistry",
+        "molecular_dynamics",
+    } <= set(checks)
+    named = " ".join(t for c in checks.values() for t in c["tools"]).lower()
+    for tool in (
+        "rdkit",
+        "obabel",
+        "hmmer",
+        "mmseqs2",
+        "foldseek",
+        "mkdssp",
+        "vina",
+        "meeko",
+        "gseapy",
+        "igraph",
+        "xtb",
+        "psi4",
+        "lammps",
+        "openmm",
+        "plumed",
+    ):
+        assert tool in named, tool
+    for name, check in checks.items():
+        assert "CHECK_RESULT" in check["script"], name
+        assert not check["heavy"] or check["timeout"] >= 900
+
+
 async def test_local_backend_paths_and_network_flag():
     b = await LocalBackend.create()
     try:
