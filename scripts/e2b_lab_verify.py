@@ -6,8 +6,8 @@ Each check runs a small but complete analysis whose correct answer is known in a
 a known peptide mass, a synthetic protein family, a published molecular identity, a
 reference interaction energy, bundled package example data) and passes only if the tool
 recovers it. Public data comes from NCBI, UCSC, the RCSB PDB, the CNVkit repository and
-package-bundled examples; public APIs (Ensembl VEP, Reactome, cBioPortal) are called
-live.
+package-bundled examples; public APIs (Ensembl VEP on its GRCh37 host, MyVariant.info,
+Reactome, cBioPortal) are called live.
 
 The molecular checks assert what their tool can actually establish: a Vina score on a
 crystal pose is deterministic and a minimisation must stay on that pose, but Vina's
@@ -839,26 +839,61 @@ EOF
 """
 )
 
-check("public_apis", ["Ensembl VEP REST", "Reactome AnalysisService", "cBioPortal API"], 300)(
+# ``rest.ensembl.org`` answers 403 to this sandbox from its load balancer (``server:
+# awselb/2.0``), for every path and whatever headers are sent, while the same request from
+# a laptop returns 200: Ensembl refuses E2B's egress addresses, so no header change fixes
+# it. ``grch37.rest.ensembl.org`` serves the same REST API to the sandbox, in GRCh37
+# coordinates, so VEP is reached there and the variant is given as hg19 7:140453136.
+# MyVariant.info is asserted beside it: a second annotation source on another
+# organisation's infrastructure, so a future block shows up as one named host, not as
+# "annotation is unreachable". Every request checks its status, because a blocked host
+# otherwise surfaces as a JSON decode error that says nothing about what went wrong.
+check(
+    "public_apis",
+    [
+        "Ensembl VEP REST (GRCh37 host)",
+        "MyVariant.info",
+        "Reactome AnalysisService",
+        "cBioPortal API",
+    ],
+    300,
+)(
     RESULT_PY.join(["python - <<'EOF'\n", r"""
 import requests
 out = {}
-# VEP: BRAF V600E (GRCh38 7:140753336 A>T)
-r = requests.get("https://rest.ensembl.org/vep/human/region/7:140753336-140753336:1/T",
-                 headers={"Content-Type": "application/json"}, timeout=60)
-v = r.json()[0]
+def get(url, **kw):
+    r = requests.get(url, timeout=60, **kw)
+    r.raise_for_status()
+    return r
+# VEP: BRAF V600E, hg19 7:140453136 A>T (GRCh38 7:140753336), on the GRCh37 host.
+v = get("https://grch37.rest.ensembl.org/vep/human/region/7:140453136-140453136:1/T",
+        headers={"Accept": "application/json"}).json()[0]
 out["vep_most_severe"] = v.get("most_severe_consequence")
 genes = {t.get("gene_symbol") for t in v.get("transcript_consequences", [])}
 out["vep_genes"] = sorted(g for g in genes if g)[:5]
+# The same variant through MyVariant.info, which carries CADD's deleteriousness score.
+mv = get("https://myvariant.info/v1/variant/chr7:g.140453136A>T?assembly=hg19",
+         headers={"Accept": "application/json"}).json()
+cadd = mv.get("cadd") or {}
+out["myvariant_gene"] = (cadd.get("gene") or {}).get("genename")
+out["myvariant_cadd_phred"] = cadd.get("phred")
 # Reactome over-representation for a small DNA-repair gene list
 r = requests.post("https://reactome.org/AnalysisService/identifiers/projection?pageSize=5&page=1",
                   data="BRCA1\nBRCA2\nRAD51\nATM\nATR\nCHEK2\nPALB2\nTP53", headers={"Content-Type": "text/plain"}, timeout=60)
+r.raise_for_status()
 pw = r.json().get("pathways", [])
 out["reactome_top"] = [p["name"] for p in pw[:3]]
 # cBioPortal studies
-r = requests.get("https://www.cbioportal.org/api/studies?keyword=tcga&pageSize=3", timeout=60)
-out["cbioportal_studies"] = [s["studyId"] for s in r.json()]
-result(out["vep_most_severe"] == "missense_variant" and "BRAF" in out["vep_genes"] and pw and out["cbioportal_studies"], **out)
+out["cbioportal_studies"] = [s["studyId"] for s in get("https://www.cbioportal.org/api/studies?keyword=tcga&pageSize=3").json()]
+result(
+    out["vep_most_severe"] == "missense_variant"
+    and "BRAF" in out["vep_genes"]
+    and out["myvariant_gene"] == "BRAF"
+    and (out["myvariant_cadd_phred"] or 0) > 20
+    and pw
+    and out["cbioportal_studies"],
+    **out,
+)
 EOF
 """])
 )

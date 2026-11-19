@@ -280,10 +280,14 @@ LAB_SUMMARY = (
     "helper script beside experiment.py. Code that uses multiprocessing must live in a file "
     "with an if __name__ == '__main__' guard (spawned workers re-import it). There is no GPU, "
     "so keep simulations small: a few thousand atoms, picoseconds not nanoseconds, semi-empirical "
-    "or small-basis quantum chemistry. Public APIs such as Ensembl REST (VEP), Reactome "
-    "AnalysisService, cBioPortal, NCBI E-utilities, RCSB PDB (files.rcsb.org), UniProt, the "
-    "AlphaFold DB, PubChem PUG-REST, ChEMBL, KEGG REST, STRING and InterPro are reachable while "
-    "you work, but not during the recorded run, so download what the experiment needs in setup."
+    "or small-basis quantum chemistry. These public APIs were each called from this sandbox "
+    "and answered: Reactome (AnalysisService and ContentService), cBioPortal, NCBI E-utilities, "
+    "RCSB PDB (files.rcsb.org and data.rcsb.org), UniProt, the EBI Proteins API, the AlphaFold "
+    "DB, PubChem PUG-REST, ChEMBL, KEGG REST, STRING, InterPro and MyVariant.info. Ensembl is "
+    "the exception: rest.ensembl.org refuses this sandbox's address with a 403 whatever headers "
+    "you send, so use grch37.rest.ensembl.org, which answers but serves GRCh37 coordinates, or "
+    "MyVariant.info for variant annotation. All of them are reachable while you work but not "
+    "during the recorded run, so download what the experiment needs in setup."
 )
 
 

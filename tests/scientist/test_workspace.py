@@ -531,6 +531,19 @@ def test_lab_template_carries_the_molecular_toolchain():
     assert "subprocess" in lab.LAB_SUMMARY
 
 
+def test_the_summary_does_not_promise_an_api_the_sandbox_cannot_reach():
+    """``rest.ensembl.org`` answers 403 to the sandbox's address from its load balancer,
+    whatever headers are sent, while its GRCh37 host answers normally. Telling the agent
+    plainly that "Ensembl REST" is reachable sends it to write code that cannot work, so
+    the summary names the host that does and the alternative for GRCh38 coordinates."""
+    from plato.scientist.workspace import lab
+
+    assert "grch37.rest.ensembl.org" in lab.LAB_SUMMARY
+    assert "MyVariant.info" in lab.LAB_SUMMARY
+    ensembl = lab.LAB_SUMMARY[lab.LAB_SUMMARY.index("Ensembl is") :]
+    assert "refuses" in ensembl and "403" in ensembl
+
+
 def test_every_molecular_tool_has_a_verification_check():
     """``scripts/e2b_lab_verify.py`` is the only thing that proves a template tool works,
     so a tool added to the template must arrive with a check that runs it."""
