@@ -126,6 +126,7 @@ body.signed-out #auth{display:block}
 .ah-chip:hover{background:var(--pill-hover)}
 .ah-ex{display:flex;flex-direction:column;gap:12px;padding-top:12px}
 .ah-exh{display:flex;align-items:center;justify-content:space-between;height:24px;padding:0 16px;font-size:12px;font-weight:450;color:var(--text-2)}
+.ah-exb{display:flex;gap:4px}
 .ah-exh .cbtn{color:var(--text-2)}
 .ah-exh .cbtn:hover{color:var(--text)}
 .ah-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}

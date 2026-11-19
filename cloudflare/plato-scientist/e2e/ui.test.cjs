@@ -79,7 +79,15 @@ const fail = (m) => { throw new Error(m); };
   await page.keyboard.press("Escape");
   await page.waitForSelector("#chatM", { state: "hidden" });
   await page.click('.ah-card[data-ex="1"]');
-  if ((await page.inputValue("#homeC textarea")) !== "Compare bootstrap and HC3 intervals at small sample sizes") fail("example card did not fill the composer");
+  if ((await page.inputValue("#homeC textarea")) !== (await page.evaluate(() => EXAMPLES[1].q))) fail("example card did not fill the composer");
+  // "Show other examples" pages through all six, three at a time, keeping Linear's card geometry
+  await page.click(".ah-exh [data-ex-more]");
+  const page2 = await page.$$eval(".ah-card", (cs) => cs.map((c) => `${c.dataset.ex}:${Math.round(c.getBoundingClientRect().height)}`).join(","));
+  if (page2 !== "3:135,4:135,5:135") fail("second examples page " + page2);
+  await page.click('.ah-card[data-ex="4"]');
+  if (!(await page.inputValue("#homeC textarea")).includes("Pantheon+")) fail("second-page card did not fill the composer");
+  await page.click(".ah-exh [data-ex-more]");
+  if ((await page.$$eval(".ah-card", (cs) => cs.map((c) => c.dataset.ex).join(","))) !== "0,1,2") fail("examples did not wrap to the first page");
   // Linear custom theme (dark): #101010 frame, #171717 raised panel, blue pill primary
   await page.goto(BASE + "/#/campaigns");
   await page.waitForSelector("#newTop");
