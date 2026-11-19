@@ -1,0 +1,81 @@
+name: scientist-quality-nightly
+
+# Known-answer research quality: 12 synthetic-data tasks with a fixed true answer go through
+# the real scientist (real models, literature, sandbox, verification, review). The job fails
+# when evals/scientist/thresholds.json is breached; summary.md lands in the job summary.
+# Needs the repository secret ANTHROPIC_API_KEY. Spend is bounded: --budget allowance tokens
+# per task (Haiku 5.5-priced), at most 12 x 600k x $0.50/MTok = $3.60 per run, plus the judge.
+
+on:
+  schedule:
+    - cron: "30 2 * * *" # 02:30 UTC nightly
+  workflow_dispatch:
+    inputs:
+      tasks:
+        description: "Task ids, space-separated (empty: all 12)"
+        required: false
+        default: ""
+      budget:
+        description: "Allowance tokens per task"
+        required: false
+        default: "600000"
+
+concurrency:
+  group: scientist-quality-nightly
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: plato
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      PLATO_TEST_POSTGRES_DSN: postgresql://postgres:plato@localhost:5432/postgres
+      HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+    steps:
+      - name: Skip without an API key
+        if: env.HAS_KEY != 'true'
+        run: echo "::notice::ANTHROPIC_API_KEY repository secret is not set; the quality eval did not run."
+      - uses: actions/checkout@v4
+        if: env.HAS_KEY == 'true'
+      - uses: actions/setup-python@v5
+        if: env.HAS_KEY == 'true'
+        with:
+          python-version: "3.13"
+      - name: Install the container's dependency set
+        if: env.HAS_KEY == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r docker/requirements-scientist.txt
+      - name: Run the known-answer tasks
+        if: env.HAS_KEY == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          NCBI_API_KEY: ${{ secrets.NCBI_API_KEY }}
+          SEMANTIC_SCHOLAR_KEY: ${{ secrets.SEMANTIC_SCHOLAR_KEY }}
+          TASKS: ${{ inputs.tasks }}
+          BUDGET: ${{ inputs.budget || '600000' }}
+        run: |
+          PYTHONPATH=. python -m evals.scientist.run \
+            --budget "$BUDGET" --out evals/results/scientist ${TASKS:+--tasks $TASKS}
+      - name: Upload results
+        if: always() && env.HAS_KEY == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: scientist-quality-${{ github.run_id }}
+          path: evals/results/scientist/
+          retention-days: 90

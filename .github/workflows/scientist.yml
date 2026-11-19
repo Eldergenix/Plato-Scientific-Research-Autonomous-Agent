@@ -6,6 +6,7 @@ on:
     paths:
       - "plato/scientist/**"
       - "tests/scientist/**"
+      - "evals/scientist/**"
       - "cloudflare/plato-scientist/**"
       - "docker/*scientist*"
       - "pyproject.toml"
