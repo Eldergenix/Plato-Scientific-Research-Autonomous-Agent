@@ -482,12 +482,14 @@ async def test_campaign_with_e2b_executor_records_reproducible_recipes(store):
     findings = await store.nodes(cid, node_type="finding", status="verified")
     assert findings, "the recipe-backed fact should replicate and be promoted"
     # Sealed evaluation replayed the recipe (the factor assert would fail otherwise).
-    assert findings[0]["metrics"]["sealed_eval"] == {"sealed_mean_y": 11.0}
+    assert findings[0]["metrics"]["sealed_eval"] == {"sealed_mean_y": 11.0, "sealed_p_value": 0.02}
 
     facts = await store.nodes(cid, node_type="fact")
     fact = next(f for f in facts if f["status"] == "verified")
     assert fact["metrics"]["executor"] == "e2b"
-    assert fact["metrics"]["replication"]["mean_y"] == 3.0
+    # The replica ran on a bootstrap resample (the manifest reached the fresh sandbox).
+    assert fact["metrics"]["replication"]["mean_y"] != 3.0
+    assert fact["metrics"]["replication_note"] == "agrees"
     patch = (await store.evidence_contents(fact["id"], "git_patch"))[0].decode()
     code, setup = recipe_from_patch(patch)
     assert "factor.txt" in setup and code.startswith("factor = int")

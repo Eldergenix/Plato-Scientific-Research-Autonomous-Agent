@@ -46,7 +46,9 @@ AssetType = Literal[
     "verified_axiom",
 ]
 NodeType = Literal["goal", "intent", "fact", "finding", "hint"]
-NodeStatus = Literal["open", "claimed", "running", "verified", "refuted", "exhausted"]
+NodeStatus = Literal[
+    "open", "claimed", "running", "verified", "refuted", "inconclusive", "exhausted"
+]
 EdgeType = Literal["spawns", "derived_from", "yields", "proves", "refutes"]
 AnchorRole = Literal[
     "baseline", "dataset_input", "code_diff", "cited_prior_work", "target_benchmark"
@@ -464,6 +466,15 @@ class DualGraphStore:
             is_sealed_eval,
         )
         return Upserted(row["id"], row["inserted"])
+
+    async def merge_asset_metadata(
+        self, asset_id: uuid.UUID, patch: dict[str, Any]
+    ) -> None:
+        await self._pool.execute(
+            "UPDATE plato.knowledge_assets SET metadata = metadata || $2::jsonb WHERE id = $1",
+            asset_id,
+            _jsonb(patch),
+        )
 
     async def put_dataset(
         self,
@@ -916,6 +927,22 @@ class DualGraphStore:
             confidence_score,
             _jsonb(metrics),
         )
+
+    async def proved_findings(
+        self, fact_ids: Iterable[uuid.UUID]
+    ) -> dict[uuid.UUID, list[uuid.UUID]]:
+        """Findings each fact proves (``fact -proves-> finding`` edges)."""
+        rows = await self._pool.fetch(
+            """
+            SELECT source_node_id, target_node_id FROM plato.exploration_edges
+             WHERE source_node_id = ANY($1::uuid[]) AND edge_type = 'proves'
+            """,
+            list(fact_ids),
+        )
+        out: dict[uuid.UUID, list[uuid.UUID]] = {}
+        for r in rows:
+            out.setdefault(r["source_node_id"], []).append(r["target_node_id"])
+        return out
 
     # ------------------------------------------------------------------ drafts
     async def save_draft(self, campaign_id: uuid.UUID, stage: str, body: str) -> None:
