@@ -1,0 +1,317 @@
+# Reviewed pip-audit findings for the legacy package (pyproject.toml), which the
+# old dashboard image installs with `pip install -e .`.
+#
+# .github/scripts/pip_audit_gate.py fails CI when:
+#   - pip-audit reports a finding that is not listed here (new vulnerability);
+#   - a listed finding is no longer reported (it was fixed: delete the entry);
+#   - review_by has passed (re-check every entry, then move the date).
+#
+# Add an entry only when the fixed version cannot be installed, and say why the
+# vulnerable code is not reachable from Plato. Never add a blanket ignore.
+
+review_by = "2027-02-19"
+
+[blockers]
+openai-pin = """cmbagent (required by plato.idea, method, experiment and the dashboard's \
+cmbagent executor) needs cmbagent-autogen 0.0.91.post11, its newest release, which pins \
+openai==1.99.9; futurehouse-client 0.7.1, its newest release, needs openai<1.100. Every \
+fixed litellm (>=1.81) and langchain-openai (>=1.0) needs openai>=2, and langchain-core 1.x, \
+langgraph>=1.0.10 (via langgraph-prebuilt>=1.0.8), langgraph-checkpoint 4.x and \
+langgraph-sdk>=0.3 all follow from langchain-core 1.x. Lifts when cmbagent and \
+futurehouse-client allow openai 2.x, or when they leave the dashboard image."""
+no-fix = "No fixed release exists upstream."
+
+# --- diskcache
+[[finding]]
+package = "diskcache"
+id = "PYSEC-2026-2447"
+aliases = ["CVE-2025-69872", "GHSA-w8v5-vhqr-4h9v"]
+fixed_in = "none"
+blocked_by = "no-fix"
+reason = "Needs write access to the local cache directory, which only the app's own user has."
+
+# --- langchain-anthropic
+[[finding]]
+package = "langchain-anthropic"
+id = "PYSEC-2026-2556"
+aliases = ["CVE-2026-55443", "GHSA-gr75-jv2w-4656"]
+fixed_in = "1.4.6"
+blocked_by = "openai-pin"
+reason = "Affects the 1.x file-search middleware; 0.3.22 ships no middleware module and Plato uses only ChatAnthropic."
+
+# --- langchain-core
+[[finding]]
+package = "langchain-core"
+id = "PYSEC-2026-2193"
+aliases = ["CVE-2026-34070", "GHSA-qh6h-p6c9-ff54"]
+fixed_in = "1.2.22"
+blocked_by = "openai-pin"
+reason = "Affects load_prompt()/load_prompt_from_config(); Plato never loads prompt configs."
+
+[[finding]]
+package = "langchain-core"
+id = "PYSEC-2026-2562"
+aliases = ["CVE-2026-26013", "GHSA-2g6r-c272-w58r"]
+fixed_in = "1.2.11"
+blocked_by = "openai-pin"
+reason = "Affects ChatOpenAI.get_num_tokens_from_messages() on image URLs; Plato never counts message tokens."
+
+# --- langchain-openai
+[[finding]]
+package = "langchain-openai"
+id = "PYSEC-2026-76"
+aliases = ["CVE-2026-41488", "GHSA-r7w7-9xr2-qq2r"]
+fixed_in = "1.1.14"
+blocked_by = "openai-pin"
+reason = "Same image token-counting path as PYSEC-2026-2562; not called by Plato."
+
+# --- langgraph
+[[finding]]
+package = "langgraph"
+id = "PYSEC-2026-83"
+aliases = ["CVE-2026-28277", "GHSA-g48c-2wqr-h844"]
+fixed_in = "1.0.10"
+blocked_by = "openai-pin"
+reason = "Needs write access to the checkpoint store (the run's local SQLite file or the app's Postgres)."
+
+# --- langgraph-checkpoint
+[[finding]]
+package = "langgraph-checkpoint"
+id = "PYSEC-2026-2574"
+aliases = ["CVE-2026-27794", "GHSA-mhr3-j7m5-c7c9"]
+fixed_in = "4.0.0"
+blocked_by = "openai-pin"
+reason = "Affects graph node caching (CachePolicy); Plato's graphs set no cache."
+
+[[finding]]
+package = "langgraph-checkpoint"
+id = "PYSEC-2026-2573"
+aliases = ["CVE-2026-48775", "GHSA-fjqc-hq36-qh5p"]
+fixed_in = "4.1.1"
+blocked_by = "openai-pin"
+reason = "Needs write access to the checkpoint store, as PYSEC-2026-83."
+
+# --- langgraph-checkpoint-sqlite
+[[finding]]
+package = "langgraph-checkpoint-sqlite"
+id = "PYSEC-2026-3636"
+aliases = ["CVE-2026-71433", "GHSA-47pj-3jcm-6whg"]
+fixed_in = "3.1.1"
+blocked_by = "openai-pin"
+reason = "Affects SqliteStore namespace search; Plato uses SqliteSaver checkpoints, never a Store."
+
+# --- langgraph-sdk
+[[finding]]
+package = "langgraph-sdk"
+id = "PYSEC-2026-2194"
+aliases = ["CVE-2026-48776", "GHSA-w39p-vh2g-g8g5", "PYSEC-2026-2575"]
+fixed_in = "0.3.15"
+blocked_by = "openai-pin"
+reason = "Client for a remote LangGraph server (RemoteGraph); Plato never uses it."
+
+[[finding]]
+package = "langgraph-sdk"
+id = "PYSEC-2026-2575"
+aliases = ["CVE-2026-48776", "GHSA-w39p-vh2g-g8g5"]
+fixed_in = "0.3.15"
+blocked_by = "openai-pin"
+reason = "Same issue as PYSEC-2026-2194."
+
+[[finding]]
+package = "langgraph-sdk"
+id = "PYSEC-2026-4240"
+aliases = ["CVE-2026-104873", "GHSA-fvww-7h3r-vfhp"]
+fixed_in = "0.4.4"
+blocked_by = "openai-pin"
+reason = "Affects @auth.on.* decorators of a LangGraph server; Plato runs none."
+
+# --- litellm
+[[finding]]
+package = "litellm"
+id = "PYSEC-2026-2597"
+aliases = ["CVE-2026-35029", "GHSA-53mr-6c8q-9789"]
+fixed_in = "1.83.0"
+blocked_by = "openai-pin"
+reason = "LiteLLM proxy server only (proxy /config/update endpoint). Plato imports litellm as a library through futurehouse-client and fhlmi and never starts the proxy."
+
+[[finding]]
+package = "litellm"
+id = "PYSEC-2026-390"
+aliases = ["CVE-2026-35030", "GHSA-jjhc-v7c2-5hh6"]
+fixed_in = "1.83.0"
+blocked_by = "openai-pin"
+reason = "LiteLLM proxy server only (proxy JWT/OIDC auth cache). Plato imports litellm as a library through futurehouse-client and fhlmi and never starts the proxy."
+
+[[finding]]
+package = "litellm"
+id = "PYSEC-2026-2599"
+aliases = ["CVE-2026-42271", "GHSA-v4p8-mg3p-g94g"]
+fixed_in = "1.83.7"
+blocked_by = "openai-pin"
+reason = "LiteLLM proxy server only (proxy /mcp-rest/test endpoints). Plato imports litellm as a library through futurehouse-client and fhlmi and never starts the proxy."
+
+[[finding]]
+package = "litellm"
+id = "PYSEC-2026-388"
+aliases = ["CVE-2026-49468", "GHSA-4xpc-pv4p-pm3w"]
+fixed_in = "1.84.0"
+blocked_by = "openai-pin"
+reason = "LiteLLM proxy server only (proxy auth route derivation from Host header). Plato imports litellm as a library through futurehouse-client and fhlmi and never starts the proxy."
+
+[[finding]]
+package = "litellm"
+id = "PYSEC-2026-2600"
+aliases = ["CVE-2026-47102", "GHSA-wpfp-gwwc-vwq6"]
+fixed_in = "1.83.10"
+blocked_by = "openai-pin"
+reason = "LiteLLM proxy server only (proxy /user/update endpoint). Plato imports litellm as a library through futurehouse-client and fhlmi and never starts the proxy."
+
+[[finding]]
+package = "litellm"
+id = "PYSEC-2026-2598"
+aliases = ["CVE-2026-47101", "GHSA-qrc4-49gv-mv9m"]
+fixed_in = "1.83.14"
+blocked_by = "openai-pin"
+reason = "LiteLLM proxy server only (proxy key generation allowed_routes). Plato imports litellm as a library through futurehouse-client and fhlmi and never starts the proxy."
+
+[[finding]]
+package = "litellm"
+id = "PYSEC-2026-4071"
+aliases = ["CVE-2026-12795", "GHSA-j37q-q7p9-vpwm"]
+fixed_in = "none"
+blocked_by = "openai-pin"
+reason = "LiteLLM proxy server only (proxy SSO debug flow (ui_sso.py)). Plato imports litellm as a library through futurehouse-client and fhlmi and never starts the proxy."
+
+[[finding]]
+package = "litellm"
+id = "PYSEC-2026-3477"
+aliases = ["CVE-2026-59820", "GHSA-5jmr-gcrj-2c9q"]
+fixed_in = "1.83.7"
+blocked_by = "openai-pin"
+reason = "LiteLLM proxy server only (proxy /v1/skills archive extraction). Plato imports litellm as a library through futurehouse-client and fhlmi and never starts the proxy."
+
+[[finding]]
+package = "litellm"
+id = "PYSEC-2026-3479"
+aliases = ["CVE-2026-59822", "GHSA-7488-6r32-c95q"]
+fixed_in = "1.84.0"
+blocked_by = "openai-pin"
+reason = "LiteLLM proxy server only (proxy MCP Streamable HTTP auth). Plato imports litellm as a library through futurehouse-client and fhlmi and never starts the proxy."
+
+[[finding]]
+package = "litellm"
+id = "PYSEC-2026-3476"
+aliases = ["CVE-2026-59819", "GHSA-4g5m-c9r5-49xf"]
+fixed_in = "1.83.10"
+blocked_by = "openai-pin"
+reason = "LiteLLM proxy server only (proxy /health/test_connection). Plato imports litellm as a library through futurehouse-client and fhlmi and never starts the proxy."
+
+[[finding]]
+package = "litellm"
+id = "PYSEC-2026-3478"
+aliases = ["CVE-2026-59821", "GHSA-72m8-9m7m-h278"]
+fixed_in = "1.82.0"
+blocked_by = "openai-pin"
+reason = "LiteLLM proxy server only (proxy custom-code guardrails). Plato imports litellm as a library through futurehouse-client and fhlmi and never starts the proxy."
+
+[[finding]]
+package = "litellm"
+id = "PYSEC-2026-4066"
+aliases = ["CVE-2026-84377", "GHSA-3cv6-jpf6-8222"]
+fixed_in = "1.88.6"
+blocked_by = "openai-pin"
+reason = "LiteLLM proxy server only (proxy request-body parameter denylist). Plato imports litellm as a library through futurehouse-client and fhlmi and never starts the proxy."
+
+[[finding]]
+package = "litellm"
+id = "PYSEC-2026-3861"
+aliases = ["CVE-2026-37004", "GHSA-6wvf-77m9-58rm"]
+fixed_in = "1.83.7"
+blocked_by = "openai-pin"
+reason = "LiteLLM proxy server only (proxy /prompts/test template rendering). Plato imports litellm as a library through futurehouse-client and fhlmi and never starts the proxy."
+
+[[finding]]
+package = "litellm"
+id = "PYSEC-2026-4069"
+aliases = ["CVE-2026-12798", "GHSA-c693-x898-5g4h"]
+fixed_in = "none"
+blocked_by = "openai-pin"
+reason = "LiteLLM proxy server only (proxy MCP OpenAPI spec loader). Plato imports litellm as a library through futurehouse-client and fhlmi and never starts the proxy."
+
+[[finding]]
+package = "litellm"
+id = "PYSEC-2026-4067"
+aliases = ["CVE-2026-12773", "GHSA-4jcj-7x88-m979"]
+fixed_in = "1.84.0"
+blocked_by = "openai-pin"
+reason = "LiteLLM proxy server only (proxy MCP auth (user_api_key_auth_mcp.py)). Plato imports litellm as a library through futurehouse-client and fhlmi and never starts the proxy."
+
+[[finding]]
+package = "litellm"
+id = "PYSEC-2026-4070"
+aliases = ["CVE-2026-59823", "GHSA-hx8v-g79f-8w5f"]
+fixed_in = "1.83.9"
+blocked_by = "openai-pin"
+reason = "LiteLLM proxy server only (proxy user_config api_base smuggling). Plato imports litellm as a library through futurehouse-client and fhlmi and never starts the proxy."
+
+[[finding]]
+package = "litellm"
+id = "PYSEC-2026-4072"
+aliases = ["CVE-2026-12799", "GHSA-m2v5-74w2-qhcj"]
+fixed_in = "none"
+blocked_by = "openai-pin"
+reason = "LiteLLM proxy server only (proxy ui_view_users authorization). Plato imports litellm as a library through futurehouse-client and fhlmi and never starts the proxy."
+
+[[finding]]
+package = "litellm"
+id = "PYSEC-2026-4073"
+aliases = ["CVE-2026-12772", "GHSA-mf52-j94g-746m"]
+fixed_in = "none"
+blocked_by = "openai-pin"
+reason = "LiteLLM proxy server only (proxy admin login session handling). Plato imports litellm as a library through futurehouse-client and fhlmi and never starts the proxy."
+
+[[finding]]
+package = "litellm"
+id = "PYSEC-2026-4075"
+aliases = ["CVE-2026-12771", "GHSA-qmf3-4767-5fg3"]
+fixed_in = "none"
+blocked_by = "openai-pin"
+reason = "LiteLLM proxy server only (proxy M2M JWT handler). Plato imports litellm as a library through futurehouse-client and fhlmi and never starts the proxy."
+
+[[finding]]
+package = "litellm"
+id = "PYSEC-2026-4076"
+aliases = ["CVE-2026-12796", "GHSA-w2mh-qq9q-453x"]
+fixed_in = "none"
+blocked_by = "openai-pin"
+reason = "LiteLLM proxy server only (proxy SSO redirect handling). Plato imports litellm as a library through futurehouse-client and fhlmi and never starts the proxy."
+
+[[finding]]
+package = "litellm"
+id = "PYSEC-2026-4074"
+aliases = ["CVE-2026-12797", "GHSA-p897-vf7j-f5h8"]
+fixed_in = "none"
+blocked_by = "openai-pin"
+reason = "LiteLLM proxy server only (proxy enterprise banned-keywords hook). Plato imports litellm as a library through futurehouse-client and fhlmi and never starts the proxy."
+
+[[finding]]
+package = "litellm"
+id = "GHSA-69x8-hrgq-fjj8"
+fixed_in = "1.83.0"
+blocked_by = "openai-pin"
+reason = "LiteLLM proxy server only (proxy user password storage and endpoints). Plato imports litellm as a library through futurehouse-client and fhlmi and never starts the proxy."
+
+[[finding]]
+package = "litellm"
+id = "GHSA-hhww-mrg2-969h"
+fixed_in = "1.85.0"
+blocked_by = "openai-pin"
+reason = "LiteLLM proxy server only (proxy /sso/debug/callback page). Plato imports litellm as a library through futurehouse-client and fhlmi and never starts the proxy."
+
+[[finding]]
+package = "litellm"
+id = "GHSA-g5ff-637f-6q2m"
+fixed_in = "1.95.0"
+blocked_by = "openai-pin"
+reason = "LiteLLM proxy server only (proxy /utils/transform_request). Plato imports litellm as a library through futurehouse-client and fhlmi and never starts the proxy."
+
