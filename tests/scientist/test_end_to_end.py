@@ -1,7 +1,8 @@
 """End-to-end campaign tests: real Postgres, real sandboxed Python, real LangGraph.
 
 Only the language model and literature search are replaced, by deterministic fakes
-that respect the same budget contract as the production model.
+that respect the same budget contract as the production model. The browser suites'
+seed scripts import this module outside pytest, so it must not import pytest at the top.
 """
 
 from __future__ import annotations
@@ -9,8 +10,6 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import UTC, datetime
-
-import pytest
 
 from plato.scientist.graph import run_campaign
 from plato.scientist.llm import WRITING_PURPOSES
@@ -1238,13 +1237,13 @@ async def test_a_real_effect_is_verified_from_unit_data_and_held_out_data(store)
     # The script under-reported its evidence (p = 0.2); the recomputed test decides.
     assert m["p_value_reported"] == 0.2 and m["p_value"] < 1e-6
     assert m["supports_hypothesis"] == "yes" and m["supports_source"] == "rule"
-    assert m["stats_effect"] == pytest.approx(1.5)
+    assert abs(m["stats_effect"] - 1.5) < 1e-9
     assert fact["status"] == "verified", m
     (finding,) = await store.nodes(cid, node_type="finding", status="verified")
     assert finding["metrics"]["held_out"] is True
     sealed = finding["metrics"]["sealed_eval"]
     assert sealed["sealed_p_value"] < 1e-6 and sealed["sealed_p_value_reported"] == 0.2
-    assert sealed["sealed_stats_effect"] == pytest.approx(1.5)
+    assert abs(sealed["sealed_stats_effect"] - 1.5) < 1e-9
     assert campaign["status"] == "completed"
 
 
