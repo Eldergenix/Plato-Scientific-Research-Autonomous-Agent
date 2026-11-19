@@ -16,11 +16,31 @@ const hintText=()=>pref("send_with_mod_enter")?"⌘ Enter to send":"Enter to sen
    an inset, round-cornered hairline. Generated once; 336px like the page it mirrors. */
 const WM_FACES=["M187.91 22.17Q183.63 16.64 189.69 20.14L296.83 82Q302.89 85.5 296.83 89L263.4 108.3Q257.34 111.8 253.05 106.27Z", "M148.09 22.17Q152.37 16.64 146.31 20.14L39.17 82Q33.11 85.5 39.17 89L72.6 108.3Q78.66 111.8 82.95 106.27Z", "M172.29 15.07Q168 9.53 163.71 15.07L92.13 107.48Q87.84 113.01 94.84 113.01L241.16 113.01Q248.16 113.01 243.87 107.48Z", "M51.67 258.16Q44.73 257.21 50.79 260.71L157.94 322.57Q164 326.07 164 319.07L164 280.47Q164 273.47 157.06 272.52Z", "M31.76 223.67Q29.11 230.15 29.11 223.15L29.11 99.43Q29.11 92.43 35.17 95.93L68.6 115.23Q74.66 118.73 72.01 125.21Z", "M37.7 248.18Q30.76 247.23 33.41 240.75L77.65 132.56Q80.3 126.08 83.8 132.14L156.96 258.85Q160.46 264.91 153.52 263.97Z", "M284.33 258.16Q291.27 257.21 285.21 260.71L178.06 322.57Q172 326.07 172 319.07L172 280.47Q172 273.47 178.94 272.52Z", "M304.24 223.67Q306.89 230.15 306.89 223.15L306.89 99.43Q306.89 92.43 300.83 95.93L267.4 115.23Q261.34 118.73 263.99 125.21Z", "M302.59 240.75Q305.24 247.23 298.3 248.18L182.48 263.97Q175.54 264.91 179.04 258.85L252.2 132.14Q255.7 126.08 258.35 132.56Z", "M93.61 121.01Q86.61 121.01 90.11 127.07L164.5 255.91Q168 261.98 171.5 255.91L245.89 127.07Q249.39 121.01 242.39 121.01Z"];
 const WATERMARK=`<div class="ah-wm" aria-hidden="true"><svg width="336" height="336" viewBox="0 0 336 336" fill="none">${WM_FACES.map(d=>`<path d="${d}"/>`).join("")}</svg></div>`;
-/* "Get started" cards: each fills the composer with a worked question. */
+/* "Get started" cards: each fills the composer with a worked question, three at a time. Every one
+   runs end to end on the experiment sandbox with public data and no GPU, and the set covers the
+   domains Plato is built for. scripts/e2b_example_checks.py runs each card's core pipeline
+   (same keys) against a known answer; keep the two in step. */
 const EXAMPLES=[
-  {icon:'<path d="M6 2h4M6.6 2v4.4L2.9 12.7A1.2 1.2 0 0 0 3.9 14.5h8.2a1.2 1.2 0 0 0 1-1.8L9.4 6.4V2"/><path d="M4.6 10h6.8"/>',t:"Test a statistical claim",d:"Check whether a method holds up on realistic data",q:"Does the 95% OLS slope interval keep its coverage when errors are heteroskedastic?"},
-  {icon:'<rect x="1.5" y="3" width="5.5" height="10" rx="1.5"/><rect x="9" y="3" width="5.5" height="10" rx="1.5"/><path d="M3.5 10.5V9M5 10.5V7.5M11 10.5V6M12.5 10.5V8.5"/>',t:"Compare two methods",d:"Run both on the same data and report which holds up",q:"Compare bootstrap and HC3 intervals at small sample sizes"},
-  {icon:'<path d="M1.5 12.5 5.5 8.5l2.5 2.5 6-6"/><path d="M10 5h4v4"/>',t:"Forecast a time series",d:"Fit simple models and score them on held-out data",q:"Which simple models best forecast monthly CO₂ at Mauna Loa?"}];
+  {key:"variants",icon:'<path d="M4.5 1.5c0 6.5 7 6.5 7 13M11.5 1.5c0 6.5-7 6.5-7 13"/><path d="M5.4 4h5.2M5.4 12h5.2"/>',
+    t:"Benchmark variant callers",d:"Align reads with BWA-MEM2, call variants with GATK and bcftools",
+    q:"Simulate 20× paired-end Illumina reads with known SNPs and indels from the E. coli K-12 MG1655 genome (NC_000913.3) using wgsim, align them with BWA-MEM2, and call variants with GATK HaplotypeCaller and bcftools. Which caller has higher precision and recall against the simulated truth, for SNPs and indels separately?"},
+  {key:"hemoglobin",icon:'<path d="M3 11c2-6 3 2 5-3s3 3 5-2"/><path d="M3 5.5c2 2 3-1 5 1"/>',
+    t:"Map a protein's shape change",d:"Superimpose 3D structures and find where they move",
+    q:"How does human hemoglobin rearrange between the deoxy T state (PDB 4HHB) and the oxy R state (PDB 1HHO)? Superimpose the structures on the α1β1 dimer, measure the α2β2 rotation and per-residue Cα displacement, and test whether α1 residues at the α1β2 interface move more than the rest."},
+  {key:"expression",icon:'<path d="M2 13.5h12"/><circle cx="4" cy="5" r=".9"/><circle cx="5.5" cy="8.5" r=".9"/><circle cx="8" cy="11" r=".9"/><circle cx="10.5" cy="7.5" r=".9"/><circle cx="12" cy="3.5" r=".9"/>',
+    t:"Find drug-response genes",d:"RNA-seq with DESeq2, FDR control and GO enrichment",
+    q:"In the airway RNA-seq dataset (Himes et al. 2014, GEO GSE52778), which genes change expression when airway smooth muscle cells are treated with dexamethasone, at a 5% false discovery rate with DESeq2 adjusting for donor, and which GO biological processes are enriched among them?"},
+  {key:"solubility",icon:'<path d="m8 2.5 4.5 2.6v5.3L8 13l-4.5-2.6V5.1z"/><path d="M8 5.5v5"/>',
+    t:"Predict solubility from structure",d:"RDKit descriptors, scored on held-out molecules",
+    q:"On the Delaney (ESOL) aqueous solubility dataset, does adding molecular weight, rotatable bonds and aromatic proportion to logP improve the prediction of log solubility on held-out molecules, and by how much?"},
+  {key:"supernovae",icon:'<circle cx="8" cy="8" r="1.4"/><path d="M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3M3.6 3.6l1.8 1.8M10.6 10.6l1.8 1.8M3.6 12.4l1.8-1.8M10.6 5.4l1.8-1.8"/>',
+    t:"Test dark energy",d:"Fit cosmologies to Pantheon+ supernova distances",
+    q:"Using the Pantheon+ Type Ia supernova distances, is the dark energy equation of state w consistent with −1 (a cosmological constant) in a flat wCDM fit, and does the answer hold when the low- and high-redshift halves are fitted separately?"},
+  {key:"statistics",icon:'<path d="M6 2h4M6.6 2v4.4L2.9 12.7A1.2 1.2 0 0 0 3.9 14.5h8.2a1.2 1.2 0 0 0 1-1.8L9.4 6.4V2"/><path d="M4.6 10h6.8"/>',
+    t:"Stress-test a statistical method",d:"Simulate where a textbook interval breaks down",
+    q:"Does the classical 95% OLS confidence interval for a slope keep its coverage when the error variance grows with x, and do HC3 robust intervals restore it at sample sizes from 20 to 500?"}];
+const EX_PAGE=3,REFRESH='<path d="M13 8a5 5 0 1 1-1.5-3.6"/><path d="M13 2.5v3h-3"/>';
+const exCards=page=>EXAMPLES.slice(page*EX_PAGE,page*EX_PAGE+EX_PAGE).map((x,i)=>`<button class="ah-card" type="button" data-ex="${page*EX_PAGE+i}">${ico(x.icon,14)}<span class="ah-ct">${esc(x.t)}</span><span class="ah-cd">${esc(x.d)}</span></button>`).join("");
 
 /* ---------- Markdown (escaped first: model text never becomes markup) ---------- */
 function md(src){const code=[];let s=String(src??"").replace(/\r\n?/g,"\n");
@@ -137,13 +157,14 @@ function renderAgentHome(){$("#crumb").innerHTML=chatTitle("New chat");bindChatT
   body.innerHTML=`<div class="pane" id="pane" data-view="agent"><div class="ah"><div class="ah-c">${WATERMARK}
     ${composerHtml("homeC")}
     ${ownKey?"":`<a class="ah-chip" href="#/settings/api-key">${ico(KEY,14)}Use your own API key</a>`}
-    ${exOff?"":`<div class="ah-ex" id="ahEx"><div class="ah-exh"><span>Get started with some examples</span><button class="cbtn" type="button" data-ex-x aria-label="Dismiss examples" title="Dismiss">${ico(XMARK,14)}</button></div>
-      <div class="ah-cards">${EXAMPLES.map((x,i)=>`<button class="ah-card" type="button" data-ex="${i}">${ico(x.icon,14)}<span class="ah-ct">${esc(x.t)}</span><span class="ah-cd">${esc(x.d)}</span></button>`).join("")}</div></div>`}
+    ${exOff?"":`<div class="ah-ex" id="ahEx"><div class="ah-exh"><span>Get started with some examples</span><span class="ah-exb"><button class="cbtn" type="button" data-ex-more aria-label="Show other examples" title="Show other examples">${ico(REFRESH,14)}</button><button class="cbtn" type="button" data-ex-x aria-label="Dismiss examples" title="Dismiss">${ico(XMARK,14)}</button></span></div>
+      <div class="ah-cards" data-page="0">${exCards(0)}</div></div>`}
     </div></div></div>`;
   const f=$("#homeC");bindComposer(f,async(text,c)=>{setBusy(f,true,"Starting…");
     try{const r=await postJSON("projects",{text,...(c?{context:{campaign_id:c.id}}:{})});S.proj=null;location.hash=`#/p/${eid(r.id)}`;loadProjects();return true}
     catch(e){toast(e.message,true);return false}finally{setBusy(f,false)}});
   const ex=$("#ahEx");if(ex)ex.onclick=e=>{if(e.target.closest("[data-ex-x]")){ls.set("plato_examples_off","1");ex.remove();f.text.focus();return}
+    if(e.target.closest("[data-ex-more]")){const c=ex.querySelector(".ah-cards"),n=(+c.dataset.page+1)%Math.ceil(EXAMPLES.length/EX_PAGE);c.dataset.page=n;c.innerHTML=exCards(n);return}
     const b=e.target.closest("[data-ex]");if(!b)return;f.text.value=EXAMPLES[+b.dataset.ex].q;f.fit();f.text.focus()};
   if(matchMedia("(pointer:fine)").matches)f.text.focus()}
 
