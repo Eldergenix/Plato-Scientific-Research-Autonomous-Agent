@@ -4,7 +4,7 @@
    settings table names these views); defines functions and module state only. */
 "use strict";
 
-const PUB={cid:null,journals:null,exports:null,err:"",journal:ls.get("plato_journal","nature"),building:false,open:new Set()};
+const PUB={cid:null,journals:null,styles:null,exports:null,err:"",journal:ls.get("plato_journal","nature"),style:ls.get("plato_cite_style","journal"),building:false,open:new Set()};
 const INT={data:null,err:"",loading:false};
 let LIB=null;
 const bytes=n=>{n=Number(n||0);return n>=2**20?(n/2**20).toFixed(1)+" MB":n>=1024?Math.round(n/1024)+" KB":n+" B"};
@@ -23,10 +23,13 @@ function publishView(){const c=S.summary.campaign;
   <section class="pub-build">
     <div class="pub-row"><label class="t2" for="pubJournal">Format for</label>
       <select class="sel" id="pubJournal">${PUB.journals.map(x=>`<option value="${esc(x.key)}"${x.key===j.key?" selected":""}>${esc(x.name)}</option>`).join("")}</select>
+      <label class="t2" for="pubStyle">Citations</label>
+      <select class="sel" id="pubStyle"><option value="journal"${PUB.style==="journal"?" selected":""}>${esc(j.style_required===false?`Default: ${j.citation_style}`:`${j.name}'s own: ${j.citation_style}`)}</option>${(PUB.styles||[]).map(x=>`<option value="${esc(x.key)}"${x.key===PUB.style?" selected":""}>${esc(x.name)}</option>`).join("")}</select>
       <button class="btn primary" type="button" id="pubBuild"${PUB.building?" disabled":""}><span data-lbl>${PUB.building?"Building…":"Build package"}</span></button></div>
     <p class="t2 pub-note">${esc(j.publisher)} · ${esc(j.article_type)}. ${esc(j.template_note||"")} <a href="${esc(j.source)}" target="_blank" rel="noopener noreferrer">Author guidelines</a></p>
+    ${PUB.style!=="journal"&&j.style_required!==false?`<p class="t2 pub-note">${esc(j.name)} asks for its own reference style (${esc(j.citation_style)}). Use another style for drafts or other venues; the checklist will flag it.</p>`:""}
     ${facts.length?`<div class="gchips">${facts.map(f=>`<span class="chip">${esc(f)}</span>`).join("")}</div>`:""}
-    <p class="t3 pub-note">Each package has the manuscript as PDF, LaTeX, Word and JATS XML, the references (BibTeX, RIS, CSL JSON), figures, the supplementary information, data as CSV and Excel, experiment code and logs, and a submission checklist.</p>
+    <p class="t3 pub-note">Each package has the manuscript as PDF, LaTeX, Word and JATS XML with citations and references in the chosen style, the references as BibTeX, RIS and CSL JSON, figures, the supplementary information, data as CSV and Excel, experiment code and logs, a cover letter and a submission checklist.</p>
     ${PUB.err?`<p class="err">${esc(PUB.err)}</p>`:""}
   </section>
   <h3 class="pub-h">Packages</h3>
@@ -42,7 +45,7 @@ function exportCard(x){const s=obj(x.summary),checks=Array.isArray(s.checks)?s.c
   const hasPdf=(s.files||[]).some(f=>f.path==="manuscript/manuscript.pdf");
   const file=p=>`/api/exports/${eid(x.id)}/file?path=${encodeURIComponent(p)}`;
   return `<div class="pub-card" data-export="${esc(x.id)}">
-    <div class="pub-row">${ready?check("var(--green)"):cross("var(--red)")}<b class="trunc">${esc(j?.name||x.journal)}</b>
+    <div class="pub-row">${ready?check("var(--green)"):cross("var(--red)")}<b class="trunc">${esc(j?.name||x.journal)}</b>${s.citation_style&&s.citation_style.key!=="journal"?`<span class="chip">${esc(s.citation_style.name)}</span>`:""}
       <span class="t3">${esc(when(x.created_at))}${x.bytes?" · "+bytes(x.bytes):""}${s.pages?` · ${s.pages} page${s.pages>1?"s":""}`:""}</span>
       ${ready?`<span class="pub-checks" title="Submission checks">${n("pass")} passed${n("warn")?` · ${n("warn")} to review`:""}${n("fail")?` · ${n("fail")} to fix`:""}</span>`:""}</div>
     ${ready?`<div class="pub-row pub-acts">
@@ -58,8 +61,9 @@ function exportCard(x){const s=obj(x.summary),checks=Array.isArray(s.checks)?s.c
   </div>`}
 
 async function loadPublish(){const id=PUB.cid;if(PUB.loading===id)return;PUB.loading=id;
-  try{const [j,e]=await Promise.all([PUB.journals?{journals:PUB.journals}:getJSON("publish/journals"),getJSON(`campaigns/${eid(id)}/exports`)]);
-    if(PUB.cid!==id)return;PUB.journals=j.journals;PUB.exports=e.exports;
+  try{const [j,e]=await Promise.all([PUB.journals?{journals:PUB.journals,citation_styles:PUB.styles}:getJSON("publish/journals"),getJSON(`campaigns/${eid(id)}/exports`)]);
+    if(PUB.cid!==id)return;PUB.journals=j.journals;PUB.styles=j.citation_styles||[];PUB.exports=e.exports;
+    if(PUB.style!=="journal"&&!PUB.styles.some(x=>x.key===PUB.style))PUB.style="journal";
     if(!PUB.journals.some(x=>x.key===PUB.journal))PUB.journal=PUB.journals[0].key}
   catch(err){if(PUB.cid!==id)return;PUB.journals=PUB.journals||[];PUB.exports=[];PUB.err=err.message}
   finally{if(PUB.loading===id)PUB.loading=null}
@@ -67,6 +71,7 @@ async function loadPublish(){const id=PUB.cid;if(PUB.loading===id)return;PUB.loa
 
 function bindPublish(){const pane=$("#pane");if(!pane||S.route.tab!=="publish")return;
   const sel=$("#pubJournal");if(sel)sel.onchange=()=>{PUB.journal=sel.value;ls.set("plato_journal",sel.value);renderTab()};
+  const st=$("#pubStyle");if(st)st.onchange=()=>{PUB.style=st.value;ls.set("plato_cite_style",st.value);renderTab()};
   const b=$("#pubBuild");if(b)b.onclick=buildExport;
   pane.addEventListener("click",async e=>{const t=e.target.closest("[data-pact]");if(!t)return;const id=t.closest("[data-export]").dataset.export,a=t.dataset.pact;
     if(a==="toggle"){PUB.open.has(id)?PUB.open.delete(id):PUB.open.add(id);renderTab()}
@@ -74,8 +79,8 @@ function bindPublish(){const pane=$("#pane");if(!pane||S.route.tab!=="publish")r
     else if(a==="email")emailModal(id);
     else if(a==="library"){t.disabled=true;try{const r=await postJSON(`exports/${eid(id)}/library`,{});toast(r.duplicate?"Already in your files":`Saved ${r.name} to your files`);LIB=null}catch(err){toast(err.message,true)}finally{t.disabled=false}}})}
 
-async function buildExport(){const id=PUB.cid,journal=PUB.journal;PUB.building=true;PUB.err="";renderTab();
-  try{const r=await postJSON(`campaigns/${eid(id)}/exports`,{journal});if(PUB.cid!==id)return;
+async function buildExport(){const id=PUB.cid,journal=PUB.journal,style=PUB.style;PUB.building=true;PUB.err="";renderTab();
+  try{const r=await postJSON(`campaigns/${eid(id)}/exports`,{journal,style});if(PUB.cid!==id)return;
     PUB.exports=[r.export,...(PUB.exports||[]).filter(x=>x.id!==r.export.id)];
     if(r.export.status==="ready"){PUB.open.add(r.export.id);toast("Package ready")}else toast("The build failed",true)}
   catch(err){if(PUB.cid===id)PUB.err=err.message}

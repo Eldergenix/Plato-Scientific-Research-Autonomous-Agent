@@ -9,17 +9,19 @@ import { containerError, toContainer } from "./campaigns";
 import * as composio from "./composio";
 import { b64url, enc, type Env, HttpError, json, monthlyCap, readJson, type Sql, unb64 } from "./lib";
 import * as library from "./library";
+import styles from "./citation_styles.json";
 import catalogue from "./journals.json";
 import { entries, readEntry } from "./zip";
 
 const JOURNALS = new Set((catalogue as { key: string }[]).map((j) => j.key));
+const STYLES = new Set((styles as { key: string }[]).map((s) => s.key));
 const LINK_DAYS = 7;
 /** Files sent to Google Drive one by one (its upload tool takes at most 5 MB a file). */
 const DRIVE_MAX = 5 * 1024 * 1024;
 const ATTACH_MAX = 18 * 1024 * 1024; // under Gmail's 25 MB after base64 expansion
 
 export async function journals(_c: Ctx): Promise<Response> {
-  return json({ journals: catalogue });
+  return json({ journals: catalogue, citation_styles: styles });
 }
 
 async function campaignFor(c: Ctx, id: string) {
@@ -71,11 +73,15 @@ export async function createExport(c: Ctx, id: string): Promise<Response> {
   const body = await readJson(c.req);
   const journal = typeof body.journal === "string" ? body.journal : "";
   if (!JOURNALS.has(journal)) throw new HttpError(400, "unknown journal");
+  // "journal" (or nothing) keeps the journal's own citation style.
+  const style = typeof body.style === "string" && body.style !== "journal" ? body.style : "";
+  if (style && !STYLES.has(style)) throw new HttpError(400, "unknown citation style");
   const owner = campaign.account_id as string | null;
   const key = campaign.own_key ? await ownKey(c.env, c.sql, owner) : null;
   if (campaign.own_key && !key) throw new HttpError(409, "This thread runs on its owner's API key, which was removed.");
   const q = new URLSearchParams();
   if (owner) q.set("account", owner);
+  if (style) q.set("style", style);
   // The default key's monthly allowance applies to the owner (admins are uncapped).
   if (!campaign.own_key && owner) {
     const [a] = await c.sql`SELECT is_admin, monthly_token_cap FROM plato.accounts WHERE id = ${owner}`;
@@ -258,6 +264,8 @@ const DRIVE_FILES = [
   "manuscript/manuscript.tex",
   "manuscript/manuscript.jats.xml",
   "manuscript/references.bib",
+  "manuscript/references.ris",
+  "submission/cover_letter.docx",
   "supplement/supplementary_information.pdf",
   "data/data_S1.xlsx",
   "README.md",
@@ -270,6 +278,7 @@ const MIME: Record<string, string> = {
   tex: "application/x-tex",
   xml: "application/xml",
   bib: "application/x-bibtex",
+  ris: "application/x-research-info-systems",
   xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   md: "text/markdown",
   zip: "application/zip",

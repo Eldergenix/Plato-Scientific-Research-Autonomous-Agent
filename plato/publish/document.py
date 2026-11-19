@@ -13,14 +13,19 @@ import re
 from dataclasses import dataclass, field
 
 from .adapt import JournalAdaptation
-from .journals import AI_NOTE, Journal
+from .journals import AI_NOTE, CitationStyle, Journal
 from .texsafe import (
     lancet_decimals,
     move_citations_after_punctuation,
     sanitize,
     strip_citations,
     tighten_superscript_citations,
+    word_count,
 )
+
+# A paragraph holding only this word becomes a page break in the Word file.
+PAGE_BREAK = "PLATOPAGEBREAK"
+ABSTRACT_HERE = "PLATOABSTRACTHERE"
 
 # Journals whose main text opens without an "Introduction" heading.
 UNHEADED_INTRO = {"nature", "science", "nejm"}
@@ -52,6 +57,12 @@ class Doc:
     table: Table | None
     model: str
     supplement_items: list[str] = field(default_factory=list)
+    style: CitationStyle | None = None  # None: the journal's own style
+    extended: list[Figure] = field(default_factory=list)  # Nature Extended Data figures
+
+    def __post_init__(self) -> None:
+        if self.style is None:
+            self.style = self.journal.style
 
 
 def escape(text: str) -> str:
@@ -62,18 +73,19 @@ def escape(text: str) -> str:
     )
 
 
-def _style_citations(text: str, j: Journal) -> str:
-    if j.cite_after_punctuation:
+def _style_citations(text: str, doc: Doc) -> str:
+    style = doc.style
+    if style.after_punctuation:
         text = move_citations_after_punctuation(text)
-    if j.cite == "super":
+    if style.cite == "super":
         text = tighten_superscript_citations(text)
-    if j.decimal_midpoint:
+    if doc.journal.decimal_midpoint:
         text = lancet_decimals(text)
     return text
 
 
 def _body(doc: Doc, name: str) -> str:
-    return _style_citations(doc.sections.get(name, ""), doc.journal)
+    return _style_citations(doc.sections.get(name, ""), doc)
 
 
 def statements(doc: Doc) -> list[tuple[str, str]]:
@@ -147,25 +159,27 @@ def statements(doc: Doc) -> list[tuple[str, str]]:
 def _abstract_paragraphs(doc: Doc) -> list[tuple[str | None, str]]:
     a = doc.adaptation.abstract
     if len(a) == 1 and a[0].heading == "Abstract":
-        return [(None, _style_citations(sanitize(a[0].text), doc.journal))]
-    return [(s.heading, _style_citations(sanitize(s.text), doc.journal)) for s in a]
+        return [(None, _style_citations(sanitize(a[0].text), doc))]
+    return [(s.heading, _style_citations(sanitize(s.text), doc)) for s in a]
+
+
+def _key_points(doc: Doc) -> str:
+    """JAMA: "a separate section called Key Points before the Abstract"."""
+    a, j = doc.adaptation, doc.journal
+    if not (j.key_points and a.key_points):
+        return ""
+    kp = a.key_points
+    return (
+        "\\section*{Key Points}\n"
+        f"\\textbf{{Question:}} {sanitize(kp.question)}\n\n"
+        f"\\textbf{{Findings:}} {sanitize(kp.findings)}\n\n"
+        f"\\textbf{{Meaning:}} {sanitize(kp.meaning)}\n"
+    )
 
 
 def _front_extras(doc: Doc) -> list[tuple[str, str]]:
     """(heading, latex) blocks between the abstract and the main text."""
     a, j, out = doc.adaptation, doc.journal, []
-    if j.key_points and a.key_points:
-        kp = a.key_points
-        out.append(
-            (
-                "Key Points",
-                (
-                    f"\\textbf{{Question:}} {sanitize(kp.question)}\n\n"
-                    f"\\textbf{{Findings:}} {sanitize(kp.findings)}\n\n"
-                    f"\\textbf{{Meaning:}} {sanitize(kp.meaning)}"
-                ),
-            )
-        )
     if j.research_in_context and a.research_in_context:
         r = a.research_in_context
         out.append(
@@ -219,7 +233,7 @@ def main_sections(doc: Doc) -> list[tuple[str | None, str, bool]]:
         elif key == "conclusions":
             text = doc.adaptation.conclusions
             if text:
-                out.append((name, _style_citations(sanitize(text), j), False))
+                out.append((name, _style_citations(sanitize(text), doc), False))
     if j.methods_in_supplement:
         out.append(
             (
@@ -239,17 +253,22 @@ def main_sections(doc: Doc) -> list[tuple[str | None, str, bool]]:
     return out
 
 
-def _bib_label(j: Journal) -> str:
+def _bib_label(style: CitationStyle) -> str:
     return {
         "ieee.csl": r"[#1]",
         "the-lancet.csl": r"#1",
-    }.get(j.csl, r"#1.")
+        "american-chemical-society.csl": r"(#1)",
+    }.get(style.csl, r"#1.")
 
 
-def _natbib(j: Journal) -> str:
-    if j.cite == "super":
-        return "\\usepackage[super,sort&compress]{natbib}"
-    if j.cite == "paren_italic":
+def _natbib(style: CitationStyle) -> str:
+    """Numbered styles are typeset by natbib; author-date citations arrive already
+    formatted by citeproc, so natbib is loaded only for any stray command."""
+    if style.cite == "super":
+        # Superscripts separated by commas without spaces: 1,2 and 1-3 (natbib's
+        # default separator is a semicolon).
+        return "\\usepackage[super,sort&compress]{natbib}\n\\setcitestyle{citesep={,}}"
+    if style.cite == "paren_italic":
         return (
             "\\usepackage[numbers,round,sort&compress]{natbib}\n"
             "\\setcitestyle{citesep={,}}\n"
@@ -280,6 +299,49 @@ def _table_latex(t: Table) -> str:
     )
 
 
+def main_text_words(doc: Doc) -> int:
+    """Words in the main text: every section after the abstract, without title, abstract,
+    acknowledgments, references, tables and figure legends (JAMA's definition)."""
+    return sum(word_count(text) for _, text, _ in main_sections(doc))
+
+
+def _authors(doc: Doc) -> tuple[str, str]:
+    """(authors line, corresponding-author line) placeholders in the journal's form."""
+    j = doc.journal
+    if j.title_page_word_count:  # JAMA: highest degrees and complete contact details
+        return (
+            (
+                "[Author One, highest academic degree]\\textsuperscript{1}, "
+                "[Author Two, highest academic degree]\\textsuperscript{2}"
+            ),
+            "Corresponding author: [name, postal address, email, telephone]",
+        )
+    return (
+        "[Author One]\\textsuperscript{1}, [Author Two]\\textsuperscript{2}",
+        "*Corresponding author: [name, email]",
+    )
+
+
+def _extended_legends(doc: Doc) -> str:
+    if not doc.extended:
+        return ""
+    items = "\n\n".join(
+        f"\\textbf{{Extended Data Fig. {i} | {escape(f.title)}.}} {escape(f.legend)}"
+        for i, f in enumerate(doc.extended, 1)
+    )
+    return f"\\section*{{Extended Data figure legends}}\n{items}\n"
+
+
+def _figure_legends(doc: Doc) -> str:
+    """Legends on their own, for journals that take figures as separate files."""
+    label = "Fig." if doc.journal.figure_label == "Fig." else "Figure"
+    items = "\n\n".join(
+        f"\\textbf{{{label} {i}. {escape(f.title)}.}} {escape(f.legend)}"
+        for i, f in enumerate(doc.figures, 1)
+    )
+    return f"\\section*{{Figure legends}}\n{items}\n" if items else ""
+
+
 def _pdf_title(title: str) -> str:
     """The title as plain text for the PDF's metadata (no commands, maths kept as text)."""
     keep = "&%$#_"
@@ -294,6 +356,7 @@ def _pdf_title(title: str) -> str:
 
 def latex_pdf(doc: Doc, bibliography: str) -> str:
     j = doc.journal
+    style = doc.style
     size = f"{j.font_pt}pt,{j.paper}"
     margin = "1in" if j.paper == "letterpaper" else "2.5cm"
     pre = [
@@ -303,7 +366,9 @@ def latex_pdf(doc: Doc, bibliography: str) -> str:
         + " ("
         + j.article_type
         + "); rules from "
-        + j.source,
+        + j.source
+        + "; references: "
+        + style.name,
         "\\usepackage[T1]{fontenc}",
         "\\usepackage[utf8]{inputenc}",
         "\\usepackage{textcomp}",
@@ -319,34 +384,40 @@ def latex_pdf(doc: Doc, bibliography: str) -> str:
         f"\\captionsetup[figure]{{name={'Fig.' if j.figure_label == 'Fig.' else 'Figure'}}}",
         "\\usepackage{float}",
         "\\usepackage{xcolor}",
-        _natbib(j),
-        f"\\renewcommand{{\\bibnumfmt}}[1]{{{_bib_label(j)}}}",
+        _natbib(style),
+        f"\\renewcommand{{\\bibnumfmt}}[1]{{{_bib_label(style)}}}",
         "\\usepackage[hidelinks]{hyperref}",
+        "\\usepackage{xurl}",  # long DOIs and URLs break anywhere instead of overrunning
         # The title PDF viewers show (in the tab, the window and document properties).
         f"\\hypersetup{{pdftitle={{{_pdf_title(doc.adaptation.title)}}}}}",
-        "\\usepackage{url}",
     ]
     if j.line_numbers:
         pre += ["\\usepackage[switch]{lineno}", "\\linenumbers"]
     if j.key == "science":
         pre.append("\\renewcommand{\\refname}{References and Notes}")
     pre += ["\\raggedbottom", "\\setlength{\\parskip}{0.4em}", "\\begin{document}"]
+    if j.ragged_right:
+        pre.append("\\raggedright")
+    newpage = ["\\clearpage"] if j.section_page_breaks else []
 
     a = doc.adaptation
     title = sanitize(a.title)
+    authors, corresponding = _authors(doc)
     lab = (lambda s: f"\\textbf{{{s}}} ") if j.key == "science" else (lambda s: "")
     head = [
         "\\begin{center}",
         f"{lab('Title:')}{{\\Large\\bfseries {title}\\par}}\\vspace{{1em}}",
-        f"{lab('Authors:')}[Author One]\\textsuperscript{{1}}, [Author Two]\\textsuperscript{{2}}\\par",
+        f"{lab('Authors:')}{authors}\\par",
         (
             f"{{\\small {lab('Affiliations:')}\\textsuperscript{{1}}[Affiliation, city, country]. "
             "\\textsuperscript{2}[Affiliation, city, country].\\par}"
         ),
-        "{\\small *Corresponding author: [name, email]\\par}",
-        "\\end{center}",
+        f"{{\\small {corresponding}\\par}}",
     ]
-    body: list[str] = []
+    if j.title_page_word_count:
+        head.append(f"{{\\small Word count: {main_text_words(doc):,}\\par}}")
+    head += ["\\end{center}", *newpage]
+    body: list[str] = [_key_points(doc)]
     label = j.abstract.label
     paras = _abstract_paragraphs(doc)
     body.append(f"\\section*{{{label}{':' if j.key == 'science' else ''}}}")
@@ -354,80 +425,135 @@ def latex_pdf(doc: Doc, bibliography: str) -> str:
         body.append((f"\\textbf{{{h}:}} " if h else "") + text + "\n")
     for h, text in _front_extras(doc):
         body.append(f"\\section*{{{h}}}\n{text}\n")
+    body += newpage
     if j.key == "science":
         body.append("\\section*{Main Text:}")
+    inline = not j.figures_separate
     figs_done = False
-    for heading, text, figures_after in main_sections(doc):
-        if heading:
-            body.append(f"\\section*{{{heading}}}")
-        body.append(text + "\n")
-        if figures_after and not figs_done:
-            figs_done = True
-            if doc.table:
-                body.append(_table_latex(doc.table))
-            for i, f in enumerate(doc.figures, 1):
-                body.append(_figure_latex(f, i, j))
-    if not figs_done:
+
+    def figures() -> None:
         if doc.table:
             body.append(_table_latex(doc.table))
         for i, f in enumerate(doc.figures, 1):
             body.append(_figure_latex(f, i, j))
-    body.append(bibliography)
-    for h, text in statements(doc):
-        body.append(f"\\paragraph{{{h}.}} {text}\n")
+
+    for heading, text, figures_after in main_sections(doc):
+        if heading:
+            body.append(f"\\section*{{{heading}}}")
+        body.append(text + "\n")
+        if figures_after and not figs_done and inline:
+            figs_done = True
+            figures()
+    if not figs_done and inline:
+        figures()
+    stated = [f"\\paragraph{{{h}.}} {text}\n" for h, text in statements(doc)]
+    if j.section_page_breaks:
+        # JAMA order: text (with the article information), references, figure legends,
+        # tables, each part on a new page.
+        body += stated + ["\\clearpage", bibliography]
+        if j.figures_separate:
+            body += ["\\clearpage", _figure_legends(doc)]
+            if doc.table:
+                body += ["\\clearpage", _table_latex(doc.table)]
+    else:
+        body.append(bibliography)
+        body += stated
+        if j.figures_separate:
+            body.append(_figure_legends(doc))
+            if doc.table:
+                body.append(_table_latex(doc.table))
+    body.append(_extended_legends(doc))
     return "\n".join(pre + head + body + ["\\end{document}", ""])
 
 
 def latex_pandoc(doc: Doc, image_ext: str = ".png") -> str:
     """Plain LaTeX for pandoc (Word and JATS). Citations stay as ``\\cite`` for citeproc;
-    the reference list is inserted where ``refs`` sits."""
+    the reference list is inserted where ``refs`` sits and page breaks where
+    ``PAGE_BREAK`` paragraphs sit."""
     j = doc.journal
     a = doc.adaptation
     paras = _abstract_paragraphs(doc)
     abstract = "\n\n".join((f"\\textbf{{{h}:}} " if h else "") + t for h, t in paras)
+    authors, corresponding = _authors(doc)
     out = [
         "\\documentclass{article}",
         f"\\title{{{sanitize(a.title)}}}",
-        "\\author{[Author One]\\textsuperscript{1}, [Author Two]\\textsuperscript{2}}",
+        f"\\author{{{authors}}}",
         "\\date{}",
         "\\begin{document}",
         "\\maketitle",
-        f"\\begin{{abstract}}\n{abstract}\n\\end{{abstract}}",
         (
             "\\textsuperscript{1}[Affiliation, city, country]. \\textsuperscript{2}[Affiliation, city, country]. "
-            "Corresponding author: [name, email]."
+            f"{corresponding.lstrip('*')}."
         ),
     ]
+    brk = [PAGE_BREAK] if j.section_page_breaks else []
+    if j.title_page_word_count:
+        out.append(f"Word count: {main_text_words(doc):,}")
+    out += brk
+    # The abstract stays a LaTeX abstract (JATS front matter); the Word writer would
+    # print it above the affiliations, so ABSTRACT_HERE marks where Word puts it.
+    out.append(f"\\begin{{abstract}}\n{abstract}\n\\end{{abstract}}")
+    out.append(_key_points(doc))
+    out.append(ABSTRACT_HERE)
     for h, text in _front_extras(doc):
         out.append(f"\\section*{{{h}}}\n{text}")
+    out += brk
     figs_done = False
+    inline = not j.figures_separate
+
+    # Word captions are not numbered automatically: write the labels out.
+    label = "Fig." if j.figure_label == "Fig." else "Figure"
+    table = (
+        Table(
+            f"Table 1. {doc.table.caption}",
+            doc.table.header,
+            doc.table.rows,
+            doc.table.notes,
+        )
+        if doc.table
+        else None
+    )
 
     def figs() -> None:
-        if doc.table:
-            out.append(_table_latex(doc.table))
+        if table:
+            out.append(_table_latex(table))
         for i, f in enumerate(doc.figures, 1):
-            fig = Figure(re.sub(r"\.[a-z]+$", image_ext, f.file), f.title, f.legend)
+            fig = Figure(
+                re.sub(r"\.[a-z]+$", image_ext, f.file),
+                f"{label} {i}. {f.title}",
+                f.legend,
+            )
             out.append(_figure_latex(fig, i, j))
 
     for heading, text, figures_after in main_sections(doc):
         if heading:
             out.append(f"\\section*{{{heading}}}")
         out.append(text)
-        if figures_after and not figs_done:
+        if figures_after and not figs_done and inline:
             figs_done = True
             figs()
-    if not figs_done:
+    if not figs_done and inline:
         figs()
-    out.append(
+    refs = [
         "\\section*{"
         + ("References and Notes" if j.key == "science" else "References")
-        + "}"
-    )
-    out.append("PLATOREFERENCES")
-    for h, text in statements(doc):
-        out.append(f"\\section*{{{h}}}\n{text}")
+        + "}",
+        "PLATOREFERENCES",
+    ]
+    stated = [f"\\section*{{{h}}}\n{text}" for h, text in statements(doc)]
+    if j.section_page_breaks:
+        out += stated + brk + refs
+    else:
+        out += refs + stated
+    if j.figures_separate:
+        out += brk + [_figure_legends(doc)]
+        if table:
+            out += brk + [_table_latex(table)]
+    if doc.extended:
+        out.append(_extended_legends(doc))
     out += ["\\end{document}", ""]
-    return "\n\n".join(out)
+    return "\n\n".join(x for x in out if x)
 
 
 def supplement_latex(
@@ -449,9 +575,9 @@ def supplement_latex(
         "\\usepackage{graphicx}\\usepackage{booktabs,array,longtable}",
         f"\\usepackage[margin={margin}]{{geometry}}",
         "\\usepackage[labelfont=bf,labelsep=period,font=small]{caption}",
-        _natbib(j),
-        f"\\renewcommand{{\\bibnumfmt}}[1]{{{_bib_label(j)}}}",
-        "\\usepackage[hidelinks]{hyperref}",
+        _natbib(doc.style),
+        f"\\renewcommand{{\\bibnumfmt}}[1]{{{_bib_label(doc.style)}}}",
+        "\\usepackage[hidelinks]{hyperref}\\usepackage{xurl}",
         "\\renewcommand{\\thefigure}{S\\arabic{figure}}\\renewcommand{\\thetable}{S\\arabic{table}}",
         "\\begin{document}",
         (

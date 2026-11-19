@@ -271,6 +271,7 @@ a.tcard:hover{background:var(--card-hover)}
 .pub-build{border:1px solid var(--border);border-radius:10px;background:var(--panel);padding:14px 16px;display:flex;flex-direction:column;gap:10px}
 .pub-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
 .pub-row b{min-width:0}
+.pub-row .sel{max-width:100%;min-width:0;text-overflow:ellipsis}
 .pub-note{margin:0;font-size:12.5px;line-height:1.5}
 .pub-h{margin:12px 0 0;font-size:13px;font-weight:500}
 .pub-card{border:1px solid var(--border);border-radius:10px;background:var(--panel);padding:12px 16px;display:flex;flex-direction:column;gap:10px}

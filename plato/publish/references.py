@@ -90,11 +90,14 @@ def csl_item(key: str, asset: dict[str, Any]) -> dict[str, Any]:
         item["type"] = "article-journal"
         item["container-title"] = venue
     elif arxiv and _ARXIV_RE.match(arxiv):
-        # CSL's convention for preprints: an article with the archive and its id.
+        # A preprint as CSL describes one: the server is the publisher and the arXiv id
+        # its number. arXiv registers a versionless DOI (10.48550/arXiv.<id>) for every
+        # paper, so DOI-based styles (Nature, APA, Cell) print a resolvable link.
+        base = _ARXIV_RE.match(arxiv).group(1)
         item["type"] = "article"
-        item["archive"] = "arXiv"
+        item["publisher"] = "arXiv"
         item["number"] = f"arXiv:{arxiv}"
-        item["container-title"] = f"arXiv:{arxiv}"
+        item.setdefault("DOI", f"10.48550/arXiv.{base}")
         item.setdefault("URL", f"https://arxiv.org/abs/{arxiv}")
     else:
         item["type"] = "article"
@@ -143,7 +146,7 @@ def bibtex(items: list[dict[str, Any]]) -> str:
         ):
             if it.get(src):
                 fields.append((dst, esc(str(it[src]))))
-        if it.get("archive") == "arXiv":
+        if it.get("publisher") == "arXiv" and it.get("number"):
             fields.append(("eprint", it["number"].removeprefix("arXiv:")))
             fields.append(("archiveprefix", "arXiv"))
         body = ",\n".join(f"  {k} = {{{v}}}" for k, v in fields)
@@ -183,18 +186,32 @@ def _inlines_of(blocks: list[dict]) -> list[dict]:
     return out
 
 
-async def render_bibliography(
-    items: list[dict[str, Any]], csl: str, workdir: Path
-) -> list[tuple[str, str]]:
-    """``[(key, latex_entry)]`` in citation order, formatted by the journal's CSL style."""
+async def render_references(
+    items: list[dict[str, Any]],
+    csl: str,
+    workdir: Path,
+    clusters: list[tuple[str, ...]] = (),
+) -> tuple[list[tuple[str, str]], dict[tuple[str, ...], str]]:
+    r"""Format the reference list, and each in-text citation cluster, with a CSL style.
+
+    Returns ``[(key, latex_entry)]`` in the order the style lists references (citation
+    order for numbered styles, alphabetical for author-date ones) and, for every cluster
+    asked for, its in-text form as LaTeX, e.g. ``(Smith \& Jones, 2020; Lee, 2021)``."""
     if not items:
-        return []
+        return [], {}
     order = [it["id"] for it in items]
     (workdir / "refs.json").write_text(
         json.dumps(items, ensure_ascii=False), encoding="utf-8"
     )
     (workdir / "style.csl").write_bytes((CSL_DIR / csl).read_bytes())
-    md = "\n\n".join(f"[@{k}]" for k in order) + "\n"
+    clusters = list(clusters)
+    if clusters:
+        paras = ["[" + "; ".join(f"@{k}" for k in c) + "]" for c in clusters]
+        # Every reference is listed even if a cluster was scrubbed from the text.
+        meta = ["-M", "nocite=" + ", ".join(f"@{k}" for k in order)]
+    else:
+        paras = [f"[@{k}]" for k in order]
+        meta = []
     res = await run_tool(
         [
             "pandoc",
@@ -211,9 +228,10 @@ async def render_bibliography(
             "link-citations=false",
             "-M",
             "link-bibliography=false",
+            *meta,
         ],
         workdir,
-        stdin=md.encode(),
+        stdin=("\n\n".join(paras) + "\n").encode(),
     )
     doc = json.loads(res.output[res.output.index("{") :])
     entries: dict[str, list[dict]] = {}
@@ -228,11 +246,20 @@ async def render_bibliography(
                     walk(b["c"][1])
 
     walk(doc["blocks"])
-    # Convert every entry to LaTeX in one pandoc run, separated by a marker paragraph.
+    listed = [k for k in entries if k in order] + [k for k in order if k not in entries]
+    cited: list[list[dict]] = []
+    if clusters:
+        top = [b for b in doc["blocks"] if b.get("t") == "Para"][: len(clusters)]
+        for b in top:
+            out: list[dict] = []
+            for i in b["c"]:
+                out.extend(i["c"][1] if i.get("t") == "Cite" else [i])
+            cited.append(out)
+    # Convert every piece to LaTeX in one pandoc run, separated by a marker paragraph.
     marker = "PLATOREFSEPARATOR"
     blocks: list[dict] = []
-    for k in order:
-        blocks.append({"t": "Para", "c": entries.get(k) or [{"t": "Str", "c": k}]})
+    for inl in [entries.get(k) or [{"t": "Str", "c": k}] for k in listed] + cited:
+        blocks.append({"t": "Para", "c": inl})
         blocks.append({"t": "Para", "c": [{"t": "Str", "c": marker}]})
     out_doc = {**doc, "blocks": blocks, "meta": {}}
     res = await run_tool(
@@ -241,11 +268,77 @@ async def render_bibliography(
         stdin=json.dumps(out_doc).encode(),
     )
     parts = [p.strip() for p in res.output.split(marker)]
-    return [(k, parts[i]) for i, k in enumerate(order)]
+    refs = [(k, parts[i]) for i, k in enumerate(listed)]
+    texts = {c: parts[len(listed) + i] for i, c in enumerate(clusters)}
+    return refs, texts
+
+
+async def render_bibliography(
+    items: list[dict[str, Any]], csl: str, workdir: Path
+) -> list[tuple[str, str]]:
+    """``[(key, latex_entry)]`` in the style's order."""
+    return (await render_references(items, csl, workdir))[0]
+
+
+def _one_line(v: object) -> str:
+    return re.sub(r"\s+", " ", str(v)).strip()
+
+
+def ris(items: list[dict[str, Any]]) -> str:
+    """RIS, the format EndNote, Zotero, Mendeley and most submission systems import."""
+    out = []
+    for it in items:
+        kind = {"article-journal": "JOUR", "book": "BOOK", "chapter": "CHAP"}.get(
+            it.get("type", ""), "GEN"
+        )
+        lines = [("TY", kind)]
+        for a in it.get("author", []):
+            name = a.get("literal") or ", ".join(
+                x for x in (a.get("family", ""), a.get("given", "")) if x
+            )
+            lines.append(("AU", name))
+        lines.append(("TI", it.get("title", "")))
+        if it.get("container-title"):
+            lines.append(("T2", it["container-title"]))
+        if it.get("issued"):
+            lines.append(("PY", str(it["issued"]["date-parts"][0][0])))
+        for src, tag in (("volume", "VL"), ("issue", "IS"), ("publisher", "PB")):
+            if it.get(src):
+                lines.append((tag, str(it[src])))
+        page = str(it.get("page") or "")
+        if page:
+            sp, _, ep = page.replace("\u2013", "-").partition("-")
+            lines.append(("SP", sp.strip()))
+            if ep.strip():
+                lines.append(("EP", ep.strip()))
+        if it.get("number"):
+            lines.append(("M1", str(it["number"])))
+        if it.get("DOI"):
+            lines.append(("DO", it["DOI"]))
+        if it.get("URL"):
+            lines.append(("UR", it["URL"]))
+        lines.append(("ID", it["id"]))
+        lines.append(("ER", ""))
+        out.append("\r\n".join(f"{t}  - {_one_line(v)}".rstrip() for t, v in lines))
+    return "\r\n\r\n".join(out) + ("\r\n" if out else "")
+
+
+def author_date_bibliography(entries: list[tuple[str, str]]) -> str:
+    """An unnumbered reference list with hanging indents (author-date styles)."""
+    if not entries:
+        return ""
+    body = "\n\n".join(
+        f"\\noindent\\hangindent=1.5em\\hangafter=1 {text}\\par" for _, text in entries
+    )
+    return f"\\section*{{\\refname}}\n\\begingroup\\raggedright\n{body}\n\\endgroup\n"
 
 
 def thebibliography(entries: list[tuple[str, str]]) -> str:
     if not entries:
         return ""
     body = "\n".join(f"\\bibitem{{{k}}} {text}" for k, text in entries)
-    return f"\\begin{{thebibliography}}{{{len(entries)}}}\n{body}\n\\end{{thebibliography}}\n"
+    # Ragged right: justified references stretch long DOIs and URLs across the line.
+    return (
+        f"\\begin{{thebibliography}}{{{len(entries)}}}\\raggedright\n{body}\n"
+        "\\end{thebibliography}\n"
+    )

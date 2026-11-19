@@ -14,10 +14,106 @@ means the journal sets no limit for that item.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
+from functools import cache
+from pathlib import Path
 from typing import Literal
 
-CiteStyle = Literal["super", "paren_italic", "square"]
+CSL_DIR = Path(__file__).parent / "csl"
+
+
+@cache
+def csl_title(csl: str) -> str:
+    """The style's own name, from its ``<title>``."""
+    m = re.search(r"<title>([^<]+)</title>", (CSL_DIR / csl).read_text("utf-8"))
+    return m.group(1).strip() if m else csl.removesuffix(".csl")
+
+
+CiteStyle = Literal["super", "paren_italic", "square", "author_date"]
+
+
+@dataclass(frozen=True)
+class CitationStyle:
+    """How citations look in the text and in the reference list. ``csl`` is a file in
+    ``plato/publish/csl``; ``cite`` is the in-text form: numbered (superscript, italic in
+    parentheses, square brackets) or author-date, which citeproc renders in full."""
+
+    key: str
+    name: str
+    csl: str
+    cite: CiteStyle
+    after_punctuation: bool = False
+    description: str = ""
+
+    @property
+    def numeric(self) -> bool:
+        return self.cite != "author_date"
+
+
+# Styles a package can use instead of the journal's own (all official CSL styles).
+STYLES: dict[str, CitationStyle] = {
+    s.key: s
+    for s in (
+        CitationStyle(
+            "apa",
+            "APA 7th edition",
+            "apa.csl",
+            "author_date",
+            description="Author-date: (Smith & Jones, 2020); references A-Z.",
+        ),
+        CitationStyle(
+            "harvard",
+            "Harvard (Cite Them Right 12th edition)",
+            "harvard-cite-them-right.csl",
+            "author_date",
+            description="Author-date: (Smith and Jones, 2020); references A-Z.",
+        ),
+        CitationStyle(
+            "chicago",
+            "Chicago 18th edition (author-date)",
+            "chicago-author-date.csl",
+            "author_date",
+            description="Author-date: (Smith and Jones 2020); references A-Z.",
+        ),
+        CitationStyle(
+            "vancouver",
+            "Vancouver / NLM (Citing Medicine)",
+            "nlm-citation-sequence-brackets.csl",
+            "square",
+            description="Numbered in order of citation: [1]; the style PubMed indexes.",
+        ),
+        CitationStyle(
+            "ama",
+            "AMA 11th edition",
+            "american-medical-association.csl",
+            "super",
+            after_punctuation=True,
+            description="Numbered superscripts after punctuation.",
+        ),
+        CitationStyle(
+            "nature",
+            "Nature",
+            "nature.csl",
+            "super",
+            description="Numbered superscripts.",
+        ),
+        CitationStyle(
+            "acs",
+            "ACS (American Chemical Society)",
+            "american-chemical-society.csl",
+            "super",
+            description="Numbered superscripts; references (1), (2).",
+        ),
+        CitationStyle(
+            "ieee",
+            "IEEE",
+            "ieee.csl",
+            "square",
+            description="Numbered in square brackets: [1].",
+        ),
+    )
+}
 
 
 @dataclass(frozen=True)
@@ -70,6 +166,32 @@ class Journal:
     decimal_midpoint: bool = False  # The Lancet prints decimals as 0·5
     template_note: str = ""
     notes: tuple[str, ...] = field(default_factory=tuple)
+    # False when the venue prescribes no reference style (arXiv): any style passes.
+    style_required: bool = True
+    # JAMA: the title page carries the main-text word count; text is ragged right; each
+    # part starts on a new page; figures are separate files with their legends at the end.
+    title_page_word_count: bool = False
+    ragged_right: bool = False
+    section_page_breaks: bool = False
+    figures_separate: bool = False
+    # Nature: figures beyond the main display items are Extended Data (separate files,
+    # legends at the end of the manuscript); the Supplementary Information has no figures.
+    extended_data_max: int | None = None
+    # What the cover letter must say beyond the standard declarations (None: no letter).
+    cover_letter: tuple[str, ...] | None = ()
+    # Forms the authors complete themselves: (name, official URL).
+    forms: tuple[tuple[str, str], ...] = ()
+
+    @property
+    def style(self) -> CitationStyle:
+        """The journal's own citation style."""
+        return CitationStyle(
+            "journal",
+            csl_title(self.csl),
+            self.csl,
+            self.cite,
+            self.cite_after_punctuation,
+        )
 
 
 AI_NOTE = (
@@ -129,6 +251,16 @@ JOURNALS: dict[str, Journal] = {
                 "Typically no more than 50 references (Methods references not counted).",
                 "Double-spaced, line-numbered, 12-point Times New Roman.",
                 "Life-science Articles also need a Reporting Summary.",
+            ),
+            extended_data_max=10,
+            cover_letter=(
+                "Explain why the work is of interest to a broad scientific readership.",
+            ),
+            forms=(
+                (
+                    "Reporting Summary (life sciences and behavioural and social sciences)",
+                    "https://www.nature.com/documents/nr-reporting-summary.pdf",
+                ),
             ),
         ),
         Journal(
@@ -440,6 +572,20 @@ JOURNALS: dict[str, Journal] = {
                 ),
                 "Individual files ideally at most 1 MB; all files at most 5 MB.",
             ),
+            title_page_word_count=True,
+            ragged_right=True,
+            section_page_breaks=True,
+            figures_separate=True,
+            cover_letter=(
+                (
+                    "Give the corresponding author's affiliation, postal address, email and "
+                    "telephone."
+                ),
+                (
+                    "State whether the authors have published, posted or submitted any related "
+                    "papers from the same study."
+                ),
+            ),
         ),
         Journal(
             key="genes",
@@ -526,6 +672,8 @@ JOURNALS: dict[str, Journal] = {
                 "Figures are PDF/PNG/JPEG for pdfLaTeX.",
                 "No hidden files, no build outputs (.aux, .log, .pdf) in the upload.",
             ),
+            style_required=False,
+            cover_letter=None,
         ),
     )
 }
@@ -536,6 +684,23 @@ def get(key: str) -> Journal:
         return JOURNALS[key]
     except KeyError:
         raise KeyError(f"unknown journal {key!r}") from None
+
+
+def style_for(j: Journal, key: str | None = None) -> CitationStyle:
+    """The style a package uses: the journal's own unless another one is chosen."""
+    if not key or key == "journal":
+        return j.style
+    try:
+        return STYLES[key]
+    except KeyError:
+        raise KeyError(f"unknown citation style {key!r}") from None
+
+
+def styles_catalogue() -> list[dict]:
+    return [
+        {"key": s.key, "name": s.name, "description": s.description}
+        for s in STYLES.values()
+    ]
 
 
 def catalogue() -> list[dict]:
@@ -561,6 +726,8 @@ def catalogue() -> list[dict]:
                 },
                 "template_note": j.template_note,
                 "notes": list(j.notes),
+                "style_required": j.style_required,
+                "citation_style": j.style.name,
             }
         )
     return out

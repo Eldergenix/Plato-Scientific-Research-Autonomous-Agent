@@ -1,0 +1,42 @@
+[
+  {
+    "key": "apa",
+    "name": "APA 7th edition",
+    "description": "Author-date: (Smith & Jones, 2020); references A-Z."
+  },
+  {
+    "key": "harvard",
+    "name": "Harvard (Cite Them Right 12th edition)",
+    "description": "Author-date: (Smith and Jones, 2020); references A-Z."
+  },
+  {
+    "key": "chicago",
+    "name": "Chicago 18th edition (author-date)",
+    "description": "Author-date: (Smith and Jones 2020); references A-Z."
+  },
+  {
+    "key": "vancouver",
+    "name": "Vancouver / NLM (Citing Medicine)",
+    "description": "Numbered in order of citation: [1]; the style PubMed indexes."
+  },
+  {
+    "key": "ama",
+    "name": "AMA 11th edition",
+    "description": "Numbered superscripts after punctuation."
+  },
+  {
+    "key": "nature",
+    "name": "Nature",
+    "description": "Numbered superscripts."
+  },
+  {
+    "key": "acs",
+    "name": "ACS (American Chemical Society)",
+    "description": "Numbered superscripts; references (1), (2)."
+  },
+  {
+    "key": "ieee",
+    "name": "IEEE",
+    "description": "Numbered in square brackets: [1]."
+  }
+]
