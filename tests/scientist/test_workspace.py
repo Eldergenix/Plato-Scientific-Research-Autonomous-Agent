@@ -467,6 +467,37 @@ def test_lab_template_definition_is_consistent():
     )  # no secrets baked in
 
 
+def test_every_conda_env_empties_the_package_cache_in_its_own_step():
+    """The first build of the molecular toolchain died with ``libmamba Write failed``:
+    all nine envs were created in one step, so every downloaded tarball and its extracted
+    copy stayed on the build disk until the end. Measured on the ``dock`` env, the cache is
+    about half of an env's footprint (2,464 MB with it, 1,223 MB after ``clean -a``), and
+    the nine envs pull 3.6 GB of tarballs. One step per env, each emptying the cache, keeps
+    peak disk to one env's cache and lets a failed build resume from the last env that
+    worked."""
+    pytest.importorskip("e2b")
+    from e2b import Template
+
+    from plato.scientist.workspace import lab
+
+    runs = [
+        line
+        for line in Template.to_dockerfile(lab.lab_template()).splitlines()
+        if line.startswith("RUN ")
+    ]
+    creates = [r for r in runs if "micromamba create " in r]
+    assert len(creates) == len(lab.CONDA_TOOL_ENVS)  # one step each, not one for all
+    for env, (_, pips, _) in lab.CONDA_TOOL_ENVS.items():
+        step = next(r for r in creates if f"-n {env} " in r)
+        assert step.rstrip().endswith("micromamba clean -y -a"), env
+        # A pip install must land in the same step, before that step's cache is emptied.
+        assert bool(pips) == (
+            f"/opt/conda/envs/{env}/bin/python -m pip install" in step
+        )
+    base = next(r for r in runs if "micromamba install " in r and "-n base " in r)
+    assert base.rstrip().endswith("micromamba clean -y -a")
+
+
 def test_lab_template_carries_the_molecular_toolchain():
     """Compounds, protein structures, pathways and interaction physics each need a tool,
     and a tool nobody is told about is a tool no experiment will use."""
