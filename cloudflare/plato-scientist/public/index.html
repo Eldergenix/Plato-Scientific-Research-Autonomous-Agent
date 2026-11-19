@@ -193,10 +193,12 @@ svg{flex:none}
 .gwrap{position:relative;overflow:auto;height:100%}
 .gcanvas{position:relative}
 .gcanvas svg.edges{position:absolute;inset:0;pointer-events:none}
+.gcanvas .ge-hit{fill:none;stroke:transparent;stroke-width:10;pointer-events:stroke}
 .gn{position:absolute;display:flex;align-items:center;gap:7px;height:30px;padding:0 9px;width:216px;border:1px solid var(--border-2);border-radius:7px;
   background:var(--elev);cursor:pointer;font-size:12px;box-shadow:0 1px 2px rgba(0,0,0,.12)}
 .gn:hover{border-color:var(--text-3)}
 .gn.on{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+.gn.nb{border-color:var(--accent)}
 .gn.dim{opacity:.55}
 .gcol{position:absolute;top:12px;font-size:11.5px;color:var(--text-3);font-weight:500}
 .gtools{position:sticky;top:0;left:0;z-index:2;display:flex;gap:12px;align-items:center;padding:10px 16px;background:color-mix(in srgb,var(--bg) 85%,transparent);

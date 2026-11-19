@@ -41,7 +41,13 @@
 ::view-transition-new(pane),::view-transition-new(props){animation-duration:.28s;animation-delay:.06s;animation-fill-mode:both}
 ::view-transition-image-pair(pane),::view-transition-image-pair(props){overflow:hidden}
 
+/* Graph edges: hovering a node or a line marks its lines in the accent blue, dashed, with the dash
+   flowing source → target (one 8px dash period per .3s). Reduced motion keeps the dash, drops the flow. */
+@keyframes edge-flow{to{stroke-dashoffset:-16}}
+.edge-hot{stroke:var(--accent)!important;stroke-dasharray:5 3!important;stroke-width:1.8!important;opacity:1!important;animation:edge-flow .6s linear infinite}
+[data-motion="reduce"] .edge-hot{animation:none}
+
 @media (prefers-reduced-motion:reduce){
   .sk{animation:sk-show 0s 150ms forwards}
-  .sk-layer i,.live::after,.caret{animation:none}
+  .sk-layer i,.live::after,.caret,.edge-hot{animation:none}
 }

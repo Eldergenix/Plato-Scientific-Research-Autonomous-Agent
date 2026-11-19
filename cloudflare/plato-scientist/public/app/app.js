@@ -567,7 +567,8 @@ function graphView(){
   const W=LEFT*2+keys.length*CW,H=TOP+Math.max(...keys.map(k=>cols[k].length))*RH+20;
   const ecol={refutes:"var(--red)",proves:"var(--green)"};
   const paths=edges.map(e=>{const a=pos[e.source_node_id],b=pos[e.target_node_id];if(!a||!b)return"";const x1=a[0]+216,y1=a[1]+15,x2=b[0],y2=b[1]+15,mx=(x1+x2)/2;
-    return `<path d="M${x1} ${y1}C${mx} ${y1} ${mx} ${y2} ${x2} ${y2}" fill="none" stroke="${ecol[e.edge_type]||"var(--border-2)"}" stroke-width="1.2"${e.edge_type==="derived_from"?' stroke-dasharray="3 3"':""}/>`}).join("");
+    const d=`M${x1} ${y1}C${mx} ${y1} ${mx} ${y2} ${x2} ${y2}`,lbl=`${byId[e.source_node_id].title} → ${byId[e.target_node_id].title} · ${String(e.edge_type||"").replace(/_/g," ")}`;
+    return `<g class="ge" data-s="${esc(e.source_node_id)}" data-t="${esc(e.target_node_id)}"><title>${esc(lbl)}</title><path class="ge-hit" d="${d}"/><path class="ge-ln" d="${d}" fill="none" stroke="${ecol[e.edge_type]||"var(--border-2)"}" stroke-width="1.2"${e.edge_type==="derived_from"?' stroke-dasharray="3 3"':""}/></g>`}).join("");
   const colName=k=>{const ts=new Set(cols[k].map(n=>n.node_type));return [...ts].map(t=>TYPE[t]?.l||t).join(" · ")};
   return `<div class="gtools"><div class="legend">${Object.entries(TYPE).map(([k,v])=>`<span><i class="dot" style="background:${v.c}"></i>${v.l}</span>`).join("")}
     <span><svg width="18" height="6" aria-hidden="true"><path d="M0 3h18" stroke="var(--green)" stroke-width="1.5"/></svg>proves</span><span><svg width="18" height="6" aria-hidden="true"><path d="M0 3h18" stroke="var(--red)" stroke-width="1.5"/></svg>refutes</span></div>
@@ -837,7 +838,17 @@ const b64=f=>f.arrayBuffer().then(b=>{let s="";const u=new Uint8Array(b);for(let
 $("#newBtn").onclick=openNew;
 
 /* ---------- pane events (delegated: views re-render with innerHTML) ---------- */
+/* Graph tab: hovering a node marks all its lines, hovering a line marks that line and its two nodes. */
+let GH=null;
+function graphHot(el){if(el===GH)return;GH=el;const c=$("#pane .gcanvas");if(!c)return;
+  c.querySelectorAll(".edge-hot").forEach(x=>x.classList.remove("edge-hot"));c.querySelectorAll(".gn.nb").forEach(x=>x.classList.remove("nb"));if(!el)return;
+  const svg=c.querySelector("svg.edges"),q=v=>CSS.escape(v);
+  const ges=el.classList.contains("ge")?[el]:[...svg.querySelectorAll(`.ge[data-s="${q(el.dataset.node)}"],.ge[data-t="${q(el.dataset.node)}"]`)];
+  if(el.classList.contains("ge"))[el.dataset.s,el.dataset.t].forEach(id=>c.querySelector(`.gn[data-node="${q(id)}"]`)?.classList.add("nb"));
+  ges.forEach(g=>{g.querySelector(".ge-ln").classList.add("edge-hot");svg.appendChild(g)})}   // last painted = on top
 function bindPane(){const pane=$("#pane");if(!pane)return;
+  pane.onmouseover=e=>graphHot(e.target.closest?.(".gcanvas .gn,.gcanvas .ge")||null);
+  pane.onmouseleave=()=>graphHot(null);
   pane.onclick=e=>{if(e.target.closest(".dv"))return;   // the data viewer handles its own controls
     const t=e.target.closest("[data-node],[data-ms],[data-dl],[data-gev],[data-filter],[data-sort],[data-page],[data-dense],[data-csv],[data-copy],[data-clear],[data-pv],[data-rv-toggle],[data-ms-split],[data-pdf-retry],[data-dfilter],[data-ev],#colBtn");if(!t||!pane.contains(t))return;
     const d=t.dataset,R=S.res;
