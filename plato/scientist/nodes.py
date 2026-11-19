@@ -14,17 +14,23 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import os
 import re
-import time
 import socket
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import Any
 
-from .citations import check_sources, exclusion_reason
+from .citations import (
+    check_sources,
+    exclusion_reason,
+    fetch_missing_abstracts,
+    has_abstract,
+)
 from .db.store import (
     BudgetExceeded,
     DualGraphStore,
@@ -53,6 +59,7 @@ from .review import (
     panel_digest,
     review_record,
     run_review_panel,
+    strip_unsupported_citations,
 )
 from .schemas import (
     ExperimentCode,
@@ -74,6 +81,9 @@ MANUSCRIPT_MAX_TOKENS = 48_000
 PLAN_MAX_TOKENS = 16_000
 SEED_FILE = "plato_seed.txt"
 SEALED_MANIFEST = "plato_sealed.json"
+# Present only in the verifier's replication run: the script must draw a bootstrap resample
+# of its independent units with the given seed before computing any metric.
+REPLICATE_FILE = "plato_replicate.json"
 ROOT_GOAL_KEY = "root-goal"
 
 # (query, limit, *, sources) -> papers. ``sources`` names the retrieval adapters to use.
@@ -109,6 +119,11 @@ class ScientistConfig:
     replication_rel_tolerance: float = 0.10
     min_promote_confidence: float = 0.6
     min_figure_score: float = 0.5
+    # Significance level of every hypothesis test (difference, TOST, held-out re-test).
+    alpha: float = 0.05
+    # Correction across every hypothesis a campaign tests: "bh" (Benjamini-Hochberg false
+    # discovery rate), "holm" (Holm-Bonferroni family-wise error rate) or "none".
+    multiplicity: str = "bh"
     require_network_isolation: bool = False
     # Requested research domain (selects the literature sources and packages).
     domain: str = "general"
@@ -158,6 +173,10 @@ class ScientistContext:
     # (sources) -> one citation-check summary per source, in order (never raises).
     citation_checker: Callable[[list[Any]], Awaitable[list[dict[str, Any]]]] = (
         check_sources
+    )
+    # (sources) -> an abstract for each source that lacks one, or None (never raises).
+    abstract_fetcher: Callable[[list[Any]], Awaitable[list[str | None]]] = (
+        fetch_missing_abstracts
     )
     worker_prefix: str = field(
         default_factory=lambda: f"{socket.gethostname()}-{uuid.uuid4().hex[:6]}"
@@ -214,10 +233,9 @@ def metric_key(name: str) -> str:
 def missing_required_metrics(
     metrics: dict[str, Any], spec: dict[str, Any]
 ) -> list[str]:
-    """Keys the verifier needs but the run did not print."""
-    required = [spec["primary_metric"]]
-    if spec.get("test_kind") == "equivalence":
-        required.append("p_value")
+    """Keys the verifier needs but the run did not print. Every claim is a hypothesis
+    test, so a p_value is always required: without one nothing can be verified."""
+    required = [spec["primary_metric"], "p_value"]
     return [k for k in required if k not in metrics]
 
 
@@ -301,6 +319,116 @@ def replicates(
             float(a), float(b), rel_tol
         )
     return metrics_agree(float(a), float(b), rel_tol)
+
+
+def _number(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    value = float(value)
+    return value if math.isfinite(value) else None
+
+
+def replication_outcome(
+    key: str,
+    original: dict[str, Any],
+    replica: dict[str, Any] | None,
+    rel_tol: float,
+) -> tuple[bool, str]:
+    """Judge the replication run (new seed plus a bootstrap resample of the units).
+
+    A replica that printed exactly the original numbers was not perturbed at all: the
+    script ignored both the seed and the resample, so agreement would be a tautology and
+    proves nothing. That is a failed replication, not a passed one."""
+    if replica is None:
+        return False, "replication run failed"
+    shared = [
+        k
+        for k in replica
+        if _number(replica.get(k)) is not None and _number(original.get(k)) is not None
+    ]
+    if key in shared and all(
+        _number(replica[k]) == _number(original[k]) for k in shared
+    ):
+        return False, "replication printed identical numbers (resample ignored)"
+    if replicates(key, original, replica, rel_tol):
+        return True, "agrees"
+    return False, "replication disagrees"
+
+
+def adjusted_p_values(pvals: dict[Any, float], method: str) -> dict[Any, float]:
+    """Multiplicity-adjusted p-values over one family of tests.
+
+    ``bh``: Benjamini-Hochberg step-up (controls the false discovery rate);
+    ``holm``: Holm-Bonferroni step-down (controls the family-wise error rate);
+    ``none``: unadjusted. Adjusted values are capped at 1 and monotone in the raw p."""
+    if method == "none" or not pvals:
+        return dict(pvals)
+    if method not in ("bh", "holm"):
+        raise ValueError(f"unknown multiplicity method {method!r}")
+    m = len(pvals)
+    order = sorted(pvals, key=lambda k: pvals[k])
+    adjusted: dict[Any, float] = {}
+    if method == "holm":
+        running = 0.0
+        for i, k in enumerate(order):
+            running = max(running, min(1.0, (m - i) * pvals[k]))
+            adjusted[k] = running
+    else:
+        running = 1.0
+        for i in range(m - 1, -1, -1):
+            k = order[i]
+            running = min(running, m * pvals[k] / (i + 1))
+            adjusted[k] = min(1.0, running)
+    return adjusted
+
+
+def classify_fact(gates: dict[str, bool], supports_hypothesis: Any) -> str:
+    """Status of a verified-or-not fact.
+
+    ``verified`` needs every gate. ``refuted`` means the evidence contradicts the
+    hypothesis: the result replicated and is statistically significant, and it goes
+    against the hypothesis. Anything else that failed a gate (no replication, p above
+    alpha, a weak figure, a sceptical review) is ``inconclusive``: absence of evidence is
+    not evidence against, so it must never be written up as a negative result."""
+    if all(gates.values()):
+        return "verified"
+    if (
+        gates.get("replicated")
+        and gates.get("stats_ok")
+        and gates.get("multiplicity", True)
+        and supports_hypothesis == "no"
+    ):
+        return "refuted"
+    return "inconclusive"
+
+
+def held_out_outcome(
+    fact_metrics: dict[str, Any],
+    run_ok: bool,
+    sealed_metrics: dict[str, Any],
+    alpha: float,
+) -> tuple[bool, str]:
+    """Does the held-out re-test confirm a finding? It must run, report the same
+    hypothesis test as ``sealed_p_value`` below alpha and, for a difference claim, not
+    point the other way."""
+    if not run_ok:
+        return False, "held-out run failed"
+    p = _number(sealed_metrics.get("sealed_p_value"))
+    if p is None:
+        return False, "held-out test not reported (no sealed_p_value)"
+    if p >= alpha:
+        return False, f"held-out test not significant (p = {p:.3g})"
+    primary = fact_metrics.get("primary_metric")
+    trained = _number(fact_metrics.get(primary)) if primary else None
+    held = _number(sealed_metrics.get(f"sealed_{primary}")) if primary else None
+    if (
+        fact_metrics.get("test_kind", "difference") == "difference"
+        and trained
+        and held
+        and (trained > 0) != (held > 0)
+    ):
+        return False, "held-out effect points the other way"
+    return True, "confirmed"
 
 
 async def _guarded(
@@ -475,10 +603,14 @@ async def literature_scout(ctx: ScientistContext, campaign_id: uuid.UUID) -> Non
     # resolves to a different work, are kept out of the campaign.
     keys = list(found)
     checks = await ctx.citation_checker([found[k][1] for k in keys])
+    # Papers retrieved without an abstract get one from OpenAlex/arXiv where possible: a
+    # paper is citable only with an abstract to check the citing claim against.
+    filled = await ctx.abstract_fetcher([found[k][1] for k in keys])
     papers: list[tuple[uuid.UUID, Any]] = []
     excluded: list[dict[str, Any]] = []
-    for key, check in zip(keys, checks, strict=True):
+    for key, check, extra_abstract in zip(keys, checks, filled, strict=True):
         query, src = found[key]
+        abstract = (extra_abstract or src.abstract or "")[:3000]
         asset = await store.upsert_asset(
             campaign["program_id"],
             "paper",
@@ -494,7 +626,13 @@ async def literature_scout(ctx: ScientistContext, campaign_id: uuid.UUID) -> Non
                 "venue": src.venue,
                 "doi": src.doi,
                 "arxiv_id": src.arxiv_id,
-                "abstract": (src.abstract or "")[:3000],
+                # Never overwrite an abstract another campaign stored with an empty one.
+                **({"abstract": abstract} if abstract.strip() else {}),
+                "abstract_source": "openalex_or_arxiv"
+                if extra_abstract
+                else "retrieval"
+                if abstract.strip()
+                else None,
                 "query": query,
                 "retrieved_via": getattr(src, "retrieved_via", None),
                 "citation_check": check,
@@ -512,12 +650,37 @@ async def literature_scout(ctx: ScientistContext, campaign_id: uuid.UUID) -> Non
                 }
             )
             continue
-        papers.append((asset.id, src))
+        papers.append(
+            (
+                asset.id,
+                SimpleNamespace(title=src.title, year=src.year, abstract=abstract),
+            )
+        )
         await store.set_scope(campaign_id, asset.id, "read_only")
     # The researcher's own references join the search results (citable like any paper).
     user_papers, user_docs = await user_materials(store, campaign_id)
     known = {pid for pid, _ in papers}
-    for a in user_papers:
+    user_papers = [a for a in user_papers if a["id"] not in known]
+    user_filled = await ctx.abstract_fetcher(
+        [
+            SimpleNamespace(
+                doi=(a["metadata"] or {}).get("doi"),
+                arxiv_id=(a["metadata"] or {}).get("arxiv_id"),
+                abstract=(a["metadata"] or {}).get("abstract") or "",
+            )
+            for a in user_papers
+        ]
+    )
+    for a, extra_abstract in zip(user_papers, user_filled, strict=True):
+        if extra_abstract:
+            await store.merge_asset_metadata(
+                a["id"],
+                {
+                    "abstract": extra_abstract[:3000],
+                    "abstract_source": "openalex_or_arxiv",
+                },
+            )
+            a["metadata"] = {**(a["metadata"] or {}), "abstract": extra_abstract[:3000]}
         if a["id"] not in known:
             known.add(a["id"])
             meta = a["metadata"] or {}
@@ -743,6 +906,32 @@ OUTPUT_FILES_RULE = (
 )
 
 
+# Plain names of the verifier's gates, for the writer and the guard log.
+GATE_NAMES = {
+    "replicated": "replication on a bootstrap resample",
+    "stats_ok": "hypothesis test p < alpha",
+    "figures_ok": "figure review",
+    "skeptic": "sceptical review",
+    "multiplicity": "multiple-testing correction",
+    "held_out": "held-out re-test",
+}
+
+# Shared by both script contracts (sandbox and workspace): what the verifier relies on.
+TEST_RULES = (
+    "p_value is always required. For a 'difference' test it comes from a test of the null "
+    "of no effect; for an 'equivalence' test it must come from a TOST equivalence test "
+    "(H0: |estimate - reference| >= tolerance), so a small p_value means agreement is shown. "
+    f"If a file named '{REPLICATE_FILE}' exists, it is a JSON object with an integer 'seed': "
+    "before computing anything, draw a bootstrap resample (with replacement, same size) of "
+    "the independent experimental units (rows, samples, patients, cells or simulation "
+    "replicates) with a RNG seeded by it, then run the identical analysis on the resample; "
+    "this is how the result is replicated, so never ignore the file. "
+    f"If a file named '{SEALED_MANIFEST}' exists, it lists held-out evaluation files: repeat "
+    "the same hypothesis test on them and report its metrics with the prefix 'sealed_', "
+    "including 'sealed_<primary key>' and 'sealed_p_value'."
+)
+
+
 def code_rules(profile: ScientistProfile, config: ScientistConfig) -> str:
     packages = ", ".join(profile.packages)
     gpu = (
@@ -758,13 +947,8 @@ def code_rules(profile: ScientistProfile, config: ScientistConfig) -> str:
         f"{OUTPUT_FILES_RULE} It must finish {experiment_limits_text(config)}; "
         f"its last line of output must be '{METRICS_MARKER} ' followed by a JSON object of numeric "
         "metrics that includes the primary metric under exactly its given key, and its standard "
-        "error under '<key>_se' when the metric is a Monte Carlo or sample estimate. For a "
-        "'difference' test, report p_value from a test of the null of no effect when one is "
-        "performed. For an 'equivalence' test, p_value is required and must come from a TOST "
-        "equivalence test (H0: |estimate - reference| >= tolerance), so a small p_value means "
-        f"agreement is shown. If a file named '{SEALED_MANIFEST}' exists, it lists held-out "
-        "evaluation files: evaluate the final method on them and report those metrics with the "
-        "prefix 'sealed_'." + (f" {profile.guidance}" if profile.guidance else "")
+        "error under '<key>_se' when the metric is a Monte Carlo or sample estimate. "
+        f"{TEST_RULES}" + (f" {profile.guidance}" if profile.guidance else "")
     )
 
 
@@ -889,12 +1073,7 @@ _WORKSPACE_RULES = (
     f"{OUTPUT_FILES_RULE} Its last "
     f"line of output must be '{METRICS_MARKER} ' followed by a JSON object of numeric metrics "
     "that includes the primary metric under exactly its given key, and its standard error under "
-    "'<key>_se' when the metric is a Monte Carlo or sample estimate. For a 'difference' test, "
-    "report p_value from a test of the null of no effect when one is performed. For an "
-    "'equivalence' test, p_value is required and must come from a TOST equivalence test "
-    "(H0: |estimate - reference| >= tolerance). "
-    f"If a file named '{SEALED_MANIFEST}' exists, it lists held-out evaluation files: evaluate "
-    "the final method on them and report those metrics with the prefix 'sealed_'."
+    "'<key>_se' when the metric is a Monte Carlo or sample estimate. " + TEST_RULES
 )
 
 
@@ -945,8 +1124,10 @@ async def _workspace_attempt(
         else:
             why = f"it did not print a valid {METRICS_MARKER} line"
         return (
-            f"Rejected ({submissions}/{cfg.max_code_attempts}): {why}.\n"
-            f"stdout (end):\n{result.stdout[-4000:]}\nstderr (end):\n{result.stderr[-4000:]}",
+            (
+                f"Rejected ({submissions}/{cfg.max_code_attempts}): {why}.\n"
+                f"stdout (end):\n{result.stdout[-4000:]}\nstderr (end):\n{result.stderr[-4000:]}"
+            ),
             False,
             None,
         )
@@ -967,7 +1148,8 @@ async def _workspace_attempt(
                 await store.heartbeat(
                     intent["id"], worker_id, lease_seconds=cfg.lease_seconds
                 )
-            except BaseException as exc:  # LeaseLost: stop the session at the next turn
+            # LeaseLost (or any heartbeat failure): stop the session at the next turn.
+            except BaseException as exc:  # noqa: BLE001
                 lease_error.append(exc)
                 return
 
@@ -1287,7 +1469,7 @@ async def verifier(ctx: ScientistContext, campaign_id: uuid.UUID) -> dict[str, i
         campaign_id, "ablating", from_statuses=["investigating"]
     )
     datasets = await store.dataset_files(campaign_id)
-    stats = {"promoted": 0, "refuted": 0}
+    stats = {"promoted": 0, "refuted": 0, "inconclusive": 0}
     for fact in await store.nodes(campaign_id, node_type="fact", status="open"):
         patches = await store.evidence_contents(fact["id"], "git_patch")
         if not patches:
@@ -1296,16 +1478,32 @@ async def verifier(ctx: ScientistContext, campaign_id: uuid.UUID) -> dict[str, i
         primary = fact["metrics"].get("primary_metric")
         original = fact["metrics"].get(primary) if primary else None
 
-        # Replication with a different seed (ablation of randomness).
+        # Replication: a new seed plus a bootstrap resample of the independent units, so a
+        # deterministic analysis is perturbed too (a new seed alone changes nothing there).
         rep = await _run_code(
-            ctx, campaign_id, code, seed=2, datasets=datasets, setup=setup
+            ctx,
+            campaign_id,
+            code,
+            seed=2,
+            datasets=datasets,
+            extra={REPLICATE_FILE: json.dumps({"seed": 2}).encode()},
+            setup=setup,
         )
         rep_metrics = parse_metrics(rep.stdout) if rep.ok else None
-        replicated = bool(primary) and replicates(
-            primary, fact["metrics"], rep_metrics, ctx.config.replication_rel_tolerance
+        replicated, replication_note = (
+            replication_outcome(
+                primary,
+                fact["metrics"],
+                rep_metrics,
+                ctx.config.replication_rel_tolerance,
+            )
+            if primary
+            else (False, "no primary metric")
         )
         await store.add_evidence(
-            fact["id"], "stdout_log", f"REPLICATION seed=2\n{rep.stdout}\n{rep.stderr}"
+            fact["id"],
+            "stdout_log",
+            f"REPLICATION seed=2 bootstrap ({replication_note})\n{rep.stdout}\n{rep.stderr}",
         )
 
         # Figure critique with the vision model.
@@ -1330,16 +1528,13 @@ async def verifier(ctx: ScientistContext, campaign_id: uuid.UUID) -> dict[str, i
                 vlm_quality_score=round(score, 2),
             )
 
-        # Both kinds gate on p < 0.05: for 'difference' it rejects "no effect", for
-        # 'equivalence' (TOST) it rejects "outside the tolerance". A large p never supports
-        # an agreement claim, and equivalence claims must report one.
+        # Both kinds gate on p < alpha: for 'difference' it rejects "no effect", for
+        # 'equivalence' (TOST) it rejects "outside the tolerance". A claim without a p_value
+        # was never tested, so it cannot pass. The campaign-wide multiplicity correction
+        # (correct_for_multiple_testing) re-checks this gate once every test is in.
         test_kind = fact["metrics"].get("test_kind", "difference")
-        p_value = fact["metrics"].get("p_value")
-        stats_ok = (
-            float(p_value) < 0.05
-            if isinstance(p_value, (int, float))
-            else test_kind != "equivalence"
-        )
+        p_value = _number(fact["metrics"].get("p_value"))
+        stats_ok = p_value is not None and p_value < ctx.config.alpha
         nonce = new_nonce()
         log = await store.evidence_contents(fact["id"], "stdout_log")
         framed_log = frame_untrusted(
@@ -1356,10 +1551,11 @@ async def verifier(ctx: ScientistContext, campaign_id: uuid.UUID) -> dict[str, i
             prompt=(
                 f"Candidate fact: {fact['title']}\n{fact['hypothesis_or_spec']}\n"
                 f"Metrics (seed 1): {json.dumps(fact['metrics'])}\n"
-                f"Replication (seed 2): {json.dumps(rep_metrics)} -> replicated={replicated}\n"
+                f"Replication (seed 2, bootstrap resample): {json.dumps(rep_metrics)} -> "
+                f"replicated={replicated} ({replication_note})\n"
                 f"Test kind: {test_kind} (p_value is "
                 f"{'a TOST equivalence p' if test_kind == 'equivalence' else 'a no-effect test p'}); "
-                f"statistical gate p < 0.05: {stats_ok}\n"
+                f"statistical gate p < {ctx.config.alpha}: {stats_ok}\n"
                 f"Figure scores: {figure_scores}\nRun log:\n{framed_log.text}\n\n"
                 "Decide whether this is a reliable finding worth reporting. Reject anything "
                 "that does not replicate, overstates the numbers, or could be an artefact."
@@ -1374,7 +1570,8 @@ async def verifier(ctx: ScientistContext, campaign_id: uuid.UUID) -> dict[str, i
             and verdict.confidence >= ctx.config.min_promote_confidence,
         }
         confidence = _clamp01(verdict.confidence)
-        if all(gates.values()):
+        outcome = classify_fact(gates, fact["metrics"].get("supports_hypothesis"))
+        if outcome == "verified":
             finding = await store.create_node(
                 campaign_id,
                 "finding",
@@ -1399,21 +1596,28 @@ async def verifier(ctx: ScientistContext, campaign_id: uuid.UUID) -> dict[str, i
                 fact["id"],
                 "verified",
                 confidence_score=round(confidence, 3),
-                metrics={"gates": gates, "replication": rep_metrics},
+                metrics={
+                    "gates": gates,
+                    "replication": rep_metrics,
+                    "replication_note": replication_note,
+                },
             )
             stats["promoted"] += 1
         else:
+            # refuted: replicated, significant and against the hypothesis. Everything else
+            # that failed a gate is inconclusive and is never reported as a negative result.
             await store.set_node_status(
                 fact["id"],
-                "refuted",
+                outcome,
                 confidence_score=round(confidence, 3),
                 metrics={
                     "gates": gates,
                     "replication": rep_metrics,
+                    "replication_note": replication_note,
                     "skeptic_rationale": verdict.rationale[:1000],
                 },
             )
-            stats["refuted"] += 1
+            stats[outcome] += 1
     rounds = await rounds_completed(ctx, campaign_id) + 1
     await store.set_node_status(
         await _root_goal(ctx, campaign_id), "open", metrics={"rounds_completed": rounds}
@@ -1429,11 +1633,79 @@ async def verifier(ctx: ScientistContext, campaign_id: uuid.UUID) -> dict[str, i
 # ---------------------------------------------------------------------------
 
 
+async def correct_for_multiple_testing(
+    ctx: ScientistContext, campaign_id: uuid.UUID
+) -> dict[str, Any]:
+    """Re-check the statistical gate across every hypothesis the campaign tested.
+
+    Each fact was gated at p < alpha on its own, but a campaign tests up to
+    ``intents_per_round * max_rounds`` hypotheses; uncorrected, the chance of at least one
+    false positive among 12 true nulls is 1 - 0.95**12 = 46%. Once all tests are in, the
+    family is every fact that reached the verifier (whatever its verdict, so the family is
+    not selected by outcome), and each p_value is adjusted (Benjamini-Hochberg by default).
+    A verified or refuted fact whose adjusted p is not below alpha becomes inconclusive,
+    and so does every finding it proved. Deterministic and idempotent: it reads only the
+    raw p-values, so running it again (sealed phase, then writing) changes nothing."""
+    store, cfg = ctx.store, ctx.config
+    tested = [
+        f
+        for f in await store.nodes(campaign_id, node_type="fact")
+        if f["status"] in ("verified", "refuted", "inconclusive")
+        and isinstance((f["metrics"] or {}).get("gates"), dict)
+    ]
+    raw = {
+        f["id"]: p
+        for f in tested
+        if (p := _number(f["metrics"].get("p_value"))) is not None
+    }
+    adjusted = adjusted_p_values(raw, cfg.multiplicity)
+    proved = await store.proved_findings([f["id"] for f in tested])
+    demoted: list[str] = []
+    for f in tested:
+        p_adj = adjusted.get(f["id"])
+        ok = p_adj is not None and p_adj < cfg.alpha
+        info = {
+            "method": cfg.multiplicity,
+            "family_size": len(raw),
+            "alpha": cfg.alpha,
+            "p_adjusted": None if p_adj is None else round(p_adj, 6),
+        }
+        gates = {**f["metrics"]["gates"], "multiplicity": ok}
+        status = f["status"]
+        if status in ("verified", "refuted") and not ok:
+            status = "inconclusive"
+            demoted.append(str(f["id"]))
+            for finding_id in proved.get(f["id"], []):
+                await store.set_node_status(
+                    finding_id,
+                    "inconclusive",
+                    metrics={"multiplicity": ok, "multiple_testing": info},
+                )
+        await store.set_node_status(
+            f["id"], status, metrics={"gates": gates, "multiple_testing": info}
+        )
+    if demoted:
+        await store.record_guard_event(
+            campaign_id,
+            "scope",
+            "deny",
+            {
+                "note": "multiple-testing correction: adjusted p not below alpha",
+                "method": cfg.multiplicity,
+                "family_size": len(raw),
+                "facts": demoted,
+            },
+        )
+    return {"family_size": len(raw), "demoted": len(demoted)}
+
+
 async def sealed_evaluation(ctx: ScientistContext, campaign_id: uuid.UUID) -> int:
     store = ctx.store
     await store.transition_campaign(
         campaign_id, "sealed_eval", from_statuses=["investigating", "ablating"]
     )
+    # Before spending held-out runs: findings that do not survive the correction are out.
+    await correct_for_multiple_testing(ctx, campaign_id)
     sealed = [
         a
         for a in await store.visible_assets(campaign_id, asset_types=["dataset"])
@@ -1453,7 +1725,8 @@ async def sealed_evaluation(ctx: ScientistContext, campaign_id: uuid.UUID) -> in
         facts = [n for n in trace["nodes"] if n["node_type"] == "fact"]
         if not facts:
             continue
-        patches = await store.evidence_contents(facts[0]["id"], "git_patch")
+        fact = facts[0]
+        patches = await store.evidence_contents(fact["id"], "git_patch")
         if not patches:
             continue
         code, setup = recipe_from_patch(patches[0].decode())
@@ -1471,16 +1744,47 @@ async def sealed_evaluation(ctx: ScientistContext, campaign_id: uuid.UUID) -> in
             for k, v in (parse_metrics(run.stdout) or {}).items()
             if k.startswith("sealed_")
         }
+        confirmed, reason = held_out_outcome(
+            fact["metrics"] or {}, run.ok, sealed_metrics, ctx.config.alpha
+        )
         await store.add_evidence(
             finding["id"],
             "sealed_eval_json",
-            json.dumps({"ok": run.ok, "metrics": sealed_metrics}, sort_keys=True),
+            json.dumps(
+                {
+                    "ok": run.ok,
+                    "metrics": sealed_metrics,
+                    "confirmed": confirmed,
+                    "reason": reason,
+                },
+                sort_keys=True,
+            ),
         )
         for asset in sealed:
             await store.link_anchor(finding["id"], asset["id"], "target_benchmark")
+        # The held-out data has the last word: a finding it does not confirm is demoted.
+        status = "verified" if confirmed else "inconclusive"
         await store.set_node_status(
-            finding["id"], "verified", metrics={"sealed_eval": sealed_metrics or None}
+            finding["id"],
+            status,
+            metrics={
+                "sealed_eval": sealed_metrics or None,
+                "held_out": confirmed,
+                "held_out_reason": reason,
+            },
         )
+        if not confirmed:
+            await store.set_node_status(
+                fact["id"],
+                "inconclusive",
+                metrics={
+                    "gates": {
+                        **(fact["metrics"] or {}).get("gates", {}),
+                        "held_out": False,
+                    },
+                    "held_out_reason": reason,
+                },
+            )
         evaluated += 1
     return evaluated
 
@@ -1670,14 +1974,18 @@ async def write_manuscript(
         )
     root_id = await _root_goal(ctx, campaign_id)
     root_metrics = (await store.get_node(root_id))["metrics"] or {}
+    # Idempotent; also covers the budget path, which skips the sealed phase.
+    await correct_for_multiple_testing(ctx, campaign_id)
     findings = await store.nodes(campaign_id, node_type="finding", status="verified")
-    refuted = await store.nodes(campaign_id, node_type="fact", status="refuted")
-    # Observations that ran but did not pass replication/skeptic review. The writer may report
-    # them only as preliminary, so a budget-limited campaign still documents what it measured.
+    facts = await store.nodes(campaign_id, node_type="fact")
+    refuted = [f for f in facts if f["status"] == "refuted"]
+    # Tested but failed a check without contradicting the hypothesis: reported as
+    # inconclusive, with the check that failed, never as a negative result.
+    inconclusive = [f for f in facts if f["status"] == "inconclusive"]
+    # Observations that ran but were never reviewed (the budget ran out first). The writer may
+    # report them only as preliminary, so a budget-limited campaign still documents them.
     preliminary = [
-        f
-        for f in await store.nodes(campaign_id, node_type="fact")
-        if f["status"] not in ("refuted", "verified")
+        f for f in facts if f["status"] not in ("refuted", "verified", "inconclusive")
     ]
 
     # Ground the paper in provenance: only papers anchored somewhere in the graph are citable.
@@ -1689,12 +1997,37 @@ async def write_manuscript(
     anchored = await store.anchored_asset_ids(
         [f["id"] for f in findings]
     ) | await store.anchored_asset_ids([h["id"] for h in hints], max_depth=0)
-    # References the researcher supplied are always citable.
+
+    # A retrieved paper is citable only with an abstract: every citing claim is checked
+    # against it, so without one each such claim would be "unsupported" by construction.
+    # References the researcher supplied are always citable (claims citing one without an
+    # abstract are marked "unchecked", not unsupported).
+    def user_supplied(p: dict[str, Any]) -> bool:
+        return bool((p["metadata"] or {}).get("user_supplied"))
+
+    def checkable(p: dict[str, Any]) -> bool:
+        return user_supplied(p) or has_abstract((p["metadata"] or {}).get("abstract"))
+
     citable = [
         p
         for i, p in papers.items()
-        if i in anchored or (p["metadata"] or {}).get("user_supplied")
-    ] or list(papers.values())[:10]
+        if checkable(p) and (i in anchored or user_supplied(p))
+    ] or [p for p in papers.values() if checkable(p)][:10]
+    no_abstract = sorted(
+        p["canonical_name"][:200]
+        for i, p in papers.items()
+        if i in anchored and not checkable(p)
+    )
+    if no_abstract:
+        await store.record_guard_event(
+            campaign_id,
+            "scope",
+            "deny",
+            {
+                "note": "not citable: no abstract to check claims against",
+                "papers": no_abstract,
+            },
+        )
     keys = {_bib_key(p): p for p in citable}
     bib = build_bibtex(citable)
 
@@ -1715,10 +2048,15 @@ async def write_manuscript(
         for k, p in keys.items()
     )
 
-    def _observations(nodes: list[dict[str, Any]]) -> str:
+    def _observations(nodes: list[dict[str, Any]], *, checks: bool = False) -> str:
+        def failed(n: dict[str, Any]) -> str:
+            gates = (n["metrics"] or {}).get("gates") or {}
+            names = [GATE_NAMES.get(k, k) for k, v in gates.items() if not v]
+            return f"; failed checks: {', '.join(names)}" if checks and names else ""
+
         return (
             "\n".join(
-                f"- {n['title']}: {n['hypothesis_or_spec']} (metrics {json.dumps(n['metrics'])[:400]})"
+                f"- {n['title']}: {n['hypothesis_or_spec']} (metrics {json.dumps(n['metrics'])[:400]}{failed(n)})"
                 for n in nodes[:20]
             )
             or "(none)"
@@ -1726,7 +2064,10 @@ async def write_manuscript(
 
     evidence_text = (
         f"Verified findings (passed replication and skeptic review):\n{finding_text}\n\n"
-        f"Refuted hypotheses (the measurement contradicted the stated hypothesis):\n{_observations(refuted)}\n\n"
+        f"Refuted hypotheses (replicated, statistically significant after the multiple-testing "
+        f"correction, and against the stated hypothesis):\n{_observations(refuted)}\n\n"
+        f"Inconclusive results (measured, but a verification check failed, so they support "
+        f"neither the hypothesis nor its negation):\n{_observations(inconclusive, checks=True)}\n\n"
         f"Preliminary observations (measured but not yet replicated or reviewed):\n{_observations(preliminary)}"
     )
     base_prompt = (
@@ -1734,7 +2075,10 @@ async def write_manuscript(
         f"Citable references (use \\cite{{key}} with these keys only):\n{refs}\n\n"
         "Write each section as LaTeX body text (no preamble). Report numbers exactly as given. Present "
         "verified findings as results; present refuted hypotheses as negative results, with the measured "
-        "values; present preliminary observations only as preliminary, labelled unreplicated. State "
+        "values; present inconclusive results only as inconclusive, with the measured values and the "
+        "check that failed, never as evidence for or against the hypothesis (a failed check is not a "
+        "negative result); present preliminary observations only as preliminary, labelled "
+        "unreplicated. State "
         "clearly that experiments are computational and automated, and what was not established."
     )
     # The cap covers adaptive thinking plus the full LaTeX body; at 16k the writer
@@ -1858,6 +2202,22 @@ async def write_manuscript(
             },
         )
 
+    # Whatever the revision did, no citation the final audit found unsupported or
+    # contradicted reaches the published paper.
+    stripped: list[dict[str, Any]] = []
+    if matrix is not None:
+        ms, matrix, stripped = strip_unsupported_citations(ms, matrix)
+        if stripped:
+            await store.record_guard_event(
+                campaign_id,
+                "scope",
+                "deny",
+                {
+                    "note": "removed citations the cited abstract does not support",
+                    "citations": stripped[:40],
+                },
+            )
+
     dropped: list[str] = []
     cleaned = {}
     for name in Manuscript.model_fields.keys() - {"title"}:
@@ -1918,6 +2278,13 @@ async def write_manuscript(
             "unsupported_claim_rate": matrix.get("unsupported_claim_rate")
             if matrix
             else None,
+            "unsupported_claim_rate_before_removal": matrix.get(
+                "unsupported_claim_rate_before_removal",
+                matrix.get("unsupported_claim_rate"),
+            )
+            if matrix
+            else None,
+            "citations_removed": len(stripped),
             "panel_max_severity": panel.get("max_severity") if panel else None,
         },
     )

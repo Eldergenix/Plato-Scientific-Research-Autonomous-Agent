@@ -37,22 +37,27 @@ from plato.scientist.schemas import (
 from plato.state.models import Source
 
 GOOD_CODE = """
-import json
+import json, os
 import numpy as np
 import matplotlib.pyplot as plt
 seed = int(open("plato_seed.txt").read())
 rng = np.random.default_rng(seed)
 data = np.loadtxt("train.csv", delimiter=",", skiprows=1)
+if os.path.exists("plato_replicate.json"):  # replication: bootstrap resample of the rows
+    r = np.random.default_rng(json.load(open("plato_replicate.json"))["seed"])
+    data = data[r.integers(0, len(data), len(data))]
 y = data[:, 1]
 boot = [rng.choice(y, size=len(y)).mean() for _ in range(200)]
 fig, ax = plt.subplots()
 ax.hist(boot, bins=20); ax.set_xlabel("bootstrap mean of y"); ax.set_ylabel("count")
 fig.savefig("bootstrap.png")
-metrics = {"mean_y": float(y.mean()), "p_value": 0.01}
+metrics = {"mean_y": float(y.mean()), "mean_y_se": float(y.std(ddof=1) / len(y) ** 0.5),
+           "p_value": 0.01}
 try:
     held = json.load(open("plato_sealed.json"))["held_out_files"]
     hy = np.loadtxt(held[0], delimiter=",", skiprows=1)[:, 1]
     metrics["sealed_mean_y"] = float(hy.mean())
+    metrics["sealed_p_value"] = 0.02
 except FileNotFoundError:
     pass
 print("PLATO_METRICS", json.dumps(metrics))
@@ -359,7 +364,11 @@ async def test_campaign_runs_end_to_end_with_full_provenance(store):
     assert len(findings) >= 1
     finding = findings[0]
     # Sealed evaluation ran only after the sealed phase, on the held-out file.
-    assert finding["metrics"]["sealed_eval"] == {"sealed_mean_y": 11.0}
+    assert finding["metrics"]["sealed_eval"] == {
+        "sealed_mean_y": 11.0,
+        "sealed_p_value": 0.02,
+    }
+    assert finding["metrics"]["held_out"] is True
 
     trace = await store.trace_provenance(finding["id"])
     kinds = {n["node_type"] for n in trace["nodes"]}
@@ -462,13 +471,25 @@ async def test_campaign_runs_end_to_end_with_full_provenance(store):
     draft = await store.get_draft(cid)
     assert draft["stage"] == "final"
     assert json.loads(draft["body"])["title"] == "Mean of y"
-    # Every judged claim keeps its seed-2 replication values (for the replication chart).
+    # Every judged claim keeps its replication values (for the replication chart): the
+    # replica ran on a bootstrap resample, so it measured a different mean that agrees
+    # within its standard errors.
     judged = [
         f
         for f in await store.nodes(cid, node_type="fact")
-        if f["status"] in ("verified", "refuted")
+        if f["status"] in ("verified", "refuted", "inconclusive")
     ]
-    assert judged and all(f["metrics"]["replication"]["mean_y"] == 3.0 for f in judged)
+    assert judged and all(
+        f["metrics"]["replication"]["mean_y"] != 3.0
+        and f["metrics"]["replication_note"] == "agrees"
+        for f in judged
+    )
+    # Every tested hypothesis joined one Benjamini-Hochberg family.
+    assert all(
+        f["metrics"]["multiple_testing"]["family_size"] == len(judged)
+        and f["metrics"]["gates"]["multiplicity"] is True
+        for f in judged
+    )
 
 
 async def test_finished_campaign_is_idempotent_on_rerun(store):
@@ -612,22 +633,56 @@ async def test_unknown_campaign_raises(store):
 # ---------------------------------------------------------------------------
 
 
-def _code_printing(key: str, p_value: float) -> str:
-    # Deterministic across seeds so replication agrees.
+def _code_printing(
+    key: str, p_value: float, *, resample: bool = True, sealed: float | None = None
+) -> str:
+    # The replication run (bootstrap manifest present) measures a slightly different value
+    # that agrees within tolerance; ``resample=False`` ignores the manifest, as a careless
+    # script would, so the replica prints identical numbers.
+    honour = (
+        "v = 0.951 if os.path.exists('plato_replicate.json') else 0.95\n"
+        if resample
+        else "v = 0.95\n"
+    )
+    # On the held-out files the same test is repeated with p = ``sealed`` (None: the
+    # script does not report a held-out test at all).
+    held_out = (
+        ""
+        if sealed is None
+        else "if os.path.exists('plato_sealed.json'):\n"
+        f"    m.update({{'sealed_{key}': v, 'sealed_p_value': {sealed}}})\n"
+    )
     return (
-        "import json\n"
+        "import json, os\n"
         "seed = int(open('plato_seed.txt').read())\n"
-        f"print('PLATO_METRICS', json.dumps({{{key!r}: 0.95, 'p_value': {p_value}}}))\n"
+        + honour
+        + f"m = {{{key!r}: v, 'p_value': {p_value}}}\n"
+        + held_out
+        + "print('PLATO_METRICS', json.dumps(m))\n"
     )
 
 
 class GateModel(FakeModel):
     """One intent whose metric name is a description, as live planners write it."""
 
-    def __init__(self, store, *, test_kind, p_value, fail_revision=False, **kw):
+    def __init__(
+        self,
+        store,
+        *,
+        test_kind,
+        p_value,
+        fail_revision=False,
+        resample=True,
+        supports="yes",
+        sealed=0.001,
+        **kw,
+    ):
         super().__init__(store, **kw)
+        self.sealed = sealed
         self.test_kind = test_kind
         self.p_value = p_value
+        self.resample = resample
+        self.supports = supports
         self.fail_revision = fail_revision
         self.code_prompts: list[str] = []
 
@@ -659,7 +714,21 @@ class GateModel(FakeModel):
             key = prompt.split("Primary metric key: ")[1].split("\n")[0]
             # First draft prints the wrong key; the worker must be told and retry.
             printed = "coverage" if len(self.code_prompts) == 1 else key
-            return ExperimentCode(code=_code_printing(printed, self.p_value), notes="n")
+            return ExperimentCode(
+                code=_code_printing(
+                    printed, self.p_value, resample=self.resample, sealed=self.sealed
+                ),
+                notes="n",
+            )
+        if schema is Observation:
+            await self.store.reserve_tokens(kw["campaign_id"], self.per_call)
+            self.calls.append(purpose)
+            return Observation(
+                title="Coverage measured",
+                observation="coverage = 0.95",
+                supports_hypothesis=self.supports,
+                follow_up_hints=[],
+            )
         if purpose == "manuscript_revision" and self.fail_revision:
             from plato.scientist.llm import ModelOutputError
 
@@ -717,6 +786,170 @@ async def test_equivalence_claim_with_large_p_is_not_verified(store):
     assert gates["replicated"] and not gates["stats_ok"]
     assert not await store.nodes(cid, node_type="finding", status="verified")
     assert root["status"] == "exhausted"
+    # Failing a check is not evidence against the hypothesis: inconclusive, not refuted.
+    assert facts[0]["status"] == "inconclusive"
+
+
+async def test_replication_that_ignores_the_resample_is_inconclusive(store):
+    # A deterministic script that ignores the bootstrap manifest prints identical numbers:
+    # that is no replication at all, so the claim is inconclusive (not refuted), and the
+    # paper must say so rather than report a negative result.
+    cid, model, _, facts, root = await _run_gate(
+        store, test_kind="difference", p_value=0.001, resample=False
+    )
+    fact = facts[0]
+    assert fact["status"] == "inconclusive", fact["metrics"]
+    assert fact["metrics"]["gates"]["replicated"] is False
+    assert "identical" in fact["metrics"]["replication_note"]
+    assert not await store.nodes(cid, node_type="finding", status="verified")
+    assert root["status"] == "exhausted"
+    prompt = model.prompts["manuscript"]
+    refuted = prompt.split("Refuted hypotheses")[1].split("Inconclusive results")[0]
+    inconclusive = prompt.split("Inconclusive results")[1].split("Preliminary")[0]
+    assert "(none)" in refuted and fact["title"] in inconclusive
+    assert "failed checks: replication on a bootstrap resample" in inconclusive
+    assert "never as evidence for or against" in prompt
+
+
+async def test_held_out_data_that_does_not_confirm_a_finding_demotes_it(store):
+    for sealed, reason in ((0.4, "not significant"), (None, "not reported")):
+        cid, _, campaign, facts, root = await _run_gate(
+            store, test_kind="equivalence", p_value=0.001, sealed=sealed
+        )
+        assert campaign["status"] == "completed"
+        assert not await store.nodes(cid, node_type="finding", status="verified")
+        (finding,) = await store.nodes(cid, node_type="finding")
+        assert finding["status"] == "inconclusive"
+        assert finding["metrics"]["held_out"] is False
+        assert reason in finding["metrics"]["held_out_reason"]
+        assert facts[0]["status"] == "inconclusive"
+        assert facts[0]["metrics"]["gates"]["held_out"] is False
+        receipt = json.loads(
+            (await store.evidence_contents(finding["id"], "sealed_eval_json"))[0]
+        )
+        assert receipt["confirmed"] is False and reason in receipt["reason"]
+        assert root["status"] == "exhausted"
+
+
+async def test_multiple_testing_correction_demotes_findings_that_do_not_survive(store):
+    from plato.scientist.nodes import ScientistConfig, correct_for_multiple_testing
+
+    _, cid, *_ = await _new_campaign(store)
+    gates = {"replicated": True, "stats_ok": True, "figures_ok": True, "skeptic": True}
+    # Five tested hypotheses, each below 0.05 on its own where it passed. BH at q = 0.05
+    # keeps p = 0.001 and 0.004 (adjusted 0.005,
+    # 0.01) and drops 0.035 (adjusted 0.035 * 5 / 3 = 0.0583, not below alpha). The open fact was never
+    # tested and is not part of the family.
+    spec = {
+        "a": ("verified", 0.001),
+        "b": ("refuted", 0.004),
+        "c": ("verified", 0.035),
+        "d": ("inconclusive", 0.2),
+        "e": ("inconclusive", 0.9),
+    }
+    ids = {}
+    for name, (status, p) in spec.items():
+        node = await store.create_node(
+            cid,
+            "fact",
+            name,
+            name,
+            status=status,
+            metrics={"p_value": p, "gates": dict(gates)},
+        )
+        ids[name] = node.id
+    await store.create_node(cid, "fact", "open", "o", metrics={"p_value": 0.0001})
+    findings = {}
+    for name in ("a", "c"):
+        f = await store.create_node(cid, "finding", name, name, status="verified")
+        await store.add_edge(cid, ids[name], f.id, "proves", "r")
+        findings[name] = f.id
+    ctx = ScientistContext(
+        store=store, model=None, config=ScientistConfig(multiplicity="bh")
+    )
+    out = await correct_for_multiple_testing(ctx, cid)
+    assert out == {"family_size": 5, "demoted": 1}
+    again = await correct_for_multiple_testing(ctx, cid)  # idempotent
+    assert again == {"family_size": 5, "demoted": 0}
+    status = {n["title"]: n for n in await store.nodes(cid, node_type="fact")}
+    assert status["a"]["status"] == "verified" and status["b"]["status"] == "refuted"
+    assert status["c"]["status"] == "inconclusive"
+    assert status["c"]["metrics"]["gates"]["multiplicity"] is False
+    assert status["c"]["metrics"]["multiple_testing"]["p_adjusted"] == 0.058333
+    assert status["open"]["status"] == "open"
+    kept = await store.get_node(findings["a"])
+    dropped = await store.get_node(findings["c"])
+    assert kept["status"] == "verified" and dropped["status"] == "inconclusive"
+    assert any(
+        "multiple-testing" in json.dumps(e["detail"])
+        for e in await store.guard_events(cid)
+    )
+
+
+def test_adjusted_p_values_match_statsmodels():
+    import numpy as np
+    from statsmodels.stats.multitest import multipletests
+
+    from plato.scientist.nodes import adjusted_p_values
+
+    rng = np.random.default_rng(7)
+    for n in (1, 2, 5, 12, 40):
+        p = rng.uniform(0, 0.2, n).tolist()
+        p[0] = p[-1]  # a tie
+        for method, sm in (("bh", "fdr_bh"), ("holm", "holm")):
+            ours = adjusted_p_values(dict(enumerate(p)), method)
+            ref = multipletests(p, method=sm)[1]
+            assert np.allclose([ours[i] for i in range(n)], ref), (method, n)
+    assert adjusted_p_values({"x": 0.03}, "none") == {"x": 0.03}
+
+
+def test_classify_fact_separates_refuted_from_inconclusive():
+    from plato.scientist.nodes import classify_fact
+
+    ok = {"replicated": True, "stats_ok": True, "figures_ok": True, "skeptic": True}
+    assert classify_fact(ok, "yes") == "verified"
+    rejected = {**ok, "skeptic": False}
+    # Replicated, significant and against the hypothesis: the evidence contradicts it.
+    assert classify_fact(rejected, "no") == "refuted"
+    # Anything weaker is inconclusive, however close it came.
+    assert classify_fact(rejected, "yes") == "inconclusive"
+    assert classify_fact({**rejected, "stats_ok": False}, "no") == "inconclusive"
+    assert classify_fact({**rejected, "replicated": False}, "no") == "inconclusive"
+    assert classify_fact({**rejected, "multiplicity": False}, "no") == "inconclusive"
+
+
+def test_replication_outcome_and_held_out_outcome():
+    from plato.scientist.nodes import held_out_outcome, replication_outcome
+
+    orig = {"m": 0.95, "p_value": 0.01, "seed": 1}
+    assert replication_outcome("m", orig, None, 0.1) == (
+        False,
+        "replication run failed",
+    )
+    same = replication_outcome("m", orig, {"m": 0.95, "p_value": 0.01}, 0.1)
+    assert same[0] is False and "identical" in same[1]
+    assert replication_outcome("m", orig, {"m": 0.951, "p_value": 0.01}, 0.1) == (
+        True,
+        "agrees",
+    )
+    assert replication_outcome("m", orig, {"m": 0.5, "p_value": 0.01}, 0.1)[0] is False
+
+    fact = {"primary_metric": "d", "d": 0.4, "test_kind": "difference"}
+    assert held_out_outcome(
+        fact, True, {"sealed_d": 0.3, "sealed_p_value": 0.01}, 0.05
+    )[0]
+    assert not held_out_outcome(fact, False, {}, 0.05)[0]
+    assert "not reported" in held_out_outcome(fact, True, {"sealed_d": 0.3}, 0.05)[1]
+    assert (
+        "other way"
+        in held_out_outcome(
+            fact, True, {"sealed_d": -0.3, "sealed_p_value": 0.01}, 0.05
+        )[1]
+    )
+    equiv = {**fact, "test_kind": "equivalence"}
+    assert held_out_outcome(
+        equiv, True, {"sealed_d": -0.3, "sealed_p_value": 0.01}, 0.05
+    )[0]
 
 
 async def test_failed_revision_keeps_the_first_draft(store):
@@ -746,7 +979,13 @@ def test_metric_key_and_required_metrics():
     spec = {"primary_metric": "cov", "test_kind": "equivalence"}
     assert missing_required_metrics({"cov": 0.9}, spec) == ["p_value"]
     assert missing_required_metrics({"cov": 0.9, "p_value": 0.01}, spec) == []
-    assert missing_required_metrics({"x": 1}, {"primary_metric": "cov"}) == ["cov"]
+    # Every claim is a test: a difference claim needs its p_value too.
+    diff = {"primary_metric": "cov", "test_kind": "difference"}
+    assert missing_required_metrics({"cov": 0.9}, diff) == ["p_value"]
+    assert missing_required_metrics({"x": 1}, {"primary_metric": "cov"}) == [
+        "cov",
+        "p_value",
+    ]
 
 
 def test_replication_uses_standard_errors_for_near_zero_metrics():
@@ -804,3 +1043,60 @@ async def test_draft_sink_throttles_and_flushes(store, campaign):
     await sink.stage_to("final", '{"title": "T"}')
     d = await store.get_draft(cid)
     assert d["stage"] == "final" and d["body"] == '{"title": "T"}'
+
+
+async def test_papers_without_an_abstract_are_backfilled_or_not_citable(store):
+    now = datetime.now(UTC)
+    stub = Source(
+        id="9",
+        doi="10.1000/noabs",
+        title="Bootstrap without an abstract",
+        authors=["D. Author"],
+        year=2021,
+        abstract="",
+        retrieved_via="crossref",
+        fetched_at=now,
+    )
+
+    async def retriever(query, limit, *, sources=None):
+        return [stub]
+
+    found = "Bootstrap confidence intervals for the mean, studied in depth across 40 designs."
+    for fetched in (None, found):
+
+        async def fetcher(srcs, fetched=fetched):
+            return [fetched if not s.abstract else None for s in srcs]
+
+        _, cid, *_ = await _new_campaign(store)
+        model = FakeModel(store)
+        await run_campaign(
+            ScientistContext(
+                store=store,
+                model=model,
+                retriever=retriever,
+                citation_checker=fake_checker,
+                abstract_fetcher=fetcher,
+            ),
+            cid,
+        )
+        (paper,) = await store.visible_assets(cid, asset_types=["paper"])
+        root = next(
+            g
+            for g in await store.nodes(cid, node_type="goal")
+            if g["dedup_key"] == "root-goal"
+        )
+        receipts = {
+            e["artifact_type"]: e for e in await store.evidence_for([root["id"]])
+        }
+        bib = (await store.evidence_content(receipts["bibtex"]["id"])).decode()
+        events = json.dumps([e["detail"] for e in await store.guard_events(cid)])
+        if fetched is None:
+            # Cited by the hint but with nothing to check claims against: not citable.
+            assert "abstract" not in paper["metadata"]
+            assert _bib_key(paper) not in bib
+            assert "no abstract to check claims against" in events
+        else:
+            assert paper["metadata"]["abstract"] == fetched
+            assert paper["metadata"]["abstract_source"] == "openalex_or_arxiv"
+            assert _bib_key(paper) in bib
+            assert "no abstract to check claims against" not in events

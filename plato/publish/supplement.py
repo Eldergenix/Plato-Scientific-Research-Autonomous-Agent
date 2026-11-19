@@ -27,9 +27,8 @@ from plato.scientist.nodes import code_from_patch
 from .collect import Materials
 from .figures import summary_rows
 
-FIXED_TIME = datetime(
-    2023, 11, 14, 22, 13, 20
-)  # SOURCE_DATE_EPOCH 1700000000, naive for openpyxl
+# SOURCE_DATE_EPOCH 1700000000; naive on purpose: openpyxl rejects tz-aware datetimes.
+FIXED_TIME = datetime(2023, 11, 14, 22, 13, 20)  # noqa: DTZ001
 _SAFE = re.compile(r"[^A-Za-z0-9._-]+")
 
 

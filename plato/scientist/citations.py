@@ -104,3 +104,129 @@ async def check_sources(
     finally:
         if http_client is None:
             await client.aclose()
+
+
+# ----------------------------------------------------------------------------- abstracts
+# A paper is citable only with an abstract: the claim-evidence matrix judges every citation
+# against the cited abstract, so a paper without one makes each claim citing it
+# "unsupported" by construction. Abstracts shorter than this are titles or stubs.
+MIN_ABSTRACT_CHARS = 80
+_OPENALEX_WORKS = "https://api.openalex.org/works"
+_ARXIV_API = "https://export.arxiv.org/api/query"
+_ATOM = "{http://www.w3.org/2005/Atom}"
+
+
+def has_abstract(text: str | None) -> bool:
+    return len((text or "").strip()) >= MIN_ABSTRACT_CHARS
+
+
+def _openalex_abstract(inverted: dict[str, list[int]] | None) -> str:
+    if not inverted:
+        return ""
+    words = sorted((i, w) for w, idxs in inverted.items() for i in idxs or [])
+    return " ".join(w for _, w in words)
+
+
+def _bare_doi(doi: str | None) -> str:
+    d = (doi or "").strip().lower()
+    for prefix in ("https://doi.org/", "http://doi.org/", "doi:"):
+        d = d.removeprefix(prefix)
+    return d
+
+
+async def _openalex_by_doi(
+    client: httpx.AsyncClient, dois: list[str]
+) -> dict[str, str]:
+    found: dict[str, str] = {}
+    for i in range(0, len(dois), 50):  # OpenAlex OR-filters take up to 50 values
+        batch = dois[i : i + 50]
+        resp = await client.get(
+            _OPENALEX_WORKS,
+            params={
+                "filter": "doi:" + "|".join(batch),
+                "select": "doi,abstract_inverted_index",
+                "per-page": "50",
+            },
+        )
+        resp.raise_for_status()
+        for work in resp.json().get("results", []):
+            text = _openalex_abstract(work.get("abstract_inverted_index"))
+            if has_abstract(text):
+                found[_bare_doi(work.get("doi"))] = text
+    return found
+
+
+async def _arxiv_by_id(client: httpx.AsyncClient, ids: list[str]) -> dict[str, str]:
+    from defusedxml import ElementTree
+
+    found: dict[str, str] = {}
+    for i in range(0, len(ids), 50):
+        batch = ids[i : i + 50]
+        resp = await client.get(
+            _ARXIV_API, params={"id_list": ",".join(batch), "max_results": "50"}
+        )
+        resp.raise_for_status()
+        root = ElementTree.fromstring(resp.content)
+        for entry in root.iter(f"{_ATOM}entry"):
+            url = (entry.findtext(f"{_ATOM}id") or "").rsplit("/abs/", 1)[-1]
+            text = " ".join((entry.findtext(f"{_ATOM}summary") or "").split())
+            if has_abstract(text):
+                found[_arxiv_base(url)] = text
+    return found
+
+
+def _arxiv_base(arxiv_id: str | None) -> str:
+    a = (arxiv_id or "").strip()
+    for prefix in ("arxiv:", "arXiv:"):
+        a = a.removeprefix(prefix)
+    head, _, tail = a.rpartition("v")
+    return head if head and tail.isdigit() else a
+
+
+async def fetch_missing_abstracts(
+    sources: list[Any],
+    *,
+    timeout: float = 20.0,
+    http_client: httpx.AsyncClient | None = None,
+) -> list[str | None]:
+    """Abstract for each source that lacks one (OpenAlex by DOI, then arXiv by id), in
+    input order; None where none was found or the source already had one. Never raises:
+    a registry outage leaves the paper without an abstract, and so not citable."""
+    out: list[str | None] = [None] * len(sources)
+    missing = [i for i, s in enumerate(sources) if not has_abstract(s.abstract)]
+    if not missing:
+        return out
+    client = http_client or httpx.AsyncClient(
+        headers={"User-Agent": _USER_AGENT}, timeout=10.0, follow_redirects=True
+    )
+    try:
+        dois = sorted({_bare_doi(sources[i].doi) for i in missing if sources[i].doi})
+        by_doi: dict[str, str] = {}
+        if dois:
+            try:
+                by_doi = await asyncio.wait_for(_openalex_by_doi(client, dois), timeout)
+            except Exception as exc:  # noqa: BLE001 - best effort
+                logger.warning("OpenAlex abstract lookup failed: %s", exc)
+        for i in missing:
+            out[i] = by_doi.get(_bare_doi(sources[i].doi)) if sources[i].doi else None
+        arxiv = sorted(
+            {
+                _arxiv_base(getattr(sources[i], "arxiv_id", None))
+                for i in missing
+                if out[i] is None and getattr(sources[i], "arxiv_id", None)
+            }
+        )
+        if arxiv:
+            try:
+                by_arxiv = await asyncio.wait_for(_arxiv_by_id(client, arxiv), timeout)
+            except Exception as exc:  # noqa: BLE001 - best effort
+                logger.warning("arXiv abstract lookup failed: %s", exc)
+                by_arxiv = {}
+            for i in missing:
+                aid = getattr(sources[i], "arxiv_id", None)
+                if out[i] is None and aid:
+                    out[i] = by_arxiv.get(_arxiv_base(aid))
+        return out
+    finally:
+        if http_client is None:
+            await client.aclose()

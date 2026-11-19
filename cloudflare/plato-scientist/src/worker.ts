@@ -17,6 +17,7 @@ import * as exportsApi from "./exports";
 import * as integrations from "./integrations";
 import * as library from "./library";
 import { db, type Env, HttpError, json, TERMINAL_STATUSES, UUID_RE } from "./lib";
+import { withSecurityHeaders } from "./headers";
 import * as projects from "./projects";
 
 export { ProjectAgent } from "./agent";
@@ -174,7 +175,7 @@ export default {
     // and JSON-only bodies, this closes cross-site request forgery).
     if (req.method !== "GET" && req.method !== "HEAD" && url.pathname !== "/api/integrations/webhook") {
       const origin = req.headers.get("origin");
-      if (origin && origin !== url.origin) return json({ error: "cross-origin request refused" }, 403);
+      if (origin && origin !== url.origin) return withSecurityHeaders(json({ error: "cross-origin request refused" }, 403));
     }
     const sql = db(env);
     const c: Ctx = { req, env, ctx, url, sql, who: null, cookies: [] };
@@ -191,10 +192,8 @@ export default {
       // Close only after the queries ran; Hyperdrive keeps the pooled origin connection warm.
       ctx.waitUntil(sql.end({ timeout: 5 }).catch(() => undefined));
     }
-    if (c.cookies.length) {
-      res = new Response(res.body, res);
-      for (const cookie of c.cookies) res.headers.append("set-cookie", cookie);
-    }
+    res = withSecurityHeaders(res);
+    for (const cookie of c.cookies) res.headers.append("set-cookie", cookie);
     return res;
   },
 

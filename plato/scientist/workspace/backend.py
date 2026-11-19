@@ -19,6 +19,7 @@ local development only and offers no isolation.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import shlex
 import shutil
@@ -40,6 +41,8 @@ _TRANSPORT_GRACE = 30.0
 _REQUEST_TIMEOUT = 180.0
 # Attempts to create a sandbox; creation is retried on transport errors only.
 _CREATE_ATTEMPTS = 3
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -87,7 +90,9 @@ def _transient(exc: BaseException) -> bool:
     import httpx
     from e2b import TimeoutException
 
-    return isinstance(exc, (httpx.TransportError, TimeoutException, TimeoutError, ConnectionError))
+    return isinstance(
+        exc, (httpx.TransportError, TimeoutException, TimeoutError, ConnectionError)
+    )
 
 
 class E2BBackend:
@@ -154,7 +159,11 @@ class E2BBackend:
             exit_code, out, err = exc.exit_code, exc.stdout or "", exc.stderr or ""
         except TimeoutException as exc:
             return CommandOutcome(
-                None, "", f"sandbox transport timed out: {exc}", time.monotonic() - started, True
+                None,
+                "",
+                f"sandbox transport timed out: {exc}",
+                time.monotonic() - started,
+                True,
             )
         return CommandOutcome(
             exit_code,
@@ -165,7 +174,9 @@ class E2BBackend:
         )
 
     async def write_bytes(self, path: str, data: bytes) -> None:
-        await self._sbx.files.write(self._abs(path), data, request_timeout=_REQUEST_TIMEOUT)
+        await self._sbx.files.write(
+            self._abs(path), data, request_timeout=_REQUEST_TIMEOUT
+        )
 
     async def read_bytes(self, path: str) -> bytes:
         return bytes(
@@ -187,8 +198,8 @@ class E2BBackend:
     async def close(self) -> None:
         try:
             await self._sbx.kill()
-        except Exception:  # already gone (timeout) is fine
-            pass
+        except Exception as exc:  # noqa: BLE001 - already gone (timeout) is fine
+            logger.debug("E2B sandbox kill: %s", exc)
 
     def _abs(self, path: str) -> str:
         return path if path.startswith("/") else f"{self.workdir}/{path}"

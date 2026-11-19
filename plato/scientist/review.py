@@ -21,6 +21,7 @@ import re
 import uuid
 from typing import Any
 
+from .citations import has_abstract
 from .guard import frame_untrusted, framing_instructions
 from .schemas import (
     EvidenceMatrix,
@@ -134,39 +135,52 @@ async def build_evidence_matrix(
     abstracts = {
         k: (papers[k]["metadata"].get("abstract") or "") for k in {k for _, k in pairs}
     }
+    # A citation to a paper without an abstract cannot be checked: it is "unchecked", not
+    # "unsupported" (only the researcher's own references can be cited without one).
+    judged = [(c, k) for c, k in pairs if has_abstract(abstracts[k])]
     framed_sources = "\n".join(
         frame_untrusted(
-            f"{k}: {papers[k]['canonical_name']}\n{abstracts[k] or '(no abstract available)'}",
+            f"{k}: {papers[k]['canonical_name']}\n{abstracts[k]}",
             source=k,
             nonce=nonce,
         ).text
-        for k in sorted(abstracts)
+        for k in sorted({k for _, k in judged})
     )
     lines = "\n".join(
         f"[{i}] claim ({c['section']}): {c['text']}\n    cites: {k}"
-        for i, (c, k) in enumerate(pairs)
+        for i, (c, k) in enumerate(judged)
     )
-    out = await model.structured(
-        campaign_id=campaign_id,
-        purpose="evidence_matrix",
-        schema=EvidenceMatrix,
-        effort="medium",
-        max_tokens=12000,
-        system=_system("citation auditor", nonce),
-        prompt=(
-            "For each numbered claim-citation pair, judge whether the cited paper's abstract "
-            "supports the claim. Judge only from the abstract text given. Quote the abstract "
-            "verbatim for supports and refutes; a paraphrase is not a quote.\n\n"
-            f"Cited abstracts:\n{framed_sources}\n\nPairs:\n{lines}"
-        ),
+    out = (
+        EvidenceMatrix(links=[])
+        if not judged
+        else await model.structured(
+            campaign_id=campaign_id,
+            purpose="evidence_matrix",
+            schema=EvidenceMatrix,
+            effort="medium",
+            max_tokens=12000,
+            system=_system("citation auditor", nonce),
+            prompt=(
+                "For each numbered claim-citation pair, judge whether the cited paper's abstract "
+                "supports the claim. Judge only from the abstract text given. Quote the abstract "
+                "verbatim for supports and refutes; a paraphrase is not a quote.\n\n"
+                f"Cited abstracts:\n{framed_sources}\n\nPairs:\n{lines}"
+            ),
+        )
     )
     verdicts: dict[int, Any] = {
-        link.pair_index: link for link in out.links if 0 <= link.pair_index < len(pairs)
+        link.pair_index: link
+        for link in out.links
+        if 0 <= link.pair_index < len(judged)
     }
+    index = {(c["id"], k): i for i, (c, k) in enumerate(judged)}
     by_claim: dict[int, dict[str, Any]] = {}
-    for i, (claim, key) in enumerate(pairs):
-        link = verdicts.get(i)
-        support = link.support if link else "unclear"
+    for claim, key in pairs:
+        i = index.get((claim["id"], key))
+        link = verdicts.get(i) if i is not None else None
+        support = (
+            (link.support if link else "unclear") if i is not None else "unchecked"
+        )
         span = quote_span(abstracts[key], link.quote) if link else None
         verified = span is not None
         if support in ("supports", "refutes") and not verified:
@@ -187,27 +201,127 @@ async def build_evidence_matrix(
                 "strength": link.strength if link else "weak",
                 "quote": abstracts[key][span[0] : span[1]] if span else "",
                 "quote_span": list(span) if span else None,
-                "rationale": (link.rationale if link else "not judged")[:400],
+                "rationale": (
+                    link.rationale
+                    if link
+                    else "no abstract to check against"
+                    if i is None
+                    else "not judged"
+                )[:400],
             }
         )
     for entry in by_claim.values():
-        kinds = {c["support"] for c in entry["citations"]}
-        entry["verdict"] = (
-            "refuted"
-            if "refutes" in kinds
-            else "supported"
-            if "supports" in kinds
-            else "unsupported"
-        )
-    claims_out = list(by_claim.values())
-    supported = sum(1 for c in claims_out if c["verdict"] == "supported")
+        entry["verdict"] = claim_verdict(entry["citations"])
+    return {**result, **_rates(list(by_claim.values())), "pairs_judged": len(verdicts)}
+
+
+def claim_verdict(citations: list[dict[str, Any]]) -> str:
+    kinds = {c["support"] for c in citations}
+    if "refutes" in kinds:
+        return "refuted"
+    if "supports" in kinds:
+        return "supported"
+    if kinds == {"unchecked"}:
+        return "unchecked"
+    return "unsupported"
+
+
+def _rates(claims: list[dict[str, Any]]) -> dict[str, Any]:
+    """Claim counts and the unsupported rate over the claims that could be checked."""
+    checked = [c for c in claims if c["verdict"] != "unchecked"]
+    supported = sum(1 for c in checked if c["verdict"] == "supported")
     return {
-        **result,
-        "claims": claims_out,
-        "pairs_judged": len(verdicts),
+        "claims": claims,
         "supported_claims": supported,
-        "unsupported_claim_rate": round(1 - supported / len(claims_out), 4),
+        "unchecked_claims": len(claims) - len(checked),
+        "unsupported_claim_rate": round(1 - supported / len(checked), 4)
+        if checked
+        else 0.0,
     }
+
+
+def _sentences(body: str) -> list[tuple[int, int]]:
+    """Spans of the sentences ``extract_cited_claims`` splits ``body`` into."""
+    spans, start = [], 0
+    for m in _SENTENCE_END.finditer(body):
+        spans.append((start, m.start()))
+        start = m.end()
+    spans.append((start, len(body)))
+    return spans
+
+
+def strip_unsupported_citations(
+    ms: Manuscript, matrix: dict[str, Any]
+) -> tuple[Manuscript, dict[str, Any], list[dict[str, Any]]]:
+    """Remove every citation the final matrix found unsupported or contradicted.
+
+    The revision is asked to fix these, but it is one model pass and may not. Citation
+    integrity cannot depend on that: a sentence keeps only the citations whose abstract
+    supports it (or that could not be checked). The claim text itself is left as written;
+    it now stands on the paper's own evidence, which the reviewers judged. Returns the
+    manuscript, the matrix describing the published paper, and what was removed."""
+    bad: dict[tuple[str, str], set[str]] = {}
+    for c in matrix.get("claims", []):
+        if c["verdict"] not in ("unsupported", "refuted"):
+            continue
+        keys = {
+            x["key"]
+            for x in c["citations"]
+            if x["support"] not in ("supports", "unchecked")
+        }
+        if keys:
+            bad.setdefault((c["section"], c["text"]), set()).update(keys)
+    if not bad:
+        return ms, matrix, []
+    removed: list[dict[str, Any]] = []
+    update: dict[str, str] = {}
+    for section in _SECTIONS:
+        body = getattr(ms, section, "") or ""
+        out, last = [], 0
+        for a, b in _sentences(body):
+            sentence = body[a:b]
+            drop = bad.get((section, _plain(sentence)[:600]))
+            if drop:
+
+                def keep(m: re.Match[str], drop: set[str] = drop) -> str:
+                    keys = [k.strip() for k in m.group(1).split(",")]
+                    left = [k for k in keys if k and k not in drop]
+                    return (
+                        m.group(0).replace(m.group(1), ",".join(left)) if left else ""
+                    )
+
+                new = _CITE.sub(keep, sentence)
+                new = re.sub(r"[ \t]+([.,;:!?)])", r"\1", new)
+                new = re.sub(r"[ \t]{2,}", " ", new)
+                if new != sentence:
+                    removed.append(
+                        {
+                            "section": section,
+                            "text": _plain(sentence)[:300],
+                            "keys": sorted(drop),
+                        }
+                    )
+                out.append(body[last:a] + new)
+            else:
+                out.append(body[last:b])
+            last = b
+        out.append(body[last:])
+        update[section] = "".join(out)
+    kept_claims = []
+    for c in matrix.get("claims", []):
+        drop = bad.get((c["section"], c["text"]), set())
+        cites = [x for x in c["citations"] if x["key"] not in drop]
+        if cites:
+            kept_claims.append(
+                {**c, "citations": cites, "verdict": claim_verdict(cites)}
+            )
+    final = {
+        **matrix,
+        **_rates(kept_claims),
+        "citations_removed": removed,
+        "unsupported_claim_rate_before_removal": matrix.get("unsupported_claim_rate"),
+    }
+    return ms.model_copy(update=update), final, removed
 
 
 def matrix_required_changes(matrix: dict[str, Any]) -> list[str]:
@@ -330,7 +444,7 @@ def matrix_digest(matrix: dict[str, Any]) -> str:
         return "(no cited claims)"
     counts = {
         v: sum(1 for c in claims if c["verdict"] == v)
-        for v in ("supported", "unsupported", "refuted")
+        for v in ("supported", "unsupported", "refuted", "unchecked")
     }
     return (
         json.dumps(counts)
@@ -338,7 +452,7 @@ def matrix_digest(matrix: dict[str, Any]) -> str:
         + "\n".join(
             f"- [{c['verdict']}] {c['text'][:200]}"
             for c in claims
-            if c["verdict"] != "supported"
+            if c["verdict"] not in ("supported", "unchecked")
         )
     )
 

@@ -65,7 +65,9 @@ def test_worker_catalogue_matches_python():
 
 def test_defaults_opus_orchestrator_haiku_sub_agents():
     assert models.ORCHESTRATOR_DEFAULT == "claude-opus-5-5"
-    assert models.role_models({}) == {r: "claude-haiku-5-5" for r in models.WORKER_ROLES}
+    assert models.role_models({}) == {
+        r: "claude-haiku-5-5" for r in models.WORKER_ROLES
+    }
     assert "orchestrator" not in models.WORKER_ROLES
 
 
@@ -96,11 +98,15 @@ def test_weights_follow_price_and_unknown_models_are_never_undercharged():
 
 def test_every_model_call_purpose_has_a_role():
     """A new call purpose must be given a role, or it would silently run on the default."""
-    src = "\n".join(p.read_text("utf-8") for p in (ROOT / "plato/scientist").rglob("*.py"))
+    src = "\n".join(
+        p.read_text("utf-8") for p in (ROOT / "plato/scientist").rglob("*.py")
+    )
     # Sandbox purposes label E2B/Modal sessions, not model calls.
     sandbox = {"workspace", "compile", "experiment"}
     purposes = set(re.findall(r'purpose="([a-z_]+)"', src)) - sandbox
-    purposes |= {"workspace_engineer"} | {f"review_{a}" for a in ("methodology", "statistics", "novelty", "writing")}
+    purposes |= {"workspace_engineer"} | {
+        f"review_{a}" for a in ("methodology", "statistics", "novelty", "writing")
+    }
     unmapped = sorted(p for p in purposes if models.role_for(p) is None)
     assert not unmapped, unmapped
 
@@ -114,7 +120,9 @@ def test_frozen_role_map():
         models.frozen_role_models({"models": ["x"]})
 
 
-async def test_each_role_runs_on_its_model_and_is_charged_at_its_weight(store, campaign):
+async def test_each_role_runs_on_its_model_and_is_charged_at_its_weight(
+    store, campaign
+):
     _, cid = campaign
     parsed = FigureCritique(quality_score=0.7, issues=[])
     messages = _FakeMessages(_response(parsed=parsed))
@@ -125,10 +133,12 @@ async def test_each_role_runs_on_its_model_and_is_charged_at_its_weight(store, c
         client=SimpleNamespace(messages=messages),
         writing_reserve_tokens=0,
     )
-    kw = dict(system="sys", prompt="p", schema=FigureCritique)
+    kw = {"system": "sys", "prompt": "p", "schema": FigureCritique}
     await model.structured(campaign_id=cid, purpose="figure_critique", **kw)
     assert messages.kwargs["model"] == "claude-haiku-5-5"
-    assert (await store.get_campaign(cid))["tokens_used"] == 160  # 100 + 50 + 10, weight 1
+    assert (await store.get_campaign(cid))[
+        "tokens_used"
+    ] == 160  # 100 + 50 + 10, weight 1
     await model.structured(campaign_id=cid, purpose="skeptic", **kw)
     assert messages.kwargs["model"] == "claude-opus-5-5"
     assert (await store.get_campaign(cid))["tokens_used"] == 160 + 160 * 40
@@ -145,7 +155,9 @@ async def test_service_freezes_role_models_on_create(pg_dsn, monkeypatch):
     app = create_app(dsn=pg_dsn, internal_token="t")
     async with app.router.lifespan_context(app):
         transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://test"
+        ) as client:
             health = (await client.get("/healthz")).json()
             assert health["models"]["paper_writer"] == "claude-sonnet-5-5"
             r = await client.post(

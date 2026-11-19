@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -190,12 +191,16 @@ PAPERS = {
     "ref_a": {
         "canonical_name": "Paper A",
         "metadata": {
-            "abstract": "We show that bootstrap  intervals\nunder-cover when n is small."
+            "abstract": "We show that bootstrap  intervals\nunder-cover when n is small. "
+            "Simulations across ten designs confirm it."
         },
     },
     "ref_b": {
         "canonical_name": "Paper B",
-        "metadata": {"abstract": "A study of galaxies."},
+        "metadata": {
+            "abstract": "A study of galaxies: rotation curves of 120 spirals measured "
+            "with radio interferometry."
+        },
     },
 }
 
@@ -303,6 +308,78 @@ async def test_unquotable_support_is_downgraded_and_triggers_revision():
     changes = matrix_required_changes(matrix)
     assert len(changes) == 1 and "ref_b" in changes[0]
     json.dumps(matrix)  # stored as a JSON receipt
+
+
+async def test_citations_to_papers_without_an_abstract_are_unchecked_not_unsupported():
+    papers = {
+        **PAPERS,
+        "ref_b": {"canonical_name": "Paper B", "metadata": {"abstract": ""}},
+    }
+    model = _Model(
+        [
+            CitationSupport(
+                pair_index=0,
+                support="supports",
+                strength="strong",
+                quote="bootstrap intervals under-cover when n is small",
+                rationale="r",
+            )
+        ]
+    )
+    matrix = await build_evidence_matrix(model, uuid.uuid4(), MS, papers)
+    assert [c["verdict"] for c in matrix["claims"]] == ["supported", "unchecked"]
+    # The unchecked claim is not counted against the paper and asks for no change.
+    assert matrix["unsupported_claim_rate"] == 0.0 and matrix["unchecked_claims"] == 1
+    assert matrix_required_changes(matrix) == []
+    # Nothing to judge at all: no model call.
+    empty = _Model([])
+    only_b = MS.model_copy(update={"introduction": "Robust errors \\cite{ref_b}."})
+    out = await build_evidence_matrix(empty, uuid.uuid4(), only_b, papers)
+    assert empty.calls == [] and out["claims"][0]["verdict"] == "unchecked"
+
+
+async def test_unsupported_citations_are_stripped_from_the_final_paper():
+    from plato.scientist.review import strip_unsupported_citations
+
+    ms = MS.model_copy(
+        update={
+            "introduction": (
+                "Bootstrap intervals under-cover in small samples \\cite{ref_a}. "
+                "Robust errors fix heteroskedasticity \\cite{ref_a,ref_b}. "
+                "Robust errors fix heteroskedasticity again \\cite{ref_b}. No citation here."
+            )
+        }
+    )
+    links = [
+        CitationSupport(
+            pair_index=i,
+            support="supports" if i == 0 else "unclear",
+            strength="strong",
+            quote="bootstrap intervals under-cover when n is small" if i == 0 else "",
+            rationale="r",
+        )
+        for i in range(5)
+    ]
+    matrix = await build_evidence_matrix(_Model(links), uuid.uuid4(), ms, PAPERS)
+    assert [c["verdict"] for c in matrix["claims"]] == [
+        "supported",
+        "unsupported",
+        "unsupported",
+    ]
+    final_ms, final, removed = strip_unsupported_citations(ms, matrix)
+    assert final_ms.introduction == (
+        "Bootstrap intervals under-cover in small samples \\cite{ref_a}. "
+        "Robust errors fix heteroskedasticity. "
+        "Robust errors fix heteroskedasticity again. No citation here."
+    )
+    assert [r["keys"] for r in removed] == [["ref_a", "ref_b"], ["ref_b"]]
+    # The stored matrix describes the published paper; the earlier rate is kept.
+    assert [c["verdict"] for c in final["claims"]] == ["supported"]
+    assert final["unsupported_claim_rate"] == 0.0
+    assert final["unsupported_claim_rate_before_removal"] == round(2 / 3, 4)
+    # Idempotent on a paper with nothing left to remove.
+    again, same, none = strip_unsupported_citations(final_ms, final)
+    assert again == final_ms and none == [] and same is final
 
 
 async def test_panel_runs_four_reviewers_and_survives_one_failure():
@@ -495,3 +572,59 @@ async def test_literature_datacite_keeps_only_papers_and_profiles_use_it():
     assert all(p.retrieved_via == "datacite" for p in papers)
     bio = get_profile("biology").retrieval_sources
     assert "datacite_literature" in bio and "datacite" not in bio
+
+
+async def test_missing_abstracts_are_fetched_from_openalex_then_arxiv():
+    import httpx
+
+    from plato.scientist.citations import fetch_missing_abstracts
+
+    long = "Bootstrap confidence intervals under-cover in small samples, as ten simulations show."
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.host)
+        if request.url.host == "api.openalex.org":
+            assert request.url.params["filter"] == "doi:10.1/a|10.1/b"
+            words = (long + " Extra words.").split()
+            return httpx.Response(
+                200,
+                json={
+                    "results": [
+                        {
+                            "doi": "https://doi.org/10.1/a",
+                            "abstract_inverted_index": {
+                                w: [i] for i, w in enumerate(words)
+                            },
+                        }
+                    ]
+                },
+            )
+        assert request.url.params["id_list"] == "2504.08066"
+        atom = (
+            '<feed xmlns="http://www.w3.org/2005/Atom"><entry>'
+            "<id>http://arxiv.org/abs/2504.08066v2</id>"
+            f"<summary>  {long}\n  </summary></entry></feed>"
+        )
+        return httpx.Response(200, text=atom)
+
+    def src(**kw):
+        return SimpleNamespace(**{"doi": None, "arxiv_id": None, **kw})
+
+    sources = [
+        src(doi="10.1/a", abstract=""),
+        src(doi="https://doi.org/10.1/B", arxiv_id="2504.08066v2", abstract=None),
+        src(doi="10.1/c", abstract=long),  # already has one: not looked up
+        src(abstract=""),  # nothing to look up by
+    ]
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        out = await fetch_missing_abstracts(sources, http_client=client)
+    assert out[0].startswith("Bootstrap confidence") and out[1] == long
+    assert out[2] is None and out[3] is None
+    assert seen == ["api.openalex.org", "export.arxiv.org"]
+
+    def down(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(down)) as client:
+        assert await fetch_missing_abstracts(sources, http_client=client) == [None] * 4

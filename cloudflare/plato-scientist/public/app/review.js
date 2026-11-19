@@ -89,13 +89,14 @@ function panelHtml(panel,open){if(!panel)return"";const rows=Object.entries(pane
   </details></section>`}
 
 function citationsHtml(mx,cr){if(!mx&&!cr)return"";const cl=mx?.claims||[],cs=cr?.cited||[],ex=cr?.excluded||[];
-  const color=v=>v==="supported"?"var(--green)":v==="refuted"?"var(--red)":"var(--orange)";
+  const color=v=>v==="supported"?"var(--green)":v==="refuted"?"var(--red)":v==="unchecked"?"var(--text-3)":"var(--orange)";
   const ok=cs.filter(c=>c.status==="verified").length,sup=cl.filter(c=>c.verdict==="supported").length;
   return `<section class="rv-sec"><details class="rv-fold"><summary><h4>Citations <span class="c">${cl.length?`${sup} of ${cl.length} supported`:""}${cl.length&&cs.length?" · ":""}${cs.length?`${ok} of ${cs.length} verified`:""}</span></h4></summary>
     ${cl.length?`<ul class="rv-cites">${cl.map(c=>`<li><div class="rv-top"><span class="chip"><i style="background:${color(c.verdict)}"></i>${esc(cap(c.verdict))}</span><span class="t3">${esc(SECTION[c.section]||"")}</span></div>
       <button type="button" class="rv-quote" data-rv-text="${esc(c.text)}" title="Show in the paper">${esc(c.text)}</button>
       ${(c.citations||[]).filter(x=>x.quote).map(x=>`<blockquote>“${esc(x.quote)}” <span class="t3">${esc(x.title)}</span></blockquote>`).join("")}</li>`).join("")}</ul>`:""}
     ${cs.length||ex.length?`<ul class="rv-ul">${cs.map(c=>`<li>${esc(c.title)} <span class="t3">${esc(c.status)}${c.retracted?" · retracted":""}${c.issues?.length?" · "+esc(c.issues.join(", ")):""}</span></li>`).join("")}${ex.map(x=>`<li>Excluded: ${esc(x.title)} <span class="t3">${esc(x.reason)}</span></li>`).join("")}</ul>`:""}
+    ${mx?.citations_removed?.length?`<p class="t3 rv-note">Removed ${mx.citations_removed.length} citation${mx.citations_removed.length>1?"s":""} the cited abstract did not support.</p>`:""}
     ${cr?.sources_searched?.length?`<p class="t3 rv-note">Searched ${esc(cr.sources_searched.join(", "))}</p>`:""}
   </details></section>`}
 

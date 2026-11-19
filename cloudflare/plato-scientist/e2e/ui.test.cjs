@@ -25,7 +25,11 @@ const fail = (m) => { throw new Error(m); };
   const css = (sel, prop) => page.$eval(sel, (el, p) => getComputedStyle(el)[p], prop);
 
   // 1. signed out → login
-  await page.goto(BASE + "/#/c/00000000-0000-4000-8000-000000000000/overview");
+  const doc = await page.goto(BASE + "/#/c/00000000-0000-4000-8000-000000000000/overview");
+  // public/_headers: the page runs under the CSP (any violation is a console error, failing below).
+  const hdr = await doc.allHeaders();
+  if (!/script-src 'self' 'sha256-/.test(hdr["content-security-policy"] || "")) fail("no CSP on the page: " + hdr["content-security-policy"]);
+  if (hdr["x-frame-options"] !== "SAMEORIGIN" || !hdr["strict-transport-security"]) fail("security headers missing");
   await page.waitForSelector("#authForm");
   if (!page.url().endsWith("#/login")) fail("not redirected to login: " + page.url());
   if (await page.isVisible(".app")) fail("app visible while signed out");

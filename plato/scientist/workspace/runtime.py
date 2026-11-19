@@ -27,9 +27,10 @@ BackendFactory = Callable[..., Awaitable[SandboxBackend]]
 
 
 def e2b_configured() -> bool:
-    return bool(os.environ.get("E2B_API_KEY")) or os.environ.get(
-        "PLATO_WORKSPACE_BACKEND"
-    ) == "local"
+    return (
+        bool(os.environ.get("E2B_API_KEY"))
+        or os.environ.get("PLATO_WORKSPACE_BACKEND") == "local"
+    )
 
 
 def default_backend_factory() -> BackendFactory:
@@ -62,7 +63,9 @@ def default_backend_factory() -> BackendFactory:
 
 
 async def _snapshot(backend: SandboxBackend) -> dict[str, tuple[str, int]]:
-    out = await backend.run("find . -maxdepth 1 -type f -printf '%T@ %s %f\\n'", timeout=60)
+    out = await backend.run(
+        "find . -maxdepth 1 -type f -printf '%T@ %s %f\\n'", timeout=60
+    )
     snap: dict[str, tuple[str, int]] = {}
     for line in out.stdout.splitlines():
         parts = line.split(" ", 2)
@@ -102,7 +105,11 @@ async def run_recipe(
     try:
         for name, data in inputs.items():
             safe = os.path.basename(name)
-            if not safe or safe.startswith(".") or safe in (EXPERIMENT_SCRIPT, SETUP_SCRIPT):
+            if (
+                not safe
+                or safe.startswith(".")
+                or safe in (EXPERIMENT_SCRIPT, SETUP_SCRIPT)
+            ):
                 raise ValueError(f"invalid input file name {name!r}")
             await backend.write_bytes(safe, data)
         await backend.write_bytes(EXPERIMENT_SCRIPT, code.encode("utf-8"))
@@ -110,7 +117,11 @@ async def run_recipe(
             await backend.write_bytes(SETUP_SCRIPT, setup.encode("utf-8"))
             prep = await backend.run(f"bash {SETUP_SCRIPT}", timeout=setup_seconds)
             if not prep.ok:
-                reason = "timed out" if prep.timed_out else f"exited with code {prep.exit_code}"
+                reason = (
+                    "timed out"
+                    if prep.timed_out
+                    else f"exited with code {prep.exit_code}"
+                )
                 return SandboxResult(
                     exit_code=prep.exit_code if prep.exit_code not in (None, 0) else 1,
                     stdout="",

@@ -32,10 +32,11 @@ const PHASE_HINT={ideation:"Scouting the literature and sharpening the question.
 function campaignIcon(s){return {ideation:ring("var(--text-3)",0,true),investigating:ring("var(--yellow)",.25),ablating:ring("var(--yellow)",.5),
   sealed_eval:ring("var(--yellow)",.75),writing:ring("var(--blue)",.75),completed:check("var(--indigo)"),halted:cross("var(--gray)")}[s]||ring("var(--text-3)")}
 function nodeIcon(s){return {open:ring("var(--text-2)"),claimed:ring("var(--yellow)",.25),running:ring("var(--yellow)",.5),verified:check("var(--green)"),
-  refuted:cross("var(--red)"),exhausted:minus("var(--text-3)")}[s]||ring("var(--text-3)")}
+  refuted:cross("var(--red)"),inconclusive:minus("var(--orange)"),exhausted:minus("var(--text-3)")}[s]||ring("var(--text-3)")}
 const TYPE={goal:{c:"var(--indigo)",l:"Goal"},intent:{c:"var(--orange)",l:"Experiment"},fact:{c:"var(--blue)",l:"Claim"},finding:{c:"var(--purple)",l:"Finding"},hint:{c:"var(--gray)",l:"Lead"}};
 const typeChip=t=>`<span class="chip"><i style="background:${TYPE[t]?.c||"var(--gray)"}"></i>${esc(TYPE[t]?.l||t)}</span>`;
-const GATE_LABEL={replicated:"Replicated",stats_ok:"Statistics",figures_ok:"Figures",skeptic:"Skeptic review"};
+const CHECKS=["stats_ok","figures_ok","skeptic","multiplicity","held_out"];
+const GATE_LABEL={replicated:"Replicated",stats_ok:"Statistics",figures_ok:"Figures",skeptic:"Skeptic review",multiplicity:"Multiple testing",held_out:"Held-out re-test"};
 const GATE_COLOR={replicated:"--green",stats_ok:"--blue",figures_ok:"--purple",skeptic:"--orange"};   // CSS tokens, resolved for the canvas charts
 // Claims keep gates under metrics.gates; findings carry them as top-level booleans.
 const gatesOf=n=>{const m=obj(n&&n.metrics);if(Object.keys(obj(m.gates)).length)return Object.entries(m.gates);
@@ -44,7 +45,7 @@ function gateDots(n){const g=gatesOf(n);if(!g.length)return"";const ok=g.filter(
   return `<span class="gates" title="${esc(g.map(([k,v])=>(v?"✓ ":"✕ ")+(GATE_LABEL[k]||k)).join("\n"))}" aria-label="${ok} of ${g.length} checks passed">${g.map(([,v])=>`<i class="${v?"ok":""}"></i>`).join("")}</span>`}
 function gateChips(n){const g=gatesOf(n);if(!g.length)return"";
   return `<div class="sep"></div><h4>Verification checks</h4><div class="gchips">${g.map(([k,v])=>`<span class="chip ${v?"pass":"fail"}">${v?"✓":"✕"} ${esc(GATE_LABEL[k]||k)}</span>`).join("")}</div>`}
-const STATUS_LABEL={open:"Open",claimed:"Claimed",running:"Running",verified:"Verified",refuted:"Refuted",exhausted:"Exhausted"};
+const STATUS_LABEL={open:"Open",claimed:"Claimed",running:"Running",verified:"Verified",refuted:"Refuted",inconclusive:"Inconclusive",exhausted:"Exhausted"};
 
 /* ---------- state ---------- */
 const jsonLS=(k,d)=>{try{const v=JSON.parse(ls.get(k,""));return Array.isArray(v)?v:d}catch{return d}};
@@ -256,7 +257,7 @@ function nodeProps(n){
   ${n.hypothesis_or_spec?`<div class="para">${esc(n.hypothesis_or_spec)}</div>`:""}
   ${n.confidence_score!=null?`<div class="sep"></div><div class="prop"><span>Confidence</span><span><span class="bar" style="width:90px"><span style="width:${Math.round(100*n.confidence_score)}%"></span></span>${Number(n.confidence_score).toFixed(2)}</span></div>`:""}
   ${gateChips(n)}
-  ${pk&&pk in m?`<div class="sep"></div><h4>Primary metric</h4><div class="prim"><span class="mono t2" title="${esc(pk)}">${esc(pk)}</span><span class="pv">${esc(f(m[pk]))}</span>${m[pk+"_se"]!=null?`<span class="t3">± ${esc(f(m[pk+"_se"]))} SE</span>`:""}${rep!==undefined?`<span class="t3">seed 2: ${esc(f(rep))}</span>`:""}${m.test_kind?`<span class="chip">${esc(m.test_kind)} test</span>`:""}</div>`:""}
+  ${pk&&pk in m?`<div class="sep"></div><h4>Primary metric</h4><div class="prim"><span class="mono t2" title="${esc(pk)}">${esc(pk)}</span><span class="pv">${esc(f(m[pk]))}</span>${m[pk+"_se"]!=null?`<span class="t3">± ${esc(f(m[pk+"_se"]))} SE</span>`:""}${rep!==undefined?`<span class="t3">replica: ${esc(f(rep))}</span>`:""}${m.test_kind?`<span class="chip">${esc(m.test_kind)} test</span>`:""}</div>`:""}
   ${metrics.length?`<div class="sep"></div><h4>Metrics</h4><div class="kv mono">${metrics.slice(0,24).map(([k,v])=>`<span title="${esc(k)}">${esc(k)}</span><span title="${esc(JSON.stringify(v))}">${esc(f(v))}</span>`).join("")}</div>`:""}
   <div class="sep"></div><h4>Evidence</h4>
   ${!p?Kit.skel(EV_SAMPLE):evGroups.length?evGroups.map(([x,l])=>(x?`<div class="t3" style="font-size:11px;margin:6px 0 2px">From claim · ${esc(x.title)}</div>`:"")+l.map(evRow).join("")).join(""):'<p class="t3">No artifacts on this node.</p>'}
@@ -287,12 +288,12 @@ function overview(){
   const c=S.summary.campaign,cnt=counts(),halted=c.status==="halted",idx=PHASES.indexOf(c.status),reached=halted?Math.max(0,lastPhase()):idx;
   const steps=PHASES.map((p,i)=>{const done=i<reached||(c.status==="completed"),cur=i===reached&&!halted&&c.status!=="completed",fail=halted&&i===reached;
     return (i?`<span class="link${done||cur||fail?" done":""}"></span>`:"")+`<span class="step${done?" done":""}${cur?" cur":""}${fail?" fail":""}">${fail?cross("var(--red)"):done?check("var(--accent)"):cur?campaignIcon(p):ring("var(--text-3)")}<span class="sl">${PHASE_LABEL[p]}</span></span>`}).join("");
-  const verified=cnt.finding?.verified||0,claimsV=cnt.fact?.verified||0,claimsR=cnt.fact?.refuted||0,claimsO=(cnt.fact?.open||0)+(cnt.fact?.claimed||0)+(cnt.fact?.running||0);
+  const verified=cnt.finding?.verified||0,claimsV=cnt.fact?.verified||0,claimsR=cnt.fact?.refuted||0,claimsI=cnt.fact?.inconclusive||0,claimsO=(cnt.fact?.open||0)+(cnt.fact?.claimed||0)+(cnt.fact?.running||0);
   const exps=sum(cnt.intent),expsDone=(cnt.intent?.verified||0)+(cnt.intent?.refuted||0);
   let call="";
   if(halted)call=`<div class="callout bad">${cross("var(--red)")}<div><b>Halted.</b> <span class="t2">${esc(c.halted_reason||"No reason recorded.")}</span></div></div>`;
   else if(c.status==="completed")call=`<div class="callout ${verified?"good":""}">${verified?check("var(--green)"):minus("var(--text-2)")}<div><b>${verified?`${verified} verified finding${verified>1?"s":""}.`:"Completed with no verified finding."}</b>
-    <span class="t2">${claimsR} claim${claimsR===1?"":"s"} refuted, ${claimsV} supported across ${exps} experiment${exps===1?"":"s"}. ${verified?"":"Negative results are recorded in the graph and the manuscript."}</span></div></div>`;
+    <span class="t2">${claimsR} claim${claimsR===1?"":"s"} refuted, ${claimsI} inconclusive, ${claimsV} supported across ${exps} experiment${exps===1?"":"s"}. ${verified?"":"Refuted and inconclusive results are recorded in the graph and the manuscript."}</span></div></div>`;
   else call=`<div class="callout"><span class="live" style="margin:6px 2px 0"></span><div style="flex:1;min-width:0"><b data-mk="phase">${PHASE_LABEL[c.status]}</b><span class="t2"> · <span data-mk="phint">${esc(PHASE_HINT[c.status]||"The swarm is working.")}</span></span></div>${c.status==="writing"&&wide()?'<button class="btn" type="button" data-pv="paper">Watch the paper</button>':""}</div>`;
   const root=S.graph.nodes.find(x=>x.node_type==="goal"&&x.title==="Research question"),rm=obj(root&&root.metrics),rq=rm.refined_question;
   const judged=judgedFacts(),allPass=judged.filter(passedAll).length;
@@ -319,7 +320,7 @@ function lastPhase(){// phase a halted campaign stopped in: recorded by the stor
   const cnt=counts();if(sum(cnt.intent)===0)return 0;if((cnt.finding&&sum(cnt.finding))||S.manuscript)return 4;return 1}
 
 /* ---------- results: verification over time + advanced data grid ---------- */
-const STATUS_RANK={verified:0,running:1,claimed:2,open:3,refuted:4,exhausted:5};
+const STATUS_RANK={verified:0,running:1,claimed:2,open:3,refuted:4,inconclusive:5,exhausted:6};
 function resultRows(){
   if(S.rowsFor===S.graph&&S.rows)return S.rows;
   const nodes=S.graph.nodes,byId=new Map(nodes.map(n=>[n.id,n])),proverOf=new Map(),provedBy=new Map();
@@ -341,7 +342,7 @@ function resultRows(){
       gates:Object.keys(g).length?g:null,conf:num(n.confidence_score),created:n.created_at}});
   S.rowsFor=S.graph;return S.rows=rows}
 const RES_FILTERS=[["all","All results",()=>true,"var(--accent)"],["findings","Findings",r=>r.type==="finding","var(--purple)"],["verified","Verified claims",r=>r.type==="fact"&&r.status==="verified","var(--green)"],
-  ["refuted","Refuted",r=>r.status==="refuted","var(--red)"],["pending","In progress",r=>["open","claimed","running"].includes(r.status),"var(--yellow)"]];
+  ["refuted","Refuted",r=>r.status==="refuted","var(--red)"],["inconclusive","Inconclusive",r=>r.status==="inconclusive","var(--orange)"],["pending","In progress",r=>["open","claimed","running"].includes(r.status),"var(--yellow)"]];
 const fmtDrift=d=>d==null?"–":(d<0?"−":"+")+Math.abs(d).toFixed(2)+"×";
 const dash='<span class="t3">–</span>';
 const RES_COLS=[
@@ -351,7 +352,7 @@ const RES_COLS=[
   {k:"metric",l:"Metric",sort:r=>r.pk,csv:r=>r.pk,cell:r=>r.pk?`<span class="mono t2">${esc(r.pk)}</span>`:dash},
   {k:"v1",l:"Seed 1",num:1,sort:r=>r.v1,csv:r=>r.v1,cell:r=>r.v1==null?dash:`<span class="mono">${sig(r.v1)}</span>`},
   {k:"se",l:"SE",num:1,sort:r=>r.se1,csv:r=>r.se1,cell:r=>r.se1==null?dash:`<span class="mono t2">${sig(r.se1)}</span>`},
-  {k:"v2",l:"Seed 2",num:1,sort:r=>r.v2,csv:r=>r.v2,cell:r=>r.v2==null?dash:`<span class="mono">${sig(r.v2)}</span>`},
+  {k:"v2",l:"Replica",num:1,sort:r=>r.v2,csv:r=>r.v2,cell:r=>r.v2==null?dash:`<span class="mono">${sig(r.v2)}</span>`},
   {k:"drift",l:"Drift",desc:1,sort:r=>r.drift==null?null:Math.abs(r.drift),csv:r=>r.drift,cell:driftCell},
   {k:"p",l:"p-value",num:1,sort:r=>r.p,csv:r=>r.p,cell:r=>r.p==null?dash:`<span class="mono ${r.p<0.05?"sig":"t2"}">${r.p<0.001?"<0.001":sig(r.p)}</span>`},
   {k:"test",l:"Test",sort:r=>r.test,csv:r=>r.test,cell:r=>r.test?`<span class="t2">${esc(r.test)}</span>`:dash},
@@ -360,7 +361,7 @@ const RES_COLS=[
   {k:"conf",l:"Confidence",num:1,sort:r=>r.conf,csv:r=>r.conf,cell:r=>r.conf==null?dash:`<span class="conf"><span class="bar"><span style="width:${Math.round(r.conf*100)}%"></span></span><span class="mono">${r.conf.toFixed(2)}</span></span>`},
   {k:"created",l:"Created",sort:r=>r.created,csv:r=>r.created,cell:r=>`<span class="t3">${ago(r.created)}</span>`}];
 function driftCell(r){if(r.drift==null)return dash;const p=(Math.max(-3,Math.min(3,r.drift))+3)/6*100,ok=r.replicated!==false;
-  return `<span class="drift" style="--c:${ok?"var(--green)":"var(--red)"}" title="Seed 2 minus seed 1 = ${sig(r.v2-r.v1)}; tolerance ±${sig(r.tol)} (${esc(r.tolKind)})"><span class="dtrack"><i class="dtol"></i><i class="dbar" style="left:${Math.min(50,p)}%;width:${Math.abs(p-50)}%"></i><i class="dmark" style="left:${p}%"></i></span><span class="mono">${fmtDrift(r.drift)}</span></span>`}
+  return `<span class="drift" style="--c:${ok?"var(--green)":"var(--red)"}" title="Replica minus original = ${sig(r.v2-r.v1)}; tolerance ±${sig(r.tol)} (${esc(r.tolKind)})"><span class="dtrack"><i class="dtol"></i><i class="dbar" style="left:${Math.min(50,p)}%;width:${Math.abs(p-50)}%"></i><i class="dmark" style="left:${p}%"></i></span><span class="mono">${fmtDrift(r.drift)}</span></span>`}
 const defaultOrder=(a,b)=>(a.type===b.type?0:a.type==="finding"?-1:1)||(STATUS_RANK[a.status]??9)-(STATUS_RANK[b.status]??9)||(b.conf??-1)-(a.conf??-1);
 function filteredRows(all){
   const R=S.res,f=(RES_FILTERS.find(x=>x[0]===R.filter)||RES_FILTERS[0])[2],q=R.q.trim().toLowerCase();
@@ -437,6 +438,7 @@ function mountCharts(){const pane=$("#pane"),c=S.summary?.campaign;
         series("exp","Experiments","--accent",steps(cumulative(at("intent",["verified","refuted","exhausted"])),f,0)),
         series("ver","Supported","--green",steps(cumulative(at("fact",["verified"])),f,0)),
         series("ref","Refuted","--red",steps(cumulative(at("fact",["refuted"])),f,0)),
+        series("inc","Inconclusive","--orange",steps(cumulative(at("fact",["inconclusive"])),f,0)),
         series("fnd","Findings","--purple",steps(cumulative(at("finding",["verified"])),f,0))]})}
     if(slot("burn")){const pts=(S.usage||[]).filter(p=>Number.isFinite(p.t)),budget=c.token_budget_max;
       const data=pts.length?[{time:Math.min(f.start,pts[0].t)+f.shift,value:0},...pts.map(p=>({time:p.t+f.shift,value:p.tokens}))]:[];
@@ -461,8 +463,8 @@ function grouped(list,order,label){const g={};list.forEach(n=>(g[n.status]??=[])
   return order.filter(s=>g[s]?.length).map(s=>`<div class="group">${nodeIcon(s)}${label(s)}<span class="n">${g[s].length}</span></div>`+g[s].map(n=>nodeRow(n,gateDots(n)+(n.confidence_score!=null?`<span class="chip">conf ${Number(n.confidence_score).toFixed(2)}</span>`:""))).join("")).join("")}
 function findingsView(){const nodes=S.graph.nodes,f=nodes.filter(n=>n.node_type==="finding"),facts=nodes.filter(n=>n.node_type==="fact");
   if(!f.length&&!facts.length)return emptyPane("No findings or claims yet","Claims appear as the swarm turns literature and experiments into testable statements.");
-  return (f.length?grouped(f,["verified","open","running","claimed","refuted","exhausted"],s=>s==="verified"?"Verified findings":"Findings · "+STATUS_LABEL[s]):"")+
-    grouped(facts,["verified","refuted","open","running","claimed","exhausted"],s=>"Claims · "+STATUS_LABEL[s])}
+  return (f.length?grouped(f,["verified","open","running","claimed","refuted","inconclusive","exhausted"],s=>s==="verified"?"Verified findings":"Findings · "+STATUS_LABEL[s]):"")+
+    grouped(facts,["verified","refuted","inconclusive","open","running","claimed","exhausted"],s=>"Claims · "+STATUS_LABEL[s])}
 function experimentsView(){const xs=S.graph.nodes.filter(n=>n.node_type==="intent");
   if(S.route.node){const it=xs.find(n=>n.id===S.route.node);if(it)return experimentPage(it)}
   if(!xs.length)return emptyPane("No experiments yet","The planner proposes experiments after the literature scout finishes.");
@@ -500,9 +502,9 @@ function workflowSteps(it,fact,finding){const spec=specOf(it),m=obj(fact?.metric
       :exhausted?[`No successful run after ${esc(obj(it.metrics).attempts??"all")} attempts`]:[busy?"Running":"Queued"]},
     {title:"Outputs",state:files.length?"done":fact?"skip":"todo",lines:files.length?[esc(kindsText(kinds))]:[fact?"Only metrics":"–"]},
     {title:"Measured",state:fact&&pk&&num(m[pk])!=null?"done":fact?"skip":"todo",lines:fact&&pk?[`${mono(pk)} ${esc(sig(num(m[pk])))}${num(m[pk+"_se"])!=null?` ± ${esc(sig(m[pk+"_se"]))}`:""}`,num(m.p_value)!=null?`p ${esc(m.p_value<0.001?"<0.001":sig(m.p_value))}`:""].filter(Boolean):["–"]},
-    {title:"Replicated",state:"replicated" in g?(g.replicated?"done":"fail"):fact&&fact.status==="open"?"run":"todo",lines:"replicated" in g?[`Seed 2 ${pk&&num(obj(m.replication)[pk])!=null?`${mono(pk)} ${esc(sig(obj(m.replication)[pk]))}`:g.replicated?"agrees":"disagrees"}`]:["Awaiting the seed-2 rerun"]},
-    {title:"Checked",state:["stats_ok","figures_ok","skeptic"].some(k=>k in g)?(["stats_ok","figures_ok","skeptic"].every(k=>g[k]!==false)?"done":"fail"):"todo",lines:["stats_ok","figures_ok","skeptic"].filter(k=>k in g).map(k=>`${g[k]?"✓":"✕"} ${GATE_LABEL[k]}`).concat(["stats_ok","figures_ok","skeptic"].some(k=>k in g)?[]:["Statistics, figures, skeptic"])},
-    {title:"Outcome",state:finding&&finding.status==="verified"?"done":fact&&fact.status==="refuted"||exhausted?"fail":"todo",lines:[finding&&finding.status==="verified"?"Verified finding":fact?.status==="refuted"?"Claim refuted":exhausted?"No result":"Awaiting judgement"]}];
+    {title:"Replicated",state:"replicated" in g?(g.replicated?"done":"fail"):fact&&fact.status==="open"?"run":"todo",lines:"replicated" in g?[`Replica ${pk&&num(obj(m.replication)[pk])!=null?`${mono(pk)} ${esc(sig(obj(m.replication)[pk]))}`:g.replicated?"agrees":"disagrees"}`]:["Awaiting the replication run"]},
+    {title:"Checked",state:CHECKS.some(k=>k in g)?(CHECKS.every(k=>g[k]!==false)?"done":"fail"):"todo",lines:CHECKS.filter(k=>k in g).map(k=>`${g[k]?"✓":"✕"} ${GATE_LABEL[k]}`).concat(CHECKS.some(k=>k in g)?[]:["Statistics, figures, skeptic"])},
+    {title:"Outcome",state:finding&&finding.status==="verified"?"done":fact&&["refuted","inconclusive"].includes(fact.status)||exhausted?"fail":"todo",lines:[finding&&finding.status==="verified"?"Verified finding":fact?.status==="refuted"?"Claim refuted":fact?.status==="inconclusive"?"Inconclusive: a check failed":exhausted?"No result":"Awaiting judgement"]}];
   return steps}
 function experimentPage(it){
   const {runsOf,findingOf}=expIndex(),runs=runsOf(it.id),spec=specOf(it),c=S.summary.campaign;
@@ -572,7 +574,7 @@ function graphView(){
     <span class="t3" style="margin-left:auto;font-size:12px">${nodes.length} nodes · ${edges.length} edges</span></div>
   <div class="gcanvas" style="width:${W}px;height:${H}px"><svg class="edges" width="${W}" height="${H}" aria-hidden="true">${paths}</svg>
   ${keys.map((k,i)=>`<div class="gcol" style="left:${LEFT+i*CW+2}px">${esc(colName(k))}</div>`).join("")}
-  ${nodes.map(n=>{const [x,y]=pos[n.id];return `<div class="gn${S.selected===n.id?" on":""}${["refuted","exhausted"].includes(n.status)?" dim":""}" data-node="${esc(n.id)}" style="left:${x}px;top:${y}px" title="${esc((TYPE[n.node_type]?.l||n.node_type)+" · "+n.status+"\n"+n.title)}">
+  ${nodes.map(n=>{const [x,y]=pos[n.id];return `<div class="gn${S.selected===n.id?" on":""}${["refuted","inconclusive","exhausted"].includes(n.status)?" dim":""}" data-node="${esc(n.id)}" style="left:${x}px;top:${y}px" title="${esc((TYPE[n.node_type]?.l||n.node_type)+" · "+n.status+"\n"+n.title)}">
     <i class="dot" style="background:${TYPE[n.node_type]?.c};flex:none"></i>${nodeIcon(n.status)}<span class="trunc">${esc(n.title)}</span></div>`}).join("")}</div>`}
 
 /* ---------- manuscript ---------- */

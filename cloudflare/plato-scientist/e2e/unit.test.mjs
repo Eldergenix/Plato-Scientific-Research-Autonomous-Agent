@@ -1,7 +1,7 @@
 // Unit checks for Worker modules that need no bindings: Composio webhook signatures and the
 // ranged zip reader. Run: node e2e/unit.test.mjs  (bundles the TypeScript with esbuild first)
 import assert from "node:assert/strict";
-import { createHmac, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -13,10 +13,11 @@ const out = fs.mkdtempSync(path.join(os.tmpdir(), "plato-unit-"));
 execFileSync(path.join(root, "node_modules/.bin/esbuild"), [
   "--bundle", "--format=esm", "--platform=node", "--log-level=warning",
   `--outdir=${out}`, "--out-extension:.js=.mjs",
-  path.join(root, "src/composio.ts"), path.join(root, "src/zip.ts"),
+  path.join(root, "src/composio.ts"), path.join(root, "src/zip.ts"), path.join(root, "src/headers.ts"),
 ]);
 const composio = await import(path.join(out, "composio.mjs"));
 const zip = await import(path.join(out, "zip.mjs"));
+const headers = await import(path.join(out, "headers.mjs"));
 let n = 0;
 const test = async (name, fn) => { await fn(); n++; console.log("·", name); };
 
@@ -101,6 +102,35 @@ await test("a zip made by Python's zipfile reads back", async () => {
 await test("not a zip is an error", async () => {
   const buf = Buffer.from("definitely not a zip file, just text");
   await assert.rejects(zip.entries(bucketOf(buf), "k", buf.length), /not a zip/);
+});
+
+/* ---------- security headers ---------- */
+await test("API JSON gets the security headers and a CSP that allows nothing", async () => {
+  const r = headers.withSecurityHeaders(new Response("{}", { status: 404, headers: { "content-type": "application/json; charset=utf-8" } }));
+  assert.equal(r.status, 404);
+  assert.equal(r.headers.get("content-security-policy"), "default-src 'none'; frame-ancestors 'none'");
+  assert.equal(r.headers.get("x-frame-options"), "SAMEORIGIN");
+  assert.equal(r.headers.get("x-content-type-options"), "nosniff");
+  assert.match(r.headers.get("strict-transport-security"), /^max-age=\d{8,}/);
+  assert.equal(r.headers.get("referrer-policy"), "strict-origin-when-cross-origin");
+});
+await test("a handler's own CSP wins and file responses get no JSON CSP", async () => {
+  const own = headers.withSecurityHeaders(new Response("x", { headers: { "content-type": "text/plain", "content-security-policy": "default-src 'none'; sandbox" } }));
+  assert.equal(own.headers.get("content-security-policy"), "default-src 'none'; sandbox");
+  const pdf = headers.withSecurityHeaders(new Response("x", { headers: { "content-type": "application/pdf" } }));
+  assert.equal(pdf.headers.get("content-security-policy"), null);
+  assert.equal(pdf.headers.get("x-content-type-options"), "nosniff");
+});
+await test("public/_headers allows exactly the inline scripts in index.html", async () => {
+  const html = fs.readFileSync(path.join(root, "public/index.html"), "utf8");
+  const rules = fs.readFileSync(path.join(root, "public/_headers"), "utf8");
+  const csp = rules.match(/^\s+Content-Security-Policy: (.+)$/m)[1];
+  const scriptSrc = csp.split(";").map((d) => d.trim()).find((d) => d.startsWith("script-src ")).split(" ").slice(1);
+  const inline = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => `'sha256-${createHash("sha256").update(m[1]).digest("base64")}'`);
+  assert.ok(inline.length > 0);
+  assert.deepEqual(scriptSrc.filter((s) => s.startsWith("'sha256-")).sort(), inline.sort());
+  assert.ok(!scriptSrc.includes("'unsafe-inline'") && !scriptSrc.includes("'unsafe-eval'"));
+  assert.doesNotMatch(html, /\son[a-z]+="/i, "inline event handlers would be blocked by the CSP");
 });
 
 fs.rmSync(out, { recursive: true, force: true });
