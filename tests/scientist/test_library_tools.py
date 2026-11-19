@@ -14,7 +14,7 @@ from plato.retrieval.reranker import bm25_rank
 from plato.scientist.citations import check_sources, exclusion_reason
 from plato.scientist.executors import run_experiment
 from plato.scientist.guard.modal_runner import run_python_modal
-from plato.scientist.nodes import ScientistConfig, code_rules
+from plato.scientist.nodes import ScientistConfig, code_rules, profile_tools
 from plato.scientist.profiles import classify, get_profile, resolve_profile
 from plato.scientist.review import (
     apply_revision,
@@ -62,6 +62,14 @@ def _src(**kw) -> Source:
         ("epidemiology", "biology"),
         ("astrophysics", "astro"),
         ("exoplanet transits", "astro"),
+        ("chemical compound screening", "biology"),
+        ("ligand docking", "biology"),
+        ("biochemical pathway analysis", "biology"),
+        ("enzyme kinetics", "biology"),
+        ("molecular dynamics of a membrane protein", "biology"),
+        ("molecular clouds in star-forming regions", "astro"),  # astro wins "molecular"
+        ("structural equation modelling", "general"),  # "structure" must not match
+        ("compound interest forecasting", "general"),  # "compound" must not match
     ],
 )
 def test_domain_labels_map_to_profiles(label, expected):
@@ -99,6 +107,20 @@ def test_code_rules_follow_profile_and_executor():
         and "600 seconds" in rules
     )
     assert "torch" not in code_rules(get_profile("general"), ScientistConfig())
+
+
+def test_molecular_guidance_reaches_a_live_lab_session_only():
+    """The offline executors have a fixed package list, so the lab's molecular tools are
+    offered to the planner (and the workspace agent) only when the executor is E2B."""
+    bio, gen = get_profile("biology"), get_profile("general")
+    assert "SAPT" in bio.workspace_guidance and "FDR" in bio.workspace_guidance
+    assert gen.workspace_guidance == ""
+    e2b = ScientistConfig.from_campaign({"executor": "e2b"})
+    assert "AutoDock Vina" in profile_tools(bio, e2b)
+    assert profile_tools(bio, ScientistConfig()) == "/".join(bio.packages)
+    # A database annotation is never the result: the rules must say so in both places.
+    assert "annotation" in bio.workspace_guidance
+    assert "not binding affinities" in bio.workspace_guidance
 
 
 # --- ranking ------------------------------------------------------------------

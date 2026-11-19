@@ -3,10 +3,16 @@
 
 Each check runs a small but complete analysis whose correct answer is known in advance
 (planted variants, a planted deletion, a planted repeat expansion, a planted GWAS hit,
-a known peptide mass, bundled package example data) and passes only if the tool
-recovers it. Public data comes from NCBI, UCSC, the CNVkit repository and
+a known peptide mass, a synthetic protein family, a published molecular identity, a
+reference interaction energy, bundled package example data) and passes only if the tool
+recovers it. Public data comes from NCBI, UCSC, the RCSB PDB, the CNVkit repository and
 package-bundled examples; public APIs (Ensembl VEP, Reactome, cBioPortal) are called
 live.
+
+The molecular checks assert what their tool can actually establish: a Vina score on a
+crystal pose is deterministic and a minimisation must stay on that pose, but Vina's
+scoring function is not accurate enough to promise sub-2A redocking, so pose accuracy is
+reported and not asserted.
 
     E2B_API_KEY=... python scripts/e2b_lab_verify.py                 # standard checks
     E2B_API_KEY=... python scripts/e2b_lab_verify.py --heavy         # runtime-install checks
@@ -394,6 +400,390 @@ python - <<'EOF'
 import json, os
 size = os.path.getsize("igv_report.html")
 print("CHECK_RESULT", json.dumps({"pass": size > 50_000, "html_bytes": size}))
+EOF
+"""
+)
+
+# ---------------------------------------------------------------------------
+# Molecules: compounds, protein structures, pathways and interaction physics.
+# Structures come from the RCSB PDB; every expected value below was produced by
+# running these same tools and compared with the published reference where one
+# exists (CCSD(T)/CBS for the S22 water dimer, the LAMMPS melt example log).
+# ---------------------------------------------------------------------------
+
+STRUCTURES = r"""
+set -euo pipefail
+mkdir -p ~/vdata && cd ~/vdata
+for id in 1UBQ 1CRN 4ZZN; do
+  [ -s $id.pdb ] || curl -fsSL --retry 5 --retry-all-errors "https://files.rcsb.org/download/$id.pdb" -o $id.pdb
+  grep -q '^ATOM' $id.pdb
+done
+"""
+
+check("cheminformatics", ["rdkit", "obabel", "gemmi"], 600)(
+    r"""
+set -euo pipefail
+mkdir -p ~/v/chem && cd ~/v/chem
+python - <<'EOF'
+import json
+from rdkit import Chem, RDLogger
+from rdkit.Chem import AllChem, Crippen, Descriptors, rdMolDescriptors
+from rdkit.Chem.Scaffolds import MurckoScaffold
+RDLogger.DisableLog("rdApp.*")
+# Aspirin: identity and descriptors are exact, published facts about the molecule.
+m = Chem.MolFromSmiles("CC(=O)Oc1ccccc1C(=O)O")
+facts = {
+    "formula": rdMolDescriptors.CalcMolFormula(m),
+    "mw": round(Descriptors.MolWt(m), 3),
+    "inchikey": Chem.MolToInchiKey(m),
+    "scaffold": Chem.MolToSmiles(MurckoScaffold.GetScaffoldForMol(m)),
+    "hba": rdMolDescriptors.CalcNumHBA(m),
+    "hbd": rdMolDescriptors.CalcNumHBD(m),
+    "logp": round(Crippen.MolLogP(m), 2),
+}
+# A 3D conformer: all 21 atoms placed, and the embedding is reproducible from the seed.
+mh = Chem.AddHs(m)
+params = AllChem.ETKDGv3(); params.randomSeed = 0xF00D
+assert AllChem.EmbedMolecule(mh, params) == 0
+AllChem.MMFFOptimizeMolecule(mh)
+Chem.MolToMolFile(mh, "aspirin.sdf")
+ok = (
+    facts["formula"] == "C9H8O4"
+    and abs(facts["mw"] - 180.159) < 0.01
+    and facts["inchikey"] == "BSYNRYMUTXBXSQ-UHFFFAOYSA-N"
+    and facts["scaffold"] == "c1ccccc1"
+    and (facts["hba"], facts["hbd"]) == (3, 1)
+    and mh.GetNumAtoms() == 21
+    and mh.GetConformer().Is3D()
+)
+json.dump({"ok": ok, "facts": facts}, open("rdkit.json", "w"))
+EOF
+# Open Babel round trip: SMILES to 3D SDF with explicit hydrogens, and back.
+obabel -:"CC(=O)Oc1ccccc1C(=O)O" -osdf --gen3d -O ob.sdf 2>/dev/null
+python - <<'EOF'
+import json
+from rdkit import Chem, RDLogger
+RDLogger.DisableLog("rdApp.*")
+rd = json.load(open("rdkit.json"))
+ob = Chem.MolFromMolFile("ob.sdf", removeHs=False)
+same = Chem.MolToInchiKey(Chem.RemoveHs(ob)) == rd["facts"]["inchikey"]
+import gemmi
+ok = rd["ok"] and same and ob.GetNumAtoms() == 21 and ob.GetConformer().Is3D()
+print("CHECK_RESULT", json.dumps({"pass": ok, "openbabel_roundtrip": same,
+                                  "gemmi": gemmi.__version__, **rd["facts"]}))
+EOF
+"""
+)
+
+check("sequence_search", ["hmmer", "mmseqs2"], 600)(
+    r"""
+set -euo pipefail
+mkdir -p ~/v/seq && cd ~/v/seq
+# A synthetic protein family: one ancestor, 25 members at 30% substitution, one held-out
+# member at 35%, and 200 unrelated sequences drawn from the same amino-acid composition.
+# The profile must find the held-out member and nothing else.
+python - <<'EOF'
+import random
+AA = "ACDEFGHIKLMNPQRSTVWY"
+F = [8.3,1.4,5.4,6.7,3.9,7.1,2.3,5.9,5.8,9.7,2.4,4.1,4.7,3.9,5.5,6.6,5.4,6.9,1.1,2.9]
+rng = random.Random(7)
+rand_seq = lambda n: "".join(rng.choices(AA, weights=F, k=n))
+anc = rand_seq(200)
+mutate = lambda s, r: "".join(c if rng.random() > r else rng.choices(AA, weights=F)[0] for c in s)
+members = [mutate(anc, 0.30) for _ in range(25)]
+held = mutate(anc, 0.35)
+open("fam.afa", "w").write("".join(f">m{i}\n{s}\n" for i, s in enumerate(members)))
+open("db.fa", "w").write(f">TRUE_HOMOLOG\n{held}\n" + "".join(f">decoy{i}\n{rand_seq(200)}\n" for i in range(200)))
+open("query.fa", "w").write(f">query\n{held}\n")
+open("target.fa", "w").write(f">FAMILY_MEMBER\n{members[0]}\n" + open("db.fa").read())
+EOF
+hmmbuild --amino -o /dev/null fam.hmm fam.afa
+hmmsearch --tblout hits.tbl -E 10 fam.hmm db.fa > /dev/null
+mmseqs easy-search query.fa target.fa mm.tsv tmp --threads 2 -e 1e-3 > mm.log 2>&1
+python - <<'EOF'
+import json
+hits = [l.split() for l in open("hits.tbl") if not l.startswith("#") and l.strip()]
+names = [h[0] for h in hits]
+evalue = float(hits[0][4]) if hits else 1.0
+rows = [l.split("\t") for l in open("mm.tsv") if l.strip()]
+targets = [r[1] for r in rows]
+ok = (
+    names == ["TRUE_HOMOLOG"] and evalue < 1e-20          # profile HMM: the homologue, no decoys
+    and targets[:2] == ["TRUE_HOMOLOG", "FAMILY_MEMBER"]  # mmseqs: self, then the family
+    and not [t for t in targets if t.startswith("decoy")]
+)
+print("CHECK_RESULT", json.dumps({"pass": ok, "hmmer_hits": names, "hmmer_evalue": evalue,
+                                  "mmseqs_targets": targets[:4], "decoys_hit": sum(t.startswith("decoy") for t in targets)}))
+EOF
+"""
+)
+
+check("protein_structure", ["foldseek", "mkdssp", "gemmi"], 900)(
+    STRUCTURES
+    + r"""
+mkdir -p ~/v/struct/db && cd ~/v/struct
+cp ~/vdata/1UBQ.pdb query.pdb
+cp ~/vdata/1UBQ.pdb db/ubiquitin_copy.pdb
+cp ~/vdata/1CRN.pdb db/crambin.pdb
+mkdssp query.pdb query.dssp 2> dssp.err || { cat dssp.err; exit 1; }
+foldseek easy-search query.pdb db/ fs.tsv tmpfs --threads 2 \
+  --format-output "query,target,fident,alntmscore,evalue" -e 10 > fs.log 2>&1
+python - <<'EOF'
+import json
+from collections import Counter
+lines = open("query.dssp").read().splitlines()
+start = next(i for i, l in enumerate(lines) if l.startswith("  #  RESIDUE"))
+ss = "".join(l[16] for l in lines[start + 1:] if len(l) > 16 and l[13] != "!")
+counts = Counter(ss)
+hits = [l.split("\t") for l in open("fs.tsv") if l.strip()]
+targets = {h[1]: (float(h[3]), float(h[4])) for h in hits}
+# 1UBQ is 76 residues with the beta-grasp fold: five strands and one alpha helix of ~12
+# residues. Foldseek must match its own copy and must not match crambin, a different fold.
+ok = (
+    len(ss) == 76 and counts["E"] >= 20 and counts["H"] >= 10
+    and "ubiquitin_copy" in targets and targets["ubiquitin_copy"][0] > 0.9
+    and "crambin" not in targets
+)
+print("CHECK_RESULT", json.dumps({"pass": ok, "residues": len(ss), "strand": counts["E"],
+                                  "helix": counts["H"], "foldseek": {k: v for k, v in targets.items()}}))
+EOF
+"""
+)
+
+check("docking", ["vina", "meeko", "obabel", "rdkit"], 900)(
+    STRUCTURES
+    + r"""
+mkdir -p ~/v/dock && cd ~/v/dock
+# Redocking control on 4ZZN (human ERK2 with inhibitor CQ8): prepare the crystal receptor
+# and ligand, then ask Vina to score the crystal pose, minimise it, and search the box.
+python - <<'EOF'
+import json, statistics
+import os
+lines = open(os.path.expanduser("~/vdata/4ZZN.pdb")).read().splitlines()
+alt = lambda l: l[16] in " A"
+rec = [l for l in lines if l.startswith("ATOM") and l[21] == "A" and alt(l)]
+lig = [l for l in lines if l.startswith("HETATM") and l[17:20] == "CQ8" and l[21] == "A" and alt(l)]
+open("rec.pdb", "w").write("\n".join(rec) + "\nEND\n")
+open("lig.pdb", "w").write("\n".join(lig) + "\nEND\n")
+xyz = [[float(l[30 + 8 * i:38 + 8 * i]) for l in lig] for i in range(3)]
+json.dump({"center": [round(statistics.mean(v), 3) for v in xyz], "atoms": len(lig)}, open("box.json", "w"))
+EOF
+C=$(python -c "import json;print(' '.join(str(v) for v in json.load(open('box.json'))['center']))")
+set -- $C
+obabel lig.pdb -O lig.sdf -h 2> /dev/null
+mk_prepare_ligand.py -i lig.sdf -o lig.pdbqt
+obabel rec.pdb -O rec.pdbqt -xr -p 7.4 2> /dev/null
+BOX="--center_x $1 --center_y $2 --center_z $3 --size_x 22 --size_y 22 --size_z 22"
+vina --receptor rec.pdbqt --ligand lig.pdbqt $BOX --score_only > score.txt 2>&1
+vina --receptor rec.pdbqt --ligand lig.pdbqt $BOX --local_only --out local.pdbqt > local.txt 2>&1
+vina --receptor rec.pdbqt --ligand lig.pdbqt $BOX --seed 42 --exhaustiveness 8 --num_modes 9 \
+     --cpu 1 --out poses.pdbqt > search.txt 2>&1
+vina_split --input poses.pdbqt > /dev/null
+obabel local.pdbqt -O local.sdf 2> /dev/null
+obabel poses_ligand_1.pdbqt -O pose1.sdf 2> /dev/null
+python - <<'EOF'
+import json, math, re
+from rdkit import Chem, RDLogger
+from rdkit.Chem import rdMolAlign
+RDLogger.DisableLog("rdApp.*")
+energy = lambda p: float(re.search(r"Estimated Free Energy of Binding\s*:\s*(-?\d+\.\d+)", open(p).read()).group(1))
+best = float(re.search(r"^\s+1\s+(-?\d+\.\d+)", open("search.txt").read(), re.M).group(1))
+ref, loc, pose = (Chem.RemoveHs(Chem.MolFromMolFile(f)) for f in ("lig.sdf", "local.sdf", "pose1.sdf"))
+centroid = lambda m: [sum(m.GetConformer().GetAtomPosition(i)[k] for i in range(m.GetNumAtoms())) / m.GetNumAtoms() for k in range(3)]
+out = {
+    "crystal_score": energy("score.txt"),
+    "minimised_score": energy("local.txt"),
+    "best_search_score": best,
+    "minimised_rmsd": round(rdMolAlign.CalcRMS(loc, ref), 3),
+    "pose_centroid_shift": round(math.dist(centroid(pose), centroid(ref)), 2),
+    "same_molecule": Chem.MolToSmiles(pose) == Chem.MolToSmiles(ref),
+}
+# Scoring the crystal pose is deterministic (-7.5 kcal/mol here); minimisation must stay on
+# that pose, and the search must find the pocket. Vina's scoring function is not accurate
+# enough to promise sub-2A redocking for this flexible ligand, so pose accuracy is not asserted.
+ok = (
+    -9 < out["crystal_score"] < -6 and out["minimised_rmsd"] < 1.5
+    and out["best_search_score"] < -6 and out["pose_centroid_shift"] < 4.0
+    and out["same_molecule"]
+)
+print("CHECK_RESULT", json.dumps({"pass": ok, **out}))
+EOF
+"""
+)
+
+check("pathways", ["gseapy", "igraph", "Reactome AnalysisService"], 600)(
+    r"""
+set -euo pipefail
+mkdir -p ~/v/path && cd ~/v/path
+python - <<'EOF'
+import json
+import numpy as np, pandas as pd, gseapy, igraph, requests
+rng = np.random.default_rng(0)
+genes = [f"G{i}" for i in range(1000)]
+planted = genes[:30]
+# A ranked list with one gene set planted at the top and one matched random set.
+scores = {g: (3.0 + rng.normal(0, 0.3) if g in set(planted) else rng.normal(0, 1)) for g in genes}
+rnk = pd.Series(scores).sort_values(ascending=False)
+sets = {"TRUE_SET": planted, "DECOY_SET": list(rng.choice(genes[30:], 30, replace=False))}
+res = gseapy.prerank(rnk=rnk, gene_sets=sets, permutation_num=500, seed=1, threads=2,
+                     min_size=5, outdir=None, verbose=False).res2d.set_index("Term")
+true_nes, true_q = float(res.loc["TRUE_SET", "NES"]), float(res.loc["TRUE_SET", "FDR q-val"])
+decoy_p = float(res.loc["DECOY_SET", "NOM p-val"])
+# Topology on a graph whose answer is analytic: the centre of an 11-node star has
+# betweenness (n-1)(n-2)/2 = 45.
+star = igraph.Graph.Star(11, mode="undirected")
+betweenness = star.betweenness()[0]
+# The live annotation source, which is a reference and never evidence on its own.
+r = requests.post("https://reactome.org/AnalysisService/identifiers/projection?pageSize=5&page=1",
+                  data="BRCA1\nBRCA2\nRAD51\nATM\nATR\nCHEK2\nPALB2\nTP53",
+                  headers={"Content-Type": "text/plain"}, timeout=60)
+pathways = [p["name"] for p in r.json().get("pathways", [])[:3]]
+ok = (true_nes > 2 and true_q < 0.05 and decoy_p > 0.1 and betweenness == 45.0 and bool(pathways))
+print("CHECK_RESULT", json.dumps({"pass": ok, "true_set_nes": round(true_nes, 3),
+                                  "true_set_fdr": round(true_q, 4), "decoy_p": round(decoy_p, 3),
+                                  "star_betweenness": betweenness, "reactome_top": pathways}))
+EOF
+"""
+)
+
+check("quantum_chemistry", ["xtb", "psi4"], 900)(
+    r"""
+set -euo pipefail
+mkdir -p ~/v/qm && cd ~/v/qm
+# The S22 water dimer. Its CCSD(T)/CBS interaction energy is -5.0 kcal/mol, so GFN2-xTB and
+# SAPT0 must both land near it, and SAPT must attribute it mostly to electrostatics.
+cat > dimer.xyz <<'EOF'
+6
+S22 water dimer
+O  -1.551007  -0.114520   0.000000
+H  -1.934259   0.762503   0.000000
+H  -0.599677   0.040712   0.000000
+O   1.350625   0.111469   0.000000
+H   1.680398  -0.373741  -0.758561
+H   1.680398  -0.373741   0.758561
+EOF
+python - <<'EOF'
+rows = open("dimer.xyz").read().splitlines()
+open("m1.xyz", "w").write("3\nmonomer1\n" + "\n".join(rows[2:5]) + "\n")
+open("m2.xyz", "w").write("3\nmonomer2\n" + "\n".join(rows[5:8]) + "\n")
+EOF
+for f in dimer m1 m2; do
+  xtb $f.xyz --gfn 2 --sp > $f.out 2>&1 || { tail -5 $f.out; exit 1; }
+done
+xtb dimer.xyz --gfn 2 --sp --alpb water > solv.out 2>&1
+cat > sapt.py <<'EOF'
+import json, psi4
+psi4.set_memory("3 GB"); psi4.core.set_output_file("psi4.out", False); psi4.set_num_threads(2)
+rows = open("dimer.xyz").read().splitlines()[2:]
+geometry = "0 1\n" + "\n".join(rows[:3]) + "\n--\n0 1\n" + "\n".join(rows[3:]) \
+           + "\nunits angstrom\nsymmetry c1"
+psi4.geometry(geometry)
+psi4.set_options({"basis": "jun-cc-pVDZ", "scf_type": "df", "freeze_core": "true"})
+psi4.energy("sapt0")
+K = psi4.constants.hartree2kcalmol
+terms = {k: round(psi4.variable(v) * K, 3) for k, v in {
+    "elst": "SAPT ELST ENERGY", "exch": "SAPT EXCH ENERGY", "ind": "SAPT IND ENERGY",
+    "disp": "SAPT DISP ENERGY", "total": "SAPT0 TOTAL ENERGY"}.items()}
+json.dump({"psi4": psi4.__version__, **terms}, open("sapt.json", "w"))
+EOF
+qm-python sapt.py > sapt.log 2>&1 || { tail -20 sapt.log; exit 1; }
+python - <<'EOF'
+import json, re
+E = lambda p: float(re.search(r"TOTAL ENERGY\s+(-?\d+\.\d+)", open(p).read()).group(1))
+HARTREE = 627.5094740631
+interaction = (E("dimer.out") - E("m1.out") - E("m2.out")) * HARTREE
+solvated = E("solv.out")
+sapt = json.load(open("sapt.json"))
+ok = (
+    -6.5 < interaction < -3.5 and -6.5 < sapt["total"] < -3.5
+    and sapt["elst"] < sapt["disp"] < 0 < sapt["exch"]   # hydrogen bond: electrostatics dominates
+    and solvated < E("dimer.out")                        # implicit water stabilises the dimer
+)
+print("CHECK_RESULT", json.dumps({"pass": ok, "xtb_interaction_kcal": round(interaction, 3),
+                                  "xtb_alpb_water_hartree": solvated, "sapt0": sapt,
+                                  "reference_ccsdt_kcal": -5.02}))
+EOF
+"""
+)
+
+check("molecular_dynamics", ["lammps", "plumed", "openmm", "pdbfixer"], 1800)(
+    STRUCTURES
+    + r"""
+mkdir -p ~/v/md && cd ~/v/md
+# LAMMPS: the standard Lennard-Jones melt example. Its documented log reports
+# temp 1.6645, E_pair -4.7774 and TotEng -2.2812 at step 250 for this exact input.
+cat > in.melt <<'EOF'
+units lj
+atom_style atomic
+lattice fcc 0.8442
+region box block 0 10 0 10 0 10
+create_box 1 box
+create_atoms 1 box
+mass 1 1.0
+velocity all create 3.0 87287 loop geom
+pair_style lj/cut 2.5
+pair_coeff 1 1 1.0 1.0 2.5
+neighbor 0.3 bin
+neigh_modify every 20 delay 0 check no
+fix 1 all nve
+thermo 50
+run 250
+EOF
+lmp -in in.melt -log lmp.log > /dev/null 2>&1
+plumed info --version > plumed.txt
+cat > run_md.py <<'EOF'
+import json, os
+import openmm, openmm.app as app, openmm.unit as u
+from pdbfixer import PDBFixer
+fixer = PDBFixer(filename=os.path.expanduser("~/vdata/1UBQ.pdb"))
+fixer.findMissingResidues(); fixer.findMissingAtoms(); fixer.addMissingAtoms(); fixer.addMissingHydrogens(7.0)
+ff = app.ForceField("amber14-all.xml", "amber14/tip3p.xml")
+model = app.Modeller(fixer.topology, fixer.positions)
+# An explicit environment: water box plus counter-ions at physiological ionic strength.
+model.addSolvent(ff, padding=0.9 * u.nanometer, ionicStrength=0.15 * u.molar, neutralize=True)
+system = ff.createSystem(model.topology, nonbondedMethod=app.PME,
+                         nonbondedCutoff=1.0 * u.nanometer, constraints=app.HBonds)
+ions = sum(1 for r in model.topology.residues() if r.name in ("NA", "CL"))
+integrator = openmm.LangevinMiddleIntegrator(300 * u.kelvin, 1 / u.picosecond, 0.002 * u.picoseconds)
+integrator.setRandomNumberSeed(11)
+sim = app.Simulation(model.topology, system, integrator, openmm.Platform.getPlatformByName("CPU"))
+sim.context.setPositions(model.positions)
+energy = lambda: sim.context.getState(getEnergy=True).getPotentialEnergy().value_in_unit(u.kilojoule_per_mole)
+before = energy()
+sim.minimizeEnergy(maxIterations=400)
+after = energy()
+sim.context.setVelocitiesToTemperature(300 * u.kelvin, 11)
+sim.step(1000)
+dof = 3 * system.getNumParticles() - system.getNumConstraints() - 3
+temps = []
+for _ in range(5):
+    sim.step(200)
+    ke = sim.context.getState(getEnergy=True).getKineticEnergy().value_in_unit(u.kilojoule_per_mole)
+    temps.append(2 * ke / (dof * 0.0083144621))
+json.dump({"openmm": openmm.version.version, "atoms": system.getNumParticles(), "ions": ions,
+           "energy_before": round(before, 1), "energy_after": round(after, 1),
+           "mean_temperature": round(sum(temps) / len(temps), 1)}, open("md.json", "w"))
+EOF
+md-python run_md.py > md.log 2>&1 || { tail -20 md.log; exit 1; }
+python - <<'EOF'
+import json
+rows = [l.split() for l in open("lmp.log").read().splitlines()]
+header = next(i for i, r in enumerate(rows) if r[:2] == ["Step", "Temp"])
+steps = [dict(zip(rows[header], r)) for r in rows[header + 1:] if r and r[0].isdigit()]
+final = next(s for s in steps if s["Step"] == "250")
+first = steps[0]
+lj = {k: float(final[k]) for k in ("Temp", "E_pair", "TotEng")}
+drift = abs(float(final["TotEng"]) - float(first["TotEng"])) / abs(float(first["TotEng"]))
+md = json.load(open("md.json"))
+ok = (
+    int(final["Step"]) == 250 and abs(lj["Temp"] - 1.6645) < 0.02
+    and abs(lj["E_pair"] + 4.7774) < 0.02 and drift < 0.01      # NVE conserves energy
+    and md["ions"] > 0 and md["energy_after"] < md["energy_before"]
+    and 270 < md["mean_temperature"] < 330                       # thermostat holds 300 K
+)
+print("CHECK_RESULT", json.dumps({"pass": ok, "lammps_step250": lj,
+                                  "lammps_energy_drift": round(drift, 5), "openmm": md,
+                                  "plumed": open("plumed.txt").read().strip()}))
 EOF
 """
 )

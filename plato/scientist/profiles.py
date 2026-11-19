@@ -38,6 +38,10 @@ class ScientistProfile:
     retrieval_sources: tuple[str, ...]
     extra_packages: tuple[str, ...] = ()
     guidance: str = ""
+    # Extra rules for a live sandbox session (the plato-lab E2B template), where this
+    # domain's command-line tools and the public data APIs are reachable. The offline
+    # local and Modal executors never see it: their packages are fixed by ``packages``.
+    workspace_guidance: str = ""
 
     @property
     def packages(self) -> tuple[str, ...]:
@@ -59,7 +63,12 @@ GENERAL = ScientistProfile(
 )
 
 
-def _from_library(name: str, extra: tuple[str, ...], guidance: str) -> ScientistProfile:
+def _from_library(
+    name: str,
+    extra: tuple[str, ...],
+    guidance: str,
+    workspace_guidance: str = "",
+) -> ScientistProfile:
     lib = get_domain(name)
     return ScientistProfile(
         name=name,
@@ -69,7 +78,43 @@ def _from_library(name: str, extra: tuple[str, ...], guidance: str) -> Scientist
         ),
         extra_packages=extra,
         guidance=guidance,
+        workspace_guidance=workspace_guidance,
     )
+
+
+# What the molecular tools in the plato-lab template may and may not be used to claim.
+# Each paragraph names the tool, the statistic it produces and the kind of claim that
+# statistic can carry: a computed measurement, a transferred inference or a model
+# estimate. The point is that an annotation or a score is never written up as a
+# measurement, and that a condition-dependent claim is tested by varying the condition.
+MOLECULAR_GUIDANCE = (
+    "Molecular work in this sandbox: state what kind of evidence each claim rests on, and "
+    "never let a database annotation stand in for a result you computed. "
+    "Compounds: parse and standardise with RDKit (InChIKey for identity), and treat "
+    "descriptors, scaffolds and matched pairs as computed facts; predicted properties are "
+    "model estimates, so name the model. Generate conformers with RDKit ETKDG and refine "
+    "them with xtb (GFN2) when geometry matters. "
+    "Proteins: phmmer, jackhmmer and hmmbuild/hmmsearch give profile-HMM homology, mmseqs "
+    "fast sequence search and foldseek structural search; mkdssp gives secondary structure "
+    "from coordinates. Function carried over from a homologue is an inference, not an "
+    "observation: report identity, coverage and E-value (or TM-score) with it, and keep "
+    "predicted structures (AlphaFold DB) apart from experimental ones, with pLDDT. "
+    "Pathways: membership in Reactome, KEGG or STRING is a reference annotation and proves "
+    "nothing on its own. A pathway claim must come from a statistic computed on your own "
+    "data: gseapy over-representation or permutation GSEA against a background set that "
+    "matches what the assay could have detected, FDR-corrected, reporting the background, "
+    "the null and the set size. Topology claims (hubs, shortest paths, bottlenecks) need a "
+    "degree-preserving randomisation as the null, not the observed graph alone. "
+    "Interactions: AutoDock Vina scores rank poses within one receptor and box; they are "
+    "not binding affinities, and the receptor preparation, box and seed belong in the "
+    "report with the redocking control. Physics-based estimates are model energies: give "
+    "xtb interaction energies relative to the separated monomers at the same level, Psi4 "
+    "SAPT components (electrostatics, exchange, induction, dispersion) when the question is "
+    "what drives an interaction, and OpenMM or LAMMPS for ensemble behaviour, with the "
+    "force field and the sampling time stated. When the claim is about conditions (solvent, "
+    "pH, ionic strength, temperature, mutation), run the sweep and report the trend with "
+    "error bars across replicate seeds, never a single point."
+)
 
 
 BIOLOGY = _from_library(
@@ -78,6 +123,7 @@ BIOLOGY = _from_library(
     "Biology campaigns: use Bio.Seq/Bio.SeqIO/Bio.Align for sequence work (no Entrez: the "
     "sandbox is offline), statsmodels for GLMs and multiple-testing correction "
     "(statsmodels.stats.multitest.multipletests), and report effect sizes with intervals.",
+    MOLECULAR_GUIDANCE,
 )
 ASTRO = _from_library(
     "astro",
@@ -92,6 +138,8 @@ PROFILES: dict[str, ScientistProfile] = {p.name: p for p in (GENERAL, BIOLOGY, A
 # Word-start anchored so "general", "standard" or "journal" never match.
 _BIO = re.compile(
     r"\b(bio\w*|genes?\b|genetic\w*|genom\w*|protein\w*|cells?\b|clinic\w*|"
+    r"chem\w*|molecul\w*|ligands?\b|docking|drugs?\b|enzym\w*|metabol\w*|"
+    r"pathways?\b|receptors?\b|inhibitors?\b|antibod\w*|peptides?\b|"
     r"medic\w*|epidem\w*|ecolog\w*|neuro\w*|pharma\w*|immun\w*|microb\w*|vir(us|al)\w*|"
     r"diseases?\b|health\w*|\w*omics\b|rna\b|dna\b|sequencing|physiolog\w*|patholog\w*|"
     r"cancer\w*|tumou?r\w*|transcript\w*)"

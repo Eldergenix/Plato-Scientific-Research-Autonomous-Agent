@@ -106,7 +106,7 @@ print("PLATO_METRICS " + json.dumps({"radius_of_gyration": round(rg, 4), "contac
 recipe(
     "ligands",
     r"""set -euo pipefail
-python -m pip install -q rdkit==2025.3.6
+# RDKit is preinstalled in the template's base env (a pip wheel would shadow it).
 python -c 'import rdkit; print(rdkit.__version__)'
 """,
     r"""import csv, json

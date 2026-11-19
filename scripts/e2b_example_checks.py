@@ -282,7 +282,8 @@ out.check_returncode()
 recipe(
     "solubility",
     r"""set -euo pipefail
-python -m pip install -q rdkit==2025.3.6
+# RDKit is preinstalled in the template's base env; a pip wheel on top of the conda
+# package would shadow it with a second, differently built copy.
 curl -fsSL --retry 5 --retry-all-errors \
   https://deepchemdata.s3-us-west-1.amazonaws.com/datasets/delaney-processed.csv -o delaney.csv
 """,
