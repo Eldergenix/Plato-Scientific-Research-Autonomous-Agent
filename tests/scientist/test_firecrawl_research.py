@@ -428,8 +428,8 @@ async def test_adapter_completes_papers_and_is_off_without_key():
 
 
 def test_credit_rate_defaults_conservatively_and_is_configurable():
-    assert credit_tokens({}) == DEFAULT_CREDIT_TOKENS == 50_000
-    assert credit_tokens({"PLATO_FIRECRAWL_CREDIT_TOKENS": "8300"}) == 8300
+    assert credit_tokens({}) == DEFAULT_CREDIT_TOKENS == 9_900
+    assert credit_tokens({"PLATO_FIRECRAWL_CREDIT_TOKENS": "25000"}) == 25_000
     assert (
         credit_tokens({"PLATO_FIRECRAWL_CREDIT_TOKENS": "lots"})
         == DEFAULT_CREDIT_TOKENS

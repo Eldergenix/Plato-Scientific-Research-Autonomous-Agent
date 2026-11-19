@@ -102,6 +102,7 @@ async def test_live_deep_research_session_with_haiku():
     import uuid
 
     from plato.scientist.deep_research import (
+        DEFAULT_CREDIT_TOKENS,
         SYSTEM,
         CreditMeter,
         ResearchLimits,
@@ -118,7 +119,7 @@ async def test_live_deep_research_session_with_haiku():
     nonce = new_nonce()
     async with FirecrawlClient() as fc:
         meter = CreditMeter(
-            ledger, cid, tokens_per_credit=50_000, cap=limits.max_credits
+            ledger, cid, tokens_per_credit=DEFAULT_CREDIT_TOKENS, cap=limits.max_credits
         )
         tools = ResearchTools(fc, meter, limits)
         outcome = await run_research(

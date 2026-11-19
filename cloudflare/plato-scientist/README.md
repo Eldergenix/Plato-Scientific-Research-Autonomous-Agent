@@ -138,9 +138,9 @@ With `FIRECRAWL_API_KEY` set (Worker secret, passed to the container), research 
 Cost: the Research Index endpoints are free. Web search, scrape, developer search and
 Alexandria tool runs cost Firecrawl credits; each call reserves its worst case against the
 thread's token budget and settles to the credits Firecrawl reports, at
-`PLATO_FIRECRAWL_CREDIT_TOKENS` allowance tokens per credit (default 50,000, Firecrawl's
-highest per-credit price against Claude Haiku 5.5's input price; lower it to your plan's
-price). So research spend counts against the monthly allowance like model spend. One
+`PLATO_FIRECRAWL_CREDIT_TOKENS` allowance tokens per credit (default 9,900: the Standard
+plan's $0.00099 per credit against Claude Haiku 5.5's input price; set 25,000 if usage runs
+past the plan's credits into $5-per-2,000 top-ups). So research spend counts against the monthly allowance like model spend. One
 experiment's research is capped at 12 credits (`research_max_credits` in the thread config).
 Threads on the person's own Anthropic key get only the free Research Index tools, because
 their spend is not metered by the allowance. Check `/healthz` → `literature_keys.firecrawl`.

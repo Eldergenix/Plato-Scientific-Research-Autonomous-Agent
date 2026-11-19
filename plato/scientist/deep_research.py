@@ -59,10 +59,12 @@ PURPOSE = "deep_research"
 CREDIT_TOKENS_ENV = "PLATO_FIRECRAWL_CREDIT_TOKENS"
 # Allowance tokens charged per Firecrawl credit. An allowance token is a Claude Haiku 5.5
 # token ($0.10 per million input tokens, the cheapest rate, so a credit is never
-# undercharged). The highest per-credit price on a paid Firecrawl plan is Hobby's
-# pay-as-you-go top-up, $5 per 1,000 credits = $0.005, and $0.005 / $0.0000001 = 50,000.
-# Deployments on a cheaper plan can lower it (Standard: $83 / 100,000 credits -> 8,300).
-DEFAULT_CREDIT_TOKENS = 50_000
+# undercharged). jarvisos.xyz is on Firecrawl's Standard plan: $99 a month (monthly billing,
+# the higher of its two prices) for 100,000 credits = $0.00099 per credit, and
+# $0.00099 / $0.0000001 = 9,900. Credits bought past the plan cost more ($5 per 2,000 =
+# 25,000) and the Hobby plan's top-ups most ($5 per 1,000 = 50,000): set
+# PLATO_FIRECRAWL_CREDIT_TOKENS when either applies.
+DEFAULT_CREDIT_TOKENS = 9_900
 # Firecrawl does not document a developer-search price; charge it as one credit until the
 # response reports one.
 DEVELOPER_SEARCH_CREDITS = 1.0
