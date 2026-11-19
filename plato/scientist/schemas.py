@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Literal
+import json
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class GoalSpec(BaseModel):
@@ -73,6 +74,85 @@ class IntentSpec(BaseModel):
     source_hint_index: int | None = Field(
         default=None, description="Index of the hint it derives from, if any."
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _unwrap_encoded_design(cls, data: Any) -> Any:
+        """Accept a model that put the whole design, JSON-encoded, in ``hypothesis``.
+
+        Without this the encoded object would be stored as the hypothesis text, so the run
+        would get a JSON blob as its claim and the app would show it raw.
+        """
+        return _unnest_design(data) if isinstance(data, dict) else data
+
+
+INTENT_SPEC_KEYS = (
+    "hypothesis",
+    "protocol",
+    "primary_metric",
+    "test_kind",
+    "success_criterion",
+)
+
+
+def _design_object(text: str, depth: int = 3) -> dict[str, Any] | None:
+    """The JSON object in ``text``, unwrapping JSON strings that hold one; None otherwise."""
+    value: Any = text
+    for _ in range(depth):
+        if not isinstance(value, str):
+            break
+        stripped = value.strip()
+        if not stripped.startswith(("{", '"')):
+            return None
+        try:
+            value = json.loads(stripped)
+        except ValueError:
+            return None
+    if not isinstance(value, dict) or not any(k in value for k in INTENT_SPEC_KEYS):
+        return None
+    return value
+
+
+def _unnest_design(design: dict[str, Any]) -> dict[str, Any]:
+    """Lift a design JSON-encoded inside ``hypothesis`` into the fields.
+
+    The inner hypothesis replaces the blob; other inner fields fill only the empty outer ones.
+    """
+    hypothesis = design.get("hypothesis")
+    inner = _design_object(hypothesis) if isinstance(hypothesis, str) else None
+    if inner is None or not isinstance(inner.get("hypothesis"), str):
+        return design
+    out = dict(design)
+    out["hypothesis"] = inner["hypothesis"]
+    for key in INTENT_SPEC_KEYS:
+        if inner.get(key) not in (None, "") and out.get(key) in (None, ""):
+            out[key] = inner[key]
+    return out
+
+
+def encode_intent_spec(spec: IntentSpec, primary_metric: str) -> str:
+    """The text stored in an intent node's ``hypothesis_or_spec``: one JSON object."""
+    return json.dumps(
+        {
+            "hypothesis": spec.hypothesis,
+            "protocol": spec.protocol,
+            "primary_metric": primary_metric,
+            "test_kind": spec.test_kind,
+            "success_criterion": spec.success_criterion,
+        }
+    )
+
+
+def decode_intent_spec(text: str) -> dict[str, Any]:
+    """Read an intent node's design back, tolerating rows written before the schema check.
+
+    Handles the object encoded twice and the whole design nested in ``hypothesis``. Raises
+    ValueError when the text holds no design. The app's reader is public/app/spec.js.
+    """
+    spec = _design_object(text)
+    if spec is None:
+        raise ValueError("intent text is not a JSON design object")
+    return _unnest_design(spec)
 
 
 class IntentBatch(BaseModel):

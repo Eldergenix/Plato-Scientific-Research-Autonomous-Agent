@@ -254,7 +254,7 @@ function nodeProps(n){
   const lineage=p?p.nodes.filter(x=>x.id!==n.id):[],anchors=p?p.anchors:[];
   return `<div class="pp"><div style="display:flex;align-items:center;gap:8px"><button class="icon-btn" type="button" data-close aria-label="Back to properties">${ico('<path d="M10 3 5 8l5 5"/>')}</button>${typeChip(n.node_type)}<span class="chip">${nodeIcon(n.status)}${STATUS_LABEL[n.status]||esc(n.status)}</span></div>
   <div class="node-t">${esc(n.title)}</div>
-  ${n.hypothesis_or_spec?`<div class="para">${esc(n.hypothesis_or_spec)}</div>`:""}
+  ${PlatoSpec.html(n.hypothesis_or_spec,esc)}
   ${n.confidence_score!=null?`<div class="sep"></div><div class="prop"><span>Confidence</span><span><span class="bar" style="width:90px"><span style="width:${Math.round(100*n.confidence_score)}%"></span></span>${Number(n.confidence_score).toFixed(2)}</span></div>`:""}
   ${gateChips(n)}
   ${pk&&pk in m?`<div class="sep"></div><h4>Primary metric</h4><div class="prim"><span class="mono t2" title="${esc(pk)}">${esc(pk)}</span><span class="pv">${esc(f(m[pk]))}</span>${m[pk+"_se"]!=null?`<span class="t3">± ${esc(f(m[pk+"_se"]))} SE</span>`:""}${rep!==undefined?`<span class="t3">replica: ${esc(f(rep))}</span>`:""}${m.test_kind?`<span class="chip">${esc(m.test_kind)} test</span>`:""}</div>`:""}
@@ -482,7 +482,7 @@ function expIndex(){const byId=new Map(S.graph.nodes.map(n=>[n.id,n])),runs=new 
 const filesOf=nodeId=>Array.isArray(S.files)?S.files.filter(f=>f.node_id===nodeId):[];
 function countKinds(files){const c={};files.forEach(f=>{const k=F.kindOf(f);c[k]=(c[k]||0)+1});return c}
 const kindsText=c=>Object.entries(c).map(([k,n])=>`${n} ${F.KIND[k].l.toLowerCase()}${n>1?"s":""}`).join(" · ");
-function specOf(it){try{const j=JSON.parse(it.hypothesis_or_spec||"");return j&&typeof j==="object"?j:{}}catch{return it.hypothesis_or_spec?{hypothesis:it.hypothesis_or_spec}:{}}}
+const specOf=it=>PlatoSpec.of(it.hypothesis_or_spec);
 /* The recipe (setup.sh + experiment.py) is recorded as a patch on the run; read it for the workflow. */
 async function loadRecipe(fact){if(S.recipes[fact.id]!==undefined)return;S.recipes[fact.id]=null;
   try{if(!S.prov[fact.id])S.prov[fact.id]=await getJSON("nodes/"+fact.id+"/provenance");
@@ -509,13 +509,13 @@ function workflowSteps(it,fact,finding){const spec=specOf(it),m=obj(fact?.metric
 function experimentPage(it){
   const {runsOf,findingOf}=expIndex(),runs=runsOf(it.id),spec=specOf(it),c=S.summary.campaign;
   runs.forEach(f=>{if(S.recipes[f.id]===undefined)loadRecipe(f)});
-  const dl=[["Hypothesis",spec.hypothesis],["Protocol",spec.protocol],["Success criterion",spec.success_criterion],["Primary metric",spec.primary_metric],["Test",spec.test_kind]].filter(([,v])=>v);
+  const dl=PlatoSpec.fields(spec);
   const run=(fact,i)=>{const finding=findingOf(fact.id),m=obj(fact.metrics),files=filesOf(fact.id),rec=S.recipes[fact.id];
     const metrics=Object.entries(m).filter(([k,v])=>!["gates","replication","primary_metric","test_kind","supports_hypothesis","code_sha256","executor","network_isolated","seed","runtime_seconds"].includes(k)&&(typeof v==="number"||typeof v==="string"));
     return `<section class="card"><div class="card-h"><b>${runs.length>1?`Run ${i+1}: `:""}${esc(fact.title)}</b><span class="chip">${nodeIcon(fact.status)}${esc(STATUS_LABEL[fact.status]||fact.status)}</span>${finding?`<span class="chip">${nodeIcon(finding.status)}Finding ${esc(STATUS_LABEL[finding.status]||finding.status)}</span>`:""}
       <span class="act" style="display:flex;gap:6px">${rec?.patch?`<button class="btn sm" type="button" data-ev="${esc(rec.patch)}" data-type="git_patch">Code</button>`:""}${rec?.log?`<button class="btn sm" type="button" data-ev="${esc(rec.log)}" data-type="stdout_log">Run log</button>`:""}<button class="btn ghost sm" type="button" data-node="${esc(fact.id)}">Details</button></span></div>
       ${F.workflowHtml(workflowSteps(it,fact,finding))}
-      ${fact.hypothesis_or_spec?`<p class="t2" style="margin:12px 0 0;font-size:13px">${esc(fact.hypothesis_or_spec)}</p>`:""}
+      ${fact.hypothesis_or_spec?`<div style="margin:12px 0 0">${PlatoSpec.html(fact.hypothesis_or_spec,esc,"t2 xp-obs")}</div>`:""}
       ${metrics.length?`<div class="sec-h" style="margin-top:14px">Metrics</div><div class="kv mono">${metrics.slice(0,30).map(([k,v])=>`<span title="${esc(k)}">${esc(k)}</span><span>${esc(typeof v==="number"?sig(v):v)}</span>`).join("")}</div>`:""}
       ${files.length?`<div class="sec-h" style="margin-top:14px">Outputs</div><div class="xp-outs">${files.map(f=>`<a class="xp-out" href="#/c/${eid(c.id)}/data/${eid(f.id)}">${F.kindIcon(F.kindOf(f))}${esc(f.file_name||F.KIND[F.kindOf(f)].l)}</a>`).join("")}</div>`:""}</section>
       ${files.filter(f=>F.kindOf(f)!=="pdf").slice(0,4).map(f=>`<div data-dv="${esc(f.id)}"></div>`).join("")}`};

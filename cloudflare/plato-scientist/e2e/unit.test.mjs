@@ -6,6 +6,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import vm from "node:vm";
 import zlib from "node:zlib";
 
 const root = path.dirname(path.dirname(new URL(import.meta.url).pathname));
@@ -132,6 +133,43 @@ await test("public/_headers allows exactly the inline scripts in index.html", as
   assert.ok(!scriptSrc.includes("'unsafe-inline'") && !scriptSrc.includes("'unsafe-eval'"));
   assert.doesNotMatch(html, /\son[a-z]+="/i, "inline event handlers would be blocked by the CSP");
 });
+
+/* ---------- experiment designs (public/app/spec.js): labelled fields, never raw JSON ---------- */
+{
+  const sandbox = { globalThis: {} };
+  vm.runInNewContext(fs.readFileSync(path.join(root, "public/app/spec.js"), "utf8"), sandbox);
+  const Spec = sandbox.globalThis.PlatoSpec;
+  // The stored text of a real intent the app showed raw; the Python reader uses the same file.
+  const stored = fs.readFileSync(path.join(root, "../../tests/scientist/fixtures/intent_design.json"), "utf8").trim();
+  const design = JSON.parse(stored);
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+  const plain = (o) => JSON.parse(JSON.stringify(o));
+  await test("a stored design parses to its fields", async () => assert.deepEqual(plain(Spec.parse(stored)), design));
+  await test("a design renders as labelled fields, not JSON", async () => {
+    const html = Spec.html(stored, esc);
+    assert.match(html, /^<dl class="xp-spec">/);
+    for (const [label, value] of [["Hypothesis", design.hypothesis], ["Protocol", design.protocol], ["Success criterion", design.success_criterion],
+      ["Primary metric", "bias_without_pathology_in_se_units"], ["Test", "difference"]])
+      assert.ok(html.includes(`<dt>${label}</dt><dd>${esc(value)}</dd>`), label);
+    assert.doesNotMatch(html, /[{}]|&#34;hypothesis&#34;|"hypothesis"/);
+  });
+  await test("a design encoded twice still parses", async () => assert.deepEqual(plain(Spec.parse(JSON.stringify(stored))), design));
+  await test("a design nested in the hypothesis field is unwrapped", async () => {
+    const got = plain(Spec.parse(JSON.stringify({ hypothesis: stored, primary_metric: "x" })));
+    assert.deepEqual(got, { ...design, primary_metric: "x" });
+  });
+  await test("plain node text stays a paragraph", async () => {
+    for (const t of ["Sample observation text for the claim.", "{Braces} in prose", "[1,2]", '{"title":"x"}', "{not json"]) {
+      assert.equal(Spec.parse(t), null, t);
+      assert.equal(Spec.html(t, esc), `<div class="para">${esc(t)}</div>`);
+    }
+    assert.equal(Spec.html("", esc), "");
+    assert.deepEqual(plain(Spec.of("A claim.")), { hypothesis: "A claim." });
+    assert.deepEqual(plain(Spec.of(null)), {});
+  });
+  await test("field values are escaped", async () =>
+    assert.ok(Spec.html(JSON.stringify({ hypothesis: "<img src=x onerror=1>" }), esc).includes("&#60;img")));
+}
 
 fs.rmSync(out, { recursive: true, force: true });
 console.log(`${n} passed`);
