@@ -279,9 +279,10 @@ const fail = (m) => { throw new Error(m); };
   await page.reload();
   await page.waitForSelector("#homeC");
   if (await page.$("#ahEx")) fail("dismissed examples came back");
-  // The sidebar's projects load after the home view renders; read them once they are there.
+  // After the reload the nav fills in asynchronously: wait for the project links before reading one.
   await page.waitForSelector('#nav a.item[href^="#/p/"]');
   const proj = await page.$$eval('#nav a.item[href^="#/p/"]', (as) => as.map((a) => a.getAttribute("href")).at(-1));
+  if (!proj) fail("no project in the nav");
   await page.goto(BASE + "/" + proj);
   await page.waitForSelector("#thBtn", { state: "visible", timeout: 10000 });
   await shot("m-project-light");

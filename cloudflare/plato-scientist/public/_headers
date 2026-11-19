@@ -1,8 +1,9 @@
 # Security headers for every static response (the UI and its assets). /api/* responses get
 # theirs from the Worker (src/lib.ts, withSecurityHeaders). Keep the script hash in step with
-# the inline theme script in index.html: e2e/unit.test.mjs checks it.
+# the inline theme script in index.html: e2e/unit.test.mjs checks it. static.cloudflareinsights.com
+# and cloudflareinsights.com are Cloudflare Web Analytics, which the zone injects into every page.
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-JX0RaOIIrQTcc1ooktLZDczIl7pIOGMQ2+J/7Q1R2a8='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' blob:; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'self' blob:; base-uri 'none'; form-action 'self'; frame-ancestors 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-JX0RaOIIrQTcc1ooktLZDczIl7pIOGMQ2+J/7Q1R2a8=' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' blob: https://cloudflareinsights.com; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'self' blob:; base-uri 'none'; form-action 'self'; frame-ancestors 'self'
   Strict-Transport-Security: max-age=31536000
   X-Frame-Options: SAMEORIGIN
   X-Content-Type-Options: nosniff
