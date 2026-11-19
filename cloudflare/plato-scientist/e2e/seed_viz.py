@@ -239,6 +239,20 @@ async def main() -> None:
             metrics={"error": "no successful run", "attempts": 3},
         )
         await store.add_edge(cid, root.id, dead.id, "spawns", "planned")
+        # a queued experiment stored with the exact text of a real intent the app once showed
+        # as raw JSON (tests/scientist/fixtures/intent_design.json)
+        design = await store.create_node(
+            cid,
+            "intent",
+            "Does omitting pathology bias the age interaction?",
+            (ROOT / "tests" / "scientist" / "fixtures" / "intent_design.json")
+            .read_text()
+            .strip(),
+            dedup_key="viz-design",
+            priority=0.1,
+        )
+        await store.add_edge(cid, root.id, design.id, "spawns", "planned")
+        out["experiments"]["design"] = str(design.id)
         for status in (
             "investigating",
             "ablating",
