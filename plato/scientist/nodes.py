@@ -66,6 +66,7 @@ logger = logging.getLogger(__name__)
 METRICS_MARKER = "PLATO_METRICS"
 # Thinking plus the LaTeX body of one manuscript call (Haiku 5.5 allows 128k output).
 MANUSCRIPT_MAX_TOKENS = 48_000
+PLAN_MAX_TOKENS = 16_000
 SEED_FILE = "plato_seed.txt"
 SEALED_MANIFEST = "plato_sealed.json"
 ROOT_GOAL_KEY = "root-goal"
@@ -599,7 +600,8 @@ async def experiment_planner(
             or "(none: design simulations or analyses that generate their own data)"
         )
         + f"\n\nPapers not yet used by any experiment: {len(uncovered)}\n\n"
-        f"Propose up to {ctx.config.intents_per_round} new, independent computational experiments. "
+        f"Propose up to {ctx.config.intents_per_round} new, independent computational experiments "
+        "(never more). Keep each protocol under 150 words: the research engineer designs the code. "
         "Prefer experiments that resolve open hints or follow up surprising facts. Each must run "
         f"offline {experiment_limits_text(ctx.config)} with {'/'.join(profile.packages)}. "
         + (f"{profile.guidance} " if profile.guidance else "")
@@ -615,6 +617,8 @@ async def experiment_planner(
         purpose="plan_intents",
         schema=IntentBatch,
         effort="medium",
+        # Thinking and up to intents_per_round full specs share this cap.
+        max_tokens=PLAN_MAX_TOKENS,
         system=_system("experiment planner", nonce),
         prompt=prompt,
     )

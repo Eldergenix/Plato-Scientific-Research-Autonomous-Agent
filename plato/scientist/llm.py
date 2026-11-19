@@ -10,8 +10,10 @@ configurable per role). Every call:
   parses free text;
 * sends no ``temperature`` (non-default sampling parameters are rejected by current models)
   and no assistant prefill; depth is controlled with ``output_config.effort``;
-* treats ``stop_reason == "refusal"`` and truncated output as errors instead of
-  silently continuing with an empty result.
+* treats ``stop_reason == "refusal"`` as an error, and retries a structured call cut off at
+  ``max_tokens`` once with a larger cap (``max_tokens`` covers the model's adaptive thinking
+  as well as the JSON, so a hard prompt can spend most of a fixed cap thinking); output
+  still truncated after that is an error, never an empty or partial result.
 
 The :class:`ScientistModel` protocol lets tests inject a deterministic model.
 """
@@ -76,6 +78,16 @@ class ModelRefusal(RuntimeError):
 
 class ModelOutputError(RuntimeError):
     """The model's output was truncated or failed schema validation."""
+
+
+class OutputTruncated(ModelOutputError):
+    """The response stopped at ``max_tokens`` before the structured output was complete."""
+
+
+# A structured call cut off at max_tokens is retried once with this cap (or 4x the first,
+# whichever is larger), up to the ceiling. Streaming keeps a large cap within timeouts.
+RETRY_MAX_TOKENS = 32_000
+MAX_OUTPUT_TOKENS = 64_000
 
 
 @dataclass
@@ -213,6 +225,45 @@ class AnthropicScientistModel:
         images: list[bytes] | None = None,
         on_text: TextSink | None = None,
     ) -> T:
+        kwargs = dict(
+            campaign_id=campaign_id,
+            purpose=purpose,
+            system=system,
+            prompt=prompt,
+            schema=schema,
+            effort=effort,
+            images=images,
+            on_text=on_text,
+        )
+        try:
+            return await self._structured_once(max_tokens=max_tokens, **kwargs)
+        except OutputTruncated:
+            retry = min(max(RETRY_MAX_TOKENS, max_tokens * 4), MAX_OUTPUT_TOKENS)
+            if retry <= max_tokens:
+                raise
+            # Each attempt is reserved and settled on its own, so the cut-off attempt's
+            # tokens are charged too.
+            logger.warning(
+                "llm %s: output truncated at max_tokens=%s; retrying with %s",
+                purpose,
+                max_tokens,
+                retry,
+            )
+            return await self._structured_once(max_tokens=retry, **kwargs)
+
+    async def _structured_once(
+        self,
+        *,
+        campaign_id: uuid.UUID,
+        purpose: str,
+        system: str,
+        prompt: str,
+        schema: type[T],
+        max_tokens: int,
+        effort: Effort,
+        images: list[bytes] | None,
+        on_text: TextSink | None,
+    ) -> T:
         content: list[dict] = []
         for png in images or []:
             content.append(
@@ -301,7 +352,7 @@ class AnthropicScientistModel:
                     f"{purpose}: model refused ({getattr(details, 'category', None)})"
                 )
             if response.stop_reason == "max_tokens":
-                raise ModelOutputError(
+                raise OutputTruncated(
                     f"{purpose}: output truncated at max_tokens={max_tokens}"
                 )
             text = "".join(

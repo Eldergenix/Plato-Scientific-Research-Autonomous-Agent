@@ -76,7 +76,9 @@ class IntentSpec(BaseModel):
 
 
 class IntentBatch(BaseModel):
-    intents: list[IntentSpec]
+    intents: list[IntentSpec] = Field(
+        description="The proposed experiments: no more than the number asked for."
+    )
 
 
 class ExperimentCode(BaseModel):
