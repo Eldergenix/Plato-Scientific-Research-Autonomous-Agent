@@ -519,6 +519,10 @@ def test_lab_template_carries_the_molecular_toolchain():
     assert "vina" in specs["dock"] and "meeko" in specs["dock"]
     assert "openmm" in specs["md"] and "lammps" in specs["md"]
     assert "cpu_py312" in specs["md"] and "nompi" in specs["md"]  # no GPU, one machine
+    # The build number is part of the pin: conda-forge's GCC 15 rebuilds of this LAMMPS
+    # version (build 4 and later) need GLIBC_2.38, and the E2B base image is Debian 12
+    # with glibc 2.36, where they fail to load. Build 3 needs nothing above GLIBC_2.34.
+    assert "lammps=2025.07.22=cpu_py312*nompi_3" in specs["md"]
     assert "xtb" in specs["qm"] and "psi4" in specs["qm"]
     # experiment.py runs under the base Python, so the summary must say how to reach the
     # envs it cannot import from.

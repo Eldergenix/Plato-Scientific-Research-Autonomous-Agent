@@ -25,6 +25,8 @@ Notes on the molecular tools, each found while verifying them:
   ``lib`` first, which Psi4 needs for its MKL build.
 * LAMMPS is pinned to a ``cpu_py312*nompi*`` build: the CUDA builds are four times the
   size for a sandbox with no GPU, and one sandbox is one machine, so MPI buys nothing.
+  The build number is pinned too, because the GCC 15 rebuilds need a newer glibc than the
+  base image has; see the comment on the ``md`` env.
 * RDKit lives in base, so nothing should ``pip install rdkit`` on top of it: the wheel
   shadows the conda package with a second, differently built copy.
 * ``mkdssp`` 4.x tries mmCIF first and prints a parse error to stderr before falling back
@@ -123,12 +125,21 @@ CONDA_TOOL_ENVS: dict[str, tuple[list[str], list[str], dict[str, str]]] = {
     # Molecular dynamics. The CPU, no-MPI LAMMPS build (E2B has no GPU and one sandbox is
     # one machine) is a quarter the size of the CUDA builds; PLUMED comes with it for
     # free-energy methods. OpenMM covers biomolecular force fields and explicit solvent.
+    #
+    # The build number is pinned, not just the variant. conda-forge rebuilt LAMMPS
+    # 2025.07.22 against GCC 15 from build 4 on (``libgcc >=15``), and GCC 15 emits the
+    # ISO C23 symbols (``__isoc23_strtol`` and friends) that glibc only exports from
+    # GLIBC_2.38. The E2B base image is Debian 12 with glibc 2.36, where those builds
+    # fail to load at all: ``lmp: /lib/x86_64-linux-gnu/libm.so.6: version 'GLIBC_2.38'
+    # not found``. Build 3 is the same LAMMPS version from the GCC 14 toolchain and needs
+    # no symbol above GLIBC_2.34. Only move this pin forward after checking the new build
+    # with ``readelf -V`` (or a sandbox), not because a newer one exists.
     "md": (
         [
             "python=3.12",
             "numpy",
             "scipy",
-            "lammps=*=cpu_py312*nompi*",
+            "lammps=2025.07.22=cpu_py312*nompi_3",
             "openmm",
             "mdanalysis",
             "parmed",
