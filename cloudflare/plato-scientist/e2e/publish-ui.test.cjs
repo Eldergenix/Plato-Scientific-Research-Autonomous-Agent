@@ -95,6 +95,15 @@ const fail = (m) => { throw new Error(m); };
   for (const j of ["Nature", "Nature Communications", "Science", "Cell", "New England Journal of Medicine", "The Lancet", "JAMA", "Genes", "arXiv"]) if (!opts.some((o) => o.includes(j))) fail(`journal ${j} missing: ${opts}`);
   await page.selectOption("#pubJournal", "nature");
   await page.waitForFunction(() => document.querySelector(".pub-build").textContent.includes("Title ≤ 75 characters"));
+  // Citation style picker: the journal's own style first, then the general styles.
+  const styles = await page.$$eval("#pubStyle option", (o) => o.map((x) => [x.value, x.textContent]));
+  if (styles[0][0] !== "journal" || !styles[0][1].includes("Nature's own: Nature")) fail("style default " + JSON.stringify(styles[0]));
+  for (const s of ["APA 7th edition", "Vancouver / NLM (Citing Medicine)", "Harvard (Cite Them Right 12th edition)", "Chicago 18th edition (author-date)"])
+    if (!styles.some((x) => x[1] === s)) fail(`style ${s} missing`);
+  await page.selectOption("#pubStyle", "apa");
+  await page.waitForFunction(() => document.querySelector(".pub-build").textContent.includes("asks for its own reference style"));
+  await page.selectOption("#pubStyle", "journal");
+  await page.waitForFunction(() => !document.querySelector(".pub-build").textContent.includes("asks for its own reference style"));
   await shot("publish-empty-dark");
   await page.click("#pubBuild");
   await page.waitForSelector(".pub-card [data-pact=send]", { timeout: 180000 });

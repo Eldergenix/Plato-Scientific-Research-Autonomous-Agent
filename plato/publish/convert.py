@@ -9,12 +9,15 @@ or single spacing, paper size, margins and, where asked, continuous line numbers
 
 from __future__ import annotations
 
+import copy
 import io
 import json
 import re
 import zipfile
+from dataclasses import replace
 from pathlib import Path
 
+from .document import ABSTRACT_HERE, PAGE_BREAK
 from .journals import Journal
 from .references import CSL_DIR
 from .tools import run_tool
@@ -80,6 +83,51 @@ def patch_reference_docx(default: bytes, j: Journal) -> bytes:
     return _rezip(files)
 
 
+_PAGE_BREAK_XML = '<w:p><w:r><w:br w:type="page" /></w:r></w:p>'
+
+
+def _page_breaks(blocks: list[dict]) -> None:
+    """``PLATOPAGEBREAK`` paragraphs become Word page breaks (other writers drop them)."""
+    for i, b in enumerate(blocks):
+        if _is_marker(b, PAGE_BREAK):
+            blocks[i] = {"t": "RawBlock", "c": ["openxml", _PAGE_BREAK_XML]}
+        elif b.get("t") == "Div":
+            _page_breaks(b["c"][1])
+
+
+def _is_marker(b: dict, word: str) -> bool:
+    return b.get("t") in ("Para", "Plain") and b["c"] == [{"t": "Str", "c": word}]
+
+
+def _inlines(text: str) -> list[dict]:
+    out: list[dict] = []
+    for i, w in enumerate(text.split()):
+        if i:
+            out.append({"t": "Space"})
+        out.append({"t": "Str", "c": w})
+    return out
+
+
+def abstract_in_body(ast: dict, label: str) -> dict:
+    """Word: the abstract as a headed section where ``ABSTRACT_HERE`` sits (after the
+    title page) instead of pandoc's title block. Other writers drop the marker."""
+    ast = copy.deepcopy(ast)
+    meta = ast.get("meta", {}).pop("abstract", None)
+    blocks = meta["c"] if meta and meta.get("t") == "MetaBlocks" else []
+    head = {"t": "Header", "c": [1, ["", ["unnumbered"], []], _inlines(label)]}
+    for i, b in enumerate(ast["blocks"]):
+        if _is_marker(b, ABSTRACT_HERE):
+            ast["blocks"][i : i + 1] = [head, *blocks] if blocks else []
+            break
+    return ast
+
+
+def drop_markers(ast: dict) -> dict:
+    ast = copy.deepcopy(ast)
+    ast["blocks"] = [b for b in ast["blocks"] if not _is_marker(b, ABSTRACT_HERE)]
+    return ast
+
+
 def _place_refs(blocks: list[dict]) -> bool:
     for i, b in enumerate(blocks):
         if b.get("t") in ("Para", "Plain") and any(
@@ -98,6 +146,7 @@ async def to_ast(tex: str, workdir: Path) -> dict:
     )
     ast = json.loads(res.output[res.output.index("{") :])
     _place_refs(ast["blocks"])
+    _page_breaks(ast["blocks"])
     return ast
 
 
@@ -110,6 +159,7 @@ async def docx(
         workdir,
     )
     ref.write_bytes(patch_reference_docx(ref.read_bytes(), j))
+    ast = abstract_in_body(ast, j.abstract.label)
     (workdir / "doc.json").write_text(json.dumps(ast), encoding="utf-8")
     await run_tool(
         [
@@ -144,6 +194,7 @@ async def jats(ast: dict, workdir: Path, out: str = "manuscript.jats.xml") -> Pa
     """JATS Archiving and Interchange XML, the format PubMed Central ingests. Pandoc's
     built-in JATS citation style writes each reference as a structured
     ``<element-citation>`` (authors, title, source, year, volume, pages, DOI)."""
+    ast = drop_markers(ast)
     (workdir / "doc.json").write_text(json.dumps(ast), encoding="utf-8")
     await run_tool(
         [
@@ -165,5 +216,35 @@ async def jats(ast: dict, workdir: Path, out: str = "manuscript.jats.xml") -> Pa
     return workdir / out
 
 
-def style_file(j: Journal, workdir: Path) -> None:
-    (workdir / "style.csl").write_bytes((CSL_DIR / j.csl).read_bytes())
+def style_file(csl: str, workdir: Path) -> None:
+    (workdir / "style.csl").write_bytes((CSL_DIR / csl).read_bytes())
+
+
+async def letter_docx(md: str, j: Journal, workdir: Path, out: str) -> Path:
+    """A single-spaced Word letter in the journal's paper size and Times New Roman."""
+    ref = workdir / "letter-reference.docx"
+    await run_tool(
+        ["pandoc", "-o", ref.name, "--print-default-data-file", "reference.docx"],
+        workdir,
+    )
+    ref.write_bytes(
+        patch_reference_docx(
+            ref.read_bytes(), replace(j, double_spaced=False, line_numbers=False)
+        )
+    )
+    await run_tool(
+        [
+            "pandoc",
+            "-f",
+            "markdown",
+            "-t",
+            "docx",
+            "-o",
+            out,
+            "--reference-doc",
+            ref.name,
+        ],
+        workdir,
+        stdin=md.encode("utf-8"),
+    )
+    return workdir / out

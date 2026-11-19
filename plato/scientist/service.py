@@ -353,12 +353,15 @@ def create_app(dsn: str | None = None, internal_token: str | None = None) -> Fas
         journal: str,
         account_id: Annotated[uuid.UUID | None, Query(alias="account")] = None,
         cap: Annotated[int | None, Query(ge=0)] = None,
+        style: Annotated[str | None, Query(max_length=40)] = None,
         x_plato_anthropic_key: Annotated[str | None, Header()] = None,
     ) -> Response:
         """Build the journal package. The zip is the response body (the Worker streams it
         to R2); its metadata and checks are recorded in ``plato.publication_exports``."""
         if journal not in journal_profiles.JOURNALS:
             raise HTTPException(status_code=404, detail="unknown journal")
+        if style and style != "journal" and style not in journal_profiles.STYLES:
+            raise HTTPException(status_code=422, detail="unknown citation style")
         store: DualGraphStore = app.state.store
         campaign = await store.get_campaign(campaign_id)
         if campaign is None:
@@ -372,7 +375,9 @@ def create_app(dsn: str | None = None, internal_token: str | None = None) -> Fas
         cap = None if campaign.get("own_key") else cap
         async with export_slots:
             try:
-                pkg = await build_package(store, model, campaign_id, journal, cap=cap)
+                pkg = await build_package(
+                    store, model, campaign_id, journal, cap=cap, style=style
+                )
             except NotPublishable as exc:
                 raise HTTPException(status_code=409, detail=str(exc)) from None
             except ValueError as exc:

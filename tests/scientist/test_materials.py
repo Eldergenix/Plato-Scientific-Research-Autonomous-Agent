@@ -123,3 +123,15 @@ async def test_materials_reach_the_campaign_and_the_agents(store):
     assert "QUOKKA-MARKER-7" in prompts
     assert "untrusted" in prompts.lower()
     assert "wild bootstrap" in prompts.lower()
+
+
+def test_worker_citation_styles_match_the_python_catalogue():
+    from plato.publish.journals import styles_catalogue
+
+    worker = (
+        Path(__file__).resolve().parents[2]
+        / "cloudflare/plato-scientist/src/citation_styles.json"
+    )
+    assert json.loads(worker.read_text()) == styles_catalogue(), (
+        "regenerate src/citation_styles.json from plato.publish.journals.styles_catalogue()"
+    )

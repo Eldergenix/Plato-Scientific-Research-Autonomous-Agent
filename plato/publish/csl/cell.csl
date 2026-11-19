@@ -146,7 +146,12 @@
           </group>
         </else>
       </choose>
-      <text prefix=" " macro="access"/>
+      <!-- Local change: those types already print their DOI or URL above. -->
+      <choose>
+        <if type="article dataset software" match="none">
+          <text prefix=" " macro="access"/>
+        </if>
+      </choose>
     </layout>
   </bibliography>
 </style>

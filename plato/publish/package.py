@@ -7,7 +7,9 @@ One call produces a deterministic zip:
       SUBMISSION_CHECKLIST.md     the journal's limits against this paper, and every
                                   placeholder the authors must fill
       manuscript/                 manuscript.pdf, .tex, .docx, .jats.xml (PubMed Central),
-                                  references.bib, references.json (CSL-JSON), figures/
+                                  references.bib, .ris, .json (CSL-JSON), figures/,
+                                  extended_data/ (Nature)
+      submission/                 cover_letter.docx and .md (not arXiv)
       supplement/                 supplementary_information.pdf and .tex
       data/                       CSV tables, data_S1.xlsx, metrics.json, input datasets
       code/  logs/  review/       each experiment's code and log, automated reviews
@@ -45,17 +47,21 @@ from .document import (
     Table,
     latex_pandoc,
     latex_pdf,
+    main_text_words,
     statements,
     supplement_latex,
 )
 from .enrich import enrich
 from .figures import SUMMARY_FILE, experiment_plots, summary_chart, summary_rows
-from .journals import AI_NOTE, Journal, get
+from .journals import AI_NOTE, CitationStyle, Journal, get, style_for
+from .letter import cover_letter_md
 from .references import (
+    author_date_bibliography,
     bibtex,
     cited_keys_in_order,
     csl_items,
-    render_bibliography,
+    render_references,
+    ris,
     thebibliography,
 )
 from .supplement import FIXED_TIME, dumps, provenance, safe_name, write_data
@@ -68,6 +74,9 @@ DEFAULT_DISPLAY_ITEMS = 6
 MAX_PACKAGE_BYTES = 100 * 1024 * 1024
 _ZIP_TIME = FIXED_TIME.timetuple()[:6]
 _PLACEHOLDER_RE = re.compile(r"\[(?:[A-Z][^\[\]]{2,240})\]")
+_LETTER_PLACEHOLDER_RE = re.compile(r"\[[^\[\]]{3,240}\]")
+_CITE_RE = re.compile(r"\\cite\{([^}]*)\}")
+FIGURE_FILE_MAX = 1024 * 1024  # JAMA: each figure file at most 1 MB
 
 
 @dataclass
@@ -90,6 +99,7 @@ class Package:
     pdf_ok: bool
     pages: int | None
     counts: dict[str, Any] = field(default_factory=dict)
+    citation_style: dict[str, str] = field(default_factory=dict)
 
     def summary(self) -> dict[str, Any]:
         return {
@@ -103,6 +113,7 @@ class Package:
             "pdf_ok": self.pdf_ok,
             "pages": self.pages,
             "counts": self.counts,
+            "citation_style": self.citation_style,
         }
 
 
@@ -371,9 +382,13 @@ def checks_for(
                 else "missing or empty: " + "; ".join(missing),
             )
         )
-    main_words = sum(
-        _words(doc.sections.get(k, ""))
-        for k in ("introduction", "results", "discussion", "limitations")
+    main_words = (
+        main_text_words(doc)  # JAMA counts every section of the main text
+        if j.title_page_word_count
+        else sum(
+            _words(doc.sections.get(k, ""))
+            for k in ("introduction", "results", "discussion", "limitations")
+        )
     )
     limit("main_words", "Main text length", main_words, j.main_text_max_words, "words")
     if j.methods_max_words:
@@ -488,13 +503,44 @@ def checks_for(
             "placeholders: add the human authors who take responsibility for the work",
         )
     )
+    st = doc.style
+    if st.key == "journal":
+        out.append(
+            Check(
+                "citation_style",
+                "Citation style",
+                "pass",
+                f"{st.name}, the journal's own style, in the text and the reference list"
+                if j.style_required
+                else f"{st.name}; {j.name} prescribes no reference style",
+            )
+        )
+    else:
+        out.append(
+            Check(
+                "citation_style",
+                "Citation style",
+                "warn" if j.style_required else "pass",
+                (
+                    f"{st.name} chosen; {j.name} asks for {j.style.name}. Rebuild with the "
+                    "journal's style before submitting there."
+                )
+                if j.style_required
+                else f"{st.name}; {j.name} prescribes no reference style",
+            )
+        )
     out.append(Check("ai_disclosure", "AI disclosure", "info", AI_NOTE))
     if j.template_note:
         out.append(Check("template", "Journal template", "info", j.template_note))
     return out
 
 
-def checklist_md(j: Journal, checks: list[Check], placeholders: list[str]) -> str:
+def checklist_md(
+    j: Journal,
+    checks: list[Check],
+    placeholders: list[str],
+    letter_placeholders: list[str] = (),
+) -> str:
     icon = {"pass": "[x]", "warn": "[ ] (check)", "fail": "[ ] (required)", "info": "-"}
     lines = [
         f"# Submission checklist: {j.name} ({j.article_type})",
@@ -508,12 +554,26 @@ def checklist_md(j: Journal, checks: list[Check], placeholders: list[str]) -> st
         lines.append(f"- {icon[c.status]} **{c.label}**: {c.detail}")
     lines += ["", "## Placeholders to complete", ""]
     lines += [f"- [ ] {p}" for p in placeholders] or ["- none"]
+    if letter_placeholders:
+        lines += ["", "## Cover letter (submission/cover_letter.docx)", ""]
+        lines += [f"- [ ] {p}" for p in letter_placeholders]
+    if j.forms:
+        lines += ["", "## Forms the authors complete", ""]
+        lines += [f"- [ ] {name}: {url}" for name, url in j.forms]
     if j.notes:
         lines += ["", "## Journal notes", ""] + [f"- {n}" for n in j.notes]
     return "\n".join(lines) + "\n"
 
 
-def readme_md(j: Journal, title: str, formats: list[str], has_arxiv: bool) -> str:
+def readme_md(
+    j: Journal,
+    title: str,
+    formats: list[str],
+    has_arxiv: bool,
+    style: CitationStyle | None = None,
+    extended: int = 0,
+) -> str:
+    style = style or j.style
     lines = [
         f"# {title}",
         "",
@@ -525,9 +585,9 @@ def readme_md(j: Journal, title: str, formats: list[str], has_arxiv: bool) -> st
         "| --- | --- |",
         "| `manuscript/manuscript.pdf` | The manuscript, formatted to the journal's rules |",
         "| `manuscript/manuscript.tex` | Its single-file LaTeX source (bibliography inlined) |",
-        "| `manuscript/manuscript.docx` | Word version with the journal's reference style |",
+        "| `manuscript/manuscript.docx` | Word version, same references and citations |",
         "| `manuscript/manuscript.jats.xml` | JATS XML, the format PubMed Central ingests |",
-        "| `manuscript/references.bib`, `references.json` | References as BibTeX and CSL-JSON |",
+        "| `manuscript/references.bib`, `.ris`, `.json` | References as BibTeX, RIS (EndNote, Zotero, Mendeley) and CSL-JSON |",
         "| `manuscript/figures/` | Figures (vector PDF and 300 dpi PNG) |",
         "| `supplement/supplementary_information.pdf` | Supplementary Information |",
         "| `data/` | Source data as CSV and one Excel workbook (`data_S1.xlsx`), metrics, input datasets |",
@@ -536,6 +596,14 @@ def readme_md(j: Journal, title: str, formats: list[str], has_arxiv: bool) -> st
         "| `PROVENANCE.json` | How every finding was reached |",
         "| `MANIFEST.json` | SHA-256 checksum of every file |",
     ]
+    if extended:
+        lines.append(
+            "| `manuscript/extended_data/` | Extended Data figures, one file each (legends at the end of the manuscript) |"
+        )
+    if j.cover_letter is not None:
+        lines.append(
+            "| `submission/cover_letter.docx`, `.md` | Cover letter to the editor, to complete and sign |"
+        )
     if has_arxiv:
         lines.append(
             "| `arxiv/` | Upload-ready arXiv source: `main.tex`, figures, `anc/` ancillary files |"
@@ -543,6 +611,9 @@ def readme_md(j: Journal, title: str, formats: list[str], has_arxiv: bool) -> st
     lines += [
         "",
         f"The journal asks for: {', '.join(formats)} at first submission.",
+        "",
+        f"Citations and references: {style.name}"
+        + (" (the journal's own style)." if style.key == "journal" else "."),
         "",
         "## Before you submit",
         "",
@@ -601,13 +672,17 @@ async def build_package(
     cap: int | None = None,
     model_name: str = "",
     crossref: bool = True,
+    style: str | None = None,
 ) -> Package:
+    """``style``: a key of ``journals.STYLES`` to use instead of the journal's own
+    citation style (the checklist then warns where the journal requires its own)."""
     j = get(journal_key)
+    st = style_for(j, style)
     m = await collect(store, campaign_id)
     model_name = model_name or getattr(model, "model", "") or "a large language model"
     work = Path(tempfile.mkdtemp(prefix="plato-export-"))
     try:
-        return await _build(store, model, m, j, cap, model_name, crossref, work)
+        return await _build(store, model, m, j, st, cap, model_name, crossref, work)
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
@@ -617,6 +692,7 @@ async def _build(
     model,
     m: Materials,
     j: Journal,
+    st: CitationStyle,
     cap,
     model_name: str,
     crossref: bool,
@@ -639,10 +715,26 @@ async def _build(
             f.title = t.strip().rstrip(".")
 
     sections = {k: sanitize(v) for k, v in m.sections.items() if k != "abstract"}
+    # Nature: figures beyond the main display items are Extended Data, each its own
+    # file; the Supplementary Information then carries no figures.
+    extended: list[Figure] = []
+    overflow = plan.supplementary
+    if j.extended_data_max and plan.supplementary:
+        ed_dir = ms_dir / "extended_data"
+        ed_dir.mkdir()
+        for i, f in enumerate(plan.supplementary[: j.extended_data_max], 1):
+            name = f"Extended_Data_Fig_{i}{Path(f.file).suffix}"
+            shutil.copy(ms_dir / f.file, ed_dir / name)
+            extended.append(
+                Figure(f"extended_data/{name}", f.title, f.legend, f.source_node)
+            )
+        overflow = plan.supplementary[j.extended_data_max :]
     supplement_items = [
         "Supplementary Information (supplementary_information.pdf)",
         "Data S1 (data_S1.xlsx)",
     ]
+    if extended:
+        supplement_items.insert(0, f"Extended Data Figs. 1-{len(extended)}")
     doc = Doc(
         j,
         m.title,
@@ -652,6 +744,8 @@ async def _build(
         plan.table,
         model_name,
         supplement_items,
+        style=st,
+        extended=extended,
     )
 
     # Cited keys in order of first appearance across everything that is printed.
@@ -687,12 +781,38 @@ async def _build(
     (build / "refs.json").write_text(
         json.dumps(items, ensure_ascii=False), encoding="utf-8"
     )
-    convert.style_file(j, build)
-    bib_entries = await render_bibliography(items, j.csl, build)
-    bibliography = thebibliography(bib_entries)
+    bib_entries, _ = await render_references(items, st.csl, build)
+    if st.numeric:
+        bibliography = thebibliography(bib_entries)  # natbib numbers the citations
+    else:
+        bibliography = author_date_bibliography(bib_entries)
+    convert.style_file(st.csl, build)
+    cluster_text: dict[tuple[str, ...], str] = {}
+
+    async def finish(t: str) -> str:
+        """Drop unknown keys; for author-date styles, write each citation as citeproc
+        formats it, e.g. (Smith & Jones, 2020; Lee, 2021)."""
+        t = scrub(t)
+        if st.numeric:
+            return t
+
+        def keys_of(mm: re.Match[str]) -> tuple[str, ...]:
+            return tuple(k.strip() for k in mm.group(1).split(",") if k.strip())
+
+        need = list(
+            dict.fromkeys(
+                c
+                for c in (keys_of(mm) for mm in _CITE_RE.finditer(t))
+                if c and c not in cluster_text
+            )
+        )
+        if need:
+            _, more = await render_references(items, st.csl, build, need)
+            cluster_text.update(more)
+        return _CITE_RE.sub(lambda mm: cluster_text.get(keys_of(mm), ""), t)
 
     # ---- manuscript PDF (with a normalised retry if the model's LaTeX does not compile)
-    tex = scrub(latex_pdf(doc, bibliography))
+    tex = await finish(latex_pdf(doc, bibliography))
     pdf_dir = work / "pdf"
     shutil.copytree(ms_dir, pdf_dir)
     pdf_ok, err, pages = await _pdflatex(tex, "manuscript", pdf_dir)
@@ -703,7 +823,7 @@ async def _build(
         doc.sections = {
             k: await _pandoc_normalise(v, build) for k, v in doc.sections.items()
         }
-        tex = scrub(latex_pdf(doc, bibliography))
+        tex = await finish(latex_pdf(doc, bibliography))
         shutil.rmtree(pdf_dir)
         shutil.copytree(ms_dir, pdf_dir)
         pdf_ok, err, pages = await _pdflatex(tex, "manuscript", pdf_dir)
@@ -739,6 +859,7 @@ async def _build(
             "pandoc could not read the manuscript: %s %s", exc, exc.output[-500:]
         )
     (ms_dir / "references.bib").write_text(bibtex(items), encoding="utf-8")
+    (ms_dir / "references.ris").write_bytes(ris(items).encode("utf-8"))
     (ms_dir / "references.json").write_text(
         json.dumps(items, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
@@ -747,10 +868,8 @@ async def _build(
     sup_dir = root / "supplement"
     sup_dir.mkdir()
     sup_tables = [t for t in (_all_findings_table(m),) if t]
-    sup_figs = [
-        Figure(f.file, f.title, f.legend, f.source_node) for f in plan.supplementary
-    ]
-    sup_tex = scrub(
+    sup_figs = [Figure(f.file, f.title, f.legend, f.source_node) for f in overflow]
+    sup_tex = await finish(
         supplement_latex(
             doc, sup_figs, sup_tables, sup_methods, bibliography if sup_methods else ""
         )
@@ -792,8 +911,62 @@ async def _build(
             if (root / sub).exists():
                 shutil.copytree(root / sub, anc / sub)
 
+    # ---- cover letter
+    letter_placeholders: list[str] = []
+    if j.cover_letter is not None:
+        sub = root / "submission"
+        sub.mkdir()
+        letter = cover_letter_md(
+            j,
+            adaptation,
+            words=main_text_words(doc),
+            display_items=len(doc.figures) + (1 if doc.table else 0),
+            references=len(items),
+            style_name=st.name,
+            model=model_name,
+            supplement=supplement_items,
+        )
+        (sub / "cover_letter.md").write_text(letter, encoding="utf-8")
+        letter_placeholders = list(
+            dict.fromkeys(_LETTER_PLACEHOLDER_RE.findall(letter))
+        )
+        try:
+            shutil.copy(
+                await convert.letter_docx(letter, j, build, "cover_letter.docx"),
+                sub / "cover_letter.docx",
+            )
+        except ToolError as exc:
+            logger.warning("cover letter conversion failed: %s", exc)
+
     numbers = unsupported_numbers(adaptation, m)
     checks = checks_for(doc, j, m, len(items), pdf_ok, numbers)
+    if j.extended_data_max and len(plan.supplementary) > j.extended_data_max:
+        checks.append(
+            Check(
+                "extended_data",
+                "Extended Data figures",
+                "warn",
+                f"{len(plan.supplementary)} extra figures, {j.extended_data_max} allowed: "
+                f"the other {len(overflow)} are in the Supplementary Information, which "
+                f"{j.name} asks to keep free of figures",
+            )
+        )
+    if j.figures_separate:
+        big = sorted(
+            p.name
+            for p in fig_dir.iterdir()
+            if p.is_file() and p.stat().st_size > FIGURE_FILE_MAX
+        )
+        checks.append(
+            Check(
+                "figure_files",
+                "Figure files",
+                "pass" if not big else "warn",
+                "one file per figure, each at most 1 MB"
+                if not big
+                else "larger than 1 MB: " + ", ".join(big),
+            )
+        )
     if not word_ok:
         checks.append(
             Check(
@@ -830,11 +1003,18 @@ async def _build(
         | {f"[{n}]" for n, t in statements(doc) if t.startswith("[")}
     )
     (root / "SUBMISSION_CHECKLIST.md").write_text(
-        checklist_md(j, checks, placeholders), encoding="utf-8"
+        checklist_md(j, checks, placeholders, letter_placeholders), encoding="utf-8"
     )
     title = plain_text(adaptation.title) or m.title
     (root / "README.md").write_text(
-        readme_md(j, title, list(j.manuscript_formats), j.key == "arxiv"),
+        readme_md(
+            j,
+            title,
+            list(j.manuscript_formats),
+            j.key == "arxiv",
+            st,
+            len(extended),
+        ),
         encoding="utf-8",
     )
 
@@ -875,6 +1055,7 @@ async def _build(
         pdf_ok=pdf_ok,
         pages=pages,
         counts=counts,
+        citation_style={"key": st.key, "name": st.name},
     )
 
 
