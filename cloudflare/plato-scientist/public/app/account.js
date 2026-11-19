@@ -38,7 +38,7 @@ async function logout(){try{await api("auth/logout",{method:"POST"})}catch{}sign
 /* ---------- sign-in and sign-up ---------- */
 function renderAuth(mode){document.body.classList.add("signed-out");const login=mode!=="signup";
   $("#auth").innerHTML=`<main class="auth"><div class="auth-c">
-    <div class="logo lg" aria-hidden="true">P</div>
+    <div class="logo lg" aria-hidden="true"></div>
     <h1>${login?"Log in to Plato":"Create your account"}</h1>
     <p class="t2">${login?"Your autonomous research workspace.":"Ask the agent a question. It starts research threads that run on their own."}</p>
     <form id="authForm" novalidate>

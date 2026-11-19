@@ -31,7 +31,8 @@ body.signed-out .app,body.signed-out #askFab,body.signed-out #ask{display:none}
 body.signed-out #auth{display:block}
 .auth{min-height:100vh;display:grid;place-items:center;padding:40px 16px;background:var(--bg)}
 .auth-c{width:min(340px,100%);text-align:center}
-.auth .logo.lg{width:44px;height:44px;border-radius:11px;font-size:20px;margin:0 auto 22px}
+.auth .logo.lg{display:block;width:56px;height:56px;margin:0 auto 22px;background-image:url(/brand/plato-mark-light-96.png)}
+[data-theme="dark"] .auth .logo.lg{background-image:url(/brand/plato-mark-dark-96.png)}
 .auth h1{font-size:20px;font-weight:500;letter-spacing:-.01em;margin:0 0 6px;color:var(--text-1)}
 .auth p.t2{margin:0 0 26px}
 .auth form{display:flex;flex-direction:column;gap:10px;text-align:left}
