@@ -49,6 +49,7 @@ WRITING_PURPOSES = frozenset(
     {
         "manuscript",
         "peer_review",
+        "peer_review_check",
         "manuscript_revision",
         "evidence_matrix",
         "review_methodology",
@@ -100,7 +101,11 @@ def _estimate_messages_chars(messages: list[dict[str, Any]]) -> int:
             for key in ("text", "thinking", "content", "input"):
                 value = _block_get(block, key)
                 if value is not None:
-                    total += len(value if isinstance(value, str) else json.dumps(value, default=str))
+                    total += len(
+                        value
+                        if isinstance(value, str)
+                        else json.dumps(value, default=str)
+                    )
     return total
 
 
@@ -360,6 +365,8 @@ class AnthropicScientistModel:
             text = "".join(
                 b.text for b in response.content if getattr(b, "type", None) == "text"
             )
-            return ToolTurn(list(response.content), response.stop_reason, tool_uses, text)
+            return ToolTurn(
+                list(response.content), response.stop_reason, tool_uses, text
+            )
         finally:
             await self._store.settle_tokens(campaign_id, reserved, actual)

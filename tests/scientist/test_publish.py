@@ -3,12 +3,14 @@ exported for every journal profile with real pdfLaTeX and pandoc."""
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import io
 import json
 import re
 import shutil
 import zipfile
+from asyncio.subprocess import PIPE
 
 import pytest
 from test_end_to_end import FakeModel, _new_campaign, fake_retriever
@@ -23,7 +25,7 @@ from plato.publish.adapt import (
     unsupported_numbers,
 )
 from plato.publish.collect import NotPublishable, collect, parse_manuscript
-from plato.publish.package import build_package
+from plato.publish.package import PreviewFailed, build_package, preview_pdf
 from plato.publish.texsafe import lancet_decimals, sanitize, strip_citations
 from plato.scientist.db.store import BudgetExceeded
 from plato.scientist.graph import run_campaign
@@ -225,6 +227,34 @@ async def test_without_a_model_the_package_still_builds_and_says_so(store):
     assert checks["abstract_structure"].status == "fail"  # NEJM needs four headings
 
 
+@needs_tex
+async def test_preview_pdf_compiles_without_a_model(store, monkeypatch):
+    cid, model = await _completed(store)
+    calls = len(model.calls)
+    pdf, pages = await preview_pdf(store, cid, model_name="test")
+    assert pdf.startswith(b"%PDF-") and pages and pages >= 1
+    # The title PDF viewers show (pdfinfo, as the Info dictionary is compressed).
+    if shutil.which("pdfinfo"):
+        proc = await asyncio.create_subprocess_exec(
+            "pdfinfo", "-", stdin=PIPE, stdout=PIPE, stderr=PIPE
+        )
+        out, _ = await proc.communicate(pdf)
+        assert re.search(r"^Title:\s+Mean of y$", out.decode(), re.MULTILINE), out
+    assert len(model.calls) == calls  # no model call, no tokens
+
+    # A manuscript that pdfLaTeX cannot compile (even after pandoc normalising) fails
+    # with the log instead of returning a broken file.
+    from plato.publish import package
+
+    async def broken(tex, name, workdir):
+        return False, "! Undefined control sequence.", None
+
+    monkeypatch.setattr(package, "_pdflatex", broken)
+    with pytest.raises(PreviewFailed) as err:
+        await preview_pdf(store, cid)
+    assert "Undefined control sequence" in err.value.log
+
+
 async def test_unfinished_campaign_is_not_publishable(store):
     _, cid, _, _ = await _new_campaign(store)
     with pytest.raises(NotPublishable):
@@ -266,6 +296,16 @@ def test_parse_manuscript_round_trip():
     assert sections["introduction"] == "intro \\cite{ref_a}"
     assert sections["results"] == "r {nested}"  # the findings table is dropped
     assert sections["limitations"] == "l"
+
+
+def test_pdf_title_is_plain_text():
+    from plato.publish.document import _pdf_title
+
+    assert (
+        _pdf_title(r"Coverage of $\beta$ under 95\% \emph{robust} errors \cite{a}")
+        == r"Coverage of under 95\% robust errors"
+    )
+    assert _pdf_title(r"R\&D costs \$5 \{x\}") == r"R\&D costs \$5 x"
 
 
 def test_sanitize_removes_dangerous_tex():
@@ -394,3 +434,20 @@ async def test_service_builds_exports_and_takes_materials(pg_dsn, monkeypatch):
             top = r.headers["x-plato-export-name"]
             assert f"{top}/manuscript/manuscript.pdf" in names
             assert f"{top}/arxiv/main.tex" in names
+
+            # The typeset paper for the in-app PDF view (no model call).
+            r = await client.get(
+                f"/internal/campaigns/{cid}/manuscript.pdf", headers=hdr
+            )
+            assert r.status_code == 200, r.text
+            assert r.headers["content-type"] == "application/pdf"
+            assert (
+                r.content.startswith(b"%PDF-")
+                and int(r.headers["x-plato-pdf-pages"]) >= 1
+            )
+            r = await client.get(
+                f"/internal/campaigns/{unfinished}/manuscript.pdf", headers=hdr
+            )
+            assert r.status_code == 409
+            r = await client.get(f"/internal/campaigns/{cid}/manuscript.pdf")
+            assert r.status_code == 401

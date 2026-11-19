@@ -109,6 +109,50 @@ export async function createExport(c: Ctx, id: string): Promise<Response> {
   return json({ export: publicRow((await exportRow(c.sql, exportId))!) }, 201);
 }
 
+/* ---------- the typeset paper ---------- */
+
+/** The finished paper as a PDF (preprint layout), for the in-app viewer. Built once per
+ * manuscript version by the campaign's container (pdfLaTeX, no model call) and kept in
+ * R2, so later views never wake the container. ``?download=1`` saves it instead. */
+export async function manuscriptPdf(c: Ctx, id: string): Promise<Response> {
+  const campaign = await campaignFor(c, id);
+  if (campaign.status !== "completed") throw new HttpError(409, "The paper is not finished yet.");
+  const [version] = await c.sql`
+    SELECT e.id FROM plato.evidence_artifacts e JOIN plato.exploration_nodes n ON n.id = e.node_id
+     WHERE n.campaign_id = ${id} AND n.node_type = 'goal' AND n.dedup_key = 'root-goal'
+       AND e.artifact_type = 'latex_section' AND e.content IS NOT NULL
+     ORDER BY e.created_at DESC LIMIT 1`;
+  if (!version) throw new HttpError(404, "manuscript not written yet");
+  const key = `previews/${id}/${version.id}.pdf`;
+  let body: ReadableStream | ArrayBuffer;
+  const cached = await c.env.EXPORTS.get(key);
+  if (cached) body = cached.body;
+  else {
+    const res = await toContainer(c.env, id, `/internal/campaigns/${id}/manuscript.pdf`, { method: "GET" });
+    if (!res.ok) {
+      const status = res.status === 409 || res.status === 422 ? res.status : 502;
+      throw new HttpError(status, await containerError(res));
+    }
+    const data = await res.arrayBuffer();
+    if (new TextDecoder().decode(data.slice(0, 5)) !== "%PDF-") throw new HttpError(502, "the typesetter returned no PDF");
+    await c.env.EXPORTS.put(key, data, {
+      httpMetadata: { contentType: "application/pdf" },
+      customMetadata: { campaign: id, latex: String(version.id) },
+    });
+    body = data;
+  }
+  const download = c.url.searchParams.get("download") === "1";
+  return new Response(body, {
+    headers: {
+      "content-type": "application/pdf",
+      "content-disposition": `${download ? "attachment" : "inline"}; filename="paper-${id.slice(0, 8)}.pdf"`,
+      etag: `"${version.id}"`,
+      "cache-control": "private, max-age=86400",
+      "x-content-type-options": "nosniff",
+    },
+  });
+}
+
 /* ---------- download, signed links and single files ---------- */
 
 async function linkKey(env: Env): Promise<CryptoKey> {

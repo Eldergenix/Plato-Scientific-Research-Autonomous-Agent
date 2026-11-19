@@ -44,10 +44,13 @@ from .guard import (
 from .llm import ModelOutputError, ModelRefusal, ScientistModel
 from .profiles import ScientistProfile, get_profile, resolve_profile
 from .review import (
+    apply_revision,
     build_evidence_matrix,
+    check_revision,
     matrix_digest,
     matrix_required_changes,
     panel_digest,
+    review_record,
     run_review_panel,
 )
 from .schemas import (
@@ -133,7 +136,9 @@ class ScientistConfig:
             default = os.environ.get("PLATO_DEFAULT_EXECUTOR", cfg.executor)
             # A deployment default of e2b without a key falls back to the container sandbox;
             # a campaign that names e2b explicitly fails loudly instead.
-            cfg.executor = "local" if default == "e2b" and not e2b_configured() else default
+            cfg.executor = (
+                "local" if default == "e2b" and not e2b_configured() else default
+            )
         if cfg.executor == "modal" and cfg.gpu:
             # GPU experiments (training) get ten minutes on a larger machine.
             cfg.sandbox = SandboxLimits(
@@ -846,7 +851,11 @@ async def _workspace_attempt(
     async def on_submit(code: str, setup: str) -> tuple[str, bool, Any]:
         nonlocal submissions
         if submissions >= cfg.max_code_attempts:
-            return ("submission limit reached; no further runs will be recorded", False, None)
+            return (
+                "submission limit reached; no further runs will be recorded",
+                False,
+                None,
+            )
         submissions += 1
         await store.use_turn(intent["id"], worker_id)
         result = await _run_code(ctx, campaign_id, code, 1, datasets, setup=setup)
@@ -886,7 +895,9 @@ async def _workspace_attempt(
         while True:
             await asyncio.sleep(max(30, cfg.lease_seconds // 3))
             try:
-                await store.heartbeat(intent["id"], worker_id, lease_seconds=cfg.lease_seconds)
+                await store.heartbeat(
+                    intent["id"], worker_id, lease_seconds=cfg.lease_seconds
+                )
             except BaseException as exc:  # LeaseLost: stop the session at the next turn
                 lease_error.append(exc)
                 return
@@ -928,7 +939,10 @@ async def _workspace_attempt(
                 campaign_id,
                 "injection",
                 "allow",
-                {"signals": sorted(set(outcome.signals))[:20], "note": "workspace tool output"},
+                {
+                    "signals": sorted(set(outcome.signals))[:20],
+                    "note": "workspace tool output",
+                },
                 node_id=intent["id"],
             )
         await store.add_evidence(
@@ -950,7 +964,9 @@ async def _workspace_attempt(
     finally:
         heartbeat.cancel()
         await backend.close()
-        await store.settle_gpu_seconds(campaign_id, 60, round(time.monotonic() - started))
+        await store.settle_gpu_seconds(
+            campaign_id, 60, round(time.monotonic() - started)
+        )
     if lease_error:
         raise lease_error[0]
     return state["code"], state["setup"], state["result"], state["metrics"]
@@ -980,7 +996,9 @@ async def execute_intent(
             ctx, campaign_id, intent, worker_id, spec, datasets, nonce
         )
     # The workspace session replaces the write-run-fix loop below (it has its own retries).
-    for attempt in range(0 if ctx.config.executor == "e2b" else ctx.config.max_code_attempts):
+    for attempt in range(
+        0 if ctx.config.executor == "e2b" else ctx.config.max_code_attempts
+    ):
         await store.use_turn(intent["id"], worker_id)
         draft = await ctx.model.structured(
             campaign_id=campaign_id,
@@ -1700,10 +1718,15 @@ async def write_manuscript(
             schema=PeerReview,
             effort="high",
             system=_system("handling editor for a top venue", nonce),
+            max_tokens=16000,
             prompt=(
                 "Write the consolidated review of this manuscript. Weigh the four reviewer "
-                "reports and the citation audit against the evidence; required changes must "
-                "be concrete edits.\n\n"
+                "reports and the citation audit against the evidence. Judge the paper claim "
+                "by claim: quote each claim exactly as written, check it against the "
+                "evidence (numbers, uncertainty, replication, test kind), and approve, ask "
+                "to revise, or reject it. Approve only what the evidence establishes as "
+                "stated; a number that is not in the evidence is rejected. Required "
+                "changes must be concrete edits.\n\n"
                 f"Evidence:\n{evidence_text}\n\n"
                 f"Reviewer reports:\n{panel_digest(panel or {})}\n\n"
                 f"Citation audit (claims whose cited abstract does not support them):\n"
@@ -1712,6 +1735,7 @@ async def write_manuscript(
             ),
         ),
     )
+    record = review_record(review, ms) if review is not None else None
     changes = (
         list(review.required_changes)
         if review and review.decision in ("major_revision", "reject")
@@ -1740,6 +1764,14 @@ async def write_manuscript(
         )
         if new_ms is not None:
             ms, revised = new_ms, True
+            # The review judged the first draft; re-check each claim in the revision so
+            # the verdicts shown describe the paper as published.
+            if record is not None:
+                check = await best_effort(
+                    "peer_review_check",
+                    check_revision(ctx.model, campaign_id, record, ms, evidence_text),
+                )
+                record = apply_revision(record, check, ms)
             # The stored matrix must describe the paper as published.
             matrix = (
                 await best_effort(
@@ -1779,9 +1811,14 @@ async def write_manuscript(
     tex = assemble_latex(ms, findings)
     await store.add_evidence(root_id, "latex_section", tex, approval_actor="model")
     await store.add_evidence(root_id, "bibtex", bib, approval_actor="system")
-    if review is not None:
+    if record is not None:
+        if not revised:
+            record = apply_revision(record, None, ms)
         await store.add_evidence(
-            root_id, "peer_review", review.model_dump_json(), approval_actor="model"
+            root_id,
+            "peer_review",
+            json.dumps(record, sort_keys=True),
+            approval_actor="model",
         )
     if matrix is not None:
         await store.add_evidence(

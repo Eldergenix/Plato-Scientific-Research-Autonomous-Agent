@@ -124,13 +124,104 @@ class Manuscript(BaseModel):
     limitations: str
 
 
+ManuscriptSection = Literal[
+    "title",
+    "abstract",
+    "introduction",
+    "methods",
+    "results",
+    "discussion",
+    "limitations",
+]
+Decision = Literal["accept", "minor_revision", "major_revision", "reject"]
+
+
+class ClaimAssessment(BaseModel):
+    """The editor's verdict on one claim of the manuscript, tied to its exact words."""
+
+    section: ManuscriptSection
+    quote: str = Field(
+        description=(
+            "The claim exactly as the manuscript states it: one sentence or clause copied "
+            "verbatim from that section (5 to 60 words, LaTeX included as written)."
+        )
+    )
+    category: Literal[
+        "result",
+        "statistics",
+        "methodology",
+        "interpretation",
+        "citation",
+        "reproducibility",
+        "presentation",
+    ]
+    verdict: Literal["approved", "needs_revision", "rejected"] = Field(
+        description=(
+            "approved: the evidence supports the claim as written. needs_revision: the "
+            "claim is broadly right but overstated, imprecise, or missing a number, "
+            "uncertainty or caveat. rejected: the evidence contradicts it, does not "
+            "establish it, or it reports a number that is not in the evidence."
+        )
+    )
+    severity: Literal["minor", "major", "critical"] = Field(
+        description="How much the problem matters to the paper's conclusions (minor when approved)."
+    )
+    evidence: str = Field(
+        description=(
+            "What the evidence shows for this claim, with the exact measured values "
+            "(metric, estimate, interval or standard error, p-value, n, seeds), or what "
+            "is missing from it."
+        )
+    )
+    critique: str = Field(description="Why the verdict, in one to three sentences.")
+    fix: str = Field(
+        description="The concrete edit that would make the claim acceptable; empty when approved."
+    )
+
+
 class PeerReview(BaseModel):
+    summary: str = Field(
+        description="What the paper claims and the editor's overall judgement, three sentences at most."
+    )
+    strengths: list[str] = Field(description="At most 5, most important first.")
+    assessments: list[ClaimAssessment] = Field(
+        description=(
+            "Between 6 and 20 claims: every quantitative result, every statement about a "
+            "verified finding, refuted hypothesis or preliminary observation, and the main "
+            "conclusions of the abstract and discussion. Most consequential first."
+        )
+    )
     soundness: int = Field(description="1 to 4")
     presentation: int = Field(description="1 to 4")
     contribution: int = Field(description="1 to 4")
-    decision: Literal["accept", "minor_revision", "major_revision", "reject"]
-    summary: str
+    decision: Decision
     required_changes: list[str]
+
+
+class RevisionOutcome(BaseModel):
+    assessment: int = Field(description="Index of the assessment in the review.")
+    status: Literal["resolved", "partially_resolved", "unresolved", "removed"] = Field(
+        description=(
+            "resolved: the revised text fixes the problem (or the approved claim still "
+            "stands). partially_resolved: improved but not fully. unresolved: the problem "
+            "remains. removed: the claim no longer appears."
+        )
+    )
+    final_quote: str = Field(
+        description=(
+            "Where the claim now appears: one sentence or clause copied verbatim from the "
+            "revised manuscript. Empty when removed."
+        )
+    )
+    note: str = Field(description="One sentence on what changed.")
+
+
+class RevisionCheck(BaseModel):
+    outcomes: list[RevisionOutcome]
+    final_summary: str = Field(
+        description="Two sentences at most on the revised paper."
+    )
+    final_decision: Decision
 
 
 class CitationSupport(BaseModel):

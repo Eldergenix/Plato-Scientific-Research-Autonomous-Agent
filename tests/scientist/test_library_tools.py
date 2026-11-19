@@ -16,17 +16,21 @@ from plato.scientist.guard.modal_runner import run_python_modal
 from plato.scientist.nodes import ScientistConfig, code_rules
 from plato.scientist.profiles import classify, get_profile, resolve_profile
 from plato.scientist.review import (
+    apply_revision,
     build_evidence_matrix,
     extract_cited_claims,
     matrix_required_changes,
     quote_span,
+    review_record,
     run_review_panel,
 )
 from plato.scientist.schemas import (
     CitationSupport,
+    ClaimAssessment,
     EvidenceMatrix,
     Manuscript,
     PanelCritique,
+    PeerReview,
 )
 from plato.state.models import Source
 
@@ -207,6 +211,54 @@ def test_quote_span_is_whitespace_and_case_insensitive():
     span = quote_span(abstract, "Bootstrap intervals under-cover when n is small")
     assert span is not None and abstract[span[0] : span[1]].startswith("bootstrap")
     assert quote_span(abstract, "bootstrap intervals over-cover") is None
+
+
+def _assessment(section: str, quote: str, verdict: str = "approved") -> ClaimAssessment:
+    return ClaimAssessment(
+        section=section,
+        quote=quote,
+        category="result",
+        verdict=verdict,
+        severity="minor",
+        evidence="e",
+        critique="c",
+        fix="",
+    )
+
+
+def test_review_record_locates_each_claim_and_counts_verdicts():
+    review = PeerReview(
+        summary="s",
+        strengths=[],
+        assessments=[
+            # whitespace and case differ, the LaTeX is as written
+            _assessment(
+                "introduction",
+                "bootstrap  intervals under-cover in small samples \\cite{ref_a}.",
+            ),
+            # moved: quoted under the wrong section, still found in the paper
+            _assessment(
+                "results", "Robust errors fix heteroskedasticity", "needs_revision"
+            ),
+            _assessment("abstract", "We prove coverage is exact.", "rejected"),
+        ],
+        soundness=3,
+        presentation=3,
+        contribution=2,
+        decision="major_revision",
+        required_changes=[],
+    )
+    rec = review_record(review, MS)
+    assert [a["id"] for a in rec["assessments"]] == [0, 1, 2]
+    assert [a["quote_found"] for a in rec["assessments"]] == [True, True, False]
+    assert rec["counts"] == {"approved": 1, "needs_revision": 1, "rejected": 1}
+    # Without a revision check, only whether each quote is still in the final text is known.
+    final = MS.model_copy(
+        update={"introduction": "Robust errors fix heteroskedasticity."}
+    )
+    out = apply_revision(rec, None, final)
+    assert [a["final_quote_found"] for a in out["assessments"]] == [False, True, False]
+    assert "revision" not in out and all("outcome" not in a for a in out["assessments"])
 
 
 class _Model:
