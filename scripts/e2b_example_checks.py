@@ -217,6 +217,12 @@ a1 = [r for r in rows if r["subunit"] == "alpha1"]
 x = [r["displacement_A"] for r in a1 if r["alpha1beta2_interface"]]
 y = [r["displacement_A"] for r in a1 if not r["alpha1beta2_interface"]]
 u = stats.mannwhitneyu(x, y, alternative="greater")
+# The assembly names its symmetry copies 'A-2'/'B-2', which PDB format cannot hold: give the
+# oxy chains the deoxy labels (A-D) so both files read the same, via temporary ids.
+for i, k in enumerate(O):
+    O[k].id = f"tmp{i}"
+for k in O:
+    O[k].id = D[k].id
 io = PDBIO(); io.set_structure(oxy); io.save("oxy_superposed.pdb")
 io.set_structure(deoxy); io.save("deoxy_reference.pdb")
 m = {"core_rmsd_A": round(float(sup.rms), 3), "alpha2beta2_rotation_deg": round(angle, 2),
