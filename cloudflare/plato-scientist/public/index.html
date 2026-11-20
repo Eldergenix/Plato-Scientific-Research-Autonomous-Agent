@@ -149,6 +149,15 @@ svg{flex:none}
 /* Overview */
 .doc{max-width:860px;margin:0 auto;padding:28px 28px 60px}
 .doc h1{font-size:22px;line-height:1.3;font-weight:600;letter-spacing:-.01em;margin:0 0 6px;color:var(--text-1)}
+.doc h1.cq{font-size:13px;line-height:20px;letter-spacing:0;margin:0;overflow-wrap:anywhere}
+.doc h1.cq:not(.open){display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden}
+.doc h1.cq.open{white-space:pre-line}
+.cq-more{display:inline-flex;align-items:center;gap:4px;margin:2px 0 0 -4px;padding:2px 4px;border:0;border-radius:6px;background:none;color:var(--text-2);font:inherit;font-size:12px;font-weight:500;cursor:pointer}
+.cq-more:hover{color:var(--text-1);background:var(--hover)}
+.cq-more svg{transition:transform .15s ease}.cq-more[aria-expanded="true"] svg{transform:rotate(180deg)}
+.cq-more[hidden]{display:none}
+@media (prefers-reduced-motion:reduce){.cq-more svg{transition:none}}
+[data-motion="reduce"] .cq-more svg{transition:none}
 .sub{color:var(--text-2);display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .steps{display:flex;align-items:center;gap:0;margin:22px 0 18px;overflow-x:auto;padding-bottom:4px}
 .step{display:flex;align-items:center;gap:7px;color:var(--text-3);white-space:nowrap;font-size:12.5px}
