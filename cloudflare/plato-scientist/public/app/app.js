@@ -193,7 +193,7 @@ function renderTab(){
   const rv=full&&S.manuscript&&typeof S.manuscript==="object"?reviewData(S.manuscript):null;
   body.className="body "+(full?"full":"mode-"+S.panel.mode)+(rv?" has-rv"+(RV.open?" rv-open":""):"");
   body.innerHTML=`<div class="pane" id="pane">${tabView(tab)}</div>`+(full?(rv?reviewPanel(rv):""):`<aside class="props" id="props" aria-label="Details panel">${propsView()}</aside>`);
-  clearMarks();mountPaper();bindPane();bindPublish();bindProps();bindReview();mountCharts();mountData();Kit.hydrate(body,S.route.id+":");Kit.paint(body);if(ui)restoreUI(ui);KB=-1;
+  clearMarks();mountPaper();bindPane();bindPublish();bindProps();bindReview();mountCharts();mountData();Kit.hydrate(body,S.route.id+":");Kit.paint(body);fitTitle();if(ui)restoreUI(ui);KB=-1;
 }
 function refreshProps(keepScroll=true){const p=$("#props");if(!p||!S.summary)return;const st=p.scrollTop;
   if(S.panel.view==="paper")ensureManuscript();
@@ -284,6 +284,18 @@ function bindProps(){const p=$("#props");if(!p)return;
   p.onkeydown=e=>{if((e.key==="Enter"||e.key===" ")&&e.target.matches(".lin[role=button]")){e.preventDefault();e.target.click()}}}
 
 /* ---------- overview ---------- */
+/* campaign title: the full question can run to paragraphs, so it shows two lines until expanded */
+const QT_OPEN=new Set();   // campaign ids whose title is expanded; survives the 5s re-render
+const titleHtml=c=>{const o=QT_OPEN.has(c.id);
+  return `<h1 class="cq${o?" open":""}" id="cq">${esc(c.research_question)}</h1><button type="button" class="cq-more" id="cqBtn" data-cq aria-controls="cq" aria-expanded="${o}" hidden>${o?"Show less":"Show more"}<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4 5 6.5 7.5 4"/></svg></button>`};
+const titleClamps=h=>{const o=h.classList.contains("open");if(o)h.classList.remove("open");   // measured collapsed, in the same frame
+  const over=h.scrollHeight>h.clientHeight+1;if(o)h.classList.add("open");return over};
+let QT_RO=null;
+function fitTitle(){const h=$("#pane #cq"),b=$("#pane #cqBtn");QT_RO?.disconnect();if(!h||!b)return;
+  const fit=()=>{if(h.isConnected)b.hidden=!titleClamps(h)};fit();
+  if(window.ResizeObserver){let w=h.clientWidth;QT_RO=new ResizeObserver(()=>{if(h.clientWidth!==w){w=h.clientWidth;fit()}});QT_RO.observe(h)}}
+function toggleTitle(b){const h=$("#cq"),id=S.route.id;if(!h)return;const o=!QT_OPEN.has(id);o?QT_OPEN.add(id):QT_OPEN.delete(id);
+  h.classList.toggle("open",o);b.setAttribute("aria-expanded",String(o));b.firstChild.textContent=o?"Show less":"Show more"}
 function overview(){
   const c=S.summary.campaign,cnt=counts(),halted=c.status==="halted",idx=PHASES.indexOf(c.status),reached=halted?Math.max(0,lastPhase()):idx;
   const steps=PHASES.map((p,i)=>{const done=i<reached||(c.status==="completed"),cur=i===reached&&!halted&&c.status!=="completed",fail=halted&&i===reached;
@@ -299,7 +311,7 @@ function overview(){
   const judged=judgedFacts(),allPass=judged.filter(passedAll).length;
   const rounds=num(rm.rounds_completed)??0,maxR=num(obj(c.config).max_rounds)??0;
   const ev=S.summary.guard_events.slice(0,12);
-  return `<div class="doc"><div data-seq><div><h1>${esc(c.research_question)}</h1>${rq&&rq!==c.research_question?`<p class="refined">${esc(rq)}</p>`:""}
+  return `<div class="doc"><div data-seq><div>${titleHtml(c)}${rq&&rq!==c.research_question?`<p class="refined">${esc(rq)}</p>`:""}
   <div class="sub" style="margin-top:10px"><span class="mono t3">${cid(c.id)}</span>${typeChip("goal")}<span>${esc(c.program_domain||"general")}</span><span class="t3">·</span><span>Started ${ago(c.created_at)}</span></div></div>
   <div class="steps">${steps}</div>${call}
   <div class="stats">
@@ -839,7 +851,7 @@ $("#newBtn").onclick=openNew;
 /* ---------- pane events (delegated: views re-render with innerHTML) ---------- */
 function bindPane(){const pane=$("#pane");if(!pane)return;
   pane.onclick=e=>{if(e.target.closest(".dv"))return;   // the data viewer handles its own controls
-    const t=e.target.closest("[data-node],[data-ms],[data-dl],[data-gev],[data-filter],[data-sort],[data-page],[data-dense],[data-csv],[data-copy],[data-clear],[data-pv],[data-rv-toggle],[data-ms-split],[data-pdf-retry],[data-dfilter],[data-ev],#colBtn");if(!t||!pane.contains(t))return;
+    const t=e.target.closest("[data-node],[data-ms],[data-dl],[data-gev],[data-filter],[data-sort],[data-page],[data-dense],[data-csv],[data-copy],[data-clear],[data-pv],[data-rv-toggle],[data-ms-split],[data-pdf-retry],[data-dfilter],[data-ev],[data-cq],#colBtn");if(!t||!pane.contains(t))return;
     const d=t.dataset,R=S.res;
     if(t.id==="colBtn"){const m=$("#colMenu");m.hidden=!m.hidden;t.setAttribute("aria-expanded",String(!m.hidden));if(!m.hidden)m.querySelector("input")?.focus()}
     else if(d.filter){R.filter=R.filter===d.filter&&d.filter!=="all"?"all":d.filter;R.page=0;renderGrid()}
@@ -857,6 +869,7 @@ function bindPane(){const pane=$("#pane");if(!pane)return;
     else if(d.copy)copyPaper(t);
     else if(d.gev!=null)t.nextElementSibling.hidden=!t.nextElementSibling.hidden;
     else if(d.dfilter){S.dataFilter=d.dfilter;renderTab()}
+    else if(d.cq!=null)toggleTitle(t);
     else if(d.ev)openEvidence(d.ev,d.type);
     else if(d.node)selectNode(d.node)};
   pane.oninput=e=>{if(e.target.id==="gq"){S.res.q=e.target.value;S.res.page=0;renderGrid()}};
